@@ -162,7 +162,7 @@ client.on('connect', function() { // When connected
 
     // when a message arrives, do something with it
     client.on('message', function(topic, message, packet) {
-      if (logging == true) {console.log('Message received on ' + topic + ' : ' + message);}
+      log('Message received on ' + topic + ' : ' + message);
 
       parts = topic.split("/");
       if (parts.length > 5)
