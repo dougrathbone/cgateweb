@@ -1,7 +1,9 @@
 cgateweb
 ========
 
-MQTT interface for C-Bus lighting written in Node.js
+MQTT interface for C-Bus lighting written in Node.js.
+
+This script acts as a middleware broker that connects to C-Gate over telnet and publishes the events to an MQTT broker.
 
 (If you're looking for HVAC, I haven't/can't try it but have a look at this fork: https://github.com/mminehanNZ/cgateweb)
 
@@ -9,7 +11,7 @@ MQTT interface for C-Bus lighting written in Node.js
 (for raspberry pi)
 ```
 cd /usr/local/bin
-sudo git clone https://github.com/the1laz/cgateweb.git
+sudo git clone https://github.com/dougrathbone/cgateweb.git
 cd cgateweb
 npm install
 sudo nano settings.js
