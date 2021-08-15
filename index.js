@@ -126,10 +126,14 @@ var CBusCommand = function(topic, message){
   this.Device = function(){ return parts[4].toString(); }
 
   // command type
-  this.CommandType = function(){ return parts[5]; }
+  var commandParts = parts[5].split(' ');
+  this.CommandType = function(){ return commandParts[0]; }
+
+  // action type
+  this.Action = function(){ return commandParts[0]; }
 
   // pull out message
-  this.Message = function(){ return message; }
+  this.Message = function(){ return message.toString(); }
 
   // pull out level
   var _this = this;
@@ -140,8 +144,9 @@ var CBusCommand = function(topic, message){
     }
 
     // pull out ramp value
-    if (parts.length > 3){
-      return Math.round(parseInt(parts[3])*100/255).toString();
+    var messageParts = _this.Message().split(' ');
+    if (messageParts.length > 1){
+      return Math.round(parseInt(messageParts[1])*100/255).toString();
     }
 
     if (_this.Action() == "off"){
@@ -219,8 +224,10 @@ client.on('connect', function() { // When connected
 
         // On/Off control
         case "switch":
-          if(message == "ON") {queue2.write('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
-          if(message == "OFF") {queue2.write('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
+          var messageParts = message.split(' ');
+          if(messageParts[0] == "ON") { queue2.write('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
+          if(messageParts[0] == "OFF") { queue2.write('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
+          if(messageParts[0] == "RAMP") { queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+command.Level()+'\n')};
           break;
 
         // Ramp, increase/decrease, on/off control
@@ -321,7 +328,6 @@ event.on('close',function(){
 })
 
 command.on('data',function(data) {
-  log('Command data: ' + data);
   var lines = (buffer+data.toString()).split("\n");
   buffer = lines[lines.length-1];
   if (lines.length > 1) {
