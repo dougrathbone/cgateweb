@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 const mqtt = require('mqtt'), url = require('url');
 const net = require('net');
 const events = require('events');
@@ -275,13 +274,18 @@ class CgateWebBridge {
         this.settings = settings;
         // Use provided factories or default ones
         this.mqttClientFactory = mqttClientFactory || (() => {
-            const mqttUrl = url.parse('mqtt://' + (this.settings.mqtt || 'localhost:1883'));
-            const mqttCredentials = {};
+            // Construct URL and options for mqtt.connect()
+            const brokerUrl = 'mqtt://' + (this.settings.mqtt || 'localhost:1883');
+            const mqttConnectOptions = {};
             if (this.settings.mqttusername && this.settings.mqttpassword) {
-                mqttCredentials.username = this.settings.mqttusername;
-                mqttCredentials.password = this.settings.mqttpassword;
+                mqttConnectOptions.username = this.settings.mqttusername;
+                mqttConnectOptions.password = this.settings.mqttpassword;
             }
-            return mqtt.createClient(mqttUrl.port, mqttUrl.hostname, mqttCredentials);
+            // Add other potential options if needed, e.g.:
+            // mqttConnectOptions.clientId = 'cgateweb_' + Math.random().toString(16).substr(2, 8);
+            // mqttConnectOptions.clean = true;
+            this.log(`${LOG_PREFIX} Creating MQTT client for: ${brokerUrl}`);
+            return mqtt.connect(brokerUrl, mqttConnectOptions); // Use mqtt.connect()
         });
         this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
         this.eventSocketFactory = eventSocketFactory || (() => new net.Socket());
