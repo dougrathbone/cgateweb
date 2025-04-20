@@ -38,46 +38,96 @@ var client = mqtt.createClient(mqtt_url.port, mqtt_url.hostname,OPTIONS);
 var command = new net.Socket();
 var event = new net.Socket();
 
-var queue =  {
-  publish: function (topic, payload ) {
-    queue.queue.push({topic:topic,payload:payload})
-    if(queue.interval === null) {
-      queue.interval = setInterval(queue.process,messageinterval)
-      queue.process()
+// Throttled Queue Implementation
+class ThrottledQueue {
+    constructor(processFn, intervalMs, name = 'Queue') {
+        if (typeof processFn !== 'function') {
+            throw new Error(`processFn for ${name} must be a function`);
+        }
+        if (typeof intervalMs !== 'number' || intervalMs <= 0) {
+            throw new Error(`intervalMs for ${name} must be a positive number`);
+        }
+        this._processFn = processFn;
+        this._intervalMs = intervalMs;
+        this._queue = [];
+        this._interval = null;
+        this._name = name; // For logging/debugging
     }
-  },
-  process: function() {
-    if(queue.queue.length === 0) {
-      clearInterval(queue.interval)
-      queue.interval = null
-    } else {
-      var msg = queue.queue.shift()
-      client.publish(msg.topic,msg.payload)
+
+    add(item) {
+        this._queue.push(item);
+        // Start processing if not already running
+        if (this._interval === null) {
+            // Start the interval timer
+            this._interval = setInterval(() => this._process(), this._intervalMs);
+            // Process the first item immediately
+            this._process();
+        }
     }
-  },
-  interval: null,
-  queue:[]
+
+    _process() {
+        if (this._queue.length === 0) {
+            // Stop the interval if queue is empty
+            if (this._interval !== null) {
+                clearInterval(this._interval);
+                this._interval = null;
+            }
+        } else {
+            // Dequeue and process the next item
+            const item = this._queue.shift();
+            try {
+                 this._processFn(item);
+            } catch (error) {
+                 console.error(`Error processing ${this._name} item:`, error, "Item:", item);
+                 // Optional: Add logic here to requeue or handle specific errors
+            }
+        }
+    }
+
+    get length() {
+      return this._queue.length;
+    }
+
+    isEmpty() {
+      return this._queue.length === 0;
+    }
+
+    // Optional: Method to clear the queue if needed
+    clear() {
+        this._queue = [];
+        if (this._interval !== null) {
+            clearInterval(this._interval);
+            this._interval = null;
+        }
+    }
 }
 
-var queue2 =  {
-  write: function (value) {
-    queue2.queue.push(value)
-    if(queue2.interval === null) {
-      queue2.interval = setInterval(queue2.process,messageinterval)
-      queue2.process()
-    }
-  },
-  process: function() {
-    if(queue2.queue.length === 0) {
-      clearInterval(queue2.interval)
-      queue2.interval = null
-    } else {
-      command.write(queue2.queue.shift())
-    }
-  },
-  interval: null,
-  queue:[]
-}
+// Instantiate queues
+const mqttPublishQueue = new ThrottledQueue(
+    (msg) => {
+        if (client.connected) { // Check connection before publishing
+            client.publish(msg.topic, msg.payload, msg.options);
+        } else {
+            console.warn("MQTT client not connected. Dropping message:", msg);
+            // Optional: Implement retry or persistent queue logic here
+        }
+    },
+    messageinterval,
+    'MQTT Publish'
+);
+
+const cgateCommandQueue = new ThrottledQueue(
+    (commandString) => {
+        if (commandConnected) { // Check connection before writing
+             command.write(commandString);
+        } else {
+             console.warn("C-Gate command socket not connected. Dropping command:", commandString);
+             // Optional: Implement retry logic
+        }
+    },
+    messageinterval, // Use same interval for commands for now
+    'C-Gate Command'
+);
 
 var CBusEvent = function(data){
   // "lighting on 254/56/4  #sourceunit=8 OID=3ff2ab90-c9b1-1039-b7d7-fb32921605ee sessionId=cmd1 commandId={none}"
@@ -174,13 +224,13 @@ function started(){
     console.log('ALL CONNECTED');
     if(settings.getallnetapp && settings.getallonstart) {
       console.log('Getting all values');
-      queue2.write('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
+      cgateCommandQueue.add('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
     }
     if(settings.getallnetapp && settings.getallperiod) {
       clearInterval(interval);
       setInterval(function(){
         console.log('Getting all values');
-        queue2.write('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
+        cgateCommandQueue.add('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
       },settings.getallperiod*1000);
     }
   }
@@ -213,21 +263,20 @@ client.on('connect', function() { // When connected
         // Get updates from all groups
         case "gettree":
           treenet = parts[2];
-          queue2.write('TREEXML '+command.Host()+'\n');
+          cgateCommandQueue.add('TREEXML '+command.Host()+'\n');
           break;
 
 
         // Get updates from all groups
         case "getall":
-          queue2.write('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/* level\n');
+          cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/* level\n');
           break;
 
         // On/Off control
         case "switch":
           var messageParts = message.split(' ');
-          if(messageParts[0] == "ON") { queue2.write('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
-          if(messageParts[0] == "OFF") { queue2.write('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
-          if(messageParts[0] == "RAMP") { queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+command.Level()+'\n')};
+          if(messageParts[0] == "ON") { cgateCommandQueue.add('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
+          if(messageParts[0] == "OFF") { cgateCommandQueue.add('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
           break;
 
         // Ramp, increase/decrease, on/off control
@@ -236,30 +285,30 @@ client.on('connect', function() { // When connected
             case "INCREASE":
               eventEmitter.on('level',function increaseLevel(address,level) {
                 if (address == command.Host()+'/'+command.Group()+'/'+command.Device()) {
-                  queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.min((level+26),255)+' '+'\n');
+                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.min((level+26),255)+' '+'\n');
                   eventEmitter.removeListener('level',increaseLevel);
                 }
               });
-              queue2.write('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
+              cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
 
               break;
 
             case "DECREASE":
               eventEmitter.on('level',function decreaseLevel(address,level) {
                 if (address == command.Host()+'/'+command.Group()+'/'+command.Device()) {
-                  queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.max((level-26),0)+' '+'\n');
+                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.max((level-26),0)+' '+'\n');
                   eventEmitter.removeListener('level',decreaseLevel);
                 }
               });
-              queue2.write('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
+              cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
 
               break;
 
             case "ON":
-              queue2.write('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
+              cgateCommandQueue.add('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
               break;
             case "OFF":
-              queue2.write('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
+              cgateCommandQueue.add('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
               break;
             default:
               var ramp = message.split(",");
@@ -267,22 +316,24 @@ client.on('connect', function() { // When connected
               if (!isNaN(num) && num < 256) {
 
                 if (ramp.length > 1) {
-                  queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+' '+ramp[1]+'\n');
+                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+' '+ramp[1]+'\n');
                 } else {
-                  queue2.write('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+'\n');
+                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+'\n');
                 }
               }
           }
           break;
         default:
+          log('Unknown command type received: ' + command.CommandType());
         }
+      } else {
+        log('Ignoring MQTT message on topic ' + topic + ' - insufficient parts.');
       }
     });
   });
 
   // publish a message to a topic
-  queue.publish('hello/world', 'CBUS ON', function() {
-  });
+  mqttPublishQueue.add({topic:'hello/world', payload:'CBUS ON'});
 });
 
 command.on('error',function(err){
@@ -296,7 +347,7 @@ event.on('error',function(err){
 command.on('connect',function(err){
   commandConnected = true;
   console.log('CONNECTED TO C-GATE COMMAND PORT: ' + HOST + ':' + COMPORT);
-  queue2.write('EVENT ON\n');
+  cgateCommandQueue.add('EVENT ON\n');
   started()
   clearInterval(commandInterval);
 })
@@ -342,14 +393,14 @@ command.on('data',function(data) {
         if (action.Level() == 0) {
           log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' OFF');
           log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' 0%');
-          queue.publish('cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/state' , 'OFF',options, function() {});
-          queue.publish('cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/level' , '0',options, function() {});
+          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'OFF', options: options});
+          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/level' , payload: '0', options: options});
           eventEmitter.emit('level',action.Host() +'/'+action.Group()+'/'+action.Device(),0);
         } else {
           log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' ON');
           log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' '+action.Level()+'%');
-          queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , 'ON',options, function() {});
-          queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , action.Level(),options, function() {});
+          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'ON', options: options});
+          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: action.Level(), options: options});
           eventEmitter.emit('level',action.Host() +'/'+action.Group()+'/'+action.Device(),action.Level());
         }
       } else if(parts1[0] == "347"){
@@ -360,7 +411,7 @@ command.on('data',function(data) {
         parseString(tree, function (err, result) {
           try{
             log("C-Bus tree received:"+JSON.stringify(result));
-            queue.publish('cbus/read/'+treenet+'///tree',JSON.stringify(result))
+            mqttPublishQueue.add({topic: 'cbus/read/'+treenet+'///tree', payload: JSON.stringify(result)});
           }catch(err){
             console.log(err)
           }
@@ -373,21 +424,27 @@ command.on('data',function(data) {
           var action = new CBusEvent(parts2[1]);
 
           var level = parts2[2].split("=");
-          if (parseInt(level[1]) == 0) {
+          var levelValue = parseInt(level[1]);
+          var levelPercent = Math.round(levelValue * 100 / 255).toString();
+
+          if (levelValue === 0) {
             log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' OFF');
             log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' 0%');
-            queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , 'OFF',options, function() {});
-            queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , '0',options, function() {});
+            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'OFF', options: options});
+            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: '0', options: options});
             eventEmitter.emit('level',action.Host()+'/'+action.Group()+'/'+action.Device(),0);
           } else {
             log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' ON');
-            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' '+Math.round(parseInt(level[1])*100/255).toString()+'%');
-            queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , 'ON', options, function() {});
-            queue.publish('cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , Math.round(parseInt(level[1])*100/255).toString(),options, function() {});
-            eventEmitter.emit('level',action.Host()+'/'+action.Group()+'/'+action.Device(),Math.round(parseInt(level[1])));
+            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' '+ levelPercent +'%');
+            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'ON', options: options});
+            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: levelPercent, options: options});
+            eventEmitter.emit('level',action.Host()+'/'+action.Group()+'/'+action.Device(), levelValue);
 
           }
 
+        } else {
+            // Log unhandled lines from command port if needed
+             log('Unhandled command port line part: ' + parts1[0]);
         }
       }
     }
@@ -410,31 +467,35 @@ event.on('data', function(data) {
       case "on":
         log('C-Bus status received: ' + action.Host() + '/' + action.Group() + '/' + action.Device() + ' ON');
         log('C-Bus status received: ' + action.Host() + '/' + action.Group() + '/' + action.Device() + ' 100%');
-        queue.publish('cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , 'ON', options, function() {});
-        queue.publish('cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , '100', options, function() {});
+        mqttPublishQueue.add({topic: 'cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , payload: 'ON', options: options});
+        mqttPublishQueue.add({topic: 'cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , payload: '100', options: options});
         break;
       case "off":
         log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' OFF');
         log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' 0%');
-        queue.publish('cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , 'OFF', options, function() {});
-        queue.publish('cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , '0', options, function() {});
+        mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , payload: 'OFF', options: options});
+        mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , payload: '0', options: options});
         break;
       case "ramp":
-        if(action.Level() > 0) {
+        var levelPercent = action.Level();
+        if(levelPercent > 0) {
           log('C-Bus status received: '+ action.Host() +'/'+ action.Group() + '/' + action.Device() + ' ON');
-          log('C-Bus status received: '+ action.Host() +'/'+ action.Group() + '/' + action.Device() + ' ' + action.Level() + '%');
-          queue.publish('cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/state', 'ON', options, function() {});
-          queue.publish('cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/level', action.Level(), options, function() {});
+          log('C-Bus status received: '+ action.Host() +'/'+ action.Group() + '/' + action.Device() + ' ' + levelPercent + '%');
+          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/state', payload: 'ON', options: options});
+          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/level', payload: levelPercent, options: options});
         } else {
           log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' OFF');
           log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' 0%');
-          queue.publish('cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state', 'OFF', options, function() {});
-          queue.publish('cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level', '0', options, function() {});
+          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state', payload: 'OFF', options: options});
+          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level', payload: '0', options: options});
         }
         break;
       default:
+         log('Unknown lighting action from event port: ' + action.Action());
     }
 
+  } else {
+      log('Unhandled event type from event port: ' + action.DeviceType());
   }
   
 });
