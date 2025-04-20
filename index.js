@@ -1,44 +1,58 @@
 #!/usr/bin/env node
-var mqtt = require('mqtt'), url = require('url');
-var net = require('net');
-var events = require('events');
-var settings = require('./settings.js');
-var parseString = require('xml2js').parseString;
+const mqtt = require('mqtt'), url = require('url');
+const net = require('net');
+const events = require('events');
+const parseString = require('xml2js').parseString;
 
-var options = {};
-if(settings.retainreads === true) {
-    options.retain = true;
+// --- Default Settings (can be overridden by ./settings.js) ---
+const defaultSettings = {
+    mqtt: 'localhost:1883',
+    cbusip: 'localhost',
+    cbusname: 'CGATE', // Default C-Gate project name
+    cbuscommandport: 20023,
+    cbuseventport: 20025,
+    retainreads: false,
+    logging: true,
+    messageinterval: 200,
+    getallnetapp: null, // e.g., 'Lighting' or '56'
+    getallonstart: false,
+    getallperiod: null, // Period in seconds
+    mqttusername: null,
+    mqttpassword: null,
+    reconnectinitialdelay: 1000, // 1 second
+    reconnectmaxdelay: 60000 // 60 seconds
+};
+
+// --- Load User Settings ---
+let userSettings = {};
+try {
+    userSettings = require('./settings.js');
+} catch (e) {
+    console.warn('[WARN] Could not load ./settings.js, using defaults.');
 }
 
-var tree = '';
-var treenet = 0;
+// --- Merge Settings ---
+const settings = { ...defaultSettings, ...userSettings };
 
-var interval = {};
-var commandInterval = {};
-var eventInterval = {};
-var clientConnected = false;
-var commandConnected = false;
-var eventConnected = false;
-var buffer = "";
-var eventEmitter = new events.EventEmitter();
-var messageinterval = settings.messageinterval || 200;
+// --- Constants ---
+const CGATE_COMMAND_PORT = settings.cbuscommandport;
+const CGATE_EVENT_PORT = settings.cbuseventport;
+const MQTT_TOPIC_PREFIX_READ = 'cbus/read';
+const MQTT_TOPIC_PREFIX_WRITE = 'cbus/write';
+const MQTT_STATE_ON = 'ON';
+const MQTT_STATE_OFF = 'OFF';
+const RAMP_STEP = 26; // Standard ramp step (approx 10%)
+const RECONNECT_INITIAL_DELAY_MS = settings.reconnectinitialdelay;
+const RECONNECT_MAX_DELAY_MS = settings.reconnectmaxdelay;
+const CGATE_RESPONSE_OBJECT_STATUS = '300';
+const CGATE_RESPONSE_TREE_START = '343';
+const CGATE_RESPONSE_TREE_END = '344';
+const CGATE_RESPONSE_TREE_DATA = '347';
+const LOG_PREFIX = '[INFO]';
+const WARN_PREFIX = '[WARN]';
+const ERROR_PREFIX = '[ERROR]';
 
-// MQTT URL
-var mqtt_url = url.parse('mqtt://'+settings.mqtt);
-
-// Username and password
-var OPTIONS = {};
-if(settings.mqttusername && settings.mqttpassword) {
-  OPTIONS.username = settings.mqttusername;
-  OPTIONS.password = settings.mqttpassword;
-}
-
-// Create an MQTT client connection
-var client = mqtt.createClient(mqtt_url.port, mqtt_url.hostname,OPTIONS);
-var command = new net.Socket();
-var event = new net.Socket();
-
-// Throttled Queue Implementation
+// Throttled Queue Implementation (Reverted to original setInterval logic)
 class ThrottledQueue {
     constructor(processFn, intervalMs, name = 'Queue') {
         if (typeof processFn !== 'function') {
@@ -50,453 +64,1032 @@ class ThrottledQueue {
         this._processFn = processFn;
         this._intervalMs = intervalMs;
         this._queue = [];
-        this._interval = null;
-        this._name = name; // For logging/debugging
+        this._interval = null; // Use interval timer ID again
+        this._name = name;
+        this._isProcessing = false; // Still useful to prevent concurrency issues
     }
 
     add(item) {
         this._queue.push(item);
-        // Start processing if not already running
-        if (this._interval === null) {
-            // Start the interval timer
-            this._interval = setInterval(() => this._process(), this._intervalMs);
-            // Process the first item immediately
+        // Start processing if not already running and interval not set
+        if (this._interval === null && !this._isProcessing) {
+            // Process immediately if possible
             this._process();
+            // Start interval if queue still has items
+            if (this._queue.length > 0 && this._interval === null) {
+                this._interval = setInterval(() => this._process(), this._intervalMs);
+            }
         }
     }
 
     _process() {
+        if (this._isProcessing) return; // Prevent re-entrancy
+
         if (this._queue.length === 0) {
-            // Stop the interval if queue is empty
+            // Stop interval if queue is empty
             if (this._interval !== null) {
                 clearInterval(this._interval);
                 this._interval = null;
             }
-        } else {
-            // Dequeue and process the next item
-            const item = this._queue.shift();
-            try {
-                 this._processFn(item);
-            } catch (error) {
-                 console.error(`Error processing ${this._name} item:`, error, "Item:", item);
-                 // Optional: Add logic here to requeue or handle specific errors
-            }
+            return;
+        }
+
+        this._isProcessing = true;
+        const item = this._queue.shift();
+
+        try {
+            this._processFn(item);
+        } catch (error) {
+            console.error(`${ERROR_PREFIX} Error processing ${this._name} item:`, error, "Item:", item);
+        } finally {
+            this._isProcessing = false;
+            // If queue is now empty, ensure interval is cleared
+            if (this._queue.length === 0 && this._interval !== null) {
+                 clearInterval(this._interval);
+                 this._interval = null;
+             }
+            // If queue not empty but interval got cleared somehow, restart it
+             else if (this._queue.length > 0 && this._interval === null) {
+                 this._interval = setInterval(() => this._process(), this._intervalMs);
+             }
         }
     }
 
     get length() {
-      return this._queue.length;
+        return this._queue.length;
     }
 
     isEmpty() {
-      return this._queue.length === 0;
+        return this._queue.length === 0;
     }
 
-    // Optional: Method to clear the queue if needed
     clear() {
         this._queue = [];
         if (this._interval !== null) {
             clearInterval(this._interval);
             this._interval = null;
         }
+        this._isProcessing = false; // Reset flag
     }
 }
 
-// Instantiate queues
-const mqttPublishQueue = new ThrottledQueue(
-    (msg) => {
-        if (client.connected) { // Check connection before publishing
-            client.publish(msg.topic, msg.payload, msg.options);
+class CBusEvent {
+    constructor(data) {
+        // "lighting on 254/56/4  #sourceunit=8 OID=... sessionId=... commandId=..."
+        const dataStr = data.toString();
+        // Split primarily by double space, take first part, then split by space
+        const mainParts = dataStr.split("  ")[0].split(" ");
+        const addressParts = (mainParts.length > 2) ? mainParts[2].split("/") : [];
+
+        this._deviceType = mainParts.length > 0 ? mainParts[0] : null;
+        this._action = mainParts.length > 1 ? mainParts[1] : null;
+        this._host = addressParts.length > 0 ? addressParts[0] : null;
+        this._group = addressParts.length > 1 ? addressParts[1] : null;
+        this._device = addressParts.length > 2 ? addressParts[2] : null;
+        this._levelRaw = (mainParts.length > 3 && !isNaN(parseInt(mainParts[3]))) ? parseInt(mainParts[3]) : null; // e.g., from ramp command
+
+        // Basic validation
+        if (!this._deviceType || !this._action || !this._host || !this._group || !this._device) {
+            console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
+            // Set properties to null to indicate failure
+            this._deviceType = this._action = this._host = this._group = this._device = this._levelRaw = null;
+        }
+    }
+
+    isValid() {
+        return this._deviceType !== null; // Check if basic parsing succeeded
+    }
+
+    DeviceType() { return this._deviceType; }
+    Action() { return this._action; }
+    Host() { return this._host; }
+    Group() { return this._group; }
+    Device() { return this._device; }
+
+    // Calculate level (0-100%)
+    Level() {
+        if (this._action === "on") return "100";
+        if (this._action === "off") return "0";
+        if (this._levelRaw !== null) {
+            return Math.round(this._levelRaw * 100 / 255).toString();
+        }
+        return "0"; // Default to 0 if no level info and not explicitly 'on'
+    }
+}
+
+class CBusCommand {
+    constructor(topic, message) {
+        // "cbus/write/254/56/7/switch ON"
+        const topicStr = topic.toString();
+        const messageStr = message ? message.toString() : ''; // Handle potentially null/undefined message
+        const topicParts = topicStr.split("/");
+
+        this._isValid = false;
+        if (topicParts.length >= 6 && topicParts[0] === 'cbus' && topicParts[1] === 'write') {
+            this._host = topicParts[2];
+            this._group = topicParts[3];
+            this._device = topicParts[4]; // Can be empty for group-level commands like getall
+            const commandAndArgs = topicParts[5].split(' '); // e.g., "switch", "ramp"
+            this._commandType = commandAndArgs[0];
+            this._action = commandAndArgs[0]; // Often the same as commandType for simple cases
+            this._message = messageStr;
+            this._isValid = true; // Mark as valid if basic structure matches
         } else {
-            console.warn("MQTT client not connected. Dropping message:", msg);
+            // Initialize fields to null/defaults if invalid
+            this._host = null;
+            this._group = null;
+            this._device = null;
+            this._commandType = null;
+            this._action = null;
+            this._message = '';
+            console.warn(`${WARN_PREFIX} Malformed C-Bus Command topic:`, topicStr);
+        }
+    }
+
+    isValid() {
+        return this._isValid;
+    }
+
+    Host() { return this._host; }
+    Group() { return this._group; }
+    Device() { return this._device; } // Note: Can be empty for 'getall' etc.
+    CommandType() { return this._commandType; }
+    Action() { return this._action; } // May need refinement based on CommandType
+    Message() { return this._message; }
+
+    // Level calculation based on Action and Message (0-100%)
+    Level() {
+        if (!this._isValid) return null;
+        // Handle explicit ON/OFF in the message (for switch or ramp)
+        if (this._message.toUpperCase() === "ON") return "100";
+        if (this._message.toUpperCase() === "OFF") return "0";
+        // Handle direct level setting in message (e.g., "50" or "50,2s")
+        if (this._commandType === "ramp" || this._commandType === "switch") {
+            const messageParts = this._message.split(',');
+            const levelPart = parseInt(messageParts[0]);
+            if (!isNaN(levelPart)) {
+                // Clamp level to 0-100
+                const clampedLevel = Math.max(0, Math.min(100, levelPart));
+                return clampedLevel.toString(); // Return the percentage directly
+            }
+        }
+        // If Action itself is ON/OFF (e.g., from a topic like .../switch ON)
+        // This part seems redundant with the message check above, review if needed.
+        // if (this._action === "on") return "100";
+        // if (this._action === "off") return "0";
+
+        return null; // Cannot determine level
+    }
+
+    // Raw level calculation (0-255) needed for RAMP command
+    RawLevel() {
+        if (!this._isValid) return null;
+        if (this._message.toUpperCase() === "ON") return 255;
+        if (this._message.toUpperCase() === "OFF") return 0;
+
+        if (this._commandType === "ramp") {
+            const messageParts = this._message.split(',');
+            const levelPart = parseInt(messageParts[0]);
+            if (!isNaN(levelPart)) {
+                const percentage = Math.max(0, Math.min(100, levelPart));
+                return Math.round(percentage * 255 / 100);
+            }
+        }
+        return null; // Cannot determine raw level
+    }
+
+    // Get ramp time if specified (e.g., "50,2s")
+    RampTime() {
+        if (!this._isValid || this._commandType !== "ramp") return null;
+        const messageParts = this._message.split(',');
+        if (messageParts.length > 1) {
+            return messageParts[1].trim(); // e.g., "2s", "1m"
+        }
+        return null;
+    }
+}
+
+// Main Bridge Class
+class CgateWebBridge {
+    constructor(settings, mqttClientFactory, commandSocketFactory, eventSocketFactory) {
+        this.settings = settings;
+        // Use provided factories or default ones
+        this.mqttClientFactory = mqttClientFactory || (() => {
+            const mqttUrl = url.parse('mqtt://' + (this.settings.mqtt || 'localhost:1883'));
+            const mqttCredentials = {};
+            if (this.settings.mqttusername && this.settings.mqttpassword) {
+                mqttCredentials.username = this.settings.mqttusername;
+                mqttCredentials.password = this.settings.mqttpassword;
+            }
+            return mqtt.createClient(mqttUrl.port, mqttUrl.hostname, mqttCredentials);
+        });
+        this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
+        this.eventSocketFactory = eventSocketFactory || (() => new net.Socket());
+
+        // Prepare MQTT options based on settings
+        this._mqttOptions = {};
+        if (this.settings.retainreads === true) {
+            this._mqttOptions.retain = true;
+        }
+
+        // Initialize state
+        this.client = null;
+        this.commandSocket = null;
+        this.eventSocket = null;
+        this.clientConnected = false;
+        this.commandConnected = false;
+        this.eventConnected = false;
+        this.commandBuffer = "";
+        this.eventBuffer = ""; // Separate buffer for event socket
+        this.treeBuffer = "";
+        this.treeNetwork = null;
+        this.internalEventEmitter = new events.EventEmitter();
+        this.internalEventEmitter.setMaxListeners(20); // Allow more listeners for ramp commands
+        this.periodicGetAllInterval = null;
+        this.commandReconnectTimeout = null;
+        this.eventReconnectTimeout = null;
+        this.commandReconnectAttempts = 0;
+        this.eventReconnectAttempts = 0;
+
+        // Initialize Queues
+        this.messageInterval = this.settings.messageinterval;
+        this.mqttPublishQueue = new ThrottledQueue(
+            this._processMqttPublish.bind(this),
+            this.messageInterval,
+            'MQTT Publish'
+        );
+        this.cgateCommandQueue = new ThrottledQueue(
+            this._processCgateCommand.bind(this),
+            this.messageInterval,
+            'C-Gate Command'
+        );
+
+        this.log(`${LOG_PREFIX} CgateWebBridge initialized.`);
+    }
+
+    // --- Logging Helpers ---
+    log(message, ...args) {
+        if (this.settings.logging === true) {
+            console.log(message, ...args);
+        }
+    }
+    warn(message, ...args) {
+        // Always log warnings
+        console.warn(message, ...args);
+    }
+    error(message, ...args) {
+        // Always log errors
+        console.error(message, ...args);
+    }
+
+    // --- Connection Management ---
+
+    start() {
+        this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
+        this._connectMqtt();
+        this._connectCommandSocket();
+        this._connectEventSocket();
+    }
+
+    stop() {
+        this.log(`${LOG_PREFIX} Stopping CgateWebBridge...`);
+
+        // Clear reconnect timeouts
+        if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
+        if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
+        this.commandReconnectTimeout = null;
+        this.eventReconnectTimeout = null;
+
+        // Clear periodic get all interval
+        if (this.periodicGetAllInterval) clearInterval(this.periodicGetAllInterval);
+        this.periodicGetAllInterval = null;
+
+        // Clear queues
+        this.mqttPublishQueue.clear();
+        this.cgateCommandQueue.clear();
+
+        // Disconnect MQTT client
+        if (this.client) {
+            try {
+                this.client.end(true); // Force close, don't wait for queue
+            } catch (e) {
+                this.error("Error closing MQTT client:", e);
+            }
+            this.client = null; // Release reference
+        }
+
+        // Disconnect C-Gate sockets
+        if (this.commandSocket) {
+            try {
+                this.commandSocket.destroy();
+            } catch (e) {
+                this.error("Error destroying command socket:", e);
+            }
+            this.commandSocket = null; // Release reference
+        }
+        if (this.eventSocket) {
+            try {
+                this.eventSocket.destroy();
+            } catch (e) {
+                this.error("Error destroying event socket:", e);
+            }
+            this.eventSocket = null; // Release reference
+        }
+
+        // Remove all listeners from internal emitter to prevent leaks
+        this.internalEventEmitter.removeAllListeners();
+
+        // Reset flags (will also be reset by close handlers, but good practice)
+        this.clientConnected = false;
+        this.commandConnected = false;
+        this.eventConnected = false;
+
+        this.log(`${LOG_PREFIX} CgateWebBridge stopped.`);
+    }
+
+    _connectMqtt() {
+        // Prevent multiple simultaneous connection attempts
+        if (this.client) {
+            this.log("MQTT client already exists or connection attempt in progress.");
+            return;
+        }
+        this.log(`${LOG_PREFIX} Connecting to MQTT: ${this.settings.mqtt}`);
+        this.client = this.mqttClientFactory(); // Use factory
+
+        // Remove previous listeners if any (important for reconnect logic)
+        this.client.removeAllListeners();
+
+        this.client.on('connect', this._handleMqttConnect.bind(this));
+        this.client.on('message', this._handleMqttMessage.bind(this));
+        this.client.on('close', this._handleMqttClose.bind(this));
+        this.client.on('error', this._handleMqttError.bind(this));
+        this.client.on('offline', () => { this.warn(`${WARN_PREFIX} MQTT Client Offline.`); });
+        this.client.on('reconnect', () => { this.log(`${LOG_PREFIX} MQTT Client Reconnecting...`); });
+    }
+
+    _connectCommandSocket() {
+        // Prevent multiple simultaneous connection attempts
+        if (this.commandSocket && this.commandSocket.connecting) {
+            this.log("Command socket connection attempt already in progress.");
+            return;
+        }
+
+        // Clean up old socket if exists
+        if (this.commandSocket) {
+            this.commandSocket.removeAllListeners();
+            this.commandSocket.destroy();
+            this.commandSocket = null;
+        }
+
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${this.settings.cbusip}:${CGATE_COMMAND_PORT} (Attempt ${this.commandReconnectAttempts + 1})`);
+        this.commandSocket = this.commandSocketFactory(); // Use factory
+
+        this.commandSocket.on('connect', this._handleCommandConnect.bind(this));
+        this.commandSocket.on('data', this._handleCommandData.bind(this));
+        this.commandSocket.on('close', this._handleCommandClose.bind(this));
+        this.commandSocket.on('error', this._handleCommandError.bind(this));
+
+        try {
+            this.commandSocket.connect(CGATE_COMMAND_PORT, this.settings.cbusip);
+        } catch (e) {
+            this.error("Error initiating command socket connection:", e);
+            this._handleCommandError(e); // Treat initiation error like a connection error
+        }
+    }
+
+    _connectEventSocket() {
+        // Prevent multiple simultaneous connection attempts
+        if (this.eventSocket && this.eventSocket.connecting) {
+            this.log("Event socket connection attempt already in progress.");
+            return;
+        }
+
+        // Clean up old socket if exists
+        if (this.eventSocket) {
+            this.eventSocket.removeAllListeners();
+            this.eventSocket.destroy();
+            this.eventSocket = null;
+        }
+
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${this.settings.cbusip}:${CGATE_EVENT_PORT} (Attempt ${this.eventReconnectAttempts + 1})`);
+        this.eventSocket = this.eventSocketFactory(); // Use factory
+
+        this.eventSocket.on('connect', this._handleEventConnect.bind(this));
+        this.eventSocket.on('data', this._handleEventData.bind(this));
+        this.eventSocket.on('close', this._handleEventClose.bind(this));
+        this.eventSocket.on('error', this._handleEventError.bind(this));
+
+        try {
+            this.eventSocket.connect(CGATE_EVENT_PORT, this.settings.cbusip);
+        } catch (e) {
+            this.error("Error initiating event socket connection:", e);
+            this._handleEventError(e); // Treat initiation error like a connection error
+        }
+    }
+
+    _scheduleReconnect(socketType) {
+        let delay;
+        let attempts;
+        let connectFn;
+        let timeoutProp;
+        let currentTimeout;
+
+        if (socketType === 'command') {
+            if (this.commandConnected || (this.commandSocket && this.commandSocket.connecting)) return;
+            this.log(`[DEBUG] Incrementing command attempts from ${this.commandReconnectAttempts}`);
+            this.commandReconnectAttempts++;
+            attempts = this.commandReconnectAttempts;
+            connectFn = this._connectCommandSocket.bind(this);
+            timeoutProp = 'commandReconnectTimeout';
+            currentTimeout = this.commandReconnectTimeout;
+        } else { // event
+            if (this.eventConnected || (this.eventSocket && this.eventSocket.connecting)) return;
+            this.log(`[DEBUG] Incrementing event attempts from ${this.eventReconnectAttempts}`);
+            this.eventReconnectAttempts++;
+            attempts = this.eventReconnectAttempts;
+            connectFn = this._connectEventSocket.bind(this);
+            timeoutProp = 'eventReconnectTimeout';
+            currentTimeout = this.eventReconnectTimeout;
+        }
+
+        // Exponential backoff with cap
+        delay = Math.min(RECONNECT_INITIAL_DELAY_MS * Math.pow(2, attempts - 1), RECONNECT_MAX_DELAY_MS);
+
+        // Add specific logging for debugging test failures
+        this.log(`[DEBUG] Scheduling ${socketType} reconnect: attempt=${attempts}, delay=${delay}ms`);
+
+        this.log(`${LOG_PREFIX} ${socketType.toUpperCase()} PORT RECONNECTING in ${Math.round(delay/1000)}s (attempt ${attempts})...`);
+
+         if (currentTimeout) {
+             clearTimeout(currentTimeout);
+         }
+
+        this[timeoutProp] = setTimeout(connectFn, delay);
+    }
+
+    // --- Event Handlers ---
+
+    _handleMqttConnect() {
+        this.clientConnected = true;
+        this.log(`${LOG_PREFIX} CONNECTED TO MQTT: ${this.settings.mqtt}`);
+        // Publish Online status (LWT is generally preferred for this)
+        this.mqttPublishQueue.add({ topic: 'hello/cgateweb', payload: 'Online', options: { retain: false } }); // Don't retain simple online message
+
+        this.client.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
+            if (err) {
+                this.error(`${ERROR_PREFIX} MQTT Subscription error:`, err);
+            } else {
+                this.log(`${LOG_PREFIX} Subscribed to MQTT topic: ${MQTT_TOPIC_PREFIX_WRITE}/#`);
+            }
+        });
+        this._checkAllConnected();
+    }
+
+    _handleMqttClose() {
+        this.clientConnected = false;
+        this.warn(`${WARN_PREFIX} MQTT Client Closed. Reconnection handled by library.`);
+        // Clear the client reference to allow reconnection attempt
+        if (this.client) {
+            this.client.removeAllListeners(); // Clean up listeners
+            this.client = null;
+        }
+        // Attempt to reconnect MQTT explicitly if the library doesn't handle it well
+        // setTimeout(() => this._connectMqtt(), RECONNECT_INITIAL_DELAY_MS);
+    }
+
+    _handleMqttError(err) {
+        this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
+        // MQTT library usually handles reconnects, but we might want to ensure flags are reset
+        this.clientConnected = false;
+        // Clear the client reference to allow reconnection attempt
+        if (this.client) {
+            this.client.removeAllListeners(); // Clean up listeners
+            this.client = null;
+        }
+        // Consider explicit reconnect attempt here too
+        // setTimeout(() => this._connectMqtt(), RECONNECT_INITIAL_DELAY_MS);
+    }
+
+    _handleCommandConnect() {
+        this.commandConnected = true;
+        this.commandReconnectAttempts = 0;
+        if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
+        this.commandReconnectTimeout = null;
+        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${CGATE_COMMAND_PORT}`);
+        this.cgateCommandQueue.add('EVENT ON\n'); // Standardize newline
+        this._checkAllConnected();
+    }
+
+    _handleCommandClose(hadError) {
+        this.commandConnected = false;
+        // Clear the socket reference
+        if (this.commandSocket) {
+            this.commandSocket.removeAllListeners();
+            // Don't destroy here, already closed
+            this.commandSocket = null;
+        }
+        this.warn(`${WARN_PREFIX} COMMAND PORT DISCONNECTED${hadError ? ' with error' : ''}`);
+        this._scheduleReconnect('command');
+    }
+
+    _handleCommandError(err) {
+        this.error(`${ERROR_PREFIX} C-Gate Command Socket Error:`, err);
+        // The 'close' event will usually follow an error, triggering reconnect.
+        // If it doesn't, we might need explicit handling here.
+        // Ensure flags are set correctly
+        this.commandConnected = false;
+        // Clear the socket reference
+        if (this.commandSocket && !this.commandSocket.destroyed) {
+            this.commandSocket.destroy(); // Explicitly destroy if not already done
+        }
+        this.commandSocket = null;
+        // Manually trigger reconnect scheduling if close doesn't follow quickly
+        // setTimeout(() => this._scheduleReconnect('command'), 100); 
+    }
+
+    _handleEventConnect() {
+        this.eventConnected = true;
+        this.eventReconnectAttempts = 0;
+        if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
+        this.eventReconnectTimeout = null;
+        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE EVENT PORT: ${this.settings.cbusip}:${CGATE_EVENT_PORT}`);
+        this._checkAllConnected();
+    }
+
+    _handleEventClose(hadError) {
+        this.eventConnected = false;
+        // Clear the socket reference
+        if (this.eventSocket) {
+            this.eventSocket.removeAllListeners();
+            // Don't destroy here, already closed
+            this.eventSocket = null;
+        }
+        this.warn(`${WARN_PREFIX} EVENT PORT DISCONNECTED${hadError ? ' with error' : ''}`);
+        this._scheduleReconnect('event');
+    }
+
+    _handleEventError(err) {
+        this.error(`${ERROR_PREFIX} C-Gate Event Socket Error:`, err);
+        // The 'close' event will usually follow an error, triggering reconnect.
+        // Ensure flags are set correctly
+        this.eventConnected = false;
+        // Clear the socket reference
+        if (this.eventSocket && !this.eventSocket.destroyed) {
+            this.eventSocket.destroy(); // Explicitly destroy if not already done
+        }
+        this.eventSocket = null;
+        // Manually trigger reconnect scheduling if close doesn't follow quickly
+        // setTimeout(() => this._scheduleReconnect('event'), 100);
+    }
+
+    _checkAllConnected() {
+        if (this.clientConnected && this.commandConnected && this.eventConnected) {
+            this.log(`${LOG_PREFIX} ALL CONNECTED`);
+
+            // Initial Get All
+            if (this.settings.getallnetapp && this.settings.getallonstart) {
+                this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
+                this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
+            }
+
+            // Periodic Get All
+            if (this.settings.getallnetapp && this.settings.getallperiod) {
+                 if (this.periodicGetAllInterval) {
+                      clearInterval(this.periodicGetAllInterval);
+                 }
+                this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
+                this.periodicGetAllInterval = setInterval(() => {
+                    this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
+                    this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
+                }, this.settings.getallperiod * 1000);
+            }
+        }
+    }
+
+    // --- Queue Processors ---
+
+    _processMqttPublish(msg) {
+        if (this.clientConnected && this.client) {
+            try {
+                this.client.publish(msg.topic, msg.payload, msg.options);
+                this.log(`${LOG_PREFIX} MQTT Published to ${msg.topic}: ${msg.payload}`);
+            } catch (e) {
+                this.error(`${ERROR_PREFIX} Error publishing MQTT message:`, e, msg);
+            }
+        } else {
+            this.warn(`${WARN_PREFIX} MQTT client not connected. Dropping message:`, msg);
             // Optional: Implement retry or persistent queue logic here
         }
-    },
-    messageinterval,
-    'MQTT Publish'
-);
+    }
 
-const cgateCommandQueue = new ThrottledQueue(
-    (commandString) => {
-        if (commandConnected) { // Check connection before writing
-             command.write(commandString);
+    _processCgateCommand(commandString) {
+        if (this.commandConnected && this.commandSocket) {
+            try {
+                this.commandSocket.write(commandString);
+                this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()}`);
+            } catch (e) {
+                this.error(`${ERROR_PREFIX} Error writing to C-Gate command socket:`, e, commandString.trim());
+            }
         } else {
-             console.warn("C-Gate command socket not connected. Dropping command:", commandString);
-             // Optional: Implement retry logic
+            this.warn(`${WARN_PREFIX} C-Gate command socket not connected. Dropping command:`, commandString.trim());
+            // Optional: Implement retry logic
         }
-    },
-    messageinterval, // Use same interval for commands for now
-    'C-Gate Command'
-);
-
-var CBusEvent = function(data){
-  // "lighting on 254/56/4  #sourceunit=8 OID=3ff2ab90-c9b1-1039-b7d7-fb32921605ee sessionId=cmd1 commandId={none}"
-  var parts = data.toString().split("  ")[0].split(" ");
-
-  // extract the device type
-  this.DeviceType = function(){ return parts[0].toString(); };
-
-  // action type
-  this.Action = function(){ return parts[1]; }
-
-  // pull apart the address HOST/GROUP/DEVICEID
-  var address = (parts[2].substring(0,parts[2].length)).split("/");
-  
-  this.Host = function(){ return address[0].toString(); }
-  this.Group = function(){ return address[1].toString(); }
-  this.Device = function(){ return address[2].toString(); }
-
-  // pull out level
-  var _this = this;
-  this.Level = function(){ 
-    // if set to "on" then this is 100
-    if (_this.Action() == "on"){
-      return "100";
     }
 
-    // pull out ramp value
-    if (parts.length > 3){
-      return Math.round(parseInt(parts[3])*100/255).toString();
-    }
+    // --- Data Handling ---
 
-    if (_this.Action() == "off"){
-      return "0";
-    }
-  }
-}
+    _handleMqttMessage(topic, messageBuffer) {
+        const message = messageBuffer.toString();
+        this.log(`${LOG_PREFIX} MQTT received on ${topic}: ${message}`);
 
-var CBusCommand = function(topic, message){
-  // "cbus/write/254/56/7/switch ON"
-  var parts = topic.toString().split("/");
-  if (parts.length < 6 ) return;
+        const command = new CBusCommand(topic, message);
+        if (!command.isValid()) {
+            this.warn(`${WARN_PREFIX} Ignoring invalid MQTT command on topic ${topic}`);
+            return;
+        }
 
-  // pull apart the address HOST/GROUP/DEVICEID
-  this.Host = function(){ return parts[2].toString(); }
-  this.Group = function(){ return parts[3].toString(); }
-  this.Device = function(){ return parts[4].toString(); }
-
-  // command type
-  var commandParts = parts[5].split(' ');
-  this.CommandType = function(){ return commandParts[0]; }
-
-  // action type
-  this.Action = function(){ return commandParts[0]; }
-
-  // pull out message
-  this.Message = function(){ return message.toString(); }
-
-  // pull out level
-  var _this = this;
-  this.Level = function(){ 
-    // if set to "on" then this is 100
-    if (_this.Action() == "on"){
-      return "100";
-    }
-
-    // pull out ramp value
-    var messageParts = _this.Message().split(' ');
-    if (messageParts.length > 1){
-      return Math.round(parseInt(messageParts[1])*100/255).toString();
-    }
-
-    if (_this.Action() == "off"){
-      return "0";
-    }
-  }
-}
-
-var HOST = settings.cbusip;
-var COMPORT = 20023;
-var EVENTPORT = 20025;
-
-var logging = settings.logging;
-var log = function(msg){if (logging==true) {console.log(msg);}}
-
-// Connect to cgate via telnet
-command.connect(COMPORT, HOST);
-
-
-// Connect to cgate event port via telnet
-event.connect(EVENTPORT, HOST);
-
-function started(){
-  if(commandConnected && eventConnected && client.connected){
-    console.log('ALL CONNECTED');
-    if(settings.getallnetapp && settings.getallonstart) {
-      console.log('Getting all values');
-      cgateCommandQueue.add('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
-    }
-    if(settings.getallnetapp && settings.getallperiod) {
-      clearInterval(interval);
-      setInterval(function(){
-        console.log('Getting all values');
-        cgateCommandQueue.add('GET //'+settings.cbusname+'/'+settings.getallnetapp+'/* level\n');
-      },settings.getallperiod*1000);
-    }
-  }
-
-}
-
-client.on('disconnect',function(){
-  clientConnected = false;
-})
-
-client.on('connect', function() { // When connected
-  clientConnected = true;
-  console.log('CONNECTED TO MQTT: ' + settings.mqtt);
-  started()
-
-  // Subscribe to MQTT
-  client.subscribe('cbus/write/#', function() {
-
-    // when a message arrives, do something with it
-    client.on('message', function(topic, message, packet) {      
-      log('MQTT received on ' + topic + ' : ' + message);
-      
-      //Example format "cbus/write/254/56/118/switch ON"
-      parts = topic.split("/");
-      if (parts.length > 5) {
-      
-      var command = new CBusCommand(topic, message);
-      switch(command.CommandType()) {
-
-        // Get updates from all groups
-        case "gettree":
-          treenet = parts[2];
-          cgateCommandQueue.add('TREEXML '+command.Host()+'\n');
-          break;
-
-
-        // Get updates from all groups
-        case "getall":
-          cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/* level\n');
-          break;
-
-        // On/Off control
-        case "switch":
-          var messageParts = message.split(' ');
-          if(messageParts[0] == "ON") { cgateCommandQueue.add('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
-          if(messageParts[0] == "OFF") { cgateCommandQueue.add('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n')};
-          break;
-
-        // Ramp, increase/decrease, on/off control
-        case "ramp":
-          switch(message.toUpperCase()) {
-            case "INCREASE":
-              eventEmitter.on('level',function increaseLevel(address,level) {
-                if (address == command.Host()+'/'+command.Group()+'/'+command.Device()) {
-                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.min((level+26),255)+' '+'\n');
-                  eventEmitter.removeListener('level',increaseLevel);
+        // Construct C-Bus path carefully, handling potentially empty device ID
+        let cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/`;
+        if (command.Device()) {
+            cbusPath += command.Device();
+        } else {
+            // If device is empty, trim trailing slash? Depends on C-Gate expectations.
+            // For GET //.../* commands, the path is different.
+            if (command.CommandType() === 'getall') {
+                cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/*`;
+            } else {
+                // Assume commands like ON/OFF require a device, log warning?
+                this.warn(`${WARN_PREFIX} MQTT command on topic ${topic} has empty device ID.`);
+                // For safety, let's return if the path seems incomplete for the command type
+                if (command.CommandType() !== 'gettree') { // gettree targets network only
+                    return;
                 }
-              });
-              cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
+            }
+        }
 
-              break;
+        try {
+            switch (command.CommandType()) {
+                case "gettree":
+                    this.treeNetwork = command.Host();
+                    this.cgateCommandQueue.add(`TREEXML ${command.Host()}\n`); // Standardize newline
+                    break;
 
-            case "DECREASE":
-              eventEmitter.on('level',function decreaseLevel(address,level) {
-                if (address == command.Host()+'/'+command.Group()+'/'+command.Device()) {
-                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+Math.max((level-26),0)+' '+'\n');
-                  eventEmitter.removeListener('level',decreaseLevel);
-                }
-              });
-              cgateCommandQueue.add('GET //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' level\n');
+                case "getall":
+                    this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                    break;
 
-              break;
+                case "switch":
+                    if (message.toUpperCase() === MQTT_STATE_ON) {
+                        this.cgateCommandQueue.add(`ON ${cbusPath}\n`); // Standardize newline
+                    } else if (message.toUpperCase() === MQTT_STATE_OFF) {
+                        this.cgateCommandQueue.add(`OFF ${cbusPath}\n`); // Standardize newline
+                    } else {
+                        this.warn(`${WARN_PREFIX} Invalid payload for switch command: ${message}`);
+                    }
+                    break;
 
-            case "ON":
-              cgateCommandQueue.add('ON //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
-              break;
-            case "OFF":
-              cgateCommandQueue.add('OFF //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+'\n');
-              break;
-            default:
-              var ramp = message.split(",");
-              var num = Math.round(parseInt(ramp[0])*255/100)
-              if (!isNaN(num) && num < 256) {
+                case "ramp":
+                    const rampAction = message.toUpperCase();
+                    const levelAddress = `${command.Host()}/${command.Group()}/${command.Device()}`; // For event emitter
+                    // Ensure we have a device for ramp actions
+                    if (!command.Device()) {
+                        this.warn(`${WARN_PREFIX} Ramp command requires device ID on topic ${topic}`);
+                        break;
+                    }
 
-                if (ramp.length > 1) {
-                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+' '+ramp[1]+'\n');
+                    switch (rampAction) {
+                        case "INCREASE":
+                            this.internalEventEmitter.once('level', (address, currentLevel) => {
+                                if (address === levelAddress) {
+                                    // Ensure currentLevel is a number (it comes from event emitter which might pass string or number)
+                                    const currentLevelNum = parseInt(currentLevel);
+                                    if (!isNaN(currentLevelNum)) {
+                                        const newLevel = Math.min(255, currentLevelNum + RAMP_STEP);
+                                        this.cgateCommandQueue.add(`RAMP ${cbusPath} ${newLevel}\n`); // Standardize newline
+                                    } else {
+                                        this.warn(`${WARN_PREFIX} Could not parse current level for INCREASE: ${currentLevel}`);
+                                    }
+                                }
+                            });
+                            this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                            break;
+
+                        case "DECREASE":
+                            this.internalEventEmitter.once('level', (address, currentLevel) => {
+                                if (address === levelAddress) {
+                                    const currentLevelNum = parseInt(currentLevel);
+                                    if (!isNaN(currentLevelNum)) {
+                                        const newLevel = Math.max(0, currentLevelNum - RAMP_STEP);
+                                        this.cgateCommandQueue.add(`RAMP ${cbusPath} ${newLevel}\n`); // Standardize newline
+                                    } else {
+                                        this.warn(`${WARN_PREFIX} Could not parse current level for DECREASE: ${currentLevel}`);
+                                    }
+                                }
+                            });
+                            this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                            break;
+
+                        case MQTT_STATE_ON:
+                            this.cgateCommandQueue.add(`ON ${cbusPath}\n`); // Standardize newline
+                            break;
+                        case MQTT_STATE_OFF:
+                            this.cgateCommandQueue.add(`OFF ${cbusPath}\n`); // Standardize newline
+                            break;
+                        default:
+                            const rawLevel = command.RawLevel();
+                            const rampTime = command.RampTime();
+                            if (rawLevel !== null) {
+                                if (rampTime) {
+                                    this.cgateCommandQueue.add(`RAMP ${cbusPath} ${rawLevel} ${rampTime}\n`); // Standardize newline
+                                } else {
+                                    this.cgateCommandQueue.add(`RAMP ${cbusPath} ${rawLevel}\n`); // Standardize newline
+                                }
+                            } else {
+                                this.warn(`${WARN_PREFIX} Invalid payload for ramp command: ${message}`);
+                            }
+                    }
+                    break;
+
+                default:
+                    this.warn(`${WARN_PREFIX} Unknown MQTT command type received: ${command.CommandType()}`);
+            }
+        } catch (e) {
+            this.error(`${ERROR_PREFIX} Error processing MQTT message:`, e, `Topic: ${topic}, Message: ${message}`);
+        }
+    }
+
+    _handleCommandData(data) {
+        this.commandBuffer += data.toString();
+        let newlineIndex;
+
+        while ((newlineIndex = this.commandBuffer.indexOf('\n')) > -1) {
+            const line = this.commandBuffer.substring(0, newlineIndex).trim();
+            this.commandBuffer = this.commandBuffer.substring(newlineIndex + 1);
+
+            if (!line) continue; // Skip empty lines
+
+            this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
+
+            try {
+                // Example lines:
+                // 200 OK.
+                // 300 //PROJECT/NET/APP/GROUP level=128
+                // 300-lighting on NET/APP/GROUP [... OID/Session]
+                // 343-NETWORK
+                // 347-<XML Data>
+                // 344-NETWORK
+                // 4xx Error message
+                // 5xx Server error
+
+                const parts = line.split('-'); // Split by first hyphen
+                const responseCode = parts[0].trim();
+
+                if (responseCode === CGATE_RESPONSE_OBJECT_STATUS) { // 300
+                    const statusData = parts.length > 1 ? parts[1].trim() : '';
+                    // Check if it's a level report (e.g., from GET command)
+                    // Format: //PROJECT/NET/APP/GROUP level=VALUE
+                    const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
+
+                    if (levelMatch) {
+                        const fullAddress = levelMatch[1]; // e.g., //PROJECT/254/56/10
+                        const levelValue = parseInt(levelMatch[2]);
+                        const levelPercent = Math.round(levelValue * 100 / 255).toString();
+                        const addressParts = fullAddress.split('/'); // ['', '', project, network, app, group]
+                        if (addressParts.length >= 6) {
+                            const netAddr = addressParts[3];
+                            const appAddr = addressParts[4];
+                            const groupAddr = addressParts[5];
+                            const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
+                            const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`;
+
+                            // Emit raw level for potential ramp increase/decrease listeners
+                            this.internalEventEmitter.emit('level', simpleAddr, levelValue);
+
+                            if (levelValue === 0) {
+                                this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} OFF (0%)`);
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
+                            } else {
+                                this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} ON (${levelPercent}%)`);
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
+                            }
+                        } else {
+                            this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
+                        }
+                    } else {
+                        // It might be a response like "300-lighting on NET/APP/GROUP" - Use CBusEvent parser
+                        // This assumes the event format follows the response code directly after hyphen
+                        const event = new CBusEvent(statusData); // Pass the part after "300-"
+                        if (event.isValid()) {
+                            this._publishEvent(event, '(Cmd/Event)'); // Publish using common function
+                            // Emit level based on parsed event action/level
+                            this._emitLevelFromEvent(event);
+                        } else {
+                            this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
+                        }
+                    }
+                } else if (responseCode === CGATE_RESPONSE_TREE_START) { // 343
+                    this.treeBuffer = ''; // Reset buffer
+                    // Network might be included after hyphen: 343-NETWORK
+                    this.treeNetwork = parts.length > 1 ? parts[1].trim() : this.treeNetwork; // Store network if provided
+                    this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
+                } else if (responseCode === CGATE_RESPONSE_TREE_DATA && parts.length > 1) { // 347
+                    this.treeBuffer += parts[1] + '\n'; // Append XML data
+                } else if (responseCode.startsWith(CGATE_RESPONSE_TREE_END)) { // 344
+                    this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
+                    // Ensure we have a network context from the gettree command or start code
+                    if (this.treeNetwork && this.treeBuffer) {
+                        parseString(this.treeBuffer, { explicitArray: false }, (err, result) => { // Use explicitArray: false for simpler structure
+                            if (err) {
+                                this.error(`${ERROR_PREFIX} Error parsing TreeXML:`, err);
+                            } else {
+                                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${this.treeNetwork}`);
+                                this.mqttPublishQueue.add({
+                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${this.treeNetwork}///tree`,
+                                    payload: JSON.stringify(result),
+                                    options: this._mqttOptions // Usually retain tree
+                                });
+                            }
+                            this.treeBuffer = ''; // Clear buffer
+                            this.treeNetwork = null; // Reset network context
+                        });
+                    } else {
+                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context.`);
+                        this.treeBuffer = ''; // Clear buffer anyway
+                        this.treeNetwork = null;
+                    }
+                } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
+                    // Log C-Gate errors
+                    this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${line}`);
                 } else {
-                  cgateCommandQueue.add('RAMP //'+settings.cbusname+'/'+command.Host()+'/'+command.Group()+'/'+command.Device()+' '+num+'\n');
+                    // Log other responses if needed for debugging (e.g., 200 OK)
+                    // this.log(`${LOG_PREFIX} Unhandled response from command port: ${line}`);
                 }
-              }
-          }
-          break;
-        default:
-          log('Unknown command type received: ' + command.CommandType());
+            } catch (e) {
+                this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`);
+            }
         }
-      } else {
-        log('Ignoring MQTT message on topic ' + topic + ' - insufficient parts.');
-      }
+    }
+
+    _handleEventData(data) {
+        this.eventBuffer += data.toString();
+        let newlineIndex;
+
+        while ((newlineIndex = this.eventBuffer.indexOf('\n')) > -1) {
+            const line = this.eventBuffer.substring(0, newlineIndex).trim();
+            this.eventBuffer = this.eventBuffer.substring(newlineIndex + 1);
+
+            if (!line) continue; // Skip empty lines
+
+            // Handle comments (lines starting with #)
+            if (line.startsWith('#')) {
+                this.log(`${LOG_PREFIX} Ignoring comment from event port:`, line);
+                continue;
+            }
+
+            this.log(`${LOG_PREFIX} C-Gate Recv (Evt): ${line}`);
+
+            try {
+                // Event port usually sends status updates directly, e.g., "lighting on NET/APP/GROUP"
+                const event = new CBusEvent(line);
+                if (event.isValid()) {
+                    this._publishEvent(event, '(Evt)');
+                    // Emit level based on parsed event action/level
+                    this._emitLevelFromEvent(event);
+                } else {
+                    this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
+                }
+            } catch (e) {
+                this.error(`${ERROR_PREFIX} Error processing event data line:`, e, `Line: ${line}`);
+            }
+        }
+    }
+
+    // Helper to emit the 'level' event based on a parsed CBusEvent
+    _emitLevelFromEvent(event) {
+        const simpleAddr = `${event.Host()}/${event.Group()}/${event.Device()}`;
+        let levelValue = null;
+        // Try to get raw level first (most accurate for ramp)
+        if (event._levelRaw !== null) {
+            levelValue = event._levelRaw;
+        } else if (event.Action() === 'on') {
+            levelValue = 255;
+        } else if (event.Action() === 'off') {
+            levelValue = 0;
+        }
+
+        if (levelValue !== null) {
+            this.internalEventEmitter.emit('level', simpleAddr, levelValue);
+        } else {
+            this.log(`${LOG_PREFIX} Could not determine level value for event:`, event);
+        }
+    }
+
+    // Helper to publish state/level based on a parsed CBusEvent
+    _publishEvent(event, source = '') {
+        if (!event || !event.isValid()) return;
+
+        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.Host()}/${event.Group()}/${event.Device()}`;
+        const levelPercent = event.Level(); // Get 0-100 level
+
+        // Determine state based on level (more reliable than action for ramp)
+        const state = (levelPercent !== null && parseInt(levelPercent) > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+
+        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state} (${levelPercent || '0'}%)`);
+
+        // Publish state and level
+        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
+        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent || '0', options: this._mqttOptions });
+
+        // Old logic based on action (kept for reference, but state/level from levelPercent is better)
+        /*
+        if (event.DeviceType() === "lighting") {
+            // For lighting, action determines state/level
+            switch (event.Action()) {
+                case "on":
+                    this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ON (100%)`);
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '100', options: this._mqttOptions });
+                    break;
+                case "off":
+                    this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} OFF (0%)`);
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
+                    break;
+                case "ramp":
+                    if (levelPercent > 0) {
+                        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ON (${levelPercent}%)`);
+                        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+                        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
+                    } else {
+                        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} OFF (0%)`);
+                        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+                        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
+                    }
+                    break;
+                default:
+                    this.warn(`${WARN_PREFIX} Unknown lighting action ${source}: ${event.Action()}`);
+            }
+        } else {
+            // Handle other device types if needed in the future
+            this.warn(`${WARN_PREFIX} Unhandled device type ${source}: ${event.DeviceType()}`);
+            // Maybe publish a generic state based on level?
+            if (levelPercent !== null) {
+                const state = levelPercent > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF;
+                this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state} (${levelPercent}%)`);
+                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
+                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
+            }
+        }
+        */
+    }
+}
+
+// Export classes for testing or potential require() usage
+module.exports = {
+    CgateWebBridge,
+    ThrottledQueue,
+    CBusEvent,
+    CBusCommand,
+    settings // Export merged settings as well
+};
+
+// --- Main Execution ---
+// Only run if executed directly (node index.js)
+if (require.main === module) {
+    // Settings are already merged above
+    const bridge = new CgateWebBridge(settings);
+
+    bridge.start();
+
+    // Graceful shutdown
+    const shutdown = () => {
+        console.log('\nGracefully shutting down...');
+        bridge.stop();
+        // Give queues a moment to potentially finish processing last items if needed
+        setTimeout(() => process.exit(0), 500);
+    };
+
+    process.on('SIGINT', () => {
+        console.log('Received SIGINT (Ctrl+C).');
+        shutdown();
     });
-  });
 
-  // publish a message to a topic
-  mqttPublishQueue.add({topic:'hello/world', payload:'CBUS ON'});
-});
+    process.on('SIGTERM', () => {
+        console.log('Received SIGTERM.');
+        shutdown();
+    });
 
-command.on('error',function(err){
-  console.log('COMMAND ERROR:'+JSON.stringify(err))
-})
+    process.on('uncaughtException', (err) => {
+        console.error('UNCAUGHT EXCEPTION! Shutting down...', err);
+        bridge.stop(); // Attempt graceful stop
+        process.exit(1);
+    });
 
-event.on('error',function(err){
-  console.log('EVENT ERROR:'+JSON.stringify(err))
-})
-
-command.on('connect',function(err){
-  commandConnected = true;
-  console.log('CONNECTED TO C-GATE COMMAND PORT: ' + HOST + ':' + COMPORT);
-  cgateCommandQueue.add('EVENT ON\n');
-  started()
-  clearInterval(commandInterval);
-})
-
-event.on('connect',function(err){
-  eventConnected = true;
-  console.log('CONNECTED TO C-GATE EVENT PORT: ' + HOST + ':' + EVENTPORT);
-  started()
-  clearInterval(eventInterval);
-})
-
-
-command.on('close',function(){
-  commandConnected = false;
-  console.log('COMMAND PORT DISCONNECTED')
-  commandInterval = setTimeout(function(){
-    console.log('COMMAND PORT RECONNECTING...')
-    command.connect(COMPORT, HOST)
-  },10000)
-})
-
-event.on('close',function(){
-  eventConnected = false;
-  console.log('EVENT PORT DISCONNECTED')
-  eventInterval = setTimeout(function(){
-    console.log('EVENT PORT RECONNECTING...')
-    event.connect(EVENTPORT, HOST)
-  },10000)
-})
-
-command.on('data',function(data) {
-  var lines = (buffer+data.toString()).split("\n");
-  buffer = lines[lines.length-1];
-  if (lines.length > 1) {
-    for (i = 0;i<lines.length-1;i++) {
-      var parts1 = lines[i].toString().split("-");
-      if(parts1.length > 1 && parts1[0] == "300") {
-        var parts2 = parts1[1].toString().split(" ");
-
-        // Parse input data
-        var action = new CBusEvent(parts2[0]);
-
-        if (action.Level() == 0) {
-          log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' OFF');
-          log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' 0%');
-          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'OFF', options: options});
-          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host() +'/'+action.Group()+'/'+action.Device()+'/level' , payload: '0', options: options});
-          eventEmitter.emit('level',action.Host() +'/'+action.Group()+'/'+action.Device(),0);
-        } else {
-          log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' ON');
-          log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' '+action.Level()+'%');
-          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'ON', options: options});
-          mqttPublishQueue.add({topic: 'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: action.Level(), options: options});
-          eventEmitter.emit('level',action.Host() +'/'+action.Group()+'/'+action.Device(),action.Level());
-        }
-      } else if(parts1[0] == "347"){
-        tree += parts1[1]+'\n';
-      } else if(parts1[0] == "343"){
-        tree = '';
-      } else if(parts1[0].split(" ")[0] == "344"){
-        parseString(tree, function (err, result) {
-          try{
-            log("C-Bus tree received:"+JSON.stringify(result));
-            mqttPublishQueue.add({topic: 'cbus/read/'+treenet+'///tree', payload: JSON.stringify(result)});
-          }catch(err){
-            console.log(err)
-          }
-          tree = '';
-        });
-      } else {
-        var parts2 = parts1[0].toString().split(" ");
-        if (parts2[0] == "300") {
-          // Parse input data
-          var action = new CBusEvent(parts2[1]);
-
-          var level = parts2[2].split("=");
-          var levelValue = parseInt(level[1]);
-          var levelPercent = Math.round(levelValue * 100 / 255).toString();
-
-          if (levelValue === 0) {
-            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' OFF');
-            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' 0%');
-            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'OFF', options: options});
-            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: '0', options: options});
-            eventEmitter.emit('level',action.Host()+'/'+action.Group()+'/'+action.Device(),0);
-          } else {
-            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' ON');
-            log('C-Bus command received: '+action.Host() +'/'+action.Group()+'/'+action.Device()+' '+ levelPercent +'%');
-            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/state' , payload: 'ON', options: options});
-            mqttPublishQueue.add({topic:'cbus/read/'+action.Host()+'/'+action.Group()+'/'+action.Device()+'/level' , payload: levelPercent, options: options});
-            eventEmitter.emit('level',action.Host()+'/'+action.Group()+'/'+action.Device(), levelValue);
-
-          }
-
-        } else {
-            // Log unhandled lines from command port if needed
-             log('Unhandled command port line part: ' + parts1[0]);
-        }
-      }
-    }
-  }
-});
-
-// Add a 'data' event handler for the client socket
-// data is what the server sent to this socket
-event.on('data', function(data) {
-  // handle comments in the data stream. ignore
-  if (data.toString()[0]=="#") {
-    return;
-  }
-  // Parse input data
-  var action = new CBusEvent(data);
-
-  if(action.DeviceType() == "lighting") {
-
-    switch(action.Action()) {
-      case "on":
-        log('C-Bus status received: ' + action.Host() + '/' + action.Group() + '/' + action.Device() + ' ON');
-        log('C-Bus status received: ' + action.Host() + '/' + action.Group() + '/' + action.Device() + ' 100%');
-        mqttPublishQueue.add({topic: 'cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , payload: 'ON', options: options});
-        mqttPublishQueue.add({topic: 'cbus/read/' + action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , payload: '100', options: options});
-        break;
-      case "off":
-        log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' OFF');
-        log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' 0%');
-        mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state' , payload: 'OFF', options: options});
-        mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level' , payload: '0', options: options});
-        break;
-      case "ramp":
-        var levelPercent = action.Level();
-        if(levelPercent > 0) {
-          log('C-Bus status received: '+ action.Host() +'/'+ action.Group() + '/' + action.Device() + ' ON');
-          log('C-Bus status received: '+ action.Host() +'/'+ action.Group() + '/' + action.Device() + ' ' + levelPercent + '%');
-          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/state', payload: 'ON', options: options});
-          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() +'/'+ action.Group() + '/' + action.Device() + '/level', payload: levelPercent, options: options});
-        } else {
-          log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' OFF');
-          log('C-Bus status received: '+ action.Host() + '/' + action.Group() + '/' + action.Device() + ' 0%');
-          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/state', payload: 'OFF', options: options});
-          mqttPublishQueue.add({topic: 'cbus/read/'+ action.Host() + '/' + action.Group() + '/' + action.Device() + '/level', payload: '0', options: options});
-        }
-        break;
-      default:
-         log('Unknown lighting action from event port: ' + action.Action());
-    }
-
-  } else {
-      log('Unhandled event type from event port: ' + action.DeviceType());
-  }
-  
-});
-
+    process.on('unhandledRejection', (reason, promise) => {
+        console.error('UNHANDLED REJECTION! Shutting down...', reason, 'Promise:', promise);
+        bridge.stop(); // Attempt graceful stop
+        process.exit(1);
+    });
+}
