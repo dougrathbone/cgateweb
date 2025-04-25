@@ -1408,13 +1408,19 @@ class CgateWebBridge {
         const startTime = Date.now();
         
         // Basic validation of the parsed tree data structure
-        const projectData = treeData?.Network;
-        if (!projectData?.Interface?.Network || projectData.Interface.Network.NetworkNumber !== String(networkId)) {
+        // Replace optional chaining for compatibility
+        const networkData = treeData && treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
+        if (!networkData || networkData.NetworkNumber !== String(networkId)) {
              this.warn(`${WARN_PREFIX} TreeXML for network ${networkId} seems malformed or doesn\'t match expected structure.`);
              return;
         }
 
-        const units = projectData.Interface.Network.Unit || [];
+        // Ensure units is an array, even if only one unit exists or none
+        let units = networkData.Unit || [];
+        if (!Array.isArray(units)) {
+            units = [units];
+        }
+        
         const lightingAppId = DEFAULT_CBUS_APP_LIGHTING; 
         const coverAppId = this.settings.ha_discovery_cover_app_id;
         const switchAppId = this.settings.ha_discovery_switch_app_id;
@@ -1424,7 +1430,8 @@ class CgateWebBridge {
         // Helper function to generate and publish discovery payloads for EnableControl groups.
         // Handles Covers, Switches, and Relays based on configured App IDs and prioritization.
         const processEnableControl = (enableControlData) => {
-            if (!enableControlData?.Group) return; // Skip if no groups defined
+            // Replace optional chaining
+            if (!enableControlData || !enableControlData.Group) return; 
 
             const appAddress = enableControlData.ApplicationAddress;
             const groups = Array.isArray(enableControlData.Group)
@@ -1556,13 +1563,17 @@ class CgateWebBridge {
             // Iterate through each Unit definition in the network tree
             units.forEach((unit, index) => {
                 this.log(`[DEBUG] HA Discovery: Processing Unit ${index + 1}/${units.length} (Addr: ${unit.UnitAddress || 'N/A'})`);
-                // Direct references to potential applications within a unit
-                const lightingData = unit.Application?.Lighting;
-                const enableControlData = unit.Application?.EnableControl;
+                // Replace optional chaining
+                const applicationData = unit && unit.Application;
+                if (!applicationData) return; // Skip unit if no Application data
+
+                const lightingData = applicationData.Lighting;
+                const enableControlData = applicationData.EnableControl;
                 // Add other top-level apps here if needed
 
                 // --- Process Lighting Application --- 
-                if (lightingData?.Group) {
+                 // Replace optional chaining
+                if (lightingData && lightingData.Group) {
                     // C-Bus Lighting application (usually App ID 56)
                     const groups = Array.isArray(lightingData.Group)
                                     ? lightingData.Group
@@ -1606,14 +1617,14 @@ class CgateWebBridge {
                     });
                     
                     // --- Process EnableControl NESTED under Lighting --- 
-                    // Handles cases where EnableControl might be part of a Lighting unit definition in C-Gate XML
+                    // Replace optional chaining check
                     if (lightingData.EnableControl) {
                         processEnableControl(lightingData.EnableControl);
                     }
                 }
 
                 // --- Process TOP-LEVEL EnableControl --- 
-                // Handles cases where EnableControl is the primary application for the unit
+                // Replace optional chaining check
                 if (enableControlData) {
                     // Note: If the same group address exists both nested and top-level,
                     // HA should handle the duplicate discovery message gracefully due to unique_id.
@@ -1621,7 +1632,9 @@ class CgateWebBridge {
                 }
                 
                 // --- Process other top-level applications here --- 
-                // e.g., if (measurementData?.Group) { processMeasurement(measurementData); }
+                // Example with optional chaining replaced:
+                // const measurementData = applicationData.Measurement;
+                // if (measurementData && measurementData.Group) { processMeasurement(measurementData); }
 
             }); // end units.forEach
 

@@ -397,7 +397,8 @@ describe('CgateWebBridge - Home Assistant Discovery', () => {
 
              expect(mockParseStringFn).toHaveBeenCalled();
              // Check the bridge's error method was called
-             expect(bridgeErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 200:'), expect.any(Error));
+             expect(bridgeErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 200 (took '), 
+                 expect.any(Error));
              expect(mqttAddSpyHa).not.toHaveBeenCalled(); 
              expect(bridge.treeBuffer).toBe('');
              expect(bridge.treeNetwork).toBeNull();
