@@ -1,7 +1,7 @@
 // tests/parser.test.js (Renamed from main-suite.test.js implicitly)
 
 // Import necessary classes/functions
-const { CBusEvent, CBusCommand } = require('../index.js');
+const { CBusEvent, CBusCommand, CgateWebBridge, settings: defaultSettings } = require('../index.js');
 
 // Mock console.warn for tests that expect warnings on invalid input
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
@@ -301,4 +301,128 @@ describe('CBusCommand Parsing', () => {
           expect(cbusCmd.Level()).toBeNull(); // Cannot determine level
           expect(cbusCmd.RawLevel()).toBeNull();
       });
+});
+
+// --- CgateWebBridge Tests ---
+describe('CgateWebBridge', () => {
+    let bridge;
+    let mockSettings;
+
+    // Reset mocks and setup default bridge before each test in this block
+    beforeEach(() => {
+        // Start with a copy of the actual defaults, ensure all needed keys are present
+        mockSettings = { ...defaultSettings }; 
+        // Override specific settings for testing purposes if needed
+        mockSettings.logging = false;
+        mockSettings.messageinterval = 10; // Use a short interval for tests
+        mockSettings.reconnectinitialdelay = 10;
+        mockSettings.reconnectmaxdelay = 100;
+        
+        // Create the bridge instance for tests in this block
+        // Factories will be mocked in specific tests needing them
+        bridge = new CgateWebBridge(mockSettings);
+    });
+
+    // Test Constructor and Initial State
+    describe('Constructor & Initial State', () => {
+        it('should initialize with correct default settings when passed empty object', () => {
+            // Create bridge with empty settings, constructor should merge with internal defaults
+            const bridgeWithDefaults = new CgateWebBridge({});
+            // Check a few key defaults that should have been merged
+            expect(bridgeWithDefaults.settings.mqtt).toBe(defaultSettings.mqtt);
+            expect(bridgeWithDefaults.settings.cbusip).toBe(defaultSettings.cbusip);
+            expect(bridgeWithDefaults.settings.messageinterval).toBe(defaultSettings.messageinterval);
+            expect(bridgeWithDefaults.settings.retainreads).toBe(defaultSettings.retainreads);
+            // Importantly, check that the queues were created without error
+            expect(bridgeWithDefaults.mqttPublishQueue).toBeDefined();
+            expect(bridgeWithDefaults.cgateCommandQueue).toBeDefined();
+        });
+
+        it('should correctly merge provided settings over defaults', () => {
+            const userSettings = {
+                mqtt: 'mqtt.example.com:1884', // Override
+                logging: true,                 // Override
+                messageinterval: 50,           // Override
+                // cbusip should retain the default value
+            };
+            // Constructor merges userSettings with internal defaults
+            const mergedBridge = new CgateWebBridge(userSettings);
+            
+            // Check overridden values
+            expect(mergedBridge.settings.mqtt).toBe('mqtt.example.com:1884');
+            expect(mergedBridge.settings.logging).toBe(true);
+            expect(mergedBridge.settings.messageinterval).toBe(50);
+            
+            // Check that a default value was correctly retained
+            expect(mergedBridge.settings.cbusip).toBe(defaultSettings.cbusip); 
+            // Check another default to be sure
+            expect(mergedBridge.settings.cbusname).toBe(defaultSettings.cbusname);
+        });
+
+        it('should initialize connection flags to false', () => {
+            expect(bridge.clientConnected).toBe(false);
+            expect(bridge.commandConnected).toBe(false);
+            expect(bridge.eventConnected).toBe(false);
+        });
+
+        it('should initialize sockets and client to null', () => {
+            expect(bridge.client).toBeNull();
+            expect(bridge.commandSocket).toBeNull();
+            expect(bridge.eventSocket).toBeNull();
+        });
+
+        it('should initialize buffers and treeNetwork to empty/null', () => {
+            expect(bridge.commandBuffer).toBe("");
+            expect(bridge.eventBuffer).toBe("");
+            expect(bridge.treeBuffer).toBe("");
+            expect(bridge.treeNetwork).toBeNull();
+        });
+
+        it('should initialize queues', () => {
+            expect(bridge.mqttPublishQueue).toBeDefined();
+            expect(bridge.cgateCommandQueue).toBeDefined();
+            // Check if they are instances of ThrottledQueue (optional but good)
+            // Need to import ThrottledQueue for this
+            const { ThrottledQueue } = require('../index.js');
+            expect(bridge.mqttPublishQueue).toBeInstanceOf(ThrottledQueue);
+            expect(bridge.cgateCommandQueue).toBeInstanceOf(ThrottledQueue);
+        });
+
+        it('should initialize reconnect properties to null/0', () => {
+            expect(bridge.periodicGetAllInterval).toBeNull();
+            expect(bridge.commandReconnectTimeout).toBeNull();
+            expect(bridge.eventReconnectTimeout).toBeNull();
+            expect(bridge.commandReconnectAttempts).toBe(0);
+            expect(bridge.eventReconnectAttempts).toBe(0);
+        });
+
+         it('should set MQTT options based on retainreads setting', () => {
+             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });
+             const bridgeNoRetain = new CgateWebBridge({ ...mockSettings, retainreads: false });
+             expect(bridgeRetain._mqttOptions.retain).toBe(true);
+             expect(bridgeNoRetain._mqttOptions.retain).toBeUndefined(); // or expect({})... depends on impl.
+         });
+
+         // Add test for factory assignment if needed
+         it('should assign provided factories', () => {
+            const mockMqttFactory = jest.fn();
+            const mockCmdFactory = jest.fn();
+            const mockEvtFactory = jest.fn();
+            const bridgeWithFactories = new CgateWebBridge(
+                mockSettings,
+                mockMqttFactory,
+                mockCmdFactory,
+                mockEvtFactory
+            );
+            expect(bridgeWithFactories.mqttClientFactory).toBe(mockMqttFactory);
+            expect(bridgeWithFactories.commandSocketFactory).toBe(mockCmdFactory);
+            expect(bridgeWithFactories.eventSocketFactory).toBe(mockEvtFactory);
+        });
+
+    });
+
+    // Future tests for other methods (start, stop, handlers, etc.) will go here
+    // describe('Connection Methods', () => { ... });
+    // describe('Data Handlers', () => { ... });
+
 });
