@@ -796,5 +796,148 @@ describe('CgateWebBridge', () => {
          });
 
     });
-    // describe('Data Handlers', () => { ... });
+
+    // --- Test Data Handlers ---
+    describe('Data Handlers', () => {
+
+        describe('_handleMqttMessage', () => {
+            let cgateQueueAddSpy, emitterOnceSpy, consoleWarnSpy;
+
+            beforeEach(() => {
+                // Spy on methods called by _handleMqttMessage
+                cgateQueueAddSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+                emitterOnceSpy = jest.spyOn(bridge.internalEventEmitter, 'once');
+                consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+
+                // Ensure project name matches default test settings
+                bridge.settings.cbusname = 'TestProject';
+            });
+
+            afterEach(() => {
+                cgateQueueAddSpy.mockRestore();
+                emitterOnceSpy.mockRestore();
+                consoleWarnSpy.mockRestore();
+            });
+
+            it('should queue ON command for switch ON message', () => {
+                const topic = 'cbus/write/254/56/10/switch';
+                const message = Buffer.from('ON');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('ON //TestProject/254/56/10\n');
+            });
+
+            it('should queue OFF command for switch OFF message', () => {
+                const topic = 'cbus/write/254/56/10/switch';
+                const message = Buffer.from('OFF');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('OFF //TestProject/254/56/10\n');
+            });
+
+            it('should warn on invalid switch payload', () => {
+                const topic = 'cbus/write/254/56/10/switch';
+                const message = Buffer.from('INVALID');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).not.toHaveBeenCalled();
+                expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid payload for switch'));
+            });
+
+            it('should queue RAMP command for ramp percentage message', () => {
+                const topic = 'cbus/write/254/56/11/ramp';
+                const message = Buffer.from('75');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/11 191\n'); // 75% = 191
+            });
+
+            it('should queue RAMP command for ramp percentage,time message', () => {
+                const topic = 'cbus/write/254/56/11/ramp';
+                const message = Buffer.from('50,2s');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/11 128 2s\n'); // 50% = 128
+            });
+
+            it('should queue ON command for ramp ON message', () => {
+                const topic = 'cbus/write/254/56/11/ramp';
+                const message = Buffer.from('ON');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('ON //TestProject/254/56/11\n');
+            });
+
+             it('should queue OFF command for ramp OFF message', () => {
+                 const topic = 'cbus/write/254/56/11/ramp';
+                 const message = Buffer.from('OFF');
+                 bridge._handleMqttMessage(topic, message);
+                 expect(cgateQueueAddSpy).toHaveBeenCalledWith('OFF //TestProject/254/56/11\n');
+             });
+
+            it('should queue GET and add listener for ramp INCREASE message', () => {
+                const topic = 'cbus/write/254/56/12/ramp';
+                const message = Buffer.from('INCREASE');
+                bridge._handleMqttMessage(topic, message);
+                expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                // Should queue GET first to find current level
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/12 level\n');
+            });
+
+             it('should queue GET and add listener for ramp DECREASE message', () => {
+                 const topic = 'cbus/write/254/56/12/ramp';
+                 const message = Buffer.from('DECREASE');
+                 bridge._handleMqttMessage(topic, message);
+                 expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                 expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/12 level\n');
+             });
+
+            it('should warn on invalid ramp payload', () => {
+                const topic = 'cbus/write/254/56/11/ramp';
+                const message = Buffer.from('DIM'); // Invalid percentage/keyword
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).not.toHaveBeenCalled();
+                expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid payload for ramp command'));
+            });
+            
+            it('should warn on ramp command missing device ID', () => {
+                const topic = 'cbus/write/254/56//ramp'; // Missing device
+                const message = Buffer.from('50');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).not.toHaveBeenCalled();
+                // Expect the earlier, more general warning about the empty device ID
+                expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('has empty device ID')); 
+            });
+
+            it('should queue GET command for getall message', () => {
+                const topic = 'cbus/write/254/56//getall';
+                const message = Buffer.from('');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
+            });
+
+            it('should queue TREEXML command for gettree message', () => {
+                const topic = 'cbus/write/254///gettree';
+                const message = Buffer.from('');
+                bridge._handleMqttMessage(topic, message);
+                expect(bridge.treeNetwork).toBe('254'); // Check context is set
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith('TREEXML 254\n');
+            });
+
+            it('should warn on unknown command type', () => {
+                const topic = 'cbus/write/254/56/10/unknowncmd';
+                const message = Buffer.from('DATA');
+                bridge._handleMqttMessage(topic, message);
+                expect(cgateQueueAddSpy).not.toHaveBeenCalled();
+                expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown MQTT command type received: unknowncmd'));
+            });
+
+            it('should warn and ignore invalid topic', () => {
+                 const topic = 'cbus/write/invalid';
+                 const message = Buffer.from('ON');
+                 bridge._handleMqttMessage(topic, message);
+                 expect(cgateQueueAddSpy).not.toHaveBeenCalled();
+                 expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Ignoring invalid MQTT command'));
+             });
+        });
+
+        // describe('_handleCommandData', () => { ... });
+        // describe('_handleEventData', () => { ... });
+
+    });
+
 });
