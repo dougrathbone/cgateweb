@@ -2,6 +2,14 @@
 
 // Import necessary classes/functions
 const { CBusEvent, CBusCommand, CgateWebBridge, settings: defaultSettings } = require('../index.js');
+const xml2js = require('xml2js'); // Keep require for type info if needed, but mock it below
+
+// --- Mock xml2js Module --- 
+// We need a reference to the mocked parseString for verification
+let mockParseStringFn = jest.fn();
+jest.mock('xml2js', () => ({
+    parseString: (...args) => mockParseStringFn(...args) // Delegate calls to our mock function
+}));
 
 // Mock console.warn for tests that expect warnings on invalid input
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
@@ -935,9 +943,246 @@ describe('CgateWebBridge', () => {
              });
         });
 
-        // describe('_handleCommandData', () => { ... });
-        // describe('_handleEventData', () => { ... });
+        // --- _handleCommandData Tests ---
+        describe('_handleCommandData', () => {
+            let mqttAddSpy, eventEmitSpy, consoleErrorSpy, consoleWarnSpy;
+            let parseStringResolver; // To signal async completion
 
+            beforeEach(() => {
+                mqttAddSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+                eventEmitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
+                // Re-enable console.error mocking
+                consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+                consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+
+                // Reset and configure the mock function for xml2js.parseString
+                mockParseStringFn.mockImplementation((xml, options, callback) => {
+                    // Default behavior: Simulate successful parsing
+                    callback(null, { mockParsedXml: true });
+                    if (parseStringResolver) {
+                        parseStringResolver();
+                        parseStringResolver = null;
+                    }
+                });
+
+                bridge.commandBuffer = ""; 
+                bridge.settings.cbusname = 'TestProject'; // Consistent project name
+            });
+
+            afterEach(() => {
+                mqttAddSpy.mockRestore();
+                eventEmitSpy.mockRestore();
+                // Restore console.error
+                if (consoleErrorSpy) consoleErrorSpy.mockRestore();
+                consoleWarnSpy.mockRestore();
+                mockParseStringFn.mockClear(); // Clear calls to the mock function
+            });
+
+            it('should process buffered data correctly', () => {
+                bridge._handleCommandData(Buffer.from('300 //TestProject/254/56/1 level=128\n300 //TestProj'));
+                bridge._handleCommandData(Buffer.from('ect/254/56/2 level=0\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(4); // state+level for each
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/1/state', payload: 'ON' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/2/state', payload: 'OFF' }));
+                expect(bridge.commandBuffer).toBe(''); // Buffer should be empty
+            });
+
+             it('should handle partial lines correctly', () => {
+                 bridge._handleCommandData(Buffer.from('300 //TestProject/254/56/1 level=25')); // No newline
+                 expect(mqttAddSpy).not.toHaveBeenCalled();
+                 expect(bridge.commandBuffer).toBe('300 //TestProject/254/56/1 level=25');
+                 bridge._handleCommandData(Buffer.from('5\n')); // Complete the line
+                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/1/level', payload: '100' }));
+                 expect(bridge.commandBuffer).toBe('');
+             });
+
+            it('should parse "300 //... level=X" and publish state/level', () => {
+                bridge._handleCommandData(Buffer.from('300 //TestProject/254/56/3 level=51\n')); // ~20%
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/3/state', payload: 'ON' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/3/level', payload: '20' }));
+                expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/3', 51);
+            });
+            
+            it('should parse "300 //... level=0" and publish state/level', () => {
+                bridge._handleCommandData(Buffer.from('300 //TestProject/254/56/4 level=0\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/4/state', payload: 'OFF' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/4/level', payload: '0' }));
+                expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/4', 0);
+            });
+            
+             it('should parse "300 //... level=255" and publish state/level', () => {
+                 bridge._handleCommandData(Buffer.from('300 //TestProject/254/56/5 level=255\n'));
+                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/5/state', payload: 'ON' }));
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/5/level', payload: '100' }));
+                 expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/5', 255);
+             });
+
+            it('should parse "300-lighting on ..." and publish state/level', () => {
+                bridge._handleCommandData(Buffer.from('300-lighting on 254/56/6 ignored OID info\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/6/state', payload: 'ON' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/6/level', payload: '100' }));
+                 expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/6', 255); // 255 for 'on'
+            });
+            
+             it('should parse "300-lighting ramp ... 128" and publish state/level', () => {
+                 bridge._handleCommandData(Buffer.from('300-lighting ramp 254/56/7 128\n')); // 50%
+                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/7/state', payload: 'ON' }));
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/7/level', payload: '50' }));
+                 expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/7', 128); 
+             });
+
+            it('should handle TreeXML sequence and publish result', async () => {
+                let promise = new Promise(resolve => { parseStringResolver = resolve; });
+
+                bridge.treeNetwork = '200';
+                bridge._handleCommandData(Buffer.from('343-200\n'));
+                bridge._handleCommandData(Buffer.from('347-<root></root>\n'));
+                bridge._handleCommandData(Buffer.from('344-200\n'));
+
+                await promise;
+
+                // Check assertions using the mock function directly
+                expect(mockParseStringFn).toHaveBeenCalledWith(expect.any(String), { explicitArray: false }, expect.any(Function));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(1);
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({
+                    topic: 'cbus/read/200///tree',
+                    payload: JSON.stringify({ mockParsedXml: true })
+                }));
+                expect(bridge.treeBuffer).toBe('');
+                expect(bridge.treeNetwork).toBeNull();
+            });
+            
+             it('should handle TreeXML parsing error', async () => {
+                 let promise = new Promise(resolve => { parseStringResolver = resolve; });
+
+                 // Set specific mock implementation for this test
+                 mockParseStringFn.mockImplementationOnce((xml, options, callback) => {
+                     callback(new Error('XML parse error'), null);
+                     if (parseStringResolver) {
+                         parseStringResolver();
+                         parseStringResolver = null;
+                     }
+                 });
+
+                 bridge.treeNetwork = '200';
+                 bridge._handleCommandData(Buffer.from('343-200\n'));
+                 bridge._handleCommandData(Buffer.from('347-<bad xml\n'));
+                 bridge._handleCommandData(Buffer.from('344-200\n'));
+
+                 await promise;
+
+                 // Check assertions using the mock function
+                 expect(mockParseStringFn).toHaveBeenCalled();
+                 expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML'), expect.any(Error));
+                 expect(mqttAddSpy).not.toHaveBeenCalled();
+                 expect(bridge.treeBuffer).toBe('');
+                 expect(bridge.treeNetwork).toBeNull();
+             });
+
+            it('should log 4xx/5xx C-Gate errors', () => {
+                bridge._handleCommandData(Buffer.from('401 Bad object\n'));
+                bridge._handleCommandData(Buffer.from('500 Server error\n'));
+                expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 401 Bad object'));
+                expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 500 Server error'));
+            });
+            
+             it('should ignore unhandled status responses (like 300 without level=)', () => {
+                 bridge._handleCommandData(Buffer.from('300 Some other status\n'));
+                 expect(mqttAddSpy).not.toHaveBeenCalled();
+                 expect(eventEmitSpy).not.toHaveBeenCalled();
+                 // Could check for specific log message if needed
+             });
+
+            it('should ignore empty lines', () => {
+                bridge._handleCommandData(Buffer.from('\n300 //TestProject/254/56/8 level=0\n\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+            });
+        });
+
+        // --- _handleEventData Tests ---
+        describe('_handleEventData', () => {
+             let mqttAddSpy, eventEmitSpy, consoleWarnSpy;
+
+            beforeEach(() => {
+                mqttAddSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+                eventEmitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
+                consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+                bridge.eventBuffer = ""; // Reset buffer
+            });
+
+            afterEach(() => {
+                mqttAddSpy.mockRestore();
+                eventEmitSpy.mockRestore();
+                consoleWarnSpy.mockRestore();
+            });
+            
+            it('should process buffered data correctly', () => {
+                bridge._handleEventData(Buffer.from('lighting on 254/56/10\nlighti'));
+                bridge._handleEventData(Buffer.from('ng off 254/56/11\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(4); // state+level for each
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/10/state', payload: 'ON' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/11/state', payload: 'OFF' }));
+                expect(bridge.eventBuffer).toBe('');
+            });
+            
+             it('should handle partial lines correctly', () => {
+                 bridge._handleEventData(Buffer.from('lighting ramp 254/56/12 1')); // No newline, level 128
+                 expect(mqttAddSpy).not.toHaveBeenCalled();
+                 expect(bridge.eventBuffer).toBe('lighting ramp 254/56/12 1');
+                 bridge._handleEventData(Buffer.from('28\n')); // Complete the line
+                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/12/level', payload: '50' })); // 128->50%
+                 expect(bridge.eventBuffer).toBe('');
+             });
+
+            it('should parse "lighting on ..." and publish state/level', () => {
+                bridge._handleEventData(Buffer.from('lighting on 254/56/13 OID etc\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/13/state', payload: 'ON' }));
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/13/level', payload: '100' }));
+                expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/13', 255);
+            });
+            
+             it('should parse "lighting off ..." and publish state/level', () => {
+                 bridge._handleEventData(Buffer.from('lighting off 254/56/14\n'));
+                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/14/state', payload: 'OFF' }));
+                 expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/14/level', payload: '0' }));
+                 expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/14', 0);
+             });
+             
+              it('should parse "lighting ramp ... X" and publish state/level', () => {
+                  bridge._handleEventData(Buffer.from('lighting ramp 254/56/15 76\n')); // ~30%
+                  expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+                  expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/15/state', payload: 'ON' }));
+                  expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/15/level', payload: '30' }));
+                  expect(eventEmitSpy).toHaveBeenCalledWith('level', '254/56/15', 76);
+              });
+
+            it('should ignore comment lines', () => {
+                bridge._handleEventData(Buffer.from('# This is a comment\nlighting on 254/56/16\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2); // Only for the lighting event
+                expect(mqttAddSpy).toHaveBeenCalledWith(expect.objectContaining({ topic: 'cbus/read/254/56/16/state', payload: 'ON' }));
+            });
+
+            it('should warn on invalid event line', () => {
+                bridge._handleEventData(Buffer.from('invalid data\n'));
+                expect(mqttAddSpy).not.toHaveBeenCalled();
+                expect(eventEmitSpy).not.toHaveBeenCalled();
+                expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+            });
+            
+            it('should ignore empty lines', () => {
+                bridge._handleEventData(Buffer.from('\nlighting off 254/56/17\n\n'));
+                expect(mqttAddSpy).toHaveBeenCalledTimes(2);
+            });
+        });
     });
 
 });
