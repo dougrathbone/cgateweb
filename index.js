@@ -835,15 +835,10 @@ class CgateWebBridge {
         const message = messageBuffer.toString();
         this.log(`${LOG_PREFIX} MQTT received on ${topic}: ${message}`);
 
-        // --- Add handler for manual discovery trigger ---
+        // --- Handle manual discovery trigger ---
         if (topic === MQTT_TOPIC_MANUAL_TRIGGER) {
-            if (this.settings.ha_discovery_enabled) {
-                 this.log(`${LOG_PREFIX} Manual HA Discovery triggered via MQTT.`);
-                 this._triggerHaDiscovery();
-             } else {
-                 this.warn(`${WARN_PREFIX} Manual HA Discovery trigger received, but feature is disabled in settings.`);
-             }
-             return; // Don't process as CBusCommand
+            this._handleManualDiscoveryTrigger();
+            return; // Don't process as CBusCommand
         }
 
         const command = new CBusCommand(topic, message);
@@ -852,114 +847,146 @@ class CgateWebBridge {
             return;
         }
 
-        // Construct C-Bus path carefully, handling potentially empty device ID
-        let cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/`;
-        if (command.Device()) {
-            cbusPath += command.Device();
-        } else {
-            // If device is empty, trim trailing slash? Depends on C-Gate expectations.
-            // For GET //.../* commands, the path is different.
-            if (command.CommandType() === MQTT_CMD_TYPE_GETALL) {
-                cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/*`;
-            } else {
-                // Assume commands like ON/OFF require a device, log warning?
-                this.warn(`${WARN_PREFIX} MQTT command on topic ${topic} has empty device ID.`);
-                // For safety, let's return if the path seems incomplete for the command type
-                if (command.CommandType() !== MQTT_CMD_TYPE_GETTREE) { // gettree targets network only
-                    return;
-                }
-            }
+        // Construct C-Bus path
+        const cbusPath = this._buildCbusPath(command, topic);
+        if (!cbusPath) {
+            return; // Error logged in _buildCbusPath
         }
 
+        // Dispatch to specific handlers
         try {
             switch (command.CommandType()) {
                 case MQTT_CMD_TYPE_GETTREE:
-                    this.treeNetwork = command.Host();
-                    this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${command.Host()}${NEWLINE}`); // Standardize newline
+                    this._handleMqttGetTree(command);
                     break;
-
                 case MQTT_CMD_TYPE_GETALL:
-                    this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
+                    this._handleMqttGetAll(cbusPath); // Only path needed
                     break;
-
                 case MQTT_CMD_TYPE_SWITCH:
-                    if (message.toUpperCase() === MQTT_STATE_ON) {
-                        this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`); // Standardize newline
-                    } else if (message.toUpperCase() === MQTT_STATE_OFF) {
-                        this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`); // Standardize newline
-                    } else {
-                        this.warn(`${WARN_PREFIX} Invalid payload for switch command: ${message}`);
-                    }
+                    this._handleMqttSwitch(command, cbusPath, message);
                     break;
-
                 case MQTT_CMD_TYPE_RAMP:
-                    const rampAction = message.toUpperCase();
-                    const levelAddress = `${command.Host()}/${command.Group()}/${command.Device()}`; // For event emitter
-                    // Ensure we have a device for ramp actions
-                    if (!command.Device()) {
-                        this.warn(`${WARN_PREFIX} Ramp command requires device ID on topic ${topic}`);
-                        break;
-                    }
-
-                    switch (rampAction) {
-                        case MQTT_COMMAND_INCREASE:
-                            this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
-                                if (address === levelAddress) {
-                                    // Ensure currentLevel is a number (it comes from event emitter which might pass string or number)
-                                    const currentLevelNum = parseInt(currentLevel);
-                                    if (!isNaN(currentLevelNum)) {
-                                        const newLevel = Math.min(CGATE_LEVEL_MAX, currentLevelNum + RAMP_STEP);
-                                        this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`); // Standardize newline
-                                    } else {
-                                        this.warn(`${WARN_PREFIX} Could not parse current level for INCREASE: ${currentLevel}`);
-                                    }
-                                }
-                            });
-                            this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
-                            break;
-
-                        case MQTT_COMMAND_DECREASE:
-                            this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
-                                if (address === levelAddress) {
-                                    const currentLevelNum = parseInt(currentLevel);
-                                    if (!isNaN(currentLevelNum)) {
-                                        const newLevel = Math.max(CGATE_LEVEL_MIN, currentLevelNum - RAMP_STEP);
-                                        this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`); // Standardize newline
-                                    } else {
-                                        this.warn(`${WARN_PREFIX} Could not parse current level for DECREASE: ${currentLevel}`);
-                                    }
-                                }
-                            });
-                            this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
-                            break;
-
-                        case MQTT_STATE_ON:
-                            this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`); // Standardize newline
-                            break;
-                        case MQTT_STATE_OFF:
-                            this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`); // Standardize newline
-                            break;
-                        default:
-                            const rawLevel = command.RawLevel();
-                            const rampTime = command.RampTime();
-                            if (rawLevel !== null) {
-                                if (rampTime) {
-                                    this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${rawLevel} ${rampTime}${NEWLINE}`); // Standardize newline
-                                } else {
-                                    this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${rawLevel}${NEWLINE}`); // Standardize newline
-                                }
-                            } else {
-                                this.warn(`${WARN_PREFIX} Invalid payload for ramp command: ${message}`);
-                            }
-                    }
+                    this._handleMqttRamp(command, cbusPath, message, topic); // Pass topic for logging
                     break;
-
                 default:
                     this.warn(`${WARN_PREFIX} Unknown MQTT command type received: ${command.CommandType()}`);
             }
         } catch (e) {
             this.error(`${ERROR_PREFIX} Error processing MQTT message:`, e, `Topic: ${topic}, Message: ${message}`);
         }
+    }
+
+    // --- MQTT Message Handlers (Refactored) ---
+
+    _handleManualDiscoveryTrigger() {
+        if (this.settings.ha_discovery_enabled) {
+            this.log(`${LOG_PREFIX} Manual HA Discovery triggered via MQTT.`);
+            this._triggerHaDiscovery();
+        } else {
+            this.warn(`${WARN_PREFIX} Manual HA Discovery trigger received, but feature is disabled in settings.`);
+        }
+    }
+
+    _buildCbusPath(command, topic) {
+        let cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/`;
+        if (command.Device()) {
+            cbusPath += command.Device();
+        } else {
+            // Handle commands that don't require a device ID
+            if (command.CommandType() === MQTT_CMD_TYPE_GETALL) {
+                cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/*`;
+            } else if (command.CommandType() === MQTT_CMD_TYPE_GETTREE) {
+                // gettree doesn't use cbusPath in the command, host is used directly
+                return cbusPath; // Return base path just in case, though not used for command
+            } else {
+                // Assume other commands require a device, log warning and return null
+                this.warn(`${WARN_PREFIX} MQTT command on topic ${topic} requires device ID but none found.`);
+                return null;
+            }
+        }
+        return cbusPath;
+    }
+
+    _handleMqttGetTree(command) {
+        this.treeNetwork = command.Host(); // Store network for context when response arrives
+        this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${command.Host()}${NEWLINE}`);
+    }
+
+    _handleMqttGetAll(cbusPath) {
+        this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
+    }
+
+    _handleMqttSwitch(command, cbusPath, message) {
+        if (message.toUpperCase() === MQTT_STATE_ON) {
+            this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
+        } else if (message.toUpperCase() === MQTT_STATE_OFF) {
+            this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
+        } else {
+            this.warn(`${WARN_PREFIX} Invalid payload for switch command: ${message}`);
+        }
+    }
+
+    _handleMqttRamp(command, cbusPath, message, topic) {
+        // Ramp commands require a device ID
+        if (!command.Device()) {
+            // Warning already logged in _buildCbusPath if path construction failed there
+            // Add specific warning here if path was built but command handler needs device
+            this.warn(`${WARN_PREFIX} Ramp command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const rampAction = message.toUpperCase();
+        const levelAddress = `${command.Host()}/${command.Group()}/${command.Device()}`; // For event emitter
+
+        switch (rampAction) {
+            case MQTT_COMMAND_INCREASE:
+                this._queueRampIncreaseDecrease(cbusPath, levelAddress, RAMP_STEP, CGATE_LEVEL_MAX, "INCREASE");
+                break;
+
+            case MQTT_COMMAND_DECREASE:
+                this._queueRampIncreaseDecrease(cbusPath, levelAddress, -RAMP_STEP, CGATE_LEVEL_MIN, "DECREASE");
+                break;
+
+            case MQTT_STATE_ON:
+                this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
+                break;
+            case MQTT_STATE_OFF:
+                this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
+                break;
+            default:
+                // Handle percentage level command (e.g., "50" or "75,3s")
+                const rawLevel = command.RawLevel(); // Calculates 0-255 value from message % 
+                const rampTime = command.RampTime();
+                if (rawLevel !== null) {
+                    let rampCmd = `${CGATE_CMD_RAMP} ${cbusPath} ${rawLevel}`;
+                    if (rampTime) {
+                        rampCmd += ` ${rampTime}`;
+                    }
+                    this.cgateCommandQueue.add(rampCmd + NEWLINE);
+                } else {
+                    this.warn(`${WARN_PREFIX} Invalid payload for ramp command: ${message}`);
+                }
+        }
+    }
+
+    // Helper for INCREASE/DECREASE ramp commands
+    _queueRampIncreaseDecrease(cbusPath, levelAddress, step, limit, actionName) {
+        // Use event emitter to get current level first
+        this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
+            if (address === levelAddress) {
+                const currentLevelNum = parseInt(currentLevel);
+                if (!isNaN(currentLevelNum)) {
+                    let newLevel = currentLevelNum + step;
+                    // Clamp to limits (0 or 255)
+                    newLevel = (step > 0) ? Math.min(limit, newLevel) : Math.max(limit, newLevel);
+                    this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);
+                } else {
+                    this.warn(`${WARN_PREFIX} Could not parse current level for ${actionName}: ${currentLevel}`);
+                }
+            }
+        });
+        // Queue the GET command to trigger the level event
+        this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
     }
 
     _handleCommandData(data) {
