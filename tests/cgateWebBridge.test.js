@@ -1073,11 +1073,64 @@ describe('CgateWebBridge', () => {
             expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay);
              expect(bridge.commandReconnectTimeout).toBeDefined();
         });
-        // ... more Reconnection Logic tests ...
-         it('should execute connect function after timeout (event)', () => {
+        
+        it(`_scheduleReconnect('command') should double delay on second attempt`, () => {
+            bridge.commandReconnectAttempts = 1; // Simulate first attempt already happened
+            bridge._scheduleReconnect('command');
+            expect(bridge.commandReconnectAttempts).toBe(2);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay * 2);
+        });
+
+        it(`_scheduleReconnect('command') should increase delay exponentially`, () => {
+            bridge.commandReconnectAttempts = 3; // Simulate third attempt already happened
+            bridge._scheduleReconnect('command');
+            expect(bridge.commandReconnectAttempts).toBe(4);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay * Math.pow(2, 3)); // 2^(4-1)
+        });
+
+        it(`_scheduleReconnect('command') should cap delay at maxDelay`, () => {
+            // Set attempts high enough that exponential delay would exceed maxDelay
+            const highAttempts = Math.ceil(Math.log2(maxDelay / initialDelay)) + 1;
+            bridge.commandReconnectAttempts = highAttempts; 
+            bridge._scheduleReconnect('command');
+            expect(bridge.commandReconnectAttempts).toBe(highAttempts + 1);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), maxDelay);
+        });
+        
+        it(`_scheduleReconnect('event') should work independently for event socket`, () => {
+            bridge._scheduleReconnect('event');
+            expect(bridge.eventReconnectAttempts).toBe(1);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay);
+            expect(bridge.eventReconnectTimeout).toBeDefined();
+            // Ensure command attempts were not affected
+            expect(bridge.commandReconnectAttempts).toBe(0);
+            expect(bridge.commandReconnectTimeout).toBeNull();
+        });
+
+        it('should clear existing timeout before scheduling new one', () => {
+            const existingTimeoutId = 12345;
+            bridge.commandReconnectTimeout = existingTimeoutId;
+            bridge._scheduleReconnect('command');
+            expect(clearTimeoutSpy).toHaveBeenCalledWith(existingTimeoutId);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(bridge.commandReconnectTimeout).not.toBe(existingTimeoutId);
+        });
+
+        it('should execute connect function after timeout (command)', () => {
+             bridge._scheduleReconnect('command');
+             expect(connectCmdSpyReconn).not.toHaveBeenCalled();
+             jest.advanceTimersByTime(initialDelay + 1); // Advance time past the timeout
+             expect(connectCmdSpyReconn).toHaveBeenCalledTimes(1);
+          });
+
+        it('should execute connect function after timeout (event)', () => {
              bridge._scheduleReconnect('event');
              expect(connectEvtSpyReconn).not.toHaveBeenCalled();
-             jest.advanceTimersByTime(initialDelay + 1);
+             jest.advanceTimersByTime(initialDelay + 1); // Advance time past the timeout
              expect(connectEvtSpyReconn).toHaveBeenCalledTimes(1);
           });
     });
