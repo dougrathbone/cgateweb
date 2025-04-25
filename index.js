@@ -6,8 +6,8 @@ const parseString = require('xml2js').parseString;
 // --- Default Settings (can be overridden by ./settings.js) ---
 const defaultSettings = {
     mqtt: 'localhost:1883',
-    cbusip: 'localhost',
-    cbusname: 'CGATE', // Default C-Gate project name
+    cbusip: 'your-cgate-ip', // Default C-Gate IP address
+    cbusname: 'CLIPSAL', // Default C-Gate project name
     cbuscommandport: 20023,
     cbuseventport: 20025,
     retainreads: false,
@@ -30,19 +30,14 @@ try {
     console.warn('[WARN] Could not load ./settings.js, using defaults.');
 }
 
-// --- Merge Settings ---
-const settings = { ...defaultSettings, ...userSettings };
-
 // --- Constants ---
-const CGATE_COMMAND_PORT = settings.cbuscommandport;
-const CGATE_EVENT_PORT = settings.cbuseventport;
 const MQTT_TOPIC_PREFIX_READ = 'cbus/read';
 const MQTT_TOPIC_PREFIX_WRITE = 'cbus/write';
 const MQTT_STATE_ON = 'ON';
 const MQTT_STATE_OFF = 'OFF';
 const RAMP_STEP = 26; // Standard ramp step (approx 10%)
-const RECONNECT_INITIAL_DELAY_MS = settings.reconnectinitialdelay;
-const RECONNECT_MAX_DELAY_MS = settings.reconnectmaxdelay;
+const RECONNECT_INITIAL_DELAY_MS = defaultSettings.reconnectinitialdelay;
+const RECONNECT_MAX_DELAY_MS = defaultSettings.reconnectmaxdelay;
 const CGATE_RESPONSE_OBJECT_STATUS = '300';
 const CGATE_RESPONSE_TREE_START = '343';
 const CGATE_RESPONSE_TREE_END = '344';
@@ -270,8 +265,10 @@ class CBusCommand {
 
 // Main Bridge Class
 class CgateWebBridge {
-    constructor(settings, mqttClientFactory, commandSocketFactory, eventSocketFactory) {
-        this.settings = settings;
+    constructor(userSettings = {}, mqttClientFactory, commandSocketFactory, eventSocketFactory) {
+        // Merge settings using the module-level defaultSettings
+        this.settings = { ...defaultSettings, ...userSettings }; 
+
         // Use provided factories or default ones
         this.mqttClientFactory = mqttClientFactory || (() => {
             // Construct URL and options for mqtt.connect()
@@ -316,15 +313,14 @@ class CgateWebBridge {
         this.eventReconnectAttempts = 0;
 
         // Initialize Queues
-        this.messageInterval = this.settings.messageinterval;
         this.mqttPublishQueue = new ThrottledQueue(
             this._processMqttPublish.bind(this),
-            this.messageInterval,
+            this.settings.messageinterval,
             'MQTT Publish'
         );
         this.cgateCommandQueue = new ThrottledQueue(
             this._processCgateCommand.bind(this),
-            this.messageInterval,
+            this.settings.messageinterval,
             'C-Gate Command'
         );
 
@@ -351,7 +347,7 @@ class CgateWebBridge {
     start() {
         this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
         // Add the attempting connection message
-        this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${CGATE_COMMAND_PORT},${CGATE_EVENT_PORT})...`);
+        this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport})...`);
         this._connectMqtt();
         this._connectCommandSocket();
         this._connectEventSocket();
@@ -447,7 +443,7 @@ class CgateWebBridge {
             this.commandSocket = null;
         }
 
-        this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${this.settings.cbusip}:${CGATE_COMMAND_PORT} (Attempt ${this.commandReconnectAttempts + 1})`);
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${this.settings.cbusip}:${this.settings.cbuscommandport} (Attempt ${this.commandReconnectAttempts + 1})`);
         this.commandSocket = this.commandSocketFactory(); // Use factory
 
         this.commandSocket.on('connect', this._handleCommandConnect.bind(this));
@@ -456,7 +452,7 @@ class CgateWebBridge {
         this.commandSocket.on('error', this._handleCommandError.bind(this));
 
         try {
-            this.commandSocket.connect(CGATE_COMMAND_PORT, this.settings.cbusip);
+            this.commandSocket.connect(this.settings.cbuscommandport, this.settings.cbusip);
         } catch (e) {
             this.error("Error initiating command socket connection:", e);
             this._handleCommandError(e); // Treat initiation error like a connection error
@@ -477,7 +473,7 @@ class CgateWebBridge {
             this.eventSocket = null;
         }
 
-        this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${this.settings.cbusip}:${CGATE_EVENT_PORT} (Attempt ${this.eventReconnectAttempts + 1})`);
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${this.settings.cbusip}:${this.settings.cbuseventport} (Attempt ${this.eventReconnectAttempts + 1})`);
         this.eventSocket = this.eventSocketFactory(); // Use factory
 
         this.eventSocket.on('connect', this._handleEventConnect.bind(this));
@@ -486,7 +482,7 @@ class CgateWebBridge {
         this.eventSocket.on('error', this._handleEventError.bind(this));
 
         try {
-            this.eventSocket.connect(CGATE_EVENT_PORT, this.settings.cbusip);
+            this.eventSocket.connect(this.settings.cbuseventport, this.settings.cbusip);
         } catch (e) {
             this.error("Error initiating event socket connection:", e);
             this._handleEventError(e); // Treat initiation error like a connection error
@@ -591,8 +587,19 @@ class CgateWebBridge {
         this.commandReconnectAttempts = 0;
         if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
         this.commandReconnectTimeout = null;
-        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${CGATE_COMMAND_PORT}`);
-        this.cgateCommandQueue.add('EVENT ON\n'); // Standardize newline
+        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${this.settings.cbuscommandport}`);
+        try {
+            if (this.commandSocket && !this.commandSocket.destroyed) {
+                const commandString = 'EVENT ON\n';
+                this.commandSocket.write(commandString);
+                this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()} (Directly on connect)`);
+            } else {
+                this.warn(`${WARN_PREFIX} Command socket not available to send initial EVENT ON.`);
+            }
+        } catch (e) {
+            this.error(`${ERROR_PREFIX} Error sending initial EVENT ON:`, e);
+            // Handle error appropriately, maybe close/reconnect?
+        }
         this._checkAllConnected();
     }
 
@@ -628,7 +635,7 @@ class CgateWebBridge {
         this.eventReconnectAttempts = 0;
         if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
         this.eventReconnectTimeout = null;
-        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE EVENT PORT: ${this.settings.cbusip}:${CGATE_EVENT_PORT}`);
+        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE EVENT PORT: ${this.settings.cbusip}:${this.settings.cbuseventport}`);
         this._checkAllConnected();
     }
 
@@ -662,7 +669,7 @@ class CgateWebBridge {
         if (this.clientConnected && this.commandConnected && this.eventConnected) {
             this.log(`${LOG_PREFIX} ALL CONNECTED`);
             // Add the consolidated status message
-            this.log(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${CGATE_COMMAND_PORT},${CGATE_EVENT_PORT}). Awaiting messages...`);
+            this.log(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport}). Awaiting messages...`);
 
             // Initial Get All
             if (this.settings.getallnetapp && this.settings.getallonstart) {
@@ -1070,15 +1077,14 @@ module.exports = {
     ThrottledQueue,
     CBusEvent,
     CBusCommand,
-    settings // Export merged settings as well
+    settings: defaultSettings // Export the original defaults for tests
 };
 
 // --- Main Execution ---
 // Only run if executed directly (node index.js)
 if (require.main === module) {
-    // Settings are already merged above
-    const bridge = new CgateWebBridge(settings);
-
+    // Create bridge instance, constructor handles merging defaults
+    const bridge = new CgateWebBridge(userSettings);
     bridge.start();
 
     // Graceful shutdown
@@ -1101,13 +1107,15 @@ if (require.main === module) {
 
     process.on('uncaughtException', (err) => {
         console.error('UNCAUGHT EXCEPTION! Shutting down...', err);
-        bridge.stop(); // Attempt graceful stop
+        // Attempt graceful stop, need access to 'bridge' instance
+        if (bridge) bridge.stop(); 
         process.exit(1);
     });
 
     process.on('unhandledRejection', (reason, promise) => {
         console.error('UNHANDLED REJECTION! Shutting down...', reason, 'Promise:', promise);
-        bridge.stop(); // Attempt graceful stop
+        // Attempt graceful stop, need access to 'bridge' instance
+        if (bridge) bridge.stop(); 
         process.exit(1);
     });
 }
