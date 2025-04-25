@@ -79,20 +79,13 @@ describe('CBusEvent Parsing', () => {
      });
 
     // Test for command port responses that mimic events
-    it('should parse a 300- lighting ON event (partially)', () => {
-        // Note: CBusEvent is designed for event port format.
-        // It parses this command-port format, but DeviceType will be incorrect.
+    it('should NOT parse a 300- prefixed line as a valid CBusEvent', () => {
+        // CBusEvent is designed for event port format, not command port responses like 300-
         const eventData = '300-lighting on 254/56/9';
         const cbusEvent = new CBusEvent(eventData);
-        expect(cbusEvent.isValid()).toBe(true); // It *is* considered valid by the parser logic
-        expect(cbusEvent.DeviceType()).toBe('300-lighting'); // Assert the actual parsed value
-        expect(cbusEvent.Action()).toBe('on');
-        expect(cbusEvent.Host()).toBe('254');
-        expect(cbusEvent.Group()).toBe('56');
-        expect(cbusEvent.Device()).toBe('9');
-        expect(cbusEvent.Level()).toBe('100');
-        // It parses without warning because all basic fields are found
-        expect(mockConsoleWarn).not.toHaveBeenCalled();
+        expect(cbusEvent.isValid()).toBe(false); 
+        // Expect warning because the regex match will fail
+        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should handle malformed event data gracefully', () => {
