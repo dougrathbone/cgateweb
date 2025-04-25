@@ -893,8 +893,11 @@ class CgateWebBridge {
     _processCgateCommand(commandString) {
         if (this.commandConnected && this.commandSocket) {
             try {
+                // Log the command being sent
+                this.log(`${LOG_PREFIX} C-Gate Send -> : ${commandString.trim()}`); 
                 this.commandSocket.write(commandString);
-                this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()}`);
+                // Original log confirms it was sent, keep for consistency?
+                // this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()}`);
             } catch (e) {
                 this.error(`${ERROR_PREFIX} Error writing to C-Gate command socket:`, e, commandString.trim());
             }
@@ -1234,7 +1237,7 @@ class CgateWebBridge {
     // Publishes the parsed tree to MQTT and triggers HA discovery.
     _processCommandTreeEnd(statusData) {
         // Note: statusData for 344 usually contains the network ID, but we use the stored this.treeNetwork
-        this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
+        this.log(`${LOG_PREFIX} Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${this.treeBuffer.length} bytes. Parsing...`);
         const networkForTree = this.treeNetwork; // Capture before clearing
         const treeXmlData = this.treeBuffer;
         
@@ -1247,11 +1250,16 @@ class CgateWebBridge {
              return;
         }
 
+        // Log before parsing
+        this.log(`${LOG_PREFIX} Starting XML parsing for network ${networkForTree}...`);
+        const startTime = Date.now();
+
         parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
+            const duration = Date.now() - startTime;
             if (err) {
-                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree}:`, err);
+                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree} (took ${duration}ms):`, err);
             } else {
-                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree}`);
+                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 // Publish standard tree topic
                 this.mqttPublishQueue.add({ 
                     topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///${MQTT_TOPIC_SUFFIX_TREE}`,
@@ -1362,6 +1370,7 @@ class CgateWebBridge {
     // based on parsed TreeXML data for a specific network.
     _publishHaDiscoveryFromTree(networkId, treeData) {
         this.log(`${LOG_PREFIX} Generating HA Discovery messages for network ${networkId}...`);
+        const startTime = Date.now();
         
         // Basic validation of the parsed tree data structure
         const projectData = treeData?.Network;
@@ -1510,7 +1519,8 @@ class CgateWebBridge {
 
         try {
             // Iterate through each Unit definition in the network tree
-            units.forEach(unit => {
+            units.forEach((unit, index) => {
+                this.log(`[DEBUG] HA Discovery: Processing Unit ${index + 1}/${units.length} (Addr: ${unit.UnitAddress || 'N/A'})`);
                 // Direct references to potential applications within a unit
                 const lightingData = unit.Application?.Lighting;
                 const enableControlData = unit.Application?.EnableControl;
@@ -1580,7 +1590,8 @@ class CgateWebBridge {
 
             }); // end units.forEach
 
-            this.log(`${LOG_PREFIX} Published ${discoveryCount} HA Discovery messages for network ${networkId}.`);
+            const duration = Date.now() - startTime;
+            this.log(`${LOG_PREFIX} Published ${discoveryCount} HA Discovery messages for network ${networkId} (took ${duration}ms).`);
 
         } catch (e) {
             this.error(`${ERROR_PREFIX} Error processing TreeXML for HA Discovery (network ${networkId}):`, e, treeData);
