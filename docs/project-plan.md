@@ -18,6 +18,15 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
     *   Added robust `try...catch` blocks around C-Gate data parsing logic in `command.on('data')` and `event.on('data')`.
     *   Improved logging for parsing errors.
     *   Added explicit error handler (`client.on('error', ...)`) for the MQTT client.
+*   [x] **Add Relay Support to HA Discovery:** (2024-07-30)
+    *   Added `ha_discovery_relay_app_id` setting.
+    *   Updated `_publishHaDiscoveryFromTree` to find relays and publish them as HA `switch` entities.
+    *   Refactored `_publishHaDiscoveryFromTree` to handle nested C-Bus applications (e.g., EnableControl within Lighting) and prioritize discovery based on App IDs (cover > switch > relay if IDs overlap).
+*   [x] **Fix Broken Unit Tests:** (2024-07-30)
+    *   Diagnosed failures in `tests/haDiscovery.test.js` caused by HA discovery refactoring.
+    *   Adjusted tests to disable conflicting discovery types (e.g., disable cover discovery when testing switches with the same App ID).
+    *   Corrected expected call counts in tests to match devices found by improved discovery logic.
+    *   Fixed mock data structure in error handling test.
 *   [ ] **Enhance Readability & Structure:**
     *   Define constants for magic strings/numbers (ports, C-Gate codes, MQTT paths, ramp steps).
     *   Extract logic from large handlers (`client.on('message')`, `command.on('data')`, `event.on('data')`) into smaller functions.
