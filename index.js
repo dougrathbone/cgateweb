@@ -24,6 +24,7 @@ const defaultSettings = {
     ha_discovery_enabled: false, // Default disabled
     ha_discovery_prefix: 'homeassistant', // Default HA prefix
     ha_discovery_networks: [], // Default: Discover no networks explicitly
+    ha_discovery_cover_app_id: '203' // Default App ID for Enable Control (Covers)
 };
 
 // --- Load User Settings ---
@@ -277,6 +278,8 @@ class CgateWebBridge {
             this.warn('[WARN] ha_discovery_networks in settings is not an array, defaulting to [].');
             this.settings.ha_discovery_networks = [];
         }
+        // Ensure cover app ID is treated as string for consistency
+        this.settings.ha_discovery_cover_app_id = String(this.settings.ha_discovery_cover_app_id);
 
         // Use provided factories or default ones
         this.mqttClientFactory = mqttClientFactory || (() => {
@@ -1104,62 +1107,99 @@ class CgateWebBridge {
 
         const units = projectData.Interface.Network.Unit || [];
         const lightingAppId = '56'; // TODO: Make configurable?
+        const coverAppId = this.settings.ha_discovery_cover_app_id; // Get configured cover app ID
         let discoveryCount = 0;
 
-        // Iterate through units, applications, groups (adjust based on actual xml2js structure)
         try {
             units.forEach(unit => {
-                if (!unit.Application || !unit.Application.Lighting || !unit.Application.Lighting.Group) return;
-                
-                const groups = Array.isArray(unit.Application.Lighting.Group) 
-                                ? unit.Application.Lighting.Group 
-                                : [unit.Application.Lighting.Group]; // Ensure it's an array
-                                
-                groups.forEach(group => {
-                    const groupId = group.GroupAddress;
-                    // --- Add check for valid groupId ---
-                    if (groupId === undefined || groupId === null || groupId === '') {
-                        this.warn(`${WARN_PREFIX} Skipping group in HA Discovery due to missing/invalid GroupAddress in TreeXML data for network ${networkId}:`, group);
-                        return; // Skip this group
-                    }
-                    
-                    const groupLabel = group.Label || `CBus Light ${networkId}/${lightingAppId}/${groupId}`; 
-                    const uniqueId = `cgateweb_${networkId}_${lightingAppId}_${groupId}`;
-                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/light/${uniqueId}/config`;
-
-                    const payload = {
-                        name: groupLabel,
-                        unique_id: uniqueId,
-                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/state`,
-                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/switch`,
-                        payload_on: "ON",
-                        payload_off: "OFF",
-                        brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/level`,
-                        brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/ramp`,
-                        brightness_scale: 100, 
-                        qos: 0, 
-                        retain: true,
-                        device: {
-                            identifiers: [uniqueId], // Simple identifier for now
-                            name: groupLabel,
-                            manufacturer: "Clipsal C-Bus via cgateweb",
-                            model: "Lighting Group", 
-                            via_device: "cgateweb_bridge"
-                        },
-                        origin: {
-                            name: "cgateweb",
-                            sw_version: "0.1.0", // TODO: Get version dynamically
-                            "support_url": "https://github.com/dougrathbone/cgateweb"
+                 // Check for Lighting App
+                if (unit.Application?.Lighting?.Group) { 
+                    const groups = Array.isArray(unit.Application.Lighting.Group) 
+                                    ? unit.Application.Lighting.Group 
+                                    : [unit.Application.Lighting.Group]; 
+                    groups.forEach(group => {
+                        const groupId = group.GroupAddress;
+                        if (groupId === undefined || groupId === null || groupId === '') {
+                            this.warn(`${WARN_PREFIX} Skipping lighting group in HA Discovery due to missing/invalid GroupAddress...`, group);
+                            return;
                         }
-                    };
-
-                    this.mqttPublishQueue.add({
-                        topic: discoveryTopic,
-                        payload: JSON.stringify(payload),
-                        options: { retain: true, qos: 0 } // Retain discovery messages
+                        const groupLabel = group.Label || `CBus Light ${networkId}/${lightingAppId}/${groupId}`;
+                        const uniqueId = `cgateweb_${networkId}_${lightingAppId}_${groupId}`;
+                        const discoveryTopic = `${this.settings.ha_discovery_prefix}/light/${uniqueId}/config`;
+                        const payload = {
+                            name: groupLabel,
+                            unique_id: uniqueId,
+                            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/state`,
+                            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/switch`,
+                            payload_on: "ON",
+                            payload_off: "OFF",
+                            brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/level`,
+                            brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/ramp`,
+                            brightness_scale: 100, 
+                            qos: 0, 
+                            retain: true,
+                            device: {
+                                identifiers: [uniqueId],
+                                name: groupLabel,
+                                manufacturer: "Clipsal C-Bus via cgateweb",
+                                model: "Lighting Group", 
+                                via_device: "cgateweb_bridge"
+                            },
+                            origin: {
+                                name: "cgateweb",
+                                sw_version: "0.1.0", // TODO: Get version dynamically
+                                support_url: "https://github.com/dougrathbone/cgateweb"
+                            }
+                        };
+                        this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                        discoveryCount++;
                     });
-                    discoveryCount++;
-                });
+                }
+                
+                // Check for Cover App (Enable Control)
+                if (unit.Application?.EnableControl?.Group && unit.Application.EnableControl.ApplicationAddress === coverAppId) {
+                     const groups = Array.isArray(unit.Application.EnableControl.Group)
+                                     ? unit.Application.EnableControl.Group
+                                     : [unit.Application.EnableControl.Group];
+                     groups.forEach(group => {
+                         const groupId = group.GroupAddress;
+                         if (groupId === undefined || groupId === null || groupId === '') {
+                             this.warn(`${WARN_PREFIX} Skipping cover group in HA Discovery due to missing/invalid GroupAddress...`, group);
+                             return;
+                         }
+                         const groupLabel = group.Label || `CBus Cover ${networkId}/${coverAppId}/${groupId}`; 
+                         const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
+                         const discoveryTopic = `${this.settings.ha_discovery_prefix}/cover/${uniqueId}/config`;
+                         const payload = {
+                             name: groupLabel,
+                             unique_id: uniqueId,
+                             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/state`,
+                             command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${coverAppId}/${groupId}/switch`,
+                             payload_open: "ON",
+                             payload_close: "OFF",
+                             state_open: "ON",
+                             state_closed: "OFF",
+                             qos: 0, 
+                             retain: true,
+                             device_class: "shutter",
+                             device: {
+                                 identifiers: [uniqueId],
+                                 name: groupLabel,
+                                 manufacturer: "Clipsal C-Bus via cgateweb",
+                                 model: "Enable Control Group (Cover)", 
+                                 via_device: "cgateweb_bridge"
+                             },
+                             origin: {
+                                 name: "cgateweb",
+                                 sw_version: "0.1.0", // TODO: Get version dynamically
+                                 support_url: "https://github.com/dougrathbone/cgateweb"
+                             }
+                         };
+                         this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                         discoveryCount++;
+                     });
+                }
+                // TODO: Add checks for other discoverable app types here in the future
             });
 
             this.log(`${LOG_PREFIX} Published ${discoveryCount} HA Discovery messages for network ${networkId}.`);
