@@ -1168,19 +1168,25 @@ describe('CgateWebBridge', () => {
                  expect(bridge.treeNetwork).toBeNull();
              });
 
+            // Test for 4xx/5xx errors - ensure consoleErrorSpy is defined and called
             it('should log 4xx/5xx C-Gate errors', () => {
+                // Need to ensure consoleErrorSpy is active for this test
+                // It should be active from the beforeEach unless restored early
+                if (!consoleErrorSpy) { // Safety check / re-create if needed by test structure changes
+                   consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+                }
                 bridge._handleCommandData(Buffer.from('401 Bad object\n'));
-                bridge._handleCommandData(Buffer.from('500 Server error\n'));
                 expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 401 Bad object'));
+                bridge._handleCommandData(Buffer.from('500 Server error\n'));
                 expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 500 Server error'));
             });
-            
-             it('should ignore unhandled status responses (like 300 without level=)', () => {
-                 bridge._handleCommandData(Buffer.from('300 Some other status\n'));
-                 expect(mqttAddSpy).not.toHaveBeenCalled();
-                 expect(eventEmitSpy).not.toHaveBeenCalled();
-                 // Could check for specific log message if needed
-             });
+
+            it('should ignore unhandled status responses (like 300 without level=)', () => {
+                bridge._handleCommandData(Buffer.from('300 Some other status\n'));
+                expect(mqttAddSpy).not.toHaveBeenCalled();
+                expect(eventEmitSpy).not.toHaveBeenCalled();
+                // Could check for specific log message if needed
+            });
 
             it('should ignore empty lines', () => {
                 bridge._handleCommandData(Buffer.from('\n300 //TestProject/254/56/8 level=0\n\n'));
@@ -1266,6 +1272,258 @@ describe('CgateWebBridge', () => {
                 expect(mqttAddSpy).toHaveBeenCalledTimes(2);
             });
         });
+    });
+
+    // --- Test Queue Processors ---
+    describe('Queue Processors', () => {
+        // Use fake timers to control queue processing
+        jest.useFakeTimers();
+
+        let mockClient, mockCommandSocket;
+        let consoleWarnSpy, consoleErrorSpy;
+        let messageInterval; // Define here
+
+        beforeEach(() => {
+            // Get interval from bridge settings *inside* beforeEach
+            messageInterval = bridge.settings.messageinterval; 
+
+            // Reset mocks and spies
+            consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+            consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+            
+            // Create simple mocks for client/socket with necessary methods
+            mockClient = { publish: jest.fn() };
+            mockCommandSocket = { write: jest.fn() };
+
+            // Assign mocks - tests will set connected state as needed
+            bridge.client = mockClient;
+            bridge.commandSocket = mockCommandSocket;
+        });
+
+        afterEach(() => {
+            // Restore mocks
+            consoleWarnSpy.mockRestore();
+            consoleErrorSpy.mockRestore();
+             // Ensure client/socket mocks are nulled if bridge still holds refs
+             bridge.client = null;
+             bridge.commandSocket = null;
+        });
+
+        it('_processMqttPublish should publish message when client connected', () => {
+            const msg = { topic: 'test/topic', payload: 'test payload', options: { qos: 1 } };
+            bridge.clientConnected = true;
+            
+            bridge.mqttPublishQueue.add(msg);
+            
+            // Advance timer just past the interval to trigger processing
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            expect(mockClient.publish).toHaveBeenCalledWith(msg.topic, msg.payload, msg.options);
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+        });
+
+        it('_processMqttPublish should warn and drop message when client not connected', () => {
+            const msg = { topic: 'test/topic', payload: 'test payload', options: {} };
+            bridge.clientConnected = false;
+            bridge.client = null; // Ensure client is null when disconnected
+            
+            bridge.mqttPublishQueue.add(msg);
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            // Publish should not have been called because we explicitly set client to null
+            // If client object still existed, mockClient.publish would need checking
+            // expect(mockClient.publish).not.toHaveBeenCalled(); 
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT client not connected. Dropping message'), msg);
+        });
+        
+        it('_processMqttPublish should handle publish errors', () => {
+            const errorMsg = 'Publish failed';
+            mockClient.publish.mockImplementation(() => {
+                throw new Error(errorMsg);
+            });
+            const msg = { topic: 'error/topic', payload: 'fail', options: {} };
+            bridge.clientConnected = true;
+            
+            bridge.mqttPublishQueue.add(msg);
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            expect(mockClient.publish).toHaveBeenCalledWith(msg.topic, msg.payload, msg.options);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error publishing MQTT message'), expect.any(Error), msg);
+        });
+
+        it('_processCgateCommand should write command when socket connected', () => {
+            const cmdString = 'TEST COMMAND\n';
+            bridge.commandConnected = true;
+
+            bridge.cgateCommandQueue.add(cmdString);
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            expect(mockCommandSocket.write).toHaveBeenCalledWith(cmdString);
+            expect(consoleErrorSpy).not.toHaveBeenCalled();
+        });
+
+        it('_processCgateCommand should warn and drop command when socket not connected', () => {
+            const cmdString = 'TEST COMMAND\n';
+            bridge.commandConnected = false;
+            bridge.commandSocket = null; // Ensure socket is null
+
+            bridge.cgateCommandQueue.add(cmdString);
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            // expect(mockCommandSocket.write).not.toHaveBeenCalled(); // Not needed if socket is null
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate command socket not connected. Dropping command:'), cmdString.trim());
+        });
+        
+        it('_processCgateCommand should handle write errors', () => {
+            const errorMsg = 'Write failed';
+            mockCommandSocket.write.mockImplementation(() => {
+                throw new Error(errorMsg);
+            });
+             const cmdString = 'FAIL COMMAND\n';
+            bridge.commandConnected = true;
+            
+            bridge.cgateCommandQueue.add(cmdString);
+            jest.advanceTimersByTime(messageInterval + 1);
+
+            expect(mockCommandSocket.write).toHaveBeenCalledWith(cmdString);
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error writing to C-Gate command socket:'), expect.any(Error), cmdString.trim());
+        });
+    });
+
+    // --- Test Reconnection Logic ---
+    describe('Reconnection Logic', () => {
+        jest.useFakeTimers();
+
+        let setTimeoutSpy, clearTimeoutSpy;
+        let connectCmdSpy, connectEvtSpy;
+        let initialDelay, maxDelay;
+
+        beforeEach(() => {
+            // Store delays from settings
+            initialDelay = bridge.settings.reconnectinitialdelay;
+            maxDelay = bridge.settings.reconnectmaxdelay;
+
+            // Spy on timer functions and connection methods
+            setTimeoutSpy = jest.spyOn(global, 'setTimeout');
+            clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+            connectCmdSpy = jest.spyOn(bridge, '_connectCommandSocket').mockImplementation(() => {});
+            connectEvtSpy = jest.spyOn(bridge, '_connectEventSocket').mockImplementation(() => {});
+
+            // Reset bridge state for reconnect logic
+            bridge.commandConnected = false;
+            bridge.eventConnected = false;
+            bridge.commandReconnectAttempts = 0;
+            bridge.eventReconnectAttempts = 0;
+            bridge.commandReconnectTimeout = null;
+            bridge.eventReconnectTimeout = null;
+             // Mock minimal socket state needed for checks
+             bridge.commandSocket = null; 
+             bridge.eventSocket = null;
+        });
+
+        afterEach(() => {
+            // Restore spies
+            setTimeoutSpy.mockRestore();
+            clearTimeoutSpy.mockRestore();
+            connectCmdSpy.mockRestore();
+            connectEvtSpy.mockRestore();
+            // Clear any pending timers
+            jest.clearAllTimers();
+        });
+
+        it(`_scheduleReconnect('command') should schedule with initial delay on first attempt`, () => {
+            bridge._scheduleReconnect('command');
+            expect(bridge.commandReconnectAttempts).toBe(1);
+            expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+            expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay);
+             expect(bridge.commandReconnectTimeout).toBeDefined(); // Check timeout ID was stored
+        });
+
+        it(`_scheduleReconnect('event') should schedule with initial delay on first attempt`, () => {
+             bridge._scheduleReconnect('event');
+             expect(bridge.eventReconnectAttempts).toBe(1);
+             expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
+             expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), initialDelay);
+             expect(bridge.eventReconnectTimeout).toBeDefined();
+         });
+
+        it('should use exponential backoff for subsequent reconnect attempts (command)', () => {
+            bridge._scheduleReconnect('command'); // Attempt 1: delay = initialDelay
+            expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), initialDelay);
+            
+            bridge._scheduleReconnect('command'); // Attempt 2: delay = initialDelay * 2
+            expect(bridge.commandReconnectAttempts).toBe(2);
+            expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), initialDelay * 2);
+
+            bridge._scheduleReconnect('command'); // Attempt 3: delay = initialDelay * 4
+            expect(bridge.commandReconnectAttempts).toBe(3);
+            expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), initialDelay * 4);
+        });
+
+        it('should cap reconnect delay at maxDelay (event)', () => {
+             // Simulate enough attempts to exceed maxDelay
+            let expectedDelay = initialDelay;
+            for (let i = 1; i <= 10; i++) { // Assuming initial=1000, max=60000, it takes ~7 attempts
+                 bridge._scheduleReconnect('event');
+                 expect(bridge.eventReconnectAttempts).toBe(i);
+                 expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), expectedDelay);
+                 expectedDelay = Math.min(maxDelay, expectedDelay * 2);
+             }
+             // Last call should be capped
+              expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), maxDelay);
+         });
+
+        it('should clear existing timeout before scheduling new one (command)', () => {
+            bridge._scheduleReconnect('command'); // Schedule first
+            const firstTimeoutId = bridge.commandReconnectTimeout;
+            expect(clearTimeoutSpy).not.toHaveBeenCalled(); // No timeout existed before
+
+            bridge._scheduleReconnect('command'); // Schedule second
+            expect(clearTimeoutSpy).toHaveBeenCalledWith(firstTimeoutId);
+            expect(bridge.commandReconnectTimeout).not.toBe(firstTimeoutId);
+        });
+
+        it('should not schedule reconnect if already connected (command)', () => {
+            bridge.commandConnected = true;
+            bridge._scheduleReconnect('command');
+            expect(bridge.commandReconnectAttempts).toBe(0);
+            expect(setTimeoutSpy).not.toHaveBeenCalled();
+        });
+
+        it('should not schedule reconnect if socket is connecting (event)', () => {
+             // Ensure the mock object syntax is correct
+             bridge.eventSocket = { 
+                 connecting: true,
+                 // Add other methods mocked sockets usually have in other tests, even if not strictly needed here
+                 removeAllListeners: jest.fn(), 
+                 destroy: jest.fn(),
+                 on: jest.fn()
+              }; 
+             bridge._scheduleReconnect('event');
+             expect(bridge.eventReconnectAttempts).toBe(0);
+             expect(setTimeoutSpy).not.toHaveBeenCalled();
+         });
+         
+         it('should execute connect function after timeout (command)', () => {
+            bridge._scheduleReconnect('command');
+            expect(connectCmdSpy).not.toHaveBeenCalled();
+
+            // Advance time past the initial delay
+            jest.advanceTimersByTime(initialDelay + 1);
+
+            expect(connectCmdSpy).toHaveBeenCalledTimes(1);
+         });
+          
+         it('should execute connect function after timeout (event)', () => {
+             bridge._scheduleReconnect('event');
+             expect(connectEvtSpy).not.toHaveBeenCalled();
+ 
+             // Advance time past the initial delay
+             jest.advanceTimersByTime(initialDelay + 1);
+ 
+             expect(connectEvtSpy).toHaveBeenCalledTimes(1);
+          });
+
     });
 
 });
