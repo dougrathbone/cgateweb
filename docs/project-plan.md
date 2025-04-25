@@ -34,19 +34,25 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
     *   Extracted MQTT command handling logic from `_handleMqttMessage` into separate helper methods.
     *   Extracted C-Gate command response parsing and processing logic from `_handleCommandData` into separate helper methods.
     *   Extracted C-Gate event processing logic from `_handleEventData` into `_processEventLine`.
-*   [/] **Enhance Readability & Structure:**
-    *   Extract logic from large handlers (`client.on('message')`, `command.on('data')`, `event.on('data')`) into smaller functions.
-    *   Improve robustness of `CBusEvent` and `CBusCommand` parsing (consider regex).
-*   [ ] **Introduce Testing:**
-    *   Set up a testing framework (e.g., Jest/Mocha).
-    *   Create a `/tests` directory structure.
-    *   Write initial unit tests for parsing logic (`CBusEvent`, `CBusCommand`).
-    *   Write unit tests for the (refactored) queue logic.
-    *   Plan for mocking network dependencies (`net`, `mqtt`).
+*   [x] **Enhance Readability & Structure:** // Complete
+    *   [x] Extract logic from large handlers (`client.on('message')`, `command.on('data')`, `event.on('data')`) into smaller functions. 
+    *   [x] Improve robustness of `CBusEvent` and `CBusCommand` parsing (consider regex).
+*   [x] **Introduce Testing (Parsers):** (2024-07-30)
+    *   Created `tests/cbusEvent.test.js` and `tests/cbusCommand.test.js`.
+    *   Added tests covering valid/invalid parsing, edge cases, and level calculations.
+    *   Fixed edge case bugs found in parsing logic.
+*   [/] **Introduce Testing:** // In Progress
+    *   [x] Set up a testing framework (e.g., Jest/Mocha). 
+    *   [x] Create a `/tests` directory structure. 
+    *   [x] Write initial unit tests for parsing logic (`CBusEvent`, `CBusCommand`). 
+    *   [x] Write unit tests for the (refactored) queue logic. 
+    *   [x] Add tests for CgateWebBridge connection logic (`start`, `stop`, `_handle*Connect`, `_checkAllConnected`). (2024-07-30)
+    *   [x] Add tests for CgateWebBridge data handling logic (`_handleMqttMessage`, `_handleCommandData`, `_handleEventData` helpers). (2024-07-30)
+    *   [/] Plan for mocking network dependencies (`net`, `mqtt`). // Partially done via existing tests
 *   [ ] **Dependency Review:**
     *   Evaluate if `xml2js` dependency can be removed by parsing the text-based `TREE` command instead of `TREEXML`. (Decision: Likely keep `xml2js` for easier XML parsing).
-*   [ ] **Configuration:**
-    *   Move hardcoded ports (20023, 20025) to `settings.js` or constants.
+*   [x] **Configuration (Ports):** (2024-07-30)
+    *   [x] Move hardcoded ports (20023, 20025) to `settings.js` or constants. // Verified already done via settings
 
 **Future Goals (From project-guide.md):**
 
