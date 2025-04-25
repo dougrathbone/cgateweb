@@ -189,8 +189,20 @@ class CBusEvent {
         // "lighting on 254/56/4  #sourceunit=8 OID=... sessionId=... commandId=..."
         const dataStr = data.toString();
         // Split primarily by double space, take first part, then split by space
-        const mainParts = dataStr.split("  ")[0].split(" ");
-        const addressParts = (mainParts.length > 2) ? mainParts[2].split("/") : [];
+        const mainPartStr = dataStr.split("  ")[0]; 
+        const mainParts = mainPartStr.split(" ");
+        
+        // Extract potential address part and clean it (remove trailing #...)
+        let addressPartRaw = (mainParts.length > 2) ? mainParts[2] : null;
+        let addressPartClean = addressPartRaw;
+        if (addressPartRaw) {
+            const hashIndex = addressPartRaw.indexOf('#');
+            if (hashIndex !== -1) {
+                addressPartClean = addressPartRaw.substring(0, hashIndex);
+            }
+        }
+
+        const addressParts = addressPartClean ? addressPartClean.split("/") : [];
 
         this._deviceType = mainParts.length > 0 ? mainParts[0] : null;
         this._action = mainParts.length > 1 ? mainParts[1] : null;
@@ -231,6 +243,20 @@ class CBusEvent {
 class CBusCommand {
     constructor(topic, message) {
         // "cbus/write/254/56/7/switch ON"
+        // Add null check for topic
+        if (!topic) {
+            console.warn(`${WARN_PREFIX} Malformed C-Bus Command: Topic is null or empty.`);
+            this._isValid = false;
+            // Initialize fields to null/defaults
+            this._host = null;
+            this._group = null;
+            this._device = null;
+            this._commandType = null;
+            this._action = null;
+            this._message = '';
+            return; 
+        }
+        
         const topicStr = topic.toString();
         const messageStr = message ? message.toString() : ''; // Handle potentially null/undefined message
         const topicParts = topicStr.split("/");
