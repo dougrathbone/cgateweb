@@ -362,14 +362,16 @@ describe('CgateWebBridge', () => {
     });
 
     describe('Disconnection and Error Handlers', () => {
-        let mockClientDisconn, mockCommandSocketDisconn, mockEventSocketDisconn; // Use different names
-        let scheduleReconnectSpy, consoleWarnSpyDisconn, consoleErrorSpyDisconn, processExitSpy;
+        // Rely on global console mocks defined at the top level
+        let mockClientDisconn, mockCommandSocketDisconn, mockEventSocketDisconn;
+        let scheduleReconnectSpy, processExitSpy; // Removed console spies specific to this block
         let clientRemoveListenersSpy, cmdRemoveListenersSpy, evtRemoveListenersSpy;
         let cmdDestroySpy, evtDestroySpy;
 
         beforeEach(() => {
-            consoleWarnSpyDisconn = jest.spyOn(console, 'warn').mockImplementation(() => { });
-            consoleErrorSpyDisconn = jest.spyOn(console, 'error').mockImplementation(() => { });
+            // Remove console spy setup from here
+            // consoleWarnSpyDisconn = jest.spyOn(console, 'warn').mockImplementation(() => { });
+            // consoleErrorSpyDisconn = jest.spyOn(console, 'error').mockImplementation(() => { });
             processExitSpy = jest.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit called'); });
             mockClientDisconn = { removeAllListeners: jest.fn() };
             mockCommandSocketDisconn = { removeAllListeners: jest.fn(), destroy: jest.fn(), destroyed: false };
@@ -389,18 +391,26 @@ describe('CgateWebBridge', () => {
         });
 
         afterEach(() => {
-            consoleWarnSpyDisconn.mockRestore();
-            consoleErrorSpyDisconn.mockRestore();
+            // Remove console spy restores from here
+            // consoleWarnSpyDisconn.mockRestore();
+            // consoleErrorSpyDisconn.mockRestore();
             processExitSpy.mockRestore();
             scheduleReconnectSpy.mockRestore();
+            // Need to manually restore spies on the mock objects from beforeEach
+            clientRemoveListenersSpy.mockRestore();
+            cmdRemoveListenersSpy.mockRestore();
+            evtRemoveListenersSpy.mockRestore();
+            cmdDestroySpy.mockRestore();
+            evtDestroySpy.mockRestore();
         });
 
+        // --- Close Handlers ---
         it('_handleMqttClose should reset flag, null client, remove listeners and warn', () => {
             bridge._handleMqttClose();
             expect(bridge.clientConnected).toBe(false);
             expect(bridge.client).toBeNull();
             expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
-            expect(consoleWarnSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Closed'));
+            expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Closed')); // Use global mock
             expect(scheduleReconnectSpy).not.toHaveBeenCalled();
         });
 
@@ -409,14 +419,14 @@ describe('CgateWebBridge', () => {
             expect(bridge.commandConnected).toBe(false);
             expect(bridge.commandSocket).toBeNull();
             expect(cmdRemoveListenersSpy).toHaveBeenCalledTimes(1);
-            expect(consoleWarnSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED'));
-            expect(consoleWarnSpyDisconn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
+            expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED')); // Use global mock
+            expect(mockConsoleWarn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
             expect(scheduleReconnectSpy).toHaveBeenCalledWith('command');
         });
 
         it('_handleCommandClose(hadError=true) should log warning with error', () => {
             bridge._handleCommandClose(true);
-            expect(consoleWarnSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED with error'));
+            expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED with error')); // Use global mock
             expect(scheduleReconnectSpy).toHaveBeenCalledWith('command');
         });
 
@@ -425,25 +435,26 @@ describe('CgateWebBridge', () => {
             expect(bridge.eventConnected).toBe(false);
             expect(bridge.eventSocket).toBeNull();
             expect(evtRemoveListenersSpy).toHaveBeenCalledTimes(1);
-            expect(consoleWarnSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED'));
-             expect(consoleWarnSpyDisconn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
+            expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED')); // Use global mock
+             expect(mockConsoleWarn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
             expect(scheduleReconnectSpy).toHaveBeenCalledWith('event');
         });
         
          it('_handleEventClose(hadError=true) should log warning with error', () => {
              bridge._handleEventClose(true);
-             expect(consoleWarnSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED with error'));
+             expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED with error')); // Use global mock
              expect(scheduleReconnectSpy).toHaveBeenCalledWith('event');
          });
 
+        // --- Error Handlers ---
         it('_handleMqttError (Auth Error code 5) should log specific error and exit', () => {
             const authError = new Error('Auth failed');
             authError.code = 5;
             expect(() => {
                 bridge._handleMqttError(authError);
             }).toThrow('process.exit called');
-            expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('MQTT Connection Error: Authentication failed'));
-            expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('Exiting due to fatal MQTT authentication error.'));
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('MQTT Connection Error: Authentication failed')); // Use global mock
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('Exiting due to fatal MQTT authentication error.')); // Use global mock
             expect(processExitSpy).toHaveBeenCalledWith(1);
             expect(bridge.clientConnected).toBe(true);
             expect(bridge.client).toBeNull();
@@ -453,7 +464,7 @@ describe('CgateWebBridge', () => {
         it('_handleMqttError (Generic Error) should log, reset flag, null client, remove listeners', () => {
             const genericError = new Error('Some MQTT error');
             bridge._handleMqttError(genericError);
-            expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Error:'), genericError);
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Error:'), genericError); // Use global mock
             expect(bridge.clientConnected).toBe(false);
             expect(bridge.client).toBeNull();
             expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
@@ -464,7 +475,7 @@ describe('CgateWebBridge', () => {
         it('_handleCommandError should log error, reset flag, destroy socket, and null socket', () => {
             const cmdError = new Error('Command socket failed');
             bridge._handleCommandError(cmdError);
-            expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError);
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError); // Use global mock
             expect(bridge.commandConnected).toBe(false);
             expect(cmdDestroySpy).toHaveBeenCalledTimes(1);
             expect(bridge.commandSocket).toBeNull();
@@ -475,7 +486,7 @@ describe('CgateWebBridge', () => {
              mockCommandSocketDisconn.destroyed = true;
              const cmdError = new Error('Command socket failed again');
              bridge._handleCommandError(cmdError);
-             expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError);
+             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError); // Use global mock
              expect(bridge.commandConnected).toBe(false);
              expect(cmdDestroySpy).not.toHaveBeenCalled();
              expect(bridge.commandSocket).toBeNull();
@@ -484,7 +495,7 @@ describe('CgateWebBridge', () => {
         it('_handleEventError should log error, reset flag, destroy socket, and null socket', () => {
             const evtError = new Error('Event socket failed');
             bridge._handleEventError(evtError);
-            expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError);
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError); // Use global mock
             expect(bridge.eventConnected).toBe(false);
             expect(evtDestroySpy).toHaveBeenCalledTimes(1);
             expect(bridge.eventSocket).toBeNull();
@@ -495,7 +506,7 @@ describe('CgateWebBridge', () => {
              mockEventSocketDisconn.destroyed = true;
              const evtError = new Error('Event socket failed again');
              bridge._handleEventError(evtError);
-             expect(consoleErrorSpyDisconn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError);
+             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError); // Use global mock
              expect(bridge.eventConnected).toBe(false);
              expect(evtDestroySpy).not.toHaveBeenCalled();
              expect(bridge.eventSocket).toBeNull();
@@ -709,6 +720,9 @@ describe('CgateWebBridge', () => {
             });
             // ... more _connectCommandSocket tests ...
              it('should handle socket.connect error', () => {
+                // --- Local console mock for this test --- 
+                const consoleErrorSpyLocal = jest.spyOn(console, 'error').mockImplementation(() => {});
+                
                 const connectError = new Error('Connection failed');
                 mockCmdSocketFactory.mockImplementationOnce(() => {
                     const socket = new EventEmitter();
@@ -720,10 +734,15 @@ describe('CgateWebBridge', () => {
                     return socket;
                 });
                 const errorSpy = jest.spyOn(bridge, '_handleCommandError');
+
                 bridge._connectCommandSocket();
+
                 expect(lastMockCmdSocket.connect).toHaveBeenCalled();
                 expect(errorSpy).toHaveBeenCalledWith(connectError);
+                
                 errorSpy.mockRestore();
+                // --- Restore local console mock --- 
+                consoleErrorSpyLocal.mockRestore(); 
             });
         });
 
@@ -734,8 +753,11 @@ describe('CgateWebBridge', () => {
             });
             // ... more _connectEventSocket tests ...
              it('should handle socket.connect error', () => {
-                const connectError = new Error('Event Connection failed');
-                mockEvtSocketFactory.mockImplementationOnce(() => {
+                 // --- Local console mock for this test --- 
+                 const consoleErrorSpyLocal = jest.spyOn(console, 'error').mockImplementation(() => {});
+                 
+                 const connectError = new Error('Event Connection failed');
+                 mockEvtSocketFactory.mockImplementationOnce(() => {
                     const socket = new EventEmitter();
                     socket.connect = jest.fn(() => { throw connectError; });
                     socket.on = jest.fn();
@@ -749,7 +771,9 @@ describe('CgateWebBridge', () => {
                 expect(lastMockEvtSocket.connect).toHaveBeenCalled();
                 expect(errorSpy).toHaveBeenCalledWith(connectError);
                 errorSpy.mockRestore();
-            });
+                // --- Restore local console mock --- 
+                consoleErrorSpyLocal.mockRestore(); 
+             });
         });
         
         describe('_connectMqtt', () => {
