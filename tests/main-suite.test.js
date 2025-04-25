@@ -534,6 +534,103 @@ describe('CgateWebBridge', () => {
 
     });
 
-    // describe('Data Handlers', () => { ... });
+    // --- Test Connection Handlers ---
+    describe('Connection Handlers', () => {
+        let mockClient;
+        let mockCommandSocket;
+        let mockEventSocket;
+        let mqttAddSpy, checkAllSpy, clearTimeoutSpy;
+        let cmdWriteSpy; // For direct EVENT ON write
 
+        beforeEach(() => {
+            // Create mocks with necessary methods used by handlers
+            mockClient = {
+                subscribe: jest.fn((topic, cb) => cb(null)), // Simulate successful subscription
+                publish: jest.fn(), // <<< ADDED MOCK FOR PUBLISH
+                removeAllListeners: jest.fn(),
+                on: jest.fn(), // Needed if handlers re-attach listeners
+                // Add other methods if needed by the handlers
+            };
+            mockCommandSocket = {
+                write: jest.fn(),
+                removeAllListeners: jest.fn(),
+                on: jest.fn(),
+                 connect: jest.fn(), // Add connect if needed
+                 destroy: jest.fn(), // Add destroy if needed
+            };
+             mockEventSocket = {
+                 removeAllListeners: jest.fn(),
+                 on: jest.fn(),
+                 connect: jest.fn(),
+                 destroy: jest.fn(),
+             };
+
+            // Assign mocks to the bridge instance *before* calling handlers
+            bridge.client = mockClient;
+            bridge.commandSocket = mockCommandSocket;
+            bridge.eventSocket = mockEventSocket;
+
+            // Spy on methods called by the handlers
+            mqttAddSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+            checkAllSpy = jest.spyOn(bridge, '_checkAllConnected').mockImplementation(() => { }); // Prevent execution
+            clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+            cmdWriteSpy = jest.spyOn(bridge.commandSocket, 'write'); // Spy on write of the *mock* socket
+
+        });
+
+        afterEach(() => {
+            // Restore spies
+            mqttAddSpy.mockRestore();
+            checkAllSpy.mockRestore();
+            clearTimeoutSpy.mockRestore();
+            cmdWriteSpy.mockRestore();
+            // It's good practice to clear mock calls too
+            mockClient.subscribe.mockClear();
+            mockCommandSocket.write.mockClear();
+        });
+
+        it('_handleMqttConnect should set flag, subscribe, publish online, and check all connected', () => {
+            bridge.clientConnected = false; // Ensure starting state
+            bridge._handleMqttConnect();
+
+            expect(bridge.clientConnected).toBe(true);
+            expect(mockClient.subscribe).toHaveBeenCalledWith('cbus/write/#', expect.any(Function));
+            expect(mqttAddSpy).toHaveBeenCalledWith({ topic: 'hello/cgateweb', payload: 'Online', options: { retain: false } });
+            expect(checkAllSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('_handleCommandConnect should set flag, reset attempts, clear timeout, send EVENT ON, and check all connected', () => {
+            bridge.commandConnected = false;
+            bridge.commandReconnectAttempts = 5;
+            bridge.commandReconnectTimeout = setTimeout(() => { }, 5000); // Dummy timeout
+            const timeoutId = bridge.commandReconnectTimeout;
+
+            bridge._handleCommandConnect();
+
+            expect(bridge.commandConnected).toBe(true);
+            expect(bridge.commandReconnectAttempts).toBe(0);
+            expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutId);
+            expect(bridge.commandReconnectTimeout).toBeNull();
+            expect(cmdWriteSpy).toHaveBeenCalledWith('EVENT ON\n');
+            expect(checkAllSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('_handleEventConnect should set flag, reset attempts, clear timeout, and check all connected', () => {
+             bridge.eventConnected = false;
+             bridge.eventReconnectAttempts = 3;
+             bridge.eventReconnectTimeout = setTimeout(() => { }, 5000); // Dummy timeout
+             const timeoutId = bridge.eventReconnectTimeout;
+
+             bridge._handleEventConnect();
+
+             expect(bridge.eventConnected).toBe(true);
+             expect(bridge.eventReconnectAttempts).toBe(0);
+             expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutId);
+             expect(bridge.eventReconnectTimeout).toBeNull();
+             expect(checkAllSpy).toHaveBeenCalledTimes(1);
+        });
+
+    });
+
+    // describe('Data Handlers', () => { ... });
 });
