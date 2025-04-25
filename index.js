@@ -562,16 +562,26 @@ class CgateWebBridge {
     }
 
     _handleMqttError(err) {
-        this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
-        // MQTT library usually handles reconnects, but we might want to ensure flags are reset
+        // Check for specific authorization error
+        if (err.code === 5) { // MQTT CONNACK code 5: Not authorized
+            this.error(`${ERROR_PREFIX} MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
+            this.error(`${ERROR_PREFIX} Exiting due to fatal MQTT authentication error.`);
+            process.exit(1); // Exit the process
+        } else {
+            // Log other errors normally
+            this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
+        }
+
+        // Common error handling for all MQTT errors (except the fatal auth error now)
         this.clientConnected = false;
-        // Clear the client reference to allow reconnection attempt
+        // Clear the client reference to allow potential reconnection attempts for non-auth errors
         if (this.client) {
             this.client.removeAllListeners(); // Clean up listeners
             this.client = null;
         }
-        // Consider explicit reconnect attempt here too
-        // setTimeout(() => this._connectMqtt(), RECONNECT_INITIAL_DELAY_MS);
+        // Reconnect attempt logic is generally handled by the MQTT library itself,
+        // or could be added here specifically for *non-fatal* errors if needed.
+        // For auth errors, we explicitly exit above.
     }
 
     _handleCommandConnect() {
