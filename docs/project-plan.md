@@ -30,7 +30,11 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
 *   [x] **Enhance Readability (Constants):** (2024-07-30)
     *   Defined constants for MQTT topics, payloads, C-Gate commands, responses, levels, HA discovery parameters.
     *   Replaced magic strings/numbers with constants throughout `index.js`.
-*   [ ] **Enhance Readability & Structure:**
+*   [x] **Enhance Readability (Extract Handlers):** (2024-07-30)
+    *   Extracted MQTT command handling logic from `_handleMqttMessage` into separate helper methods.
+    *   Extracted C-Gate command response parsing and processing logic from `_handleCommandData` into separate helper methods.
+    *   Extracted C-Gate event processing logic from `_handleEventData` into `_processEventLine`.
+*   [/] **Enhance Readability & Structure:**
     *   Extract logic from large handlers (`client.on('message')`, `command.on('data')`, `event.on('data')`) into smaller functions.
     *   Improve robustness of `CBusEvent` and `CBusCommand` parsing (consider regex).
 *   [ ] **Introduce Testing:**

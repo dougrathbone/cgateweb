@@ -989,6 +989,8 @@ class CgateWebBridge {
         this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
     }
 
+    // --- Command/Event Socket Data Handlers (Refactored Below) ---
+
     _handleCommandData(data) {
         this.commandBuffer += data.toString();
         let newlineIndex;
@@ -1002,112 +1004,168 @@ class CgateWebBridge {
             this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
 
             try {
-                let responseCode = '';
-                let statusData = '';
-                const hyphenIndex = line.indexOf('-');
+                const parsedResponse = this._parseCommandResponseLine(line);
+                if (!parsedResponse) continue; // Skip if line couldn't be parsed
 
-                if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
-                    // Handle hyphenated responses (300-, 343-, 347-, 344-)
-                    responseCode = line.substring(0, hyphenIndex).trim();
-                    statusData = line.substring(hyphenIndex + 1).trim();
-                } else {
-                    // Handle space-separated responses (300 level=, 4xx, 5xx, 200 OK)
-                    const spaceParts = line.split(' ');
-                    responseCode = spaceParts[0].trim();
-                    // Reconstruct statusData if there are multiple parts after code
-                    if (spaceParts.length > 1) {
-                         statusData = spaceParts.slice(1).join(' ').trim();
-                    }
-                }
-                
-                if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
-                     continue; // Skip processing this line
-                }
+                this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
 
-                if (responseCode === CGATE_RESPONSE_OBJECT_STATUS) { // 300
-                    const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
-
-                    if (levelMatch) {
-                        const fullAddress = levelMatch[1]; // e.g., //PROJECT/254/56/10
-                        const levelValue = parseInt(levelMatch[2]);
-                        const levelPercent = Math.round(levelValue * 100 / CGATE_LEVEL_MAX).toString();
-                        const addressParts = fullAddress.split('/'); // ['', '', project, network, app, group]
-                        if (addressParts.length >= 6) {
-                            const netAddr = addressParts[3];
-                            const appAddr = addressParts[4];
-                            const groupAddr = addressParts[5];
-                            const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
-                            const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`;
-
-                            this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
-
-                            if (levelValue === CGATE_LEVEL_MIN) {
-                                this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} OFF (0%)`);
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: '0', options: this._mqttOptions });
-                            } else {
-                                this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} ON (${levelPercent}%)`);
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_ON, options: this._mqttOptions });
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent, options: this._mqttOptions });
-                            }
-                        } else {
-                            this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
-                        }
-                    } else {
-                        const event = new CBusEvent(statusData);
-                        if (event.isValid()) {
-                            this._publishEvent(event, '(Cmd/Event)');
-                            this._emitLevelFromEvent(event);
-                        } else {
-                            this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
-                        }
-                    }
-                } else if (responseCode === CGATE_RESPONSE_TREE_START) {
-                    this.treeBuffer = '';
-                    this.treeNetwork = statusData || this.treeNetwork;
-                    this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
-                } else if (responseCode === CGATE_RESPONSE_TREE_DATA) { // 347
-                    this.treeBuffer += statusData + NEWLINE;
-                } else if (responseCode === CGATE_RESPONSE_TREE_END) { // 344
-                    this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
-                    const networkForTree = this.treeNetwork; // Capture before clearing
-                    const treeXmlData = this.treeBuffer;
-                    this.treeBuffer = ''; // Clear buffer immediately
-                    this.treeNetwork = null; // Reset network context immediately
-
-                    if (networkForTree && treeXmlData) {
-                        parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
-                            if (err) {
-                                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree}:`, err);
-                            } else {
-                                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree}`);
-                                // TODO: Decide if manual gettree should also publish to HA?
-                                // For now, only publish simple tree to standard topic
-                                this.mqttPublishQueue.add({ 
-                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///${MQTT_TOPIC_SUFFIX_TREE}`,
-                                    payload: JSON.stringify(result),
-                                    options: this._mqttOptions 
-                                });
-                                
-                                // --- Generate HA Discovery Payloads ---
-                                const allowedNetworks = this.settings.ha_discovery_networks.map(String); // Convert allowed list to strings
-                                if (this.settings.ha_discovery_enabled && allowedNetworks.includes(String(networkForTree))) {
-                                    this._publishHaDiscoveryFromTree(networkForTree, result);
-                                }
-                            }
-                            // No cleanup here, done earlier
-                        });
-                    } else {
-                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context was set.`); 
-                    }
-                } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
-                    this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
-                } else {
-                }
             } catch (e) {
                 this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`); 
             }
         }
+    }
+
+    // Parses a line from the command socket response
+    _parseCommandResponseLine(line) {
+        let responseCode = '';
+        let statusData = '';
+        const hyphenIndex = line.indexOf('-');
+
+        if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
+            // Handle hyphenated responses (300-, 343-, 347-, 344-)
+            responseCode = line.substring(0, hyphenIndex).trim();
+            statusData = line.substring(hyphenIndex + 1).trim();
+        } else {
+            // Handle space-separated responses (300 level=, 4xx, 5xx, 200 OK)
+            const spaceParts = line.split(' ');
+            responseCode = spaceParts[0].trim();
+            // Reconstruct statusData if there are multiple parts after code
+            if (spaceParts.length > 1) {
+                 statusData = spaceParts.slice(1).join(' ').trim();
+            }
+        }
+        
+        // Basic validation of response code format
+        if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
+             this.log(`${LOG_PREFIX} Skipping invalid command response line: ${line}`);
+             return null; 
+        }
+
+        return { responseCode, statusData };
+    }
+
+    // Dispatches command responses based on code
+    _processCommandResponse(responseCode, statusData) {
+        switch (responseCode) {
+            case CGATE_RESPONSE_OBJECT_STATUS: // 300
+                this._processCommandObjectStatus(statusData);
+                break;
+            case CGATE_RESPONSE_TREE_START: // 343
+                this._processCommandTreeStart(statusData);
+                break;
+            case CGATE_RESPONSE_TREE_DATA: // 347
+                this._processCommandTreeData(statusData);
+                break;
+            case CGATE_RESPONSE_TREE_END: // 344
+                this._processCommandTreeEnd(statusData);
+                break;
+            default:
+                if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
+                    this._processCommandErrorResponse(responseCode, statusData);
+                } else {
+                    // Log other unhandled responses if needed
+                     this.log(`${LOG_PREFIX} Unhandled command response code ${responseCode}: ${statusData}`);
+                }
+        }
+    }
+
+    // Handles 300 Object Status responses
+    _processCommandObjectStatus(statusData) {
+        const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
+
+        if (levelMatch) {
+            const fullAddress = levelMatch[1]; // e.g., //PROJECT/254/56/10
+            const levelValue = parseInt(levelMatch[2]);
+            const levelPercent = Math.round(levelValue * 100 / CGATE_LEVEL_MAX).toString();
+            const addressParts = fullAddress.split('/'); // ['', '', project, network, app, group]
+
+            if (addressParts.length >= 6) {
+                const netAddr = addressParts[3];
+                const appAddr = addressParts[4];
+                const groupAddr = addressParts[5];
+                const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
+                const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`; // For MQTT publishing
+
+                // Emit internal event for potential ramp increase/decrease logic
+                this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
+
+                // Publish to MQTT
+                if (levelValue === CGATE_LEVEL_MIN) {
+                    this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} OFF (0%)`);
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: '0', options: this._mqttOptions });
+                } else {
+                    this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} ON (${levelPercent}%)`);
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent, options: this._mqttOptions });
+                }
+            } else {
+                this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
+            }
+        } else {
+            // Handle 300 responses that are not level reports (might be other events)
+            const event = new CBusEvent(statusData);
+            if (event.isValid()) {
+                this._publishEvent(event, '(Cmd/Event)');
+                this._emitLevelFromEvent(event);
+            } else {
+                this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
+            }
+        }
+    }
+
+    // Handles 343 Tree Start responses
+    _processCommandTreeStart(statusData) {
+        this.treeBuffer = '';
+        this.treeNetwork = statusData || this.treeNetwork; // Use statusData if provided, else keep existing
+        this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
+    }
+
+    // Handles 347 Tree Data responses
+    _processCommandTreeData(statusData) {
+        this.treeBuffer += statusData + NEWLINE;
+    }
+
+    // Handles 344 Tree End responses
+    _processCommandTreeEnd(statusData) {
+        // Note: statusData for 344 usually contains the network ID, but we use the stored this.treeNetwork
+        this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
+        const networkForTree = this.treeNetwork; // Capture before clearing
+        const treeXmlData = this.treeBuffer;
+        
+        // Clear buffer and network context immediately
+        this.treeBuffer = ''; 
+        this.treeNetwork = null; 
+
+        if (!networkForTree || !treeXmlData) {
+             this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context was set.`); 
+             return;
+        }
+
+        parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
+            if (err) {
+                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree}:`, err);
+            } else {
+                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree}`);
+                // Publish standard tree topic
+                this.mqttPublishQueue.add({ 
+                    topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///${MQTT_TOPIC_SUFFIX_TREE}`,
+                    payload: JSON.stringify(result),
+                    options: this._mqttOptions 
+                });
+                
+                // Trigger HA Discovery if enabled for this network
+                const allowedNetworks = this.settings.ha_discovery_networks.map(String);
+                if (this.settings.ha_discovery_enabled && allowedNetworks.includes(String(networkForTree))) {
+                    this._publishHaDiscoveryFromTree(networkForTree, result);
+                }
+            }
+        });
+    }
+
+    // Handles 4xx/5xx Error responses
+    _processCommandErrorResponse(responseCode, statusData) {
+        this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
     }
 
     _handleEventData(data) {
@@ -1120,28 +1178,33 @@ class CgateWebBridge {
 
             if (!line) continue; // Skip empty lines
 
-            // Handle comments (lines starting with #)
-            if (line.startsWith('#')) {
-                this.log(`${LOG_PREFIX} Ignoring comment from event port:`, line);
-                continue;
-            }
-
-            this.log(`${LOG_PREFIX} C-Gate Recv (Evt): ${line}`);
-
-            try {
-                // Event port usually sends status updates directly, e.g., "lighting on NET/APP/GROUP"
-                const event = new CBusEvent(line);
-                if (event.isValid()) {
-                    this._publishEvent(event, '(Evt)');
-                    // Emit level based on parsed event action/level
-                    this._emitLevelFromEvent(event);
-                } else {
-                    this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
-                }
-            } catch (e) {
-                this.error(`${ERROR_PREFIX} Error processing event data line:`, e, `Line: ${line}`);
-            }
+            this._processEventLine(line);
         }
+    }
+
+    // Processes a single line from the event socket
+    _processEventLine(line) {
+         // Handle comments (lines starting with #)
+         if (line.startsWith('#')) {
+             this.log(`${LOG_PREFIX} Ignoring comment from event port:`, line);
+             return;
+         }
+
+         this.log(`${LOG_PREFIX} C-Gate Recv (Evt): ${line}`);
+
+         try {
+             // Event port usually sends status updates directly, e.g., "lighting on NET/APP/GROUP"
+             const event = new CBusEvent(line);
+             if (event.isValid()) {
+                 this._publishEvent(event, '(Evt)');
+                 // Emit level based on parsed event action/level
+                 this._emitLevelFromEvent(event);
+             } else {
+                 this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
+             }
+         } catch (e) {
+             this.error(`${ERROR_PREFIX} Error processing event data line:`, e, `Line: ${line}`);
+         }
     }
 
     // Helper to emit the 'level' event based on a parsed CBusEvent
