@@ -131,7 +131,15 @@ describe('CgateWebBridge - Home Assistant Discovery', () => {
                                         Group: [
                                             { GroupAddress: '10', Label: 'Kitchen Main'},
                                             { GroupAddress: '11', Label: 'Dining' } 
-                                        ]
+                                        ],
+                                        // Add Enable Control App for Cover test
+                                        EnableControl: {
+                                            ApplicationAddress: '203',
+                                            Group: [
+                                                { GroupAddress: '15', Label: 'Blind 1' },
+                                                { GroupAddress: '16' } // No label
+                                            ]
+                                        }
                                     }
                                 }
                             },
@@ -280,7 +288,7 @@ describe('CgateWebBridge - Home Assistant Discovery', () => {
             const consoleErrorSpyLocal = jest.spyOn(console, 'error').mockImplementation(() => {});
             bridge._publishHaDiscoveryFromTree('254', badData);
             expect(mqttAddSpyHa).not.toHaveBeenCalled(); 
-            expect(consoleWarnSpyLocal).toHaveBeenCalledWith(expect.stringContaining('Skipping group in HA Discovery due to missing/invalid GroupAddress'), {});
+            expect(consoleWarnSpyLocal).toHaveBeenCalledWith(expect.stringContaining('Skipping lighting group in HA Discovery due to missing/invalid GroupAddress'), {}); 
             expect(consoleErrorSpyLocal).not.toHaveBeenCalled();
             consoleWarnSpyLocal.mockRestore();
             consoleErrorSpyLocal.mockRestore();
