@@ -3,6 +3,7 @@
 // Import necessary classes/functions
 const { CBusEvent, CBusCommand, CgateWebBridge, settings: defaultSettings } = require('../index.js');
 const xml2js = require('xml2js'); // Keep require for type info if needed, but mock it below
+const EventEmitter = require('events'); // Needed for mocking event emitters
 
 // --- Mock xml2js Module --- 
 // We need a reference to the mocked parseString for verification
@@ -11,12 +12,27 @@ jest.mock('xml2js', () => ({
     parseString: (...args) => mockParseStringFn(...args) // Delegate calls to our mock function
 }));
 
-// Mock console.warn for tests that expect warnings on invalid input
+// --- Mock mqtt Module ---
+const mockMqttClient = new EventEmitter(); // Use EventEmitter for easy event simulation
+mockMqttClient.connect = jest.fn(); 
+mockMqttClient.subscribe = jest.fn((topic, options, callback) => callback ? callback(null) : null); // Handle optional callback
+mockMqttClient.publish = jest.fn();
+mockMqttClient.end = jest.fn();
+mockMqttClient.removeAllListeners = jest.fn();
+mockMqttClient.on = jest.fn(); // <<< Assign jest.fn() for .on method
+// Add other methods if needed by code under test
+jest.mock('mqtt', () => ({
+    connect: jest.fn(() => mockMqttClient) // connect returns our mock client
+}));
+
+// Mock console methods globally for all tests unless overridden
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
+const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => { });
 
 // Restore console.warn after all tests in this file
 afterAll(() => {
     mockConsoleWarn.mockRestore();
+    mockConsoleError.mockRestore();
 });
 
 describe('CBusEvent Parsing', () => {
@@ -315,21 +331,72 @@ describe('CBusCommand Parsing', () => {
 describe('CgateWebBridge', () => {
     let bridge;
     let mockSettings;
+    // Define mock factories here to be accessible in nested describes
+    let mockMqttFactory, mockCmdSocketFactory, mockEvtSocketFactory;
+    let lastMockCmdSocket, lastMockEvtSocket; // To hold the latest created mock sockets
 
-    // Reset mocks and setup default bridge before each test in this block
     beforeEach(() => {
-        // Start with a copy of the actual defaults, ensure all needed keys are present
+        // Reset mocks connected to the bridge instance or factories
+        mockMqttClient.removeAllListeners.mockClear();
+        mockMqttClient.subscribe.mockClear();
+        mockMqttClient.publish.mockClear();
+        mockMqttClient.end.mockClear();
+        // Get the actual mqtt module mock itself to clear connect calls
+        const mqtt = require('mqtt');
+        mqtt.connect.mockClear();
+
         mockSettings = { ...defaultSettings }; 
-        // Override specific settings for testing purposes if needed
         mockSettings.logging = false;
-        mockSettings.messageinterval = 10; // Use a short interval for tests
+        mockSettings.messageinterval = 10; 
         mockSettings.reconnectinitialdelay = 10;
         mockSettings.reconnectmaxdelay = 100;
+
+        // Create mock socket factories
+        lastMockCmdSocket = null;
+        lastMockEvtSocket = null;
+        mockCmdSocketFactory = jest.fn(() => {
+            const socket = new EventEmitter(); // Keep for event simulation if needed later
+            socket.connect = jest.fn();
+            socket.write = jest.fn();
+            socket.destroy = jest.fn();
+            socket.removeAllListeners = jest.fn();
+            socket.on = jest.fn(); // <<< Assign jest.fn() here
+            socket.connecting = false; 
+            socket.destroyed = false;  
+            lastMockCmdSocket = socket; 
+            return socket;
+        });
+        mockEvtSocketFactory = jest.fn(() => {
+            const socket = new EventEmitter();
+            socket.connect = jest.fn();
+            socket.write = jest.fn(); 
+            socket.destroy = jest.fn();
+            socket.removeAllListeners = jest.fn();
+            socket.on = jest.fn(); // <<< Assign jest.fn() here too
+            socket.connecting = false;
+            socket.destroyed = false;
+            lastMockEvtSocket = socket; 
+            return socket;
+        });
         
-        // Create the bridge instance for tests in this block
-        // Factories will be mocked in specific tests needing them
-        bridge = new CgateWebBridge(mockSettings);
+        // Use the actual default mqtt factory (which uses the mocked mqtt.connect)
+        // Or create a specific mock factory if needed:
+        // mockMqttFactory = jest.fn(() => mockMqttClient);
+
+        bridge = new CgateWebBridge(
+            mockSettings,
+            null, // Use default MQTT factory relying on jest.mock('mqtt')
+            mockCmdSocketFactory, 
+            mockEvtSocketFactory
+        );
     });
+
+    // Reset console mocks if they were spied on within tests
+     afterEach(() => {
+         jest.clearAllTimers();
+         mockConsoleWarn.mockClear();
+         mockConsoleError.mockClear();
+     });
 
     // Test Constructor and Initial State
     describe('Constructor & Initial State', () => {
@@ -1523,6 +1590,214 @@ describe('CgateWebBridge', () => {
  
              expect(connectEvtSpy).toHaveBeenCalledTimes(1);
           });
+
+    });
+
+    // --- Test Connection Methods ---
+    describe('Connection Methods', () => {
+        
+        // Test _connectCommandSocket
+        describe('_connectCommandSocket', () => {
+            it('should call command socket factory', () => {
+                bridge._connectCommandSocket();
+                expect(mockCmdSocketFactory).toHaveBeenCalledTimes(1);
+            });
+
+            it('should attach listeners and call connect on new socket', () => {
+                bridge._connectCommandSocket();
+                expect(lastMockCmdSocket).toBeDefined();
+                expect(lastMockCmdSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+                expect(lastMockCmdSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                expect(lastMockCmdSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(lastMockCmdSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                expect(lastMockCmdSocket.connect).toHaveBeenCalledWith(mockSettings.cbuscommandport, mockSettings.cbusip);
+            });
+
+            it('should cleanup old socket if it exists', () => {
+                // First call creates a socket
+                bridge._connectCommandSocket();
+                const oldSocket = lastMockCmdSocket;
+                oldSocket.removeAllListeners.mockClear(); // Clear calls from initial setup
+                oldSocket.destroy.mockClear();
+                
+                // Second call should clean up the old one
+                bridge._connectCommandSocket(); 
+                expect(oldSocket.removeAllListeners).toHaveBeenCalledTimes(1);
+                expect(oldSocket.destroy).toHaveBeenCalledTimes(1);
+                expect(lastMockCmdSocket).not.toBe(oldSocket); // Ensure a new socket was created
+            });
+
+            it('should not connect if socket is already connecting', () => {
+                 // Simulate connecting state on the first socket
+                 bridge._connectCommandSocket();
+                 lastMockCmdSocket.connecting = true;
+                 const currentSocket = lastMockCmdSocket; // Keep ref
+                 mockCmdSocketFactory.mockClear(); // Clear factory calls
+ 
+                 bridge._connectCommandSocket(); // Attempt to connect again
+ 
+                 expect(mockCmdSocketFactory).not.toHaveBeenCalled(); // Should not create new socket
+                 expect(currentSocket.connect).toHaveBeenCalledTimes(1); // Connect only called once initially
+             });
+
+            it('should handle socket.connect error', () => {
+                const connectError = new Error('Connection failed');
+                // Make the factory return a socket that throws on connect
+                mockCmdSocketFactory.mockImplementationOnce(() => {
+                    const socket = new EventEmitter();
+                    socket.connect = jest.fn(() => { throw connectError; });
+                    socket.on = jest.fn(); 
+                    socket.removeAllListeners = jest.fn();
+                    socket.destroy = jest.fn();
+                    lastMockCmdSocket = socket;
+                    return socket;
+                });
+                const errorSpy = jest.spyOn(bridge, '_handleCommandError'); // Spy on error handler
+
+                bridge._connectCommandSocket();
+
+                expect(lastMockCmdSocket.connect).toHaveBeenCalled();
+                expect(errorSpy).toHaveBeenCalledWith(connectError);
+                
+                errorSpy.mockRestore();
+            });
+        });
+
+        // --- Test _connectEventSocket ---
+        describe('_connectEventSocket', () => {
+            // Tests are very similar to _connectCommandSocket
+            it('should call event socket factory', () => {
+                bridge._connectEventSocket();
+                expect(mockEvtSocketFactory).toHaveBeenCalledTimes(1);
+            });
+
+            it('should attach listeners and call connect on new socket', () => {
+                bridge._connectEventSocket();
+                expect(lastMockEvtSocket).toBeDefined();
+                expect(lastMockEvtSocket.on).toHaveBeenCalledWith('connect', expect.any(Function));
+                expect(lastMockEvtSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                expect(lastMockEvtSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(lastMockEvtSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                expect(lastMockEvtSocket.connect).toHaveBeenCalledWith(mockSettings.cbuseventport, mockSettings.cbusip);
+            });
+
+            it('should cleanup old socket if it exists', () => {
+                bridge._connectEventSocket();
+                const oldSocket = lastMockEvtSocket;
+                oldSocket.removeAllListeners.mockClear();
+                oldSocket.destroy.mockClear();
+                
+                bridge._connectEventSocket();
+                expect(oldSocket.removeAllListeners).toHaveBeenCalledTimes(1);
+                expect(oldSocket.destroy).toHaveBeenCalledTimes(1);
+                expect(lastMockEvtSocket).not.toBe(oldSocket);
+            });
+
+            it('should not connect if socket is already connecting', () => {
+                 bridge._connectEventSocket();
+                 lastMockEvtSocket.connecting = true;
+                 const currentSocket = lastMockEvtSocket;
+                 mockEvtSocketFactory.mockClear();
+ 
+                 bridge._connectEventSocket();
+ 
+                 expect(mockEvtSocketFactory).not.toHaveBeenCalled();
+                 expect(currentSocket.connect).toHaveBeenCalledTimes(1);
+             });
+
+            it('should handle socket.connect error', () => {
+                const connectError = new Error('Event Connection failed');
+                mockEvtSocketFactory.mockImplementationOnce(() => {
+                    const socket = new EventEmitter();
+                    socket.connect = jest.fn(() => { throw connectError; });
+                    socket.on = jest.fn();
+                    socket.removeAllListeners = jest.fn();
+                    socket.destroy = jest.fn();
+                    lastMockEvtSocket = socket;
+                    return socket;
+                });
+                const errorSpy = jest.spyOn(bridge, '_handleEventError');
+
+                bridge._connectEventSocket();
+
+                expect(lastMockEvtSocket.connect).toHaveBeenCalled();
+                expect(errorSpy).toHaveBeenCalledWith(connectError);
+                errorSpy.mockRestore();
+            });
+        });
+        
+        // --- Test _connectMqtt ---
+        describe('_connectMqtt', () => {
+             // Get the mock connect function from the mocked module
+             const mqtt = require('mqtt');
+             const mqttConnectMock = mqtt.connect;
+
+             beforeEach(() => {
+                 // Reset bridge state related to MQTT
+                 bridge.client = null;
+                 bridge.clientConnected = false;
+                 // Clear mock calls from previous tests if needed
+                 mqttConnectMock.mockClear();
+                 mockMqttClient.on.mockClear();
+                 mockMqttClient.removeAllListeners.mockClear();
+             });
+
+             it('should call mqtt.connect with correct URL and no auth options by default', () => {
+                 bridge._connectMqtt();
+                 const expectedUrl = `mqtt://${mockSettings.mqtt}`;
+                 expect(mqttConnectMock).toHaveBeenCalledTimes(1);
+                 expect(mqttConnectMock).toHaveBeenCalledWith(expectedUrl, {}); // Empty options object
+                 expect(bridge.client).toBe(mockMqttClient); // Ensure mock client was assigned
+             });
+
+            it('should call mqtt.connect with username/password options if provided', () => {
+                bridge.settings.mqttusername = 'testuser';
+                bridge.settings.mqttpassword = 'testpass';
+                bridge._connectMqtt();
+                const expectedUrl = `mqtt://${mockSettings.mqtt}`;
+                const expectedOptions = {
+                    username: 'testuser',
+                    password: 'testpass'
+                };
+                expect(mqttConnectMock).toHaveBeenCalledWith(expectedUrl, expectedOptions);
+            });
+
+            it('should attach listeners to the new client', () => {
+                bridge._connectMqtt();
+                expect(mockMqttClient.on).toHaveBeenCalledWith('connect', expect.any(Function));
+                expect(mockMqttClient.on).toHaveBeenCalledWith('message', expect.any(Function));
+                expect(mockMqttClient.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(mockMqttClient.on).toHaveBeenCalledWith('error', expect.any(Function));
+                expect(mockMqttClient.on).toHaveBeenCalledWith('offline', expect.any(Function));
+                expect(mockMqttClient.on).toHaveBeenCalledWith('reconnect', expect.any(Function));
+            });
+
+            /* // Removing this test as the code intentionally returns early if client exists
+             it('should cleanup old client if it exists', () => {
+                 // Assign a dummy client first
+                 const oldClient = { removeAllListeners: jest.fn(), on: jest.fn() }; // Mock only needed methods
+                 bridge.client = oldClient;
+                 
+                 bridge._connectMqtt();
+
+                 expect(oldClient.removeAllListeners).toHaveBeenCalledTimes(1);
+                 expect(bridge.client).toBe(mockMqttClient); // New mock client assigned
+             });
+            */
+
+             it('should not connect if client already exists (and skip cleanup)', () => {
+                 // Assign the global mock client simulate it existing
+                 bridge.client = mockMqttClient; 
+                 mockMqttClient.removeAllListeners.mockClear(); // Clear setup calls
+                 mqttConnectMock.mockClear(); // Clear connect calls
+
+                 bridge._connectMqtt(); // Attempt to connect again
+
+                 // Should return early
+                 expect(mockMqttClient.removeAllListeners).not.toHaveBeenCalled();
+                 expect(mqttConnectMock).not.toHaveBeenCalled();
+             });
+        });
 
     });
 
