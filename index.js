@@ -104,10 +104,17 @@ const MQTT_ERROR_AUTH = 5; // MQTT CONNACK code 5: Not authorized
 const NEWLINE = '\n';
 
 // Regex for Parsing
+// Matches: <DeviceType> <Action> <Net/App/Group> [<Level>]
+// Assumes single spaces as separators for main parts.
+// Captures: 1:DeviceType, 2:Action, 3:Address(Net/App/Group), 4:Optional Level
 const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(\d+\/\d+\/\d+)(?:\s+(\d+))?/;
+// Matches: cbus/write/<Net>/<App>/<Group>/<CommandType>
+// Allows empty Net/App/Group parts.
+// Captures: 1:Net, 2:App, 3:Group, 4:CommandType
 const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
 
-// Throttled Queue Implementation (Reverted to original setInterval logic)
+// Throttled Queue Implementation
+// Ensures messages are sent to C-Gate/MQTT broker with a minimum interval.
 class ThrottledQueue {
     constructor(processFn, intervalMs, name = 'Queue') {
         if (typeof processFn !== 'function') {
@@ -188,9 +195,11 @@ class ThrottledQueue {
     }
 }
 
+// Represents a C-Bus event received from C-Gate (usually event port, or 300- responses)
 class CBusEvent {
     constructor(data) {
         const dataStr = data.toString();
+        // Initialize properties
         this._isValid = false;
         this._deviceType = null;
         this._action = null;
@@ -199,32 +208,34 @@ class CBusEvent {
         this._device = null;
         this._levelRaw = null;
 
+        // Attempt to parse using regex
         const match = dataStr.match(EVENT_REGEX);
 
         if (match) {
             this._deviceType = match[1];
             this._action = match[2];
-            const addressParts = match[3].split('/'); // Address format is validated by regex
+            const addressParts = match[3].split('/'); // Address format (N/N/N) already validated by regex
             this._host = addressParts[0];
             this._group = addressParts[1];
             this._device = addressParts[2];
-            // Parse level only if captured by regex group 4
+            
+            // Parse optional raw level (0-255) captured by regex group 4
             this._levelRaw = match[4] ? parseInt(match[4], 10) : null;
-            // Additional check: ensure levelRaw is a valid number if present
+            // Ensure levelRaw is a valid number if present, otherwise nullify
             if (match[4] && isNaN(this._levelRaw)) {
-                this._levelRaw = null; // Treat invalid number as null
+                this._levelRaw = null; 
             }
 
-            // Basic validation: Ensure essential parts were captured
+            // Mark as valid if essential parts were captured
             if (this._deviceType && this._action && this._host && this._group && this._device) {
                 this._isValid = true;
             }
         }
 
-        // If parsing failed or essential parts missing, log warning
+        // If parsing failed or essential parts missing, log warning and ensure properties are null
         if (!this._isValid) {
             console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
-            // Ensure all properties are null if invalid (redundant but safe)
+            // Reset all properties if invalid
             this._deviceType = null;
             this._action = null;
             this._host = null;
@@ -238,32 +249,38 @@ class CBusEvent {
         return this._isValid;
     }
 
-    DeviceType() { return this._deviceType; }
-    Action() { return this._action; }
-    Host() { return this._host; }
-    Group() { return this._group; }
-    Device() { return this._device; }
+    DeviceType() { return this._deviceType; } // e.g., 'lighting', 'trigger'
+    Action() { return this._action; }       // e.g., 'on', 'off', 'ramp'
+    Host() { return this._host; }           // C-Bus Network number (e.g., '254')
+    Group() { return this._group; }          // C-Bus Application number (e.g., '56')
+    Device() { return this._device; }        // C-Bus Group Address (e.g., '10')
 
     // Calculate level (0-100%)
+    // Translates 'on' to 100, 'off' to 0, or scales raw level (0-255) to percentage.
     Level() {
+        // C-Gate events use lowercase actions (e.g., 'on', 'off')
         if (this._action === CGATE_CMD_ON.toLowerCase()) return "100";
         if (this._action === CGATE_CMD_OFF.toLowerCase()) return "0";
+        // If raw level was parsed (e.g., from ramp event), calculate percentage
         if (this._levelRaw !== null) {
             return Math.round(this._levelRaw * 100 / CGATE_LEVEL_MAX).toString();
         }
-        return "0"; // Default to 0 if no level info and not explicitly 'on'
+        // Default to 0 if action is not on/off and no raw level is available
+        return "0"; 
     }
 }
 
+// Represents a command received via MQTT to be sent to C-Gate.
 class CBusCommand {
     constructor(topic, message) {
+        // Initialize properties
         this._isValid = false;
         this._host = null;
         this._group = null;
         this._device = null;
         this._commandType = null;
-        this._action = null;
-        this._message = '';
+        this._action = null; // Often same as commandType
+        this._message = ''; // Original MQTT payload
 
         if (!topic) {
             console.warn(`${WARN_PREFIX} Malformed C-Bus Command: Topic is null or empty.`);
@@ -271,21 +288,24 @@ class CBusCommand {
         }
         
         const topicStr = topic.toString();
-        const messageStr = message ? message.toString() : '';
+        const messageStr = message ? message.toString() : ''; // Ensure message is a string
+        
+        // Attempt to parse topic using regex
         const match = topicStr.match(COMMAND_TOPIC_REGEX);
 
         if (match) {
-            this._host = match[1];
-            this._group = match[2];
-            this._device = match[3];
+            this._host = match[1]; // Can be empty
+            this._group = match[2]; // Can be empty
+            this._device = match[3]; // Can be empty
             this._commandType = match[4];
-            this._action = match[4]; // Default action to command type
+            this._action = match[4]; // Default action to command type, can be refined
             this._message = messageStr;
             this._isValid = true;
-            // Potential future validation: Check if host/group/device look numeric if expected?
+            // Future validation could check if host/group/device are numeric if expected for command type
         } else {
+            // Log warning if topic doesn't match expected format
             console.warn(`${WARN_PREFIX} Malformed C-Bus Command topic:`, topicStr);
-            // Properties already initialized to defaults
+            // Properties already initialized to null/defaults
         }
     }
 
@@ -295,12 +315,13 @@ class CBusCommand {
 
     Host() { return this._host; }
     Group() { return this._group; }
-    Device() { return this._device; } // Note: Can be empty for 'getall' etc.
-    CommandType() { return this._commandType; }
-    Action() { return this._action; } // May need refinement based on CommandType
-    Message() { return this._message; }
+    Device() { return this._device; }
+    CommandType() { return this._commandType; } // e.g., 'switch', 'ramp', 'getall'
+    Action() { return this._action; } // Currently same as CommandType, may differ later
+    Message() { return this._message; } // Raw payload from MQTT
 
-    // Level calculation based on Action and Message (0-100%)
+    // Calculates the command level (0-100%) based on MQTT payload.
+    // Used primarily for determining state for non-C-Gate purposes, C-Gate needs RawLevel (0-255).
     Level() {
         if (!this._isValid) return null;
         // Handle explicit ON/OFF in the message (for switch or ramp)
@@ -324,7 +345,7 @@ class CBusCommand {
         return null; // Cannot determine level
     }
 
-    // Raw level calculation (0-255) needed for RAMP command
+    // Calculates the raw C-Gate level (0-255) needed for RAMP commands.
     RawLevel() {
         if (!this._isValid) return null;
         if (this._message.toUpperCase() === MQTT_STATE_ON) return CGATE_LEVEL_MAX;
@@ -341,7 +362,7 @@ class CBusCommand {
         return null; // Cannot determine raw level
     }
 
-    // Get ramp time if specified (e.g., "50,2s")
+    // Extracts ramp time (e.g., "2s") from MQTT payload if present.
     RampTime() {
         if (!this._isValid || this._commandType !== MQTT_CMD_TYPE_RAMP) return null;
         const messageParts = this._message.split(',');
@@ -352,71 +373,66 @@ class CBusCommand {
     }
 }
 
-// Main Bridge Class
+// Main Bridge Class: Handles connections, data flow between MQTT and C-Gate.
 class CgateWebBridge {
     constructor(userSettings = {}, mqttClientFactory, commandSocketFactory, eventSocketFactory) {
-        // Merge settings using the module-level defaultSettings
+        // Merge user settings with defaults
         this.settings = { ...defaultSettings, ...userSettings }; 
-        // Ensure ha_discovery_networks is always an array after merge
+        
+        // Ensure specific settings have correct types after merge
         if (!Array.isArray(this.settings.ha_discovery_networks)) {
             this.warn('[WARN] ha_discovery_networks in settings is not an array, defaulting to [].');
             this.settings.ha_discovery_networks = [];
         }
-        // Ensure cover app ID is treated as string for consistency
+        // Ensure App IDs are strings for consistent comparison
         this.settings.ha_discovery_cover_app_id = String(this.settings.ha_discovery_cover_app_id);
-        // Ensure switch app ID is string if set, otherwise keep null
         this.settings.ha_discovery_switch_app_id = this.settings.ha_discovery_switch_app_id !== null 
             ? String(this.settings.ha_discovery_switch_app_id) 
             : null;
-        // Ensure relay app ID is string if set, otherwise keep null
         this.settings.ha_discovery_relay_app_id = this.settings.ha_discovery_relay_app_id !== null
             ? String(this.settings.ha_discovery_relay_app_id)
             : null;
 
-        // Use provided factories or default ones
+        // Assign connection factories (use defaults if not provided - allows testing mocks)
         this.mqttClientFactory = mqttClientFactory || (() => {
-            // Construct URL and options for mqtt.connect()
             const brokerUrl = 'mqtt://' + (this.settings.mqtt || 'localhost:1883');
             const mqttConnectOptions = {};
             if (this.settings.mqttusername && this.settings.mqttpassword) {
                 mqttConnectOptions.username = this.settings.mqttusername;
                 mqttConnectOptions.password = this.settings.mqttpassword;
             }
-            // Add other potential options if needed, e.g.:
-            // mqttConnectOptions.clientId = 'cgateweb_' + Math.random().toString(16).substr(2, 8);
-            // mqttConnectOptions.clean = true;
             this.log(`${LOG_PREFIX} Creating MQTT client for: ${brokerUrl}`);
-            return mqtt.connect(brokerUrl, mqttConnectOptions); // Use mqtt.connect()
+            return mqtt.connect(brokerUrl, mqttConnectOptions);
         });
         this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
         this.eventSocketFactory = eventSocketFactory || (() => new net.Socket());
 
-        // Prepare MQTT options based on settings
+        // Configure MQTT publish options (e.g., retain flag)
         this._mqttOptions = {};
         if (this.settings.retainreads === true) {
             this._mqttOptions.retain = true;
         }
 
-        // Initialize state
-        this.client = null;
-        this.commandSocket = null;
-        this.eventSocket = null;
-        this.clientConnected = false;
-        this.commandConnected = false;
-        this.eventConnected = false;
-        this.commandBuffer = "";
-        this.eventBuffer = ""; // Separate buffer for event socket
-        this.treeBuffer = "";
-        this.treeNetwork = null;
-        this.internalEventEmitter = new events.EventEmitter();
-        this.internalEventEmitter.setMaxListeners(20); // Allow more listeners for ramp commands
-        this.periodicGetAllInterval = null;
-        this.commandReconnectTimeout = null;
-        this.eventReconnectTimeout = null;
-        this.commandReconnectAttempts = 0;
-        this.eventReconnectAttempts = 0;
+        // Initialize state variables
+        this.client = null;                 // MQTT client instance
+        this.commandSocket = null;          // C-Gate command socket instance
+        this.eventSocket = null;            // C-Gate event socket instance
+        this.clientConnected = false;       // MQTT connection status flag
+        this.commandConnected = false;      // C-Gate command port status flag
+        this.eventConnected = false;        // C-Gate event port status flag
+        this.commandBuffer = "";           // Buffer for partial data from command socket
+        this.eventBuffer = "";             // Buffer for partial data from event socket
+        this.treeBuffer = "";             // Buffer for accumulating TREEXML data
+        this.treeNetwork = null;            // Network ID context for current TREEXML
+        this.internalEventEmitter = new events.EventEmitter(); // Used for ramp increase/decrease
+        this.internalEventEmitter.setMaxListeners(20); // Increase listener limit
+        this.periodicGetAllInterval = null; // Timer ID for periodic GETALL
+        this.commandReconnectTimeout = null; // Timer ID for command socket reconnect
+        this.eventReconnectTimeout = null;   // Timer ID for event socket reconnect
+        this.commandReconnectAttempts = 0;  // Counter for command socket reconnect attempts
+        this.eventReconnectAttempts = 0;    // Counter for event socket reconnect attempts
 
-        // Initialize Queues
+        // Initialize Throttled Queues
         this.mqttPublishQueue = new ThrottledQueue(
             this._processMqttPublish.bind(this),
             this.settings.messageinterval,
@@ -448,44 +464,48 @@ class CgateWebBridge {
 
     // --- Connection Management ---
 
+    // Starts the bridge: initiates connections to MQTT and C-Gate.
     start() {
         this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
-        // Add the attempting connection message
+        // Log connection targets
         this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport})...`);
+        // Initiate connections
         this._connectMqtt();
         this._connectCommandSocket();
         this._connectEventSocket();
-        // Discovery is triggered from _checkAllConnected after connections are up
+        // Note: Initial actions like GETALL or HA Discovery are triggered 
+        // from _checkAllConnected after all connections succeed.
     }
 
+    // Stops the bridge: disconnects clients, clears timers and queues.
     stop() {
         this.log(`${LOG_PREFIX} Stopping CgateWebBridge...`);
 
-        // Clear reconnect timeouts
+        // Stop any pending reconnect attempts
         if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
         if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
         this.commandReconnectTimeout = null;
         this.eventReconnectTimeout = null;
 
-        // Clear periodic get all interval
+        // Stop periodic GETALL timer
         if (this.periodicGetAllInterval) clearInterval(this.periodicGetAllInterval);
         this.periodicGetAllInterval = null;
 
-        // Clear queues
+        // Clear processing queues
         this.mqttPublishQueue.clear();
         this.cgateCommandQueue.clear();
 
-        // Disconnect MQTT client
+        // Disconnect MQTT client cleanly
         if (this.client) {
             try {
-                this.client.end(true); // Force close, don't wait for queue
+                this.client.end(true); // Force close, ignore offline queue
             } catch (e) {
                 this.error("Error closing MQTT client:", e);
             }
             this.client = null; // Release reference
         }
 
-        // Disconnect C-Gate sockets
+        // Destroy C-Gate sockets immediately
         if (this.commandSocket) {
             try {
                 this.commandSocket.destroy();
@@ -503,10 +523,10 @@ class CgateWebBridge {
             this.eventSocket = null; // Release reference
         }
 
-        // Remove all listeners from internal emitter to prevent leaks
+        // Prevent memory leaks from internal emitter
         this.internalEventEmitter.removeAllListeners();
 
-        // Reset flags (will also be reset by close handlers, but good practice)
+        // Reset connection status flags
         this.clientConnected = false;
         this.commandConnected = false;
         this.eventConnected = false;
@@ -514,6 +534,7 @@ class CgateWebBridge {
         this.log(`${LOG_PREFIX} CgateWebBridge stopped.`);
     }
 
+    // Establishes connection to the MQTT broker.
     _connectMqtt() {
         // Prevent multiple simultaneous connection attempts
         if (this.client) {
@@ -521,11 +542,14 @@ class CgateWebBridge {
             return;
         }
         this.log(`${LOG_PREFIX} Connecting to MQTT: ${this.settings.mqtt}`);
-        this.client = this.mqttClientFactory(); // Use factory
+        // Create client using the factory
+        this.client = this.mqttClientFactory(); 
 
-        // Remove previous listeners if any (important for reconnect logic)
+        // Ensure previous listeners are removed if this is a reconnect attempt
+        // where the client object might have been recreated.
         this.client.removeAllListeners();
 
+        // Attach event listeners for the MQTT client lifecycle
         this.client.on('connect', this._handleMqttConnect.bind(this));
         this.client.on('message', this._handleMqttMessage.bind(this));
         this.client.on('close', this._handleMqttClose.bind(this));
@@ -534,6 +558,7 @@ class CgateWebBridge {
         this.client.on('reconnect', () => { this.log(`${LOG_PREFIX} MQTT Client Reconnecting...`); });
     }
 
+    // Establishes connection to the C-Gate command port.
     _connectCommandSocket() {
         // Prevent multiple simultaneous connection attempts
         if (this.commandSocket && this.commandSocket.connecting) {
@@ -541,7 +566,7 @@ class CgateWebBridge {
             return;
         }
 
-        // Clean up old socket if exists
+        // Clean up existing socket if reconnecting
         if (this.commandSocket) {
             this.commandSocket.removeAllListeners();
             this.commandSocket.destroy();
@@ -549,13 +574,16 @@ class CgateWebBridge {
         }
 
         this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${this.settings.cbusip}:${this.settings.cbuscommandport} (Attempt ${this.commandReconnectAttempts + 1})`);
-        this.commandSocket = this.commandSocketFactory(); // Use factory
+        // Create socket using the factory
+        this.commandSocket = this.commandSocketFactory(); 
 
+        // Attach event listeners for the command socket
         this.commandSocket.on('connect', this._handleCommandConnect.bind(this));
         this.commandSocket.on('data', this._handleCommandData.bind(this));
         this.commandSocket.on('close', this._handleCommandClose.bind(this));
         this.commandSocket.on('error', this._handleCommandError.bind(this));
 
+        // Initiate connection
         try {
             this.commandSocket.connect(this.settings.cbuscommandport, this.settings.cbusip);
         } catch (e) {
@@ -564,6 +592,7 @@ class CgateWebBridge {
         }
     }
 
+    // Establishes connection to the C-Gate event port.
     _connectEventSocket() {
         // Prevent multiple simultaneous connection attempts
         if (this.eventSocket && this.eventSocket.connecting) {
@@ -571,7 +600,7 @@ class CgateWebBridge {
             return;
         }
 
-        // Clean up old socket if exists
+        // Clean up existing socket if reconnecting
         if (this.eventSocket) {
             this.eventSocket.removeAllListeners();
             this.eventSocket.destroy();
@@ -579,13 +608,16 @@ class CgateWebBridge {
         }
 
         this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${this.settings.cbusip}:${this.settings.cbuseventport} (Attempt ${this.eventReconnectAttempts + 1})`);
-        this.eventSocket = this.eventSocketFactory(); // Use factory
+        // Create socket using the factory
+        this.eventSocket = this.eventSocketFactory(); 
 
+        // Attach event listeners for the event socket
         this.eventSocket.on('connect', this._handleEventConnect.bind(this));
         this.eventSocket.on('data', this._handleEventData.bind(this));
         this.eventSocket.on('close', this._handleEventClose.bind(this));
         this.eventSocket.on('error', this._handleEventError.bind(this));
 
+        // Initiate connection
         try {
             this.eventSocket.connect(this.settings.cbuseventport, this.settings.cbusip);
         } catch (e) {
@@ -594,6 +626,8 @@ class CgateWebBridge {
         }
     }
 
+    // Schedules a reconnect attempt for a C-Gate socket ('command' or 'event')
+    // Uses exponential backoff strategy.
     _scheduleReconnect(socketType) {
         let delay;
         let attempts;
@@ -601,7 +635,9 @@ class CgateWebBridge {
         let timeoutProp;
         let currentTimeout;
 
+        // Determine parameters based on socket type
         if (socketType === 'command') {
+            // Don\'t schedule if already connected or connecting
             if (this.commandConnected || (this.commandSocket && this.commandSocket.connecting)) return;
             this.log(`[DEBUG] Incrementing command attempts from ${this.commandReconnectAttempts}`);
             this.commandReconnectAttempts++;
@@ -610,6 +646,7 @@ class CgateWebBridge {
             timeoutProp = 'commandReconnectTimeout';
             currentTimeout = this.commandReconnectTimeout;
         } else { // event
+            // Don\'t schedule if already connected or connecting
             if (this.eventConnected || (this.eventSocket && this.eventSocket.connecting)) return;
             this.log(`[DEBUG] Incrementing event attempts from ${this.eventReconnectAttempts}`);
             this.eventReconnectAttempts++;
@@ -619,29 +656,31 @@ class CgateWebBridge {
             currentTimeout = this.eventReconnectTimeout;
         }
 
-        // Exponential backoff with cap
+        // Calculate delay using exponential backoff, capped at max delay
         delay = Math.min(this.settings.reconnectinitialdelay * Math.pow(2, attempts - 1), this.settings.reconnectmaxdelay);
 
-        // Add specific logging for debugging test failures
         this.log(`[DEBUG] Scheduling ${socketType} reconnect: attempt=${attempts}, delay=${delay}ms`);
-
         this.log(`${LOG_PREFIX} ${socketType.toUpperCase()} PORT RECONNECTING in ${Math.round(delay/1000)}s (attempt ${attempts})...`);
 
+         // Clear any previous pending reconnect timeout for this socket type
          if (currentTimeout) {
              clearTimeout(currentTimeout);
          }
 
+        // Schedule the reconnect attempt
         this[timeoutProp] = setTimeout(connectFn, delay);
     }
 
     // --- Event Handlers ---
 
+    // Handles successful MQTT connection.
     _handleMqttConnect() {
         this.clientConnected = true;
         this.log(`${LOG_PREFIX} CONNECTED TO MQTT: ${this.settings.mqtt}`);
-        // Publish Online status (LWT is generally preferred for this)
-        this.mqttPublishQueue.add({ topic: MQTT_TOPIC_STATUS, payload: MQTT_PAYLOAD_STATUS_ONLINE, options: { retain: false } }); // Don't retain simple online message
+        // Publish online status (non-retained)
+        this.mqttPublishQueue.add({ topic: MQTT_TOPIC_STATUS, payload: MQTT_PAYLOAD_STATUS_ONLINE, options: { retain: false } });
 
+        // Subscribe to the command topic branch
         this.client.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
             if (err) {
                 this.error(`${ERROR_PREFIX} MQTT Subscription error:`, err);
@@ -649,49 +688,53 @@ class CgateWebBridge {
                 this.log(`${LOG_PREFIX} Subscribed to MQTT topic: ${MQTT_TOPIC_PREFIX_WRITE}/#`);
             }
         });
-        this._checkAllConnected();
+        this._checkAllConnected(); // Check if all connections are now established
     }
 
+    // Handles MQTT client disconnection.
     _handleMqttClose() {
         this.clientConnected = false;
         this.warn(`${WARN_PREFIX} MQTT Client Closed. Reconnection handled by library.`);
-        // Clear the client reference to allow reconnection attempt
+        // Nullify client to allow library/logic to attempt reconnection
         if (this.client) {
-            this.client.removeAllListeners(); // Clean up listeners
+            this.client.removeAllListeners(); 
             this.client = null;
         }
-        // Attempt to reconnect MQTT explicitly if the library doesn't handle it well
-        // setTimeout(() => this._connectMqtt(), RECONNECT_INITIAL_DELAY_MS);
+        // Note: The mqtt.js library typically handles automatic reconnection.
     }
 
+    // Handles MQTT client errors.
     _handleMqttError(err) {
-        if (err.code === MQTT_ERROR_AUTH) { // MQTT CONNACK code 5: Not authorized
+        // Handle specific authentication error
+        if (err.code === MQTT_ERROR_AUTH) { 
             this.error(`${ERROR_PREFIX} MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
             this.error(`${ERROR_PREFIX} Exiting due to fatal MQTT authentication error.`);
-            // Clear client reference *before* exiting? (Optional, maybe cleaner)
             if (this.client) {
                 this.client.removeAllListeners();
                 this.client = null;
             }
-            process.exit(1); // Exit the process
+            process.exit(1); // Exit if auth fails
         } else {
             // Handle generic errors
             this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
-            this.clientConnected = false; // Set flag ONLY for non-fatal errors
+            this.clientConnected = false; // Assume disconnected on error
             if (this.client) {
                 this.client.removeAllListeners();
                 this.client = null;
             }
-            // Potentially add non-fatal reconnect logic here if needed
+            // Potentially trigger explicit reconnect if library doesn\'t handle it
         }
     }
 
+    // Handles successful connection to C-Gate command port.
     _handleCommandConnect() {
         this.commandConnected = true;
-        this.commandReconnectAttempts = 0;
+        this.commandReconnectAttempts = 0; // Reset attempts on successful connect
+        // Clear any pending reconnect timeout
         if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
         this.commandReconnectTimeout = null;
         this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${this.settings.cbuscommandport}`);
+        // Enable events from the C-Gate command interface
         try {
             if (this.commandSocket && !this.commandSocket.destroyed) {
                 const commandString = CGATE_CMD_EVENT_ON + NEWLINE;
@@ -702,73 +745,69 @@ class CgateWebBridge {
             }
         } catch (e) {
             this.error(`${ERROR_PREFIX} Error sending initial EVENT ON:`, e);
-            // Handle error appropriately, maybe close/reconnect?
         }
-        this._checkAllConnected();
+        this._checkAllConnected(); // Check if all connections are now established
     }
 
+    // Handles disconnection from C-Gate command port.
     _handleCommandClose(hadError) {
         this.commandConnected = false;
-        // Clear the socket reference
         if (this.commandSocket) {
             this.commandSocket.removeAllListeners();
-            // Don't destroy here, already closed
-            this.commandSocket = null;
+            this.commandSocket = null; // Nullify on close
         }
         this.warn(`${WARN_PREFIX} COMMAND PORT DISCONNECTED${hadError ? ' with error' : ''}`);
-        this._scheduleReconnect('command');
+        this._scheduleReconnect('command'); // Attempt to reconnect
     }
 
+    // Handles errors on the C-Gate command socket.
     _handleCommandError(err) {
         this.error(`${ERROR_PREFIX} C-Gate Command Socket Error:`, err);
-        // The 'close' event will usually follow an error, triggering reconnect.
-        // If it doesn't, we might need explicit handling here.
-        // Ensure flags are set correctly
-        this.commandConnected = false;
-        // Clear the socket reference
+        this.commandConnected = false; // Assume disconnected on error
+        // Ensure socket is destroyed and nulled on error
         if (this.commandSocket && !this.commandSocket.destroyed) {
-            this.commandSocket.destroy(); // Explicitly destroy if not already done
+            this.commandSocket.destroy(); 
         }
         this.commandSocket = null;
-        // Manually trigger reconnect scheduling if close doesn't follow quickly
-        // setTimeout(() => this._scheduleReconnect('command'), 100); 
+        // The \'close\' event should ideally follow, triggering _scheduleReconnect.
+        // If not, manual scheduling might be needed here, but can lead to duplicates.
     }
 
+    // Handles successful connection to C-Gate event port.
     _handleEventConnect() {
         this.eventConnected = true;
-        this.eventReconnectAttempts = 0;
+        this.eventReconnectAttempts = 0; // Reset attempts
         if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
         this.eventReconnectTimeout = null;
         this.log(`${LOG_PREFIX} CONNECTED TO C-GATE EVENT PORT: ${this.settings.cbusip}:${this.settings.cbuseventport}`);
-        this._checkAllConnected();
+        this._checkAllConnected(); // Check if all connections are now established
     }
 
+    // Handles disconnection from C-Gate event port.
     _handleEventClose(hadError) {
         this.eventConnected = false;
-        // Clear the socket reference
         if (this.eventSocket) {
             this.eventSocket.removeAllListeners();
-            // Don't destroy here, already closed
-            this.eventSocket = null;
+            this.eventSocket = null; // Nullify on close
         }
         this.warn(`${WARN_PREFIX} EVENT PORT DISCONNECTED${hadError ? ' with error' : ''}`);
-        this._scheduleReconnect('event');
+        this._scheduleReconnect('event'); // Attempt to reconnect
     }
 
+    // Handles errors on the C-Gate event socket.
     _handleEventError(err) {
         this.error(`${ERROR_PREFIX} C-Gate Event Socket Error:`, err);
-        // The 'close' event will usually follow an error, triggering reconnect.
-        // Ensure flags are set correctly
-        this.eventConnected = false;
-        // Clear the socket reference
+        this.eventConnected = false; // Assume disconnected
+        // Ensure socket is destroyed and nulled
         if (this.eventSocket && !this.eventSocket.destroyed) {
-            this.eventSocket.destroy(); // Explicitly destroy if not already done
+            this.eventSocket.destroy(); 
         }
         this.eventSocket = null;
-        // Manually trigger reconnect scheduling if close doesn't follow quickly
-        // setTimeout(() => this._scheduleReconnect('event'), 100);
+        // \'close\' event should follow and trigger reconnect.
     }
 
+    // Checks if all connections (MQTT, C-Gate Command, C-Gate Event) are active.
+    // If so, triggers initial state fetches and HA discovery.
     _checkAllConnected() {
         if (this.clientConnected && this.commandConnected && this.eventConnected) {
             this.log(`${LOG_PREFIX} ALL CONNECTED`);
@@ -799,14 +838,16 @@ class CgateWebBridge {
         }
     }
     
-    // --- New method to trigger discovery ---
+    // Triggers the process of fetching network structure (TREEXML) for HA Discovery.
+    // Determines which networks to query based on settings.
     _triggerHaDiscovery() {
         this.log(`${LOG_PREFIX} HA Discovery enabled, querying network trees...`);
         let networksToDiscover = this.settings.ha_discovery_networks;
         
-        // If no networks explicitly configured, try using getallnetapp network if set
+        // If specific networks aren\'t configured, attempt to use the network 
+        // from the getallnetapp setting (if specified).
         if (networksToDiscover.length === 0 && this.settings.getallnetapp) {
-            const networkIdMatch = String(this.settings.getallnetapp).match(/^(\d+)/); // Match potential network ID if getallnetapp is like '254' or '254/56'
+            const networkIdMatch = String(this.settings.getallnetapp).match(/^(\d+)/); // Match network ID
             if (networkIdMatch) {
                 this.log(`${LOG_PREFIX} No HA discovery networks configured, using network from getallnetapp: ${networkIdMatch[1]}`);
                 networksToDiscover = [networkIdMatch[1]];
@@ -819,11 +860,11 @@ class CgateWebBridge {
              return;
         }
         
+        // Queue TREEXML command for each network to be discovered.
         networksToDiscover.forEach(networkId => {
             if (networkId) {
                 this.log(`${LOG_PREFIX} Queuing TREEXML for network ${networkId} for HA Discovery.`);
-                // Use a distinct internal event or flag later if needed to distinguish 
-                // HA discovery TREEXML from manual requests.
+                // The response (344) will trigger _publishHaDiscoveryFromTree via _handleCommandData
                 this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
             } else {
                 this.warn(`${WARN_PREFIX} Invalid network ID found in ha_discovery_networks: ${networkId}`);
@@ -833,6 +874,7 @@ class CgateWebBridge {
 
     // --- Queue Processors ---
 
+    // Processes the MQTT publish queue.
     _processMqttPublish(msg) {
         if (this.clientConnected && this.client) {
             try {
@@ -847,6 +889,7 @@ class CgateWebBridge {
         }
     }
 
+    // Processes the C-Gate command queue.
     _processCgateCommand(commandString) {
         if (this.commandConnected && this.commandSocket) {
             try {
@@ -863,6 +906,8 @@ class CgateWebBridge {
 
     // --- Data Handling ---
 
+    // Main handler for incoming MQTT messages on subscribed topics.
+    // Parses the command and dispatches to specific handlers.
     _handleMqttMessage(topic, messageBuffer) {
         const message = messageBuffer.toString();
         this.log(`${LOG_PREFIX} MQTT received on ${topic}: ${message}`);
@@ -870,22 +915,23 @@ class CgateWebBridge {
         // --- Handle manual discovery trigger ---
         if (topic === MQTT_TOPIC_MANUAL_TRIGGER) {
             this._handleManualDiscoveryTrigger();
-            return; // Don't process as CBusCommand
+            return; // Don\'t process as CBusCommand
         }
 
+        // Parse the topic/message into a command object
         const command = new CBusCommand(topic, message);
         if (!command.isValid()) {
             this.warn(`${WARN_PREFIX} Ignoring invalid MQTT command on topic ${topic}`);
             return;
         }
 
-        // Construct C-Bus path
+        // Construct C-Bus path (e.g., //PROJECT/NET/APP/GROUP)
         const cbusPath = this._buildCbusPath(command, topic);
         if (!cbusPath) {
-            return; // Error logged in _buildCbusPath
+            return; // Error logged in _buildCbusPath if path invalid for command type
         }
 
-        // Dispatch to specific handlers
+        // Dispatch to specific handlers based on command type
         try {
             switch (command.CommandType()) {
                 case MQTT_CMD_TYPE_GETTREE:
@@ -910,6 +956,7 @@ class CgateWebBridge {
 
     // --- MQTT Message Handlers (Refactored) ---
 
+    // Handles the manual HA discovery trigger message.
     _handleManualDiscoveryTrigger() {
         if (this.settings.ha_discovery_enabled) {
             this.log(`${LOG_PREFIX} Manual HA Discovery triggered via MQTT.`);
@@ -919,6 +966,8 @@ class CgateWebBridge {
         }
     }
 
+    // Constructs the C-Bus destination path (e.g., //PROJECT/NET/APP/GROUP).
+    // Returns null if the path is invalid for the given command type.
     _buildCbusPath(command, topic) {
         let cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/`;
         if (command.Device()) {
@@ -939,15 +988,21 @@ class CgateWebBridge {
         return cbusPath;
     }
 
+    // Handles MQTT 'gettree' command.
+    // Queues a TREEXML command to C-Gate.
     _handleMqttGetTree(command) {
         this.treeNetwork = command.Host(); // Store network for context when response arrives
         this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${command.Host()}${NEWLINE}`);
     }
 
+    // Handles MQTT 'getall' command.
+    // Queues a GET command for all devices under the specified path.
     _handleMqttGetAll(cbusPath) {
         this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
     }
 
+    // Handles MQTT 'switch' command (ON/OFF).
+    // Queues an ON or OFF command to C-Gate.
     _handleMqttSwitch(command, cbusPath, message) {
         if (message.toUpperCase() === MQTT_STATE_ON) {
             this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
@@ -958,6 +1013,8 @@ class CgateWebBridge {
         }
     }
 
+    // Handles MQTT 'ramp' command (ON/OFF/INCREASE/DECREASE/level[,time]).
+    // Queues the appropriate ON/OFF/RAMP or GET+RAMP command to C-Gate.
     _handleMqttRamp(command, cbusPath, message, topic) {
         // Ramp commands require a device ID
         if (!command.Device()) {
@@ -972,10 +1029,12 @@ class CgateWebBridge {
 
         switch (rampAction) {
             case MQTT_COMMAND_INCREASE:
+                 // Queue helper to get current level then send RAMP
                 this._queueRampIncreaseDecrease(cbusPath, levelAddress, RAMP_STEP, CGATE_LEVEL_MAX, "INCREASE");
                 break;
 
             case MQTT_COMMAND_DECREASE:
+                 // Queue helper to get current level then send RAMP
                 this._queueRampIncreaseDecrease(cbusPath, levelAddress, -RAMP_STEP, CGATE_LEVEL_MIN, "DECREASE");
                 break;
 
@@ -1001,7 +1060,9 @@ class CgateWebBridge {
         }
     }
 
-    // Helper for INCREASE/DECREASE ramp commands
+    // Helper for queuing INCREASE/DECREASE ramp commands.
+    // Sets up a one-time listener for the current level (triggered by a GET command)
+    // before sending the calculated RAMP command.
     _queueRampIncreaseDecrease(cbusPath, levelAddress, step, limit, actionName) {
         // Use event emitter to get current level first
         this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
@@ -1023,6 +1084,8 @@ class CgateWebBridge {
 
     // --- Command/Event Socket Data Handlers (Refactored Below) ---
 
+    // Main handler for data received on the C-Gate command socket.
+    // Processes the data buffer line by line.
     _handleCommandData(data) {
         this.commandBuffer += data.toString();
         let newlineIndex;
@@ -1036,9 +1099,11 @@ class CgateWebBridge {
             this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
 
             try {
+                // Parse the line into response code and status data
                 const parsedResponse = this._parseCommandResponseLine(line);
-                if (!parsedResponse) continue; // Skip if line couldn't be parsed
+                if (!parsedResponse) continue; // Skip if line couldn\'t be parsed
 
+                // Process the response based on the code
                 this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
 
             } catch (e) {
@@ -1047,7 +1112,9 @@ class CgateWebBridge {
         }
     }
 
-    // Parses a line from the command socket response
+    // Parses a single line from the command socket response.
+    // Handles hyphenated (e.g., 300-) and space-separated (e.g., 300 level=) formats.
+    // Returns { responseCode, statusData } or null if invalid.
     _parseCommandResponseLine(line) {
         let responseCode = '';
         let statusData = '';
@@ -1076,7 +1143,7 @@ class CgateWebBridge {
         return { responseCode, statusData };
     }
 
-    // Dispatches command responses based on code
+    // Dispatches command responses to specific handlers based on response code.
     _processCommandResponse(responseCode, statusData) {
         switch (responseCode) {
             case CGATE_RESPONSE_OBJECT_STATUS: // 300
@@ -1101,7 +1168,8 @@ class CgateWebBridge {
         }
     }
 
-    // Handles 300 Object Status responses
+    // Handles 300 Object Status responses from command socket.
+    // Can be a level report (e.g., '... level=128') or other event forwarded by C-Gate.
     _processCommandObjectStatus(statusData) {
         const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
 
@@ -1135,30 +1203,35 @@ class CgateWebBridge {
                 this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
             }
         } else {
-            // Handle 300 responses that are not level reports (might be other events)
+            // If not a level report, try parsing as a standard C-Bus event
+            // (e.g., if C-Gate forwards an event like 'lighting on ...' via the command socket)
             const event = new CBusEvent(statusData);
             if (event.isValid()) {
-                this._publishEvent(event, '(Cmd/Event)');
-                this._emitLevelFromEvent(event);
+                this._publishEvent(event, '(Cmd/Event)'); // Publish to MQTT
+                this._emitLevelFromEvent(event); // Emit internally for ramp logic
             } else {
+                // Log if it couldn\'t be parsed as a level report or standard event
                 this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
             }
         }
     }
 
-    // Handles 343 Tree Start responses
+    // Handles 343 Tree Start responses from command socket.
+    // Initializes the tree buffer and stores the network context.
     _processCommandTreeStart(statusData) {
         this.treeBuffer = '';
         this.treeNetwork = statusData || this.treeNetwork; // Use statusData if provided, else keep existing
         this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
     }
 
-    // Handles 347 Tree Data responses
+    // Handles 347 Tree Data responses, appending to the tree buffer.
     _processCommandTreeData(statusData) {
         this.treeBuffer += statusData + NEWLINE;
     }
 
-    // Handles 344 Tree End responses
+    // Handles 344 Tree End responses.
+    // Parses the completed tree buffer XML using xml2js.
+    // Publishes the parsed tree to MQTT and triggers HA discovery.
     _processCommandTreeEnd(statusData) {
         // Note: statusData for 344 usually contains the network ID, but we use the stored this.treeNetwork
         this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
@@ -1195,11 +1268,13 @@ class CgateWebBridge {
         });
     }
 
-    // Handles 4xx/5xx Error responses
+    // Handles 4xx/5xx Error responses from command socket.
     _processCommandErrorResponse(responseCode, statusData) {
         this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
     }
 
+    // Main handler for data received on the C-Gate event socket.
+    // Processes the data buffer line by line.
     _handleEventData(data) {
         this.eventBuffer += data.toString();
         let newlineIndex;
@@ -1214,7 +1289,8 @@ class CgateWebBridge {
         }
     }
 
-    // Processes a single line from the event socket
+    // Processes a single line from the event socket.
+    // Parses as a CBusEvent and triggers MQTT publishing and internal level emit.
     _processEventLine(line) {
          // Handle comments (lines starting with #)
          if (line.startsWith('#')) {
@@ -1239,7 +1315,9 @@ class CgateWebBridge {
          }
     }
 
-    // Helper to emit the 'level' event based on a parsed CBusEvent
+    // Helper to emit the internal 'level' event based on a parsed CBusEvent.
+    // This is primarily used by the INCREASE/DECREASE ramp command logic 
+    // to get the current level before calculating the new ramp target.
     _emitLevelFromEvent(event) {
         const simpleAddr = `${event.Host()}/${event.Group()}/${event.Device()}`;
         let levelValue = null;
@@ -1259,7 +1337,8 @@ class CgateWebBridge {
         }
     }
 
-    // Helper to publish state/level based on a parsed CBusEvent
+    // Helper to publish state and level MQTT messages based on a parsed CBusEvent.
+    // Determines ON/OFF state based on the calculated level (0-100%).
     _publishEvent(event, source = '') {
         if (!event || !event.isValid()) {
             return;
@@ -1277,31 +1356,36 @@ class CgateWebBridge {
         this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent || '0', options: this._mqttOptions });
     }
 
-    // --- New method to generate and publish HA discovery messages ---
+    // --- HA Discovery Methods ---
+    
+    // Generates and publishes Home Assistant MQTT discovery messages 
+    // based on parsed TreeXML data for a specific network.
     _publishHaDiscoveryFromTree(networkId, treeData) {
         this.log(`${LOG_PREFIX} Generating HA Discovery messages for network ${networkId}...`);
-        // Basic structure assuming xml2js result format
+        
+        // Basic validation of the parsed tree data structure
         const projectData = treeData?.Network;
         if (!projectData?.Interface?.Network || projectData.Interface.Network.NetworkNumber !== String(networkId)) {
-             this.warn(`${WARN_PREFIX} TreeXML for network ${networkId} seems malformed or doesn't match expected structure.`);
+             this.warn(`${WARN_PREFIX} TreeXML for network ${networkId} seems malformed or doesn\'t match expected structure.`);
              return;
         }
 
         const units = projectData.Interface.Network.Unit || [];
-        const lightingAppId = DEFAULT_CBUS_APP_LIGHTING; // Use constant
-        const coverAppId = this.settings.ha_discovery_cover_app_id; // Get configured cover app ID
-        const switchAppId = this.settings.ha_discovery_switch_app_id; // Get switch app ID
-        const relayAppId = this.settings.ha_discovery_relay_app_id; // Get relay app ID
+        const lightingAppId = DEFAULT_CBUS_APP_LIGHTING; 
+        const coverAppId = this.settings.ha_discovery_cover_app_id;
+        const switchAppId = this.settings.ha_discovery_switch_app_id;
+        const relayAppId = this.settings.ha_discovery_relay_app_id;
         let discoveryCount = 0;
 
-        // Function to process EnableControl groups (avoids repetition)
+        // Helper function to generate and publish discovery payloads for EnableControl groups.
+        // Handles Covers, Switches, and Relays based on configured App IDs and prioritization.
         const processEnableControl = (enableControlData) => {
-            if (!enableControlData?.Group) return; // Check if group exists
+            if (!enableControlData?.Group) return; // Skip if no groups defined
 
             const appAddress = enableControlData.ApplicationAddress;
             const groups = Array.isArray(enableControlData.Group)
                             ? enableControlData.Group
-                            : [enableControlData.Group];
+                            : [enableControlData.Group]; // Ensure groups is always an array
 
             groups.forEach(group => {
                 const groupId = group.GroupAddress;
@@ -1310,14 +1394,16 @@ class CgateWebBridge {
                     return;
                 }
                 const groupLabel = group.Label;
-                let discovered = false;
+                let discovered = false; // Flag to ensure only one type is discovered per group
 
-                // Check if it matches the Cover App ID
+                // --- Check for Cover --- 
+                // Prioritize Cover if its App ID matches
                 if (coverAppId && appAddress === coverAppId) {
                     const finalLabel = groupLabel || `CBus Cover ${networkId}/${coverAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
+                    // HA Discovery topic format: <discovery_prefix>/<component>/<unique_id>/config
                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_COVER}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    const payload = {
+                    const payload = { // Standard HA MQTT Cover payload
                         name: finalLabel,
                         unique_id: uniqueId,
                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -1329,14 +1415,14 @@ class CgateWebBridge {
                         qos: 0,
                         retain: true,
                         device_class: HA_DEVICE_CLASS_SHUTTER,
-                        device: {
+                        device: { // Device registry information
                             identifiers: [uniqueId],
                             name: finalLabel,
                             manufacturer: HA_DEVICE_MANUFACTURER,
                             model: HA_MODEL_COVER,
                             via_device: HA_DEVICE_VIA
                         },
-                        origin: {
+                        origin: { // Optional: Information about the integration creating the entity
                             name: HA_ORIGIN_NAME,
                             sw_version: HA_ORIGIN_SW_VERSION,
                             support_url: HA_ORIGIN_SUPPORT_URL
@@ -1347,12 +1433,13 @@ class CgateWebBridge {
                     discovered = true;
                 }
 
-                // Check if it matches the Switch App ID (and wasn't already discovered as a cover)
+                // --- Check for Switch --- 
+                // Check only if not already discovered as a Cover
                 if (!discovered && switchAppId && appAddress === switchAppId) {
                     const finalLabel = groupLabel || `CBus Switch ${networkId}/${switchAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${switchAppId}_${groupId}`;
                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    const payload = {
+                    const payload = { // Standard HA MQTT Switch payload
                         name: finalLabel,
                         unique_id: uniqueId,
                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${switchAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -1363,14 +1450,14 @@ class CgateWebBridge {
                         state_off: MQTT_STATE_OFF,
                         qos: 0,
                         retain: true,
-                        device: {
+                        device: { 
                             identifiers: [uniqueId],
                             name: finalLabel,
                             manufacturer: HA_DEVICE_MANUFACTURER,
                             model: HA_MODEL_SWITCH,
                             via_device: HA_DEVICE_VIA
                         },
-                        origin: {
+                        origin: { 
                             name: HA_ORIGIN_NAME,
                             sw_version: HA_ORIGIN_SW_VERSION,
                             support_url: HA_ORIGIN_SUPPORT_URL
@@ -1381,35 +1468,37 @@ class CgateWebBridge {
                     discovered = true;
                 }
 
-                // Check if it matches the Relay App ID (and wasn't already discovered)
+                // --- Check for Relay --- 
+                // Check only if not already discovered as Cover or Switch
                 // Treat relays as switches in Home Assistant
                 if (!discovered && relayAppId && appAddress === relayAppId) {
                      const finalLabel = groupLabel || `CBus Relay ${networkId}/${relayAppId}/${groupId}`;
                      const uniqueId = `cgateweb_${networkId}_${relayAppId}_${groupId}`;
-                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/switch/${uniqueId}/config`;
-                     const payload = {
+                     // Publish relays under the 'switch' component type in HA
+                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+                     const payload = { // Standard HA MQTT Switch payload
                          name: finalLabel,
                          unique_id: uniqueId,
                          state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${relayAppId}/${groupId}/state`,
                          command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${relayAppId}/${groupId}/switch`,
-                         payload_on: "ON",
-                         payload_off: "OFF",
-                         state_on: "ON",
-                         state_off: "OFF",
+                         payload_on: MQTT_STATE_ON,      // Use constant
+                         payload_off: MQTT_STATE_OFF,     // Use constant
+                         state_on: MQTT_STATE_ON,        // Use constant
+                         state_off: MQTT_STATE_OFF,       // Use constant
                          qos: 0,
                          retain: true,
-                         device_class: "outlet", // Use 'outlet' device class for relays
+                         device_class: HA_DEVICE_CLASS_OUTLET, // Use 'outlet' device class for relays
                          device: {
                              identifiers: [uniqueId],
                              name: finalLabel,
-                             manufacturer: "Clipsal C-Bus via cgateweb",
-                             model: "Enable Control Group (Relay)",
-                             via_device: "cgateweb_bridge"
+                             manufacturer: HA_DEVICE_MANUFACTURER, 
+                             model: HA_MODEL_RELAY, 
+                             via_device: HA_DEVICE_VIA 
                          },
                          origin: {
-                             name: "cgateweb",
-                             sw_version: "0.1.0", // TODO: Get version dynamically
-                             support_url: "https://github.com/dougrathbone/cgateweb"
+                             name: HA_ORIGIN_NAME, 
+                             sw_version: HA_ORIGIN_SW_VERSION,
+                             support_url: HA_ORIGIN_SUPPORT_URL
                          }
                      };
                      this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
@@ -1420,15 +1509,16 @@ class CgateWebBridge {
         };
 
         try {
+            // Iterate through each Unit definition in the network tree
             units.forEach(unit => {
+                // Direct references to potential applications within a unit
                 const lightingData = unit.Application?.Lighting;
                 const enableControlData = unit.Application?.EnableControl;
-                // Add other top-level apps here if needed, e.g.: const measurementData = unit.Application?.Measurement;
+                // Add other top-level apps here if needed
 
-                // --- Process Lighting --- 
+                // --- Process Lighting Application --- 
                 if (lightingData?.Group) {
-                    // Check ApplicationAddress if needed (though usually 56)
-                    // if (lightingData.ApplicationAddress !== lightingAppId) { ... }
+                    // C-Bus Lighting application (usually App ID 56)
                     const groups = Array.isArray(lightingData.Group)
                                     ? lightingData.Group
                                     : [lightingData.Group];
@@ -1440,30 +1530,30 @@ class CgateWebBridge {
                         }
                         const groupLabel = group.Label || `CBus Light ${networkId}/${lightingAppId}/${groupId}`;
                         const uniqueId = `cgateweb_${networkId}_${lightingAppId}_${groupId}`;
-                        const discoveryTopic = `${this.settings.ha_discovery_prefix}/light/${uniqueId}/config`;
-                        const payload = {
+                        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+                        const payload = { // Standard HA MQTT Light payload (with brightness)
                             name: groupLabel,
                             unique_id: uniqueId,
-                            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/state`,
-                            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/switch`,
-                            payload_on: "ON",
-                            payload_off: "OFF",
-                            brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/level`,
-                            brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/ramp`,
-                            brightness_scale: 100,
-                            qos: 0,
+                            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+                            payload_on: MQTT_STATE_ON,
+                            payload_off: MQTT_STATE_OFF,
+                            brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
+                            brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
+                            brightness_scale: 100, 
+                            qos: 0, 
                             retain: true,
                             device: {
                                 identifiers: [uniqueId],
                                 name: groupLabel,
-                                manufacturer: "Clipsal C-Bus via cgateweb",
-                                model: "Lighting Group",
-                                via_device: "cgateweb_bridge"
+                                manufacturer: HA_DEVICE_MANUFACTURER,
+                                model: HA_MODEL_LIGHTING,
+                                via_device: HA_DEVICE_VIA
                             },
                             origin: {
-                                name: "cgateweb",
-                                sw_version: "0.1.0", // TODO: Get version dynamically
-                                support_url: "https://github.com/dougrathbone/cgateweb"
+                                name: HA_ORIGIN_NAME,
+                                sw_version: HA_ORIGIN_SW_VERSION,
+                                support_url: HA_ORIGIN_SUPPORT_URL
                             }
                         };
                         this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
@@ -1471,23 +1561,22 @@ class CgateWebBridge {
                     });
                     
                     // --- Process EnableControl NESTED under Lighting --- 
+                    // Handles cases where EnableControl might be part of a Lighting unit definition in C-Gate XML
                     if (lightingData.EnableControl) {
                         processEnableControl(lightingData.EnableControl);
                     }
                 }
 
                 // --- Process TOP-LEVEL EnableControl --- 
-                // (Ensure it wasn't already processed as nested - though unlikely for same group)
-                // The processEnableControl function itself handles the App ID check.
+                // Handles cases where EnableControl is the primary application for the unit
                 if (enableControlData) {
-                    // We might need a check here if the same group could appear both nested and top-level.
-                    // For now, assume distinct groups or that double-processing is harmless 
-                    // if the unique ID prevents duplicate HA entities.
+                    // Note: If the same group address exists both nested and top-level,
+                    // HA should handle the duplicate discovery message gracefully due to unique_id.
                     processEnableControl(enableControlData);
                 }
                 
                 // --- Process other top-level applications here --- 
-                // e.g., if (measurementData?.Group) { ... }
+                // e.g., if (measurementData?.Group) { processMeasurement(measurementData); }
 
             }); // end units.forEach
 
