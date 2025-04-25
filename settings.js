@@ -29,3 +29,15 @@ exports.messageinterval = 200;
 
 //logging
 exports.logging = false;
+
+// --- Home Assistant MQTT Discovery Settings ---
+// Enable/disable HA discovery
+// exports.ha_discovery_enabled = true;
+
+// MQTT prefix HA uses for discovery (usually 'homeassistant')
+// exports.ha_discovery_prefix = 'homeassistant';
+
+// C-Bus network IDs to scan for devices during discovery
+// e.g., [254] or [254, 255]
+// If empty and getallnetapp is set, will attempt to use network from getallnetapp
+// exports.ha_discovery_networks = [254]; 
