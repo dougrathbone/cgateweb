@@ -6,5 +6,5 @@ Some of the key files for context are:
 - @index.js The main javascript file for the project
 - @cgateweb.service the linux service to run the script when installed.
 - @cgate-manual.md manual for the c-gate web gateway sdk
-
+- @settings.js where all settings are stored. Make sure to store any key settings in this file.
 

@@ -103,6 +103,10 @@ const HA_ORIGIN_SUPPORT_URL = 'https://github.com/dougrathbone/cgateweb';
 const MQTT_ERROR_AUTH = 5; // MQTT CONNACK code 5: Not authorized
 const NEWLINE = '\n';
 
+// Regex for Parsing
+const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(\d+\/\d+\/\d+)(?:\s+(\d+))?/;
+const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
+
 // Throttled Queue Implementation (Reverted to original setInterval logic)
 class ThrottledQueue {
     constructor(processFn, intervalMs, name = 'Queue') {
@@ -186,41 +190,52 @@ class ThrottledQueue {
 
 class CBusEvent {
     constructor(data) {
-        // "lighting on 254/56/4  #sourceunit=8 OID=... sessionId=... commandId=..."
         const dataStr = data.toString();
-        // Split primarily by double space, take first part, then split by space
-        const mainPartStr = dataStr.split("  ")[0]; 
-        const mainParts = mainPartStr.split(" ");
-        
-        // Extract potential address part and clean it (remove trailing #...)
-        let addressPartRaw = (mainParts.length > 2) ? mainParts[2] : null;
-        let addressPartClean = addressPartRaw;
-        if (addressPartRaw) {
-            const hashIndex = addressPartRaw.indexOf('#');
-            if (hashIndex !== -1) {
-                addressPartClean = addressPartRaw.substring(0, hashIndex);
+        this._isValid = false;
+        this._deviceType = null;
+        this._action = null;
+        this._host = null;
+        this._group = null;
+        this._device = null;
+        this._levelRaw = null;
+
+        const match = dataStr.match(EVENT_REGEX);
+
+        if (match) {
+            this._deviceType = match[1];
+            this._action = match[2];
+            const addressParts = match[3].split('/'); // Address format is validated by regex
+            this._host = addressParts[0];
+            this._group = addressParts[1];
+            this._device = addressParts[2];
+            // Parse level only if captured by regex group 4
+            this._levelRaw = match[4] ? parseInt(match[4], 10) : null;
+            // Additional check: ensure levelRaw is a valid number if present
+            if (match[4] && isNaN(this._levelRaw)) {
+                this._levelRaw = null; // Treat invalid number as null
+            }
+
+            // Basic validation: Ensure essential parts were captured
+            if (this._deviceType && this._action && this._host && this._group && this._device) {
+                this._isValid = true;
             }
         }
 
-        const addressParts = addressPartClean ? addressPartClean.split("/") : [];
-
-        this._deviceType = mainParts.length > 0 ? mainParts[0] : null;
-        this._action = mainParts.length > 1 ? mainParts[1] : null;
-        this._host = addressParts.length > 0 ? addressParts[0] : null;
-        this._group = addressParts.length > 1 ? addressParts[1] : null;
-        this._device = addressParts.length > 2 ? addressParts[2] : null;
-        this._levelRaw = (mainParts.length > 3 && !isNaN(parseInt(mainParts[3]))) ? parseInt(mainParts[3]) : null; // e.g., from ramp command
-
-        // Basic validation
-        if (!this._deviceType || !this._action || !this._host || !this._group || !this._device) {
+        // If parsing failed or essential parts missing, log warning
+        if (!this._isValid) {
             console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
-            // Set properties to null to indicate failure
-            this._deviceType = this._action = this._host = this._group = this._device = this._levelRaw = null;
+            // Ensure all properties are null if invalid (redundant but safe)
+            this._deviceType = null;
+            this._action = null;
+            this._host = null;
+            this._group = null;
+            this._device = null;
+            this._levelRaw = null;
         }
     }
 
     isValid() {
-        return this._deviceType !== null; // Check if basic parsing succeeded
+        return this._isValid;
     }
 
     DeviceType() { return this._deviceType; }
@@ -242,44 +257,35 @@ class CBusEvent {
 
 class CBusCommand {
     constructor(topic, message) {
-        // "cbus/write/254/56/7/switch ON"
-        // Add null check for topic
+        this._isValid = false;
+        this._host = null;
+        this._group = null;
+        this._device = null;
+        this._commandType = null;
+        this._action = null;
+        this._message = '';
+
         if (!topic) {
             console.warn(`${WARN_PREFIX} Malformed C-Bus Command: Topic is null or empty.`);
-            this._isValid = false;
-            // Initialize fields to null/defaults
-            this._host = null;
-            this._group = null;
-            this._device = null;
-            this._commandType = null;
-            this._action = null;
-            this._message = '';
-            return; 
+            return; // Exit constructor early
         }
         
         const topicStr = topic.toString();
-        const messageStr = message ? message.toString() : ''; // Handle potentially null/undefined message
-        const topicParts = topicStr.split("/");
+        const messageStr = message ? message.toString() : '';
+        const match = topicStr.match(COMMAND_TOPIC_REGEX);
 
-        this._isValid = false;
-        if (topicParts.length >= 6 && topicParts[0] === MQTT_TOPIC_PREFIX_CBUS && topicParts[1] === 'write') {
-            this._host = topicParts[2];
-            this._group = topicParts[3];
-            this._device = topicParts[4]; // Can be empty for group-level commands like getall
-            const commandAndArgs = topicParts[5].split(' '); // e.g., "switch", "ramp"
-            this._commandType = commandAndArgs[0];
-            this._action = commandAndArgs[0]; // Often the same as commandType for simple cases
+        if (match) {
+            this._host = match[1];
+            this._group = match[2];
+            this._device = match[3];
+            this._commandType = match[4];
+            this._action = match[4]; // Default action to command type
             this._message = messageStr;
-            this._isValid = true; // Mark as valid if basic structure matches
+            this._isValid = true;
+            // Potential future validation: Check if host/group/device look numeric if expected?
         } else {
-            // Initialize fields to null/defaults if invalid
-            this._host = null;
-            this._group = null;
-            this._device = null;
-            this._commandType = null;
-            this._action = null;
-            this._message = '';
             console.warn(`${WARN_PREFIX} Malformed C-Bus Command topic:`, topicStr);
+            // Properties already initialized to defaults
         }
     }
 
