@@ -431,6 +431,7 @@ class CgateWebBridge {
         this.eventReconnectTimeout = null;   // Timer ID for event socket reconnect
         this.commandReconnectAttempts = 0;  // Counter for command socket reconnect attempts
         this.eventReconnectAttempts = 0;    // Counter for event socket reconnect attempts
+        this.hasVerifiedProjectName = false; // Flag to track if we\'ve checked the C-Gate project name
 
         // Initialize Throttled Queues
         this.mqttPublishQueue = new ThrottledQueue(
@@ -1116,7 +1117,7 @@ class CgateWebBridge {
     }
 
     // Parses a single line from the command socket response.
-    // Handles hyphenated (e.g., 300-) and space-separated (e.g., 300 level=) formats.
+    // Handles hyphenated (e.g., 300-, 343-, 347-, 344-) and space-separated (e.g., 300 level=) formats.
     // Returns { responseCode, statusData } or null if invalid.
     _parseCommandResponseLine(line) {
         let responseCode = '';
@@ -1174,37 +1175,50 @@ class CgateWebBridge {
     // Handles 300 Object Status responses from command socket.
     // Can be a level report (e.g., '... level=128') or other event forwarded by C-Gate.
     _processCommandObjectStatus(statusData) {
-        const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
+        // Regex to match the full path level report: //PROJECT/NET/APP/GROUP level=VALUE
+        const levelMatchWithProject = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
+        // Regex to match the short path level report: NET/APP/GROUP: level=VALUE
+        const levelMatchShort = statusData.match(/(\d+\/\d+\/\d+):\s+level=(\d+)/);
 
-        if (levelMatch) {
-            const fullAddress = levelMatch[1]; // e.g., //PROJECT/254/56/10
-            const levelValue = parseInt(levelMatch[2]);
-            const levelPercent = Math.round(levelValue * 100 / CGATE_LEVEL_MAX).toString();
+        if (levelMatchWithProject) {
+            const fullAddress = levelMatchWithProject[1]; 
+            const levelValue = parseInt(levelMatchWithProject[2]);
             const addressParts = fullAddress.split('/'); // ['', '', project, network, app, group]
-
+            
             if (addressParts.length >= 6) {
+                const receivedProjectName = addressParts[2];
                 const netAddr = addressParts[3];
                 const appAddr = addressParts[4];
                 const groupAddr = addressParts[5];
-                const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
-                const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`; // For MQTT publishing
-
-                // Emit internal event for potential ramp increase/decrease logic
-                this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
-
-                // Publish to MQTT
-                if (levelValue === CGATE_LEVEL_MIN) {
-                    this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} OFF (0%)`);
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: '0', options: this._mqttOptions });
-                } else {
-                    this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} ON (${levelPercent}%)`);
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_ON, options: this._mqttOptions });
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent, options: this._mqttOptions });
+                const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`;
+                
+                // --- Check Project Name (only once) ---
+                if (!this.hasVerifiedProjectName) {
+                    if (receivedProjectName === this.settings.cbusname) {
+                        this.log(`${LOG_PREFIX} Confirmed C-Gate Project Name: \'${receivedProjectName}\'.`);
+                    } else {
+                        this.error(`${ERROR_PREFIX} C-GATE PROJECT NAME MISMATCH! Expected \'${this.settings.cbusname}\' (from settings.js) but received \'${receivedProjectName}\' from C-Gate. Commands may fail.`);
+                    }
+                    this.hasVerifiedProjectName = true; // Only check once
                 }
+                // --- End Project Name Check ---
+                
+                this._publishLevelUpdate(simpleAddr, levelValue, '(Cmd/Get)');
             } else {
                 this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
             }
+            
+        } else if (levelMatchShort) {
+            const simpleAddr = levelMatchShort[1]; // e.g., "254/56/0"
+            const levelValue = parseInt(levelMatchShort[2]);
+
+            // Check if parsing produced valid numbers
+            if (!isNaN(levelValue)) {
+                this._publishLevelUpdate(simpleAddr, levelValue, '(Cmd/Get-Short)');
+            } else {
+                 this.warn(`${WARN_PREFIX} Could not parse level value from short command data: ${statusData}`);
+            }
+
         } else {
             // If not a level report, try parsing as a standard C-Bus event
             // (e.g., if C-Gate forwards an event like 'lighting on ...' via the command socket)
@@ -1213,9 +1227,30 @@ class CgateWebBridge {
                 this._publishEvent(event, '(Cmd/Event)'); // Publish to MQTT
                 this._emitLevelFromEvent(event); // Emit internally for ramp logic
             } else {
-                // Log if it couldn\'t be parsed as a level report or standard event
+                // Log if it couldn\'t be parsed as any known format
                 this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
             }
+        }
+    }
+    
+    // --- Helper for publishing level updates ---
+    // Consolidates the logic used by both level report formats in _processCommandObjectStatus
+    _publishLevelUpdate(simpleAddr, levelValue, logSource = '') {
+        const levelPercent = Math.round(levelValue * 100 / CGATE_LEVEL_MAX).toString();
+        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`; // For MQTT publishing
+
+        // Emit internal event for potential ramp increase/decrease logic
+        this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
+
+        // Publish state and level to MQTT
+        if (levelValue === CGATE_LEVEL_MIN) {
+            this.log(`${LOG_PREFIX} C-Bus Status ${logSource}: ${simpleAddr} OFF (0%)`);
+            this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+            this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: '0', options: this._mqttOptions });
+        } else {
+            this.log(`${LOG_PREFIX} C-Bus Status ${logSource}: ${simpleAddr} ON (${levelPercent}%)`);
+            this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+            this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent, options: this._mqttOptions });
         }
     }
 
