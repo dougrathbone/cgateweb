@@ -632,5 +632,169 @@ describe('CgateWebBridge', () => {
 
     });
 
+    // --- Test Disconnection and Error Handlers ---
+    describe('Disconnection and Error Handlers', () => {
+        let mockClient, mockCommandSocket, mockEventSocket;
+        let scheduleReconnectSpy, consoleWarnSpy, consoleErrorSpy, processExitSpy;
+        let clientRemoveListenersSpy, cmdRemoveListenersSpy, evtRemoveListenersSpy;
+        let cmdDestroySpy, evtDestroySpy;
+
+        beforeEach(() => {
+            // Mock console logging
+            consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => { });
+            consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
+            processExitSpy = jest.spyOn(process, 'exit').mockImplementation(() => { throw new Error('process.exit called'); }); // Throw error to stop test execution
+
+            // Create basic mocks
+            mockClient = { removeAllListeners: jest.fn() };
+            mockCommandSocket = { removeAllListeners: jest.fn(), destroy: jest.fn(), destroyed: false }; // Add destroyed flag
+            mockEventSocket = { removeAllListeners: jest.fn(), destroy: jest.fn(), destroyed: false }; // Add destroyed flag
+
+            // Assign mocks to bridge
+            bridge.client = mockClient;
+            bridge.commandSocket = mockCommandSocket;
+            bridge.eventSocket = mockEventSocket;
+
+            // Spy on methods
+            scheduleReconnectSpy = jest.spyOn(bridge, '_scheduleReconnect').mockImplementation(() => { });
+            clientRemoveListenersSpy = jest.spyOn(mockClient, 'removeAllListeners');
+            cmdRemoveListenersSpy = jest.spyOn(mockCommandSocket, 'removeAllListeners');
+            evtRemoveListenersSpy = jest.spyOn(mockEventSocket, 'removeAllListeners');
+            cmdDestroySpy = jest.spyOn(mockCommandSocket, 'destroy');
+            evtDestroySpy = jest.spyOn(mockEventSocket, 'destroy');
+
+            // Reset connection flags for tests
+            bridge.clientConnected = true;
+            bridge.commandConnected = true;
+            bridge.eventConnected = true;
+        });
+
+        afterEach(() => {
+            // Restore all mocks/spies
+            consoleWarnSpy.mockRestore();
+            consoleErrorSpy.mockRestore();
+            processExitSpy.mockRestore();
+            scheduleReconnectSpy.mockRestore();
+        });
+
+        // --- Close Handlers ---
+        it('_handleMqttClose should reset flag, null client, remove listeners and warn', () => {
+            bridge._handleMqttClose();
+            expect(bridge.clientConnected).toBe(false);
+            expect(bridge.client).toBeNull();
+            expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Closed'));
+            expect(scheduleReconnectSpy).not.toHaveBeenCalled(); // MQTT library handles reconnect
+        });
+
+        it('_handleCommandClose should reset flag, null socket, remove listeners, warn and schedule reconnect', () => {
+            bridge._handleCommandClose(false); // Test without error
+            expect(bridge.commandConnected).toBe(false);
+            expect(bridge.commandSocket).toBeNull();
+            expect(cmdRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED'));
+            expect(consoleWarnSpy).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
+            expect(scheduleReconnectSpy).toHaveBeenCalledWith('command');
+        });
+
+        it('_handleCommandClose(hadError=true) should log warning with error', () => {
+            bridge._handleCommandClose(true);
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED with error'));
+            expect(scheduleReconnectSpy).toHaveBeenCalledWith('command'); // Still schedules reconnect
+        });
+
+        it('_handleEventClose should reset flag, null socket, remove listeners, warn and schedule reconnect', () => {
+            bridge._handleEventClose(false); // Test without error
+            expect(bridge.eventConnected).toBe(false);
+            expect(bridge.eventSocket).toBeNull();
+            expect(evtRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED'));
+             expect(consoleWarnSpy).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
+            expect(scheduleReconnectSpy).toHaveBeenCalledWith('event');
+        });
+        
+         it('_handleEventClose(hadError=true) should log warning with error', () => {
+             bridge._handleEventClose(true);
+             expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED with error'));
+             expect(scheduleReconnectSpy).toHaveBeenCalledWith('event'); // Still schedules reconnect
+         });
+
+        // --- Error Handlers ---
+        it('_handleMqttError (Auth Error code 5) should log specific error and exit', () => {
+            const authError = new Error('Auth failed');
+            authError.code = 5;
+            // Expect process.exit to be called, which we mock to throw
+            expect(() => {
+                bridge._handleMqttError(authError);
+            }).toThrow('process.exit called');
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Connection Error: Authentication failed'));
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Exiting due to fatal MQTT authentication error.'));
+            expect(processExitSpy).toHaveBeenCalledWith(1);
+            // Flag should NOT be reset before process.exit in the refactored code
+            expect(bridge.clientConnected).toBe(true); // Corrected assertion
+            // Client *is* nulled before exit in refactored code
+            expect(bridge.client).toBeNull();
+            expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('_handleMqttError (Generic Error) should log, reset flag, null client, remove listeners', () => {
+            const genericError = new Error('Some MQTT error');
+            bridge._handleMqttError(genericError);
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Error:'), genericError);
+            // Flag should be reset in this case
+            expect(bridge.clientConnected).toBe(false); // <<< VERIFY THIS IS CHECKED
+            expect(bridge.client).toBeNull();
+            expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(processExitSpy).not.toHaveBeenCalled();
+            expect(scheduleReconnectSpy).not.toHaveBeenCalled(); // MQTT handles reconnect
+        });
+
+        it('_handleCommandError should log error, reset flag, destroy socket, and null socket', () => {
+            const cmdError = new Error('Command socket failed');
+            bridge._handleCommandError(cmdError);
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError);
+            expect(bridge.commandConnected).toBe(false);
+            expect(cmdDestroySpy).toHaveBeenCalledTimes(1);
+            expect(bridge.commandSocket).toBeNull();
+            expect(scheduleReconnectSpy).not.toHaveBeenCalled(); // Relies on close event
+        });
+        
+         it('_handleCommandError should not destroy already destroyed socket', () => {
+             mockCommandSocket.destroyed = true; // Simulate already destroyed
+             const cmdError = new Error('Command socket failed again');
+             bridge._handleCommandError(cmdError);
+ 
+             expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError);
+             expect(bridge.commandConnected).toBe(false);
+             expect(cmdDestroySpy).not.toHaveBeenCalled(); // Should not call destroy again
+             expect(bridge.commandSocket).toBeNull();
+         });
+
+        it('_handleEventError should log error, reset flag, destroy socket, and null socket', () => {
+            const evtError = new Error('Event socket failed');
+            bridge._handleEventError(evtError);
+
+            expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError);
+            expect(bridge.eventConnected).toBe(false);
+            expect(evtDestroySpy).toHaveBeenCalledTimes(1);
+            expect(bridge.eventSocket).toBeNull();
+            expect(scheduleReconnectSpy).not.toHaveBeenCalled(); // Relies on close event
+        });
+        
+         it('_handleEventError should not destroy already destroyed socket', () => {
+             mockEventSocket.destroyed = true; // Simulate already destroyed
+             const evtError = new Error('Event socket failed again');
+             bridge._handleEventError(evtError);
+ 
+             expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError);
+             expect(bridge.eventConnected).toBe(false);
+             expect(evtDestroySpy).not.toHaveBeenCalled(); // Should not call destroy again
+             expect(bridge.eventSocket).toBeNull();
+         });
+
+    });
     // describe('Data Handlers', () => { ... });
 });
