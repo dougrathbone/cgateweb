@@ -72,9 +72,17 @@
 * Designed to run as a persistent background service.
 * Includes a `systemd` service file (`cgateweb.service`) for easy setup on Linux systems (like Raspberry Pi).
 
+**8. Home Assistant MQTT Discovery**
+
+*   `cgateweb` supports automatic discovery of C-Bus lighting groups within Home Assistant using the MQTT Discovery protocol.
+*   When enabled via `settings.js` (`ha_discovery_enabled: true`), `cgateweb` will query the C-Gate network structure using `TREEXML` and publish configuration messages to the specified MQTT discovery prefix (default: `homeassistant`).
+*   This allows Home Assistant to automatically find and add C-Bus lights as `light` entities.
+*   Configuration options in `settings.js` include enabling the feature, setting the discovery topic prefix, and specifying which C-Bus networks to scan.
+*   See `docs/project-homeassistant-discovery.md` for detailed requirements and implementation notes.
+
 ---
 
-**8. Context Questions & Development Goals for Gemini Assistance**
+**9. Context Questions & Development Goals for Gemini Assistance**
 
 * **Error Handling:** How does the script currently handle potential errors (C-Gate/MQTT disconnects, invalid commands, C-Gate errors, network issues)? Does it attempt reconnections? How robust is this? *(Answering this helps establish the baseline before improvement)*.
 * **State Management:** Does `cgateweb` maintain internal state, or rely purely on C-Gate events/`getall`? How are potential inconsistencies handled? *(Understanding this is crucial for stability improvements)*.
@@ -92,25 +100,25 @@
 
 ---
 
-This revised document should give Gemini a solid foundation for understanding `cgateweb` and the specific areas you want assistance with. Remember to provide answers to the context questions (points 1-8 in the last section) when you interact with Gemini for specific tasks, as that will further refine its understanding of the current state.
+This revised document should give Gemini a solid foundation for understanding `cgateweb` and the specific areas you want assistance with. Remember to provide answers to the context questions (points 1-9 in the last section) when you interact with Gemini for specific tasks, as that will further refine its understanding of the current state.
 
 ---
 
-## 9. Testing Standards
+**10. Testing Standards**
 
 This section outlines the basic standards and conventions for writing tests for the `cgateweb` project.
 
-### 9.1 Testing Framework
+### 10.1 Testing Framework
 
 *   **Jest:** We will use [Jest](https://jestjs.io/) as the primary testing framework due to its integrated nature (assertions, mocking, coverage) and popularity in the Node.js ecosystem.
 
-### 9.2 File Naming and Location
+### 10.2 File Naming and Location
 
 *   Test files should be located within the `/tests` directory.
 *   Test files should mirror the directory structure of the source code where applicable (e.g., tests for `src/utils/helper.js` might go in `tests/utils/helper.test.js`). For now, top-level files like `index.js` can have tests directly in `/tests` (e.g., `tests/index.test.js` or `tests/throttledQueue.test.js`).
 *   Test files must use the `.test.js` suffix (e.g., `throttledQueue.test.js`).
 
-### 9.3 Test Structure
+### 10.3 Test Structure
 
 *   Tests should follow the **Arrange-Act-Assert (AAA)** pattern:
     *   **Arrange:** Set up preconditions, initialize objects, create mocks.
@@ -120,22 +128,22 @@ This section outlines the basic standards and conventions for writing tests for 
 *   Use `it` or `test` blocks for individual test cases. Test descriptions should clearly state what is being tested.
 *   Use `beforeEach`, `afterEach`, `beforeAll`, `afterAll` for setup and teardown logic as needed.
 
-### 9.4 Mocking and Spies
+### 10.4 Mocking and Spies
 
 *   Use Jest's built-in mocking capabilities (`jest.fn()`, `jest.mock()`, `jest.spyOn()`) to isolate the code under test from its dependencies (like network modules, timers, external libraries).
 *   Avoid mocking modules that are part of the core logic being tested unless absolutely necessary.
 
-### 9.5 Test Types
+### 10.5 Test Types
 
 *   **Unit Tests:** Focus primarily on unit tests that verify small, isolated pieces of functionality (e.g., a single function or class method). These should form the bulk of the test suite.
 *   **Integration Tests:** May be added later to test the interaction between different components (e.g., MQTT message parsing and C-Gate command generation), but prioritize unit tests first.
 
-### 9.6 Assertions
+### 10.6 Assertions
 
 *   Use specific Jest matchers (`.toBe()`, `.toEqual()`, `.toHaveBeenCalledWith()`, `.toThrow()`, etc.) rather than generic ones where possible.
 *   Write assertions that are clear and directly relate to the expected outcome of the test.
 
-### 9.7 Coverage
+### 10.7 Coverage
 
 *   Aim for reasonable code coverage, but focus on testing critical paths and logic rather than striving for 100% coverage arbitrarily. Use coverage reports (`npm test -- --coverage`) as a guide.
 *   **Running Tests:** Execute the test suite using the command `npx jest` from the project root directory.
