@@ -19,7 +19,11 @@ const defaultSettings = {
     mqttusername: null,
     mqttpassword: null,
     reconnectinitialdelay: 1000, // 1 second
-    reconnectmaxdelay: 60000 // 60 seconds
+    reconnectmaxdelay: 60000, // 60 seconds
+    // --- HA Discovery Settings ---
+    ha_discovery_enabled: false, // Default disabled
+    ha_discovery_prefix: 'homeassistant', // Default HA prefix
+    ha_discovery_networks: [], // Default: Discover no networks explicitly
 };
 
 // --- Load User Settings ---
@@ -268,6 +272,11 @@ class CgateWebBridge {
     constructor(userSettings = {}, mqttClientFactory, commandSocketFactory, eventSocketFactory) {
         // Merge settings using the module-level defaultSettings
         this.settings = { ...defaultSettings, ...userSettings }; 
+        // Ensure ha_discovery_networks is always an array after merge
+        if (!Array.isArray(this.settings.ha_discovery_networks)) {
+            this.warn('[WARN] ha_discovery_networks in settings is not an array, defaulting to [].');
+            this.settings.ha_discovery_networks = [];
+        }
 
         // Use provided factories or default ones
         this.mqttClientFactory = mqttClientFactory || (() => {
@@ -351,6 +360,7 @@ class CgateWebBridge {
         this._connectMqtt();
         this._connectCommandSocket();
         this._connectEventSocket();
+        // Discovery is triggered from _checkAllConnected after connections are up
     }
 
     stop() {
@@ -667,16 +677,15 @@ class CgateWebBridge {
     _checkAllConnected() {
         if (this.clientConnected && this.commandConnected && this.eventConnected) {
             this.log(`${LOG_PREFIX} ALL CONNECTED`);
-            // Add the consolidated status message
             this.log(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport}). Awaiting messages...`);
 
-            // Initial Get All
+            // --- Trigger Initial Get All --- 
             if (this.settings.getallnetapp && this.settings.getallonstart) {
                 this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
                 this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
             }
 
-            // Periodic Get All
+            // --- Trigger Periodic Get All --- 
             if (this.settings.getallnetapp && this.settings.getallperiod) {
                  if (this.periodicGetAllInterval) {
                       clearInterval(this.periodicGetAllInterval);
@@ -687,7 +696,44 @@ class CgateWebBridge {
                     this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
                 }, this.settings.getallperiod * 1000);
             }
+            
+            // --- Trigger HA Discovery (if enabled) ---
+            if (this.settings.ha_discovery_enabled) {
+                this._triggerHaDiscovery();
+            }
         }
+    }
+    
+    // --- New method to trigger discovery ---
+    _triggerHaDiscovery() {
+        this.log(`${LOG_PREFIX} HA Discovery enabled, querying network trees...`);
+        let networksToDiscover = this.settings.ha_discovery_networks;
+        
+        // If no networks explicitly configured, try using getallnetapp network if set
+        if (networksToDiscover.length === 0 && this.settings.getallnetapp) {
+            const networkIdMatch = String(this.settings.getallnetapp).match(/^(\d+)/); // Match potential network ID if getallnetapp is like '254' or '254/56'
+            if (networkIdMatch) {
+                this.log(`${LOG_PREFIX} No HA discovery networks configured, using network from getallnetapp: ${networkIdMatch[1]}`);
+                networksToDiscover = [networkIdMatch[1]];
+            } else {
+                this.warn(`${WARN_PREFIX} No HA discovery networks configured and could not determine network from getallnetapp (${this.settings.getallnetapp}). HA Discovery will not run.`);
+                return;
+            }
+        } else if (networksToDiscover.length === 0) {
+             this.warn(`${WARN_PREFIX} No HA discovery networks configured. HA Discovery will not run.`);
+             return;
+        }
+        
+        networksToDiscover.forEach(networkId => {
+            if (networkId) {
+                this.log(`${LOG_PREFIX} Queuing TREEXML for network ${networkId} for HA Discovery.`);
+                // Use a distinct internal event or flag later if needed to distinguish 
+                // HA discovery TREEXML from manual requests.
+                this.cgateCommandQueue.add(`TREEXML ${networkId}\n`);
+            } else {
+                this.warn(`${WARN_PREFIX} Invalid network ID found in ha_discovery_networks: ${networkId}`);
+            }
+        });
     }
 
     // --- Queue Processors ---
@@ -725,6 +771,17 @@ class CgateWebBridge {
     _handleMqttMessage(topic, messageBuffer) {
         const message = messageBuffer.toString();
         this.log(`${LOG_PREFIX} MQTT received on ${topic}: ${message}`);
+
+        // --- Add handler for manual discovery trigger ---
+        if (topic === 'cbus/write/bridge/announce') { // Example topic
+            if (this.settings.ha_discovery_enabled) {
+                 this.log(`${LOG_PREFIX} Manual HA Discovery triggered via MQTT.`);
+                 this._triggerHaDiscovery();
+             } else {
+                 this.warn(`${WARN_PREFIX} Manual HA Discovery trigger received, but feature is disabled in settings.`);
+             }
+             return; // Don't process as CBusCommand
+        }
 
         const command = new CBusCommand(topic, message);
         if (!command.isValid()) {
@@ -923,24 +980,35 @@ class CgateWebBridge {
                     this.treeBuffer += statusData + '\n';
                 } else if (responseCode === CGATE_RESPONSE_TREE_END) { // 344
                     this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
-                    if (this.treeNetwork && this.treeBuffer) {
-                        parseString(this.treeBuffer, { explicitArray: false }, (err, result) => { 
+                    const networkForTree = this.treeNetwork; // Capture before clearing
+                    const treeXmlData = this.treeBuffer;
+                    this.treeBuffer = ''; // Clear buffer immediately
+                    this.treeNetwork = null; // Reset network context immediately
+
+                    if (networkForTree && treeXmlData) {
+                        parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
                             if (err) {
-                                this.error(`${ERROR_PREFIX} Error parsing TreeXML:`, err);
+                                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree}:`, err);
                             } else {
+                                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree}`);
+                                // TODO: Decide if manual gettree should also publish to HA?
+                                // For now, only publish simple tree to standard topic
                                 this.mqttPublishQueue.add({ 
-                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${this.treeNetwork}///tree`,
+                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
                                     payload: JSON.stringify(result),
                                     options: this._mqttOptions 
                                 });
+                                
+                                // --- Generate HA Discovery Payloads ---
+                                const allowedNetworks = this.settings.ha_discovery_networks.map(String); // Convert allowed list to strings
+                                if (this.settings.ha_discovery_enabled && allowedNetworks.includes(String(networkForTree))) {
+                                    this._publishHaDiscoveryFromTree(networkForTree, result);
+                                }
                             }
-                            this.treeBuffer = ''; 
-                            this.treeNetwork = null; 
+                            // No cleanup here, done earlier
                         });
                     } else {
-                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context.`); 
-                        this.treeBuffer = ''; 
-                        this.treeNetwork = null;
+                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context was set.`); 
                     }
                 } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
@@ -1022,6 +1090,83 @@ class CgateWebBridge {
         // Publish state and level
         this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
         this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent || '0', options: this._mqttOptions });
+    }
+
+    // --- New method to generate and publish HA discovery messages ---
+    _publishHaDiscoveryFromTree(networkId, treeData) {
+        this.log(`${LOG_PREFIX} Generating HA Discovery messages for network ${networkId}...`);
+        // Basic structure assuming xml2js result format
+        const projectData = treeData?.Network;
+        if (!projectData?.Interface?.Network || projectData.Interface.Network.NetworkNumber !== String(networkId)) {
+             this.warn(`${WARN_PREFIX} TreeXML for network ${networkId} seems malformed or doesn't match expected structure.`);
+             return;
+        }
+
+        const units = projectData.Interface.Network.Unit || [];
+        const lightingAppId = '56'; // TODO: Make configurable?
+        let discoveryCount = 0;
+
+        // Iterate through units, applications, groups (adjust based on actual xml2js structure)
+        try {
+            units.forEach(unit => {
+                if (!unit.Application || !unit.Application.Lighting || !unit.Application.Lighting.Group) return;
+                
+                const groups = Array.isArray(unit.Application.Lighting.Group) 
+                                ? unit.Application.Lighting.Group 
+                                : [unit.Application.Lighting.Group]; // Ensure it's an array
+                                
+                groups.forEach(group => {
+                    const groupId = group.GroupAddress;
+                    // --- Add check for valid groupId ---
+                    if (groupId === undefined || groupId === null || groupId === '') {
+                        this.warn(`${WARN_PREFIX} Skipping group in HA Discovery due to missing/invalid GroupAddress in TreeXML data for network ${networkId}:`, group);
+                        return; // Skip this group
+                    }
+                    
+                    const groupLabel = group.Label || `CBus Light ${networkId}/${lightingAppId}/${groupId}`; 
+                    const uniqueId = `cgateweb_${networkId}_${lightingAppId}_${groupId}`;
+                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/light/${uniqueId}/config`;
+
+                    const payload = {
+                        name: groupLabel,
+                        unique_id: uniqueId,
+                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/state`,
+                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/switch`,
+                        payload_on: "ON",
+                        payload_off: "OFF",
+                        brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/level`,
+                        brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/ramp`,
+                        brightness_scale: 100, 
+                        qos: 0, 
+                        retain: true,
+                        device: {
+                            identifiers: [uniqueId], // Simple identifier for now
+                            name: groupLabel,
+                            manufacturer: "Clipsal C-Bus via cgateweb",
+                            model: "Lighting Group", 
+                            via_device: "cgateweb_bridge"
+                        },
+                        origin: {
+                            name: "cgateweb",
+                            sw_version: "0.1.0", // TODO: Get version dynamically
+                            "support_url": "https://github.com/dougrathbone/cgateweb"
+                        }
+                    };
+
+                    this.mqttPublishQueue.add({
+                        topic: discoveryTopic,
+                        payload: JSON.stringify(payload),
+                        options: { retain: true, qos: 0 } // Retain discovery messages
+                    });
+                    discoveryCount++;
+                });
+            });
+
+            this.log(`${LOG_PREFIX} Published ${discoveryCount} HA Discovery messages for network ${networkId}.`);
+
+        } catch (e) {
+            this.error(`${ERROR_PREFIX} Error processing TreeXML for HA Discovery (network ${networkId}):`, e, treeData);
+        }
     }
 }
 

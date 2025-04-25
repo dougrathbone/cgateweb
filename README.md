@@ -73,6 +73,15 @@ Requesting an update on start or periodic updates can be set in the settings fil
 
  - cbus/write/#1///tree - result gets published as JSON on cbus/read/#1///tree
 
+### Home Assistant MQTT Discovery
+
+This project supports automatic discovery of C-Bus lighting groups in Home Assistant.
+
+*   Enable by setting `ha_discovery_enabled: true` in `settings.js`.
+*   Configure the MQTT discovery prefix (usually `homeassistant`) via `ha_discovery_prefix`.
+*   Specify which C-Bus networks to scan for devices using `ha_discovery_networks`.
+*   See `docs/project-homeassistant-discovery.md` for more details.
+
 ### Testing
 
 This project uses Jest for unit testing.
