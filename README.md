@@ -47,7 +47,6 @@ These instructions assume a Linux system with Node.js, npm, and systemd.
 1)  Put your settings in `settings.js`.
 2)  Run `node index.js` (useful for testing or foreground operation).
 
-Detailed guides and supporting articles will be posted on my blog: https://blog.addictedtopi.com/category/project/cbus/
 
 ### Updates get published on these topics:
 
