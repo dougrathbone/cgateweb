@@ -401,7 +401,8 @@ class CgateWebBridge {
                 mqttConnectOptions.username = this.settings.mqttusername;
                 mqttConnectOptions.password = this.settings.mqttpassword;
             }
-            this.log(`${LOG_PREFIX} Creating MQTT client for: ${brokerUrl}`);
+            // Log connection details just before attempting connection
+            this.log(`${LOG_PREFIX} Attempting mqtt.connect to ${brokerUrl} with options:`, JSON.stringify(mqttConnectOptions));
             return mqtt.connect(brokerUrl, mqttConnectOptions);
         });
         this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
@@ -695,6 +696,8 @@ class CgateWebBridge {
     // Handles MQTT client disconnection.
     _handleMqttClose() {
         this.clientConnected = false;
+        // Log any arguments passed to the close handler
+        this.log('[DEBUG] MQTT Close event received with arguments:', arguments);
         this.warn(`${WARN_PREFIX} MQTT Client Closed. Reconnection handled by library.`);
         // Nullify client to allow library/logic to attempt reconnection
         if (this.client) {
@@ -718,6 +721,8 @@ class CgateWebBridge {
         } else {
             // Handle generic errors
             this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
+            // Log the full error object for more details
+            this.log('[DEBUG] Full MQTT error object:', err); 
             this.clientConnected = false; // Assume disconnected on error
             if (this.client) {
                 this.client.removeAllListeners();
