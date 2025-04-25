@@ -894,6 +894,89 @@ describe('CgateWebBridge', () => {
                  expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/12 level\n');
              });
 
+            it('INCREASE should queue RAMP command after receiving level event', () => {
+                const topic = 'cbus/write/254/56/12/ramp';
+                const message = Buffer.from('INCREASE');
+                const targetAddress = '254/56/12';
+                const initialLevel = 100;
+                const expectedRampLevel = Math.min(255, initialLevel + 26); // 26 is RAMP_STEP
+
+                bridge._handleMqttMessage(topic, message);
+
+                // Verify the listener was added and GET was queued
+                expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith(`GET //TestProject/${targetAddress} level\n`);
+
+                // Get the captured callback function
+                const levelCallback = emitterOnceSpy.mock.calls[0][1];
+
+                // Simulate the level event
+                levelCallback(targetAddress, initialLevel);
+
+                // Verify the RAMP command was queued
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith(`RAMP //TestProject/${targetAddress} ${expectedRampLevel}\n`);
+                expect(cgateQueueAddSpy).toHaveBeenCalledTimes(2); // GET + RAMP
+            });
+
+            it('DECREASE should queue RAMP command after receiving level event', () => {
+                const topic = 'cbus/write/254/56/12/ramp';
+                const message = Buffer.from('DECREASE');
+                const targetAddress = '254/56/12';
+                const initialLevel = 50;
+                const expectedRampLevel = Math.max(0, initialLevel - 26); // 26 is RAMP_STEP
+
+                bridge._handleMqttMessage(topic, message);
+
+                // Verify the listener was added and GET was queued
+                expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith(`GET //TestProject/${targetAddress} level\n`);
+
+                // Get the captured callback function
+                const levelCallback = emitterOnceSpy.mock.calls[0][1];
+
+                // Simulate the level event
+                levelCallback(targetAddress, initialLevel);
+
+                // Verify the RAMP command was queued
+                expect(cgateQueueAddSpy).toHaveBeenCalledWith(`RAMP //TestProject/${targetAddress} ${expectedRampLevel}\n`);
+                expect(cgateQueueAddSpy).toHaveBeenCalledTimes(2); // GET + RAMP
+            });
+            
+             it('INCREASE/DECREASE should ignore level event for different address', () => {
+                 const topic = 'cbus/write/254/56/12/ramp';
+                 const message = Buffer.from('INCREASE');
+                 bridge._handleMqttMessage(topic, message);
+ 
+                 expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                 expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/12 level\n');
+                 const initialCallCount = cgateQueueAddSpy.mock.calls.length;
+ 
+                 const levelCallback = emitterOnceSpy.mock.calls[0][1];
+                 // Simulate event for a different address
+                 levelCallback('254/56/99', 100); 
+ 
+                 // Verify no additional RAMP command was queued
+                 expect(cgateQueueAddSpy).toHaveBeenCalledTimes(initialCallCount); 
+             });
+
+             it('INCREASE/DECREASE should handle non-numeric level gracefully', () => {
+                 const topic = 'cbus/write/254/56/12/ramp';
+                 const message = Buffer.from('INCREASE');
+                 bridge._handleMqttMessage(topic, message);
+ 
+                 expect(emitterOnceSpy).toHaveBeenCalledWith('level', expect.any(Function));
+                 expect(cgateQueueAddSpy).toHaveBeenCalledWith('GET //TestProject/254/56/12 level\n');
+                 const initialCallCount = cgateQueueAddSpy.mock.calls.length;
+ 
+                 const levelCallback = emitterOnceSpy.mock.calls[0][1];
+                 // Simulate event with non-numeric level
+                 levelCallback('254/56/12', 'unknown'); 
+ 
+                 // Verify no additional RAMP command was queued and warning logged
+                 expect(cgateQueueAddSpy).toHaveBeenCalledTimes(initialCallCount); 
+                 expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not parse current level'));
+             });
+
             it('should warn on invalid ramp payload', () => {
                 const topic = 'cbus/write/254/56/11/ramp';
                 const message = Buffer.from('DIM'); // Invalid percentage/keyword
