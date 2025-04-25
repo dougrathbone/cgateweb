@@ -515,7 +515,7 @@ class CgateWebBridge {
         }
 
         // Exponential backoff with cap
-        delay = Math.min(RECONNECT_INITIAL_DELAY_MS * Math.pow(2, attempts - 1), RECONNECT_MAX_DELAY_MS);
+        delay = Math.min(this.settings.reconnectinitialdelay * Math.pow(2, attempts - 1), this.settings.reconnectmaxdelay);
 
         // Add specific logging for debugging test failures
         this.log(`[DEBUG] Scheduling ${socketType} reconnect: attempt=${attempts}, delay=${delay}ms`);
@@ -923,8 +923,6 @@ class CgateWebBridge {
                     this.treeBuffer += statusData + '\n';
                 } else if (responseCode === CGATE_RESPONSE_TREE_END) { // 344
                     this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
-                    // Add specific log *before* the condition
-                    console.log(`[DEBUG] Checking TreeXML condition. Network: ${this.treeNetwork}, Buffer Length: ${this.treeBuffer?.length ?? 0}`);
                     if (this.treeNetwork && this.treeBuffer) {
                         parseString(this.treeBuffer, { explicitArray: false }, (err, result) => { 
                             if (err) {
@@ -940,7 +938,6 @@ class CgateWebBridge {
                             this.treeNetwork = null; 
                         });
                     } else {
-                        console.log(`[DEBUG] Skipping parseString. Network: ${this.treeNetwork}, Buffer: '${this.treeBuffer}'`); // <<< TEMP LOG
                         this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context.`); 
                         this.treeBuffer = ''; 
                         this.treeNetwork = null;
