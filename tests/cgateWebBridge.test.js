@@ -910,7 +910,8 @@ describe('CgateWebBridge', () => {
             
             await promise;
 
-            expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 254:'), parseError);
+            expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 254 (took '),
+                 parseError);
             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
             expect(publishHaSpy).not.toHaveBeenCalled();
          });
