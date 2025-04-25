@@ -27,8 +27,10 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
     *   Adjusted tests to disable conflicting discovery types (e.g., disable cover discovery when testing switches with the same App ID).
     *   Corrected expected call counts in tests to match devices found by improved discovery logic.
     *   Fixed mock data structure in error handling test.
+*   [x] **Enhance Readability (Constants):** (2024-07-30)
+    *   Defined constants for MQTT topics, payloads, C-Gate commands, responses, levels, HA discovery parameters.
+    *   Replaced magic strings/numbers with constants throughout `index.js`.
 *   [ ] **Enhance Readability & Structure:**
-    *   Define constants for magic strings/numbers (ports, C-Gate codes, MQTT paths, ramp steps).
     *   Extract logic from large handlers (`client.on('message')`, `command.on('data')`, `event.on('data')`) into smaller functions.
     *   Improve robustness of `CBusEvent` and `CBusCommand` parsing (consider regex).
 *   [ ] **Introduce Testing:**

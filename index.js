@@ -38,20 +38,70 @@ try {
 }
 
 // --- Constants ---
-const MQTT_TOPIC_PREFIX_READ = 'cbus/read';
-const MQTT_TOPIC_PREFIX_WRITE = 'cbus/write';
+const LOG_PREFIX = '[INFO]';
+const WARN_PREFIX = '[WARN]';
+const ERROR_PREFIX = '[ERROR]';
+const DEFAULT_CBUS_APP_LIGHTING = '56'; // Standard C-Bus Lighting Application ID
+
+// MQTT Topics & Payloads
+const MQTT_TOPIC_PREFIX_CBUS = 'cbus';
+const MQTT_TOPIC_PREFIX_READ = `${MQTT_TOPIC_PREFIX_CBUS}/read`;
+const MQTT_TOPIC_PREFIX_WRITE = `${MQTT_TOPIC_PREFIX_CBUS}/write`;
+const MQTT_TOPIC_SUFFIX_STATE = 'state';
+const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
+const MQTT_TOPIC_SUFFIX_TREE = 'tree';
+const MQTT_TOPIC_STATUS = 'hello/cgateweb';
+const MQTT_PAYLOAD_STATUS_ONLINE = 'Online';
+const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 const MQTT_STATE_ON = 'ON';
 const MQTT_STATE_OFF = 'OFF';
-const RAMP_STEP = 26; // Standard ramp step (approx 10%)
-const RECONNECT_INITIAL_DELAY_MS = defaultSettings.reconnectinitialdelay;
-const RECONNECT_MAX_DELAY_MS = defaultSettings.reconnectmaxdelay;
+const MQTT_COMMAND_INCREASE = 'INCREASE';
+const MQTT_COMMAND_DECREASE = 'DECREASE';
+
+// C-Gate Commands & Parameters
+const CGATE_CMD_ON = 'ON';
+const CGATE_CMD_OFF = 'OFF';
+const CGATE_CMD_RAMP = 'RAMP';
+const CGATE_CMD_GET = 'GET';
+const CGATE_CMD_TREEXML = 'TREEXML';
+const CGATE_CMD_EVENT_ON = 'EVENT ON';
+const CGATE_PARAM_LEVEL = 'level';
+const CGATE_LEVEL_MIN = 0;
+const CGATE_LEVEL_MAX = 255;
+const RAMP_STEP = Math.round(CGATE_LEVEL_MAX * 0.1); // Approx 10% step for INCREASE/DECREASE
+
+// C-Gate Responses
 const CGATE_RESPONSE_OBJECT_STATUS = '300';
 const CGATE_RESPONSE_TREE_START = '343';
 const CGATE_RESPONSE_TREE_END = '344';
 const CGATE_RESPONSE_TREE_DATA = '347';
-const LOG_PREFIX = '[INFO]';
-const WARN_PREFIX = '[WARN]';
-const ERROR_PREFIX = '[ERROR]';
+
+// MQTT Command Types (from topic)
+const MQTT_CMD_TYPE_GETALL = 'getall';
+const MQTT_CMD_TYPE_GETTREE = 'gettree';
+const MQTT_CMD_TYPE_SWITCH = 'switch';
+const MQTT_CMD_TYPE_RAMP = 'ramp';
+
+// Home Assistant Discovery
+const HA_COMPONENT_LIGHT = 'light';
+const HA_COMPONENT_COVER = 'cover';
+const HA_COMPONENT_SWITCH = 'switch';
+const HA_DISCOVERY_SUFFIX = 'config';
+const HA_DEVICE_CLASS_SHUTTER = 'shutter';
+const HA_DEVICE_CLASS_OUTLET = 'outlet';
+const HA_DEVICE_VIA = 'cgateweb_bridge';
+const HA_DEVICE_MANUFACTURER = 'Clipsal C-Bus via cgateweb';
+const HA_MODEL_LIGHTING = 'Lighting Group';
+const HA_MODEL_COVER = 'Enable Control Group (Cover)';
+const HA_MODEL_SWITCH = 'Enable Control Group (Switch)';
+const HA_MODEL_RELAY = 'Enable Control Group (Relay)';
+const HA_ORIGIN_NAME = 'cgateweb';
+const HA_ORIGIN_SW_VERSION = '0.1.0'; // TODO: Replace with dynamic version
+const HA_ORIGIN_SUPPORT_URL = 'https://github.com/dougrathbone/cgateweb';
+
+// System
+const MQTT_ERROR_AUTH = 5; // MQTT CONNACK code 5: Not authorized
+const NEWLINE = '\n';
 
 // Throttled Queue Implementation (Reverted to original setInterval logic)
 class ThrottledQueue {
@@ -169,10 +219,10 @@ class CBusEvent {
 
     // Calculate level (0-100%)
     Level() {
-        if (this._action === "on") return "100";
-        if (this._action === "off") return "0";
+        if (this._action === CGATE_CMD_ON.toLowerCase()) return "100";
+        if (this._action === CGATE_CMD_OFF.toLowerCase()) return "0";
         if (this._levelRaw !== null) {
-            return Math.round(this._levelRaw * 100 / 255).toString();
+            return Math.round(this._levelRaw * 100 / CGATE_LEVEL_MAX).toString();
         }
         return "0"; // Default to 0 if no level info and not explicitly 'on'
     }
@@ -186,7 +236,7 @@ class CBusCommand {
         const topicParts = topicStr.split("/");
 
         this._isValid = false;
-        if (topicParts.length >= 6 && topicParts[0] === 'cbus' && topicParts[1] === 'write') {
+        if (topicParts.length >= 6 && topicParts[0] === MQTT_TOPIC_PREFIX_CBUS && topicParts[1] === 'write') {
             this._host = topicParts[2];
             this._group = topicParts[3];
             this._device = topicParts[4]; // Can be empty for group-level commands like getall
@@ -222,10 +272,10 @@ class CBusCommand {
     Level() {
         if (!this._isValid) return null;
         // Handle explicit ON/OFF in the message (for switch or ramp)
-        if (this._message.toUpperCase() === "ON") return "100";
-        if (this._message.toUpperCase() === "OFF") return "0";
+        if (this._message.toUpperCase() === MQTT_STATE_ON) return "100";
+        if (this._message.toUpperCase() === MQTT_STATE_OFF) return "0";
         // Handle direct level setting in message (e.g., "50" or "50,2s")
-        if (this._commandType === "ramp" || this._commandType === "switch") {
+        if (this._commandType === MQTT_CMD_TYPE_RAMP || this._commandType === MQTT_CMD_TYPE_SWITCH) {
             const messageParts = this._message.split(',');
             const levelPart = parseInt(messageParts[0]);
             if (!isNaN(levelPart)) {
@@ -245,15 +295,15 @@ class CBusCommand {
     // Raw level calculation (0-255) needed for RAMP command
     RawLevel() {
         if (!this._isValid) return null;
-        if (this._message.toUpperCase() === "ON") return 255;
-        if (this._message.toUpperCase() === "OFF") return 0;
+        if (this._message.toUpperCase() === MQTT_STATE_ON) return CGATE_LEVEL_MAX;
+        if (this._message.toUpperCase() === MQTT_STATE_OFF) return CGATE_LEVEL_MIN;
 
-        if (this._commandType === "ramp") {
+        if (this._commandType === MQTT_CMD_TYPE_RAMP) {
             const messageParts = this._message.split(',');
             const levelPart = parseInt(messageParts[0]);
             if (!isNaN(levelPart)) {
                 const percentage = Math.max(0, Math.min(100, levelPart));
-                return Math.round(percentage * 255 / 100);
+                return Math.round(percentage * CGATE_LEVEL_MAX / 100);
             }
         }
         return null; // Cannot determine raw level
@@ -261,7 +311,7 @@ class CBusCommand {
 
     // Get ramp time if specified (e.g., "50,2s")
     RampTime() {
-        if (!this._isValid || this._commandType !== "ramp") return null;
+        if (!this._isValid || this._commandType !== MQTT_CMD_TYPE_RAMP) return null;
         const messageParts = this._message.split(',');
         if (messageParts.length > 1) {
             return messageParts[1].trim(); // e.g., "2s", "1m"
@@ -558,7 +608,7 @@ class CgateWebBridge {
         this.clientConnected = true;
         this.log(`${LOG_PREFIX} CONNECTED TO MQTT: ${this.settings.mqtt}`);
         // Publish Online status (LWT is generally preferred for this)
-        this.mqttPublishQueue.add({ topic: 'hello/cgateweb', payload: 'Online', options: { retain: false } }); // Don't retain simple online message
+        this.mqttPublishQueue.add({ topic: MQTT_TOPIC_STATUS, payload: MQTT_PAYLOAD_STATUS_ONLINE, options: { retain: false } }); // Don't retain simple online message
 
         this.client.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
             if (err) {
@@ -583,7 +633,7 @@ class CgateWebBridge {
     }
 
     _handleMqttError(err) {
-        if (err.code === 5) { // MQTT CONNACK code 5: Not authorized
+        if (err.code === MQTT_ERROR_AUTH) { // MQTT CONNACK code 5: Not authorized
             this.error(`${ERROR_PREFIX} MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
             this.error(`${ERROR_PREFIX} Exiting due to fatal MQTT authentication error.`);
             // Clear client reference *before* exiting? (Optional, maybe cleaner)
@@ -612,7 +662,7 @@ class CgateWebBridge {
         this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${this.settings.cbuscommandport}`);
         try {
             if (this.commandSocket && !this.commandSocket.destroyed) {
-                const commandString = 'EVENT ON\n';
+                const commandString = CGATE_CMD_EVENT_ON + NEWLINE;
                 this.commandSocket.write(commandString);
                 this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()} (Directly on connect)`);
             } else {
@@ -695,7 +745,7 @@ class CgateWebBridge {
             // --- Trigger Initial Get All --- 
             if (this.settings.getallnetapp && this.settings.getallonstart) {
                 this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
-                this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
+                this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
             }
 
             // --- Trigger Periodic Get All --- 
@@ -706,7 +756,7 @@ class CgateWebBridge {
                 this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
                 this.periodicGetAllInterval = setInterval(() => {
                     this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
-                    this.cgateCommandQueue.add(`GET //${this.settings.cbusname}/${this.settings.getallnetapp}/* level\n`); // Standardize newline
+                    this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
                 }, this.settings.getallperiod * 1000);
             }
             
@@ -742,7 +792,7 @@ class CgateWebBridge {
                 this.log(`${LOG_PREFIX} Queuing TREEXML for network ${networkId} for HA Discovery.`);
                 // Use a distinct internal event or flag later if needed to distinguish 
                 // HA discovery TREEXML from manual requests.
-                this.cgateCommandQueue.add(`TREEXML ${networkId}\n`);
+                this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
             } else {
                 this.warn(`${WARN_PREFIX} Invalid network ID found in ha_discovery_networks: ${networkId}`);
             }
@@ -786,7 +836,7 @@ class CgateWebBridge {
         this.log(`${LOG_PREFIX} MQTT received on ${topic}: ${message}`);
 
         // --- Add handler for manual discovery trigger ---
-        if (topic === 'cbus/write/bridge/announce') { // Example topic
+        if (topic === MQTT_TOPIC_MANUAL_TRIGGER) {
             if (this.settings.ha_discovery_enabled) {
                  this.log(`${LOG_PREFIX} Manual HA Discovery triggered via MQTT.`);
                  this._triggerHaDiscovery();
@@ -809,13 +859,13 @@ class CgateWebBridge {
         } else {
             // If device is empty, trim trailing slash? Depends on C-Gate expectations.
             // For GET //.../* commands, the path is different.
-            if (command.CommandType() === 'getall') {
+            if (command.CommandType() === MQTT_CMD_TYPE_GETALL) {
                 cbusPath = `//${this.settings.cbusname}/${command.Host()}/${command.Group()}/*`;
             } else {
                 // Assume commands like ON/OFF require a device, log warning?
                 this.warn(`${WARN_PREFIX} MQTT command on topic ${topic} has empty device ID.`);
                 // For safety, let's return if the path seems incomplete for the command type
-                if (command.CommandType() !== 'gettree') { // gettree targets network only
+                if (command.CommandType() !== MQTT_CMD_TYPE_GETTREE) { // gettree targets network only
                     return;
                 }
             }
@@ -823,26 +873,26 @@ class CgateWebBridge {
 
         try {
             switch (command.CommandType()) {
-                case "gettree":
+                case MQTT_CMD_TYPE_GETTREE:
                     this.treeNetwork = command.Host();
-                    this.cgateCommandQueue.add(`TREEXML ${command.Host()}\n`); // Standardize newline
+                    this.cgateCommandQueue.add(`${CGATE_CMD_TREEXML} ${command.Host()}${NEWLINE}`); // Standardize newline
                     break;
 
-                case "getall":
-                    this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                case MQTT_CMD_TYPE_GETALL:
+                    this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
                     break;
 
-                case "switch":
+                case MQTT_CMD_TYPE_SWITCH:
                     if (message.toUpperCase() === MQTT_STATE_ON) {
-                        this.cgateCommandQueue.add(`ON ${cbusPath}\n`); // Standardize newline
+                        this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`); // Standardize newline
                     } else if (message.toUpperCase() === MQTT_STATE_OFF) {
-                        this.cgateCommandQueue.add(`OFF ${cbusPath}\n`); // Standardize newline
+                        this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`); // Standardize newline
                     } else {
                         this.warn(`${WARN_PREFIX} Invalid payload for switch command: ${message}`);
                     }
                     break;
 
-                case "ramp":
+                case MQTT_CMD_TYPE_RAMP:
                     const rampAction = message.toUpperCase();
                     const levelAddress = `${command.Host()}/${command.Group()}/${command.Device()}`; // For event emitter
                     // Ensure we have a device for ramp actions
@@ -852,51 +902,51 @@ class CgateWebBridge {
                     }
 
                     switch (rampAction) {
-                        case "INCREASE":
-                            this.internalEventEmitter.once('level', (address, currentLevel) => {
+                        case MQTT_COMMAND_INCREASE:
+                            this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
                                 if (address === levelAddress) {
                                     // Ensure currentLevel is a number (it comes from event emitter which might pass string or number)
                                     const currentLevelNum = parseInt(currentLevel);
                                     if (!isNaN(currentLevelNum)) {
-                                        const newLevel = Math.min(255, currentLevelNum + RAMP_STEP);
-                                        this.cgateCommandQueue.add(`RAMP ${cbusPath} ${newLevel}\n`); // Standardize newline
+                                        const newLevel = Math.min(CGATE_LEVEL_MAX, currentLevelNum + RAMP_STEP);
+                                        this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`); // Standardize newline
                                     } else {
                                         this.warn(`${WARN_PREFIX} Could not parse current level for INCREASE: ${currentLevel}`);
                                     }
                                 }
                             });
-                            this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                            this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
                             break;
 
-                        case "DECREASE":
-                            this.internalEventEmitter.once('level', (address, currentLevel) => {
+                        case MQTT_COMMAND_DECREASE:
+                            this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
                                 if (address === levelAddress) {
                                     const currentLevelNum = parseInt(currentLevel);
                                     if (!isNaN(currentLevelNum)) {
-                                        const newLevel = Math.max(0, currentLevelNum - RAMP_STEP);
-                                        this.cgateCommandQueue.add(`RAMP ${cbusPath} ${newLevel}\n`); // Standardize newline
+                                        const newLevel = Math.max(CGATE_LEVEL_MIN, currentLevelNum - RAMP_STEP);
+                                        this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`); // Standardize newline
                                     } else {
                                         this.warn(`${WARN_PREFIX} Could not parse current level for DECREASE: ${currentLevel}`);
                                     }
                                 }
                             });
-                            this.cgateCommandQueue.add(`GET ${cbusPath} level\n`); // Standardize newline
+                            this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`); // Standardize newline
                             break;
 
                         case MQTT_STATE_ON:
-                            this.cgateCommandQueue.add(`ON ${cbusPath}\n`); // Standardize newline
+                            this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`); // Standardize newline
                             break;
                         case MQTT_STATE_OFF:
-                            this.cgateCommandQueue.add(`OFF ${cbusPath}\n`); // Standardize newline
+                            this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`); // Standardize newline
                             break;
                         default:
                             const rawLevel = command.RawLevel();
                             const rampTime = command.RampTime();
                             if (rawLevel !== null) {
                                 if (rampTime) {
-                                    this.cgateCommandQueue.add(`RAMP ${cbusPath} ${rawLevel} ${rampTime}\n`); // Standardize newline
+                                    this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${rawLevel} ${rampTime}${NEWLINE}`); // Standardize newline
                                 } else {
-                                    this.cgateCommandQueue.add(`RAMP ${cbusPath} ${rawLevel}\n`); // Standardize newline
+                                    this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${rawLevel}${NEWLINE}`); // Standardize newline
                                 }
                             } else {
                                 this.warn(`${WARN_PREFIX} Invalid payload for ramp command: ${message}`);
@@ -916,7 +966,7 @@ class CgateWebBridge {
         this.commandBuffer += data.toString();
         let newlineIndex;
 
-        while ((newlineIndex = this.commandBuffer.indexOf('\n')) > -1) {
+        while ((newlineIndex = this.commandBuffer.indexOf(NEWLINE)) > -1) {
             const line = this.commandBuffer.substring(0, newlineIndex).trim();
             this.commandBuffer = this.commandBuffer.substring(newlineIndex + 1);
 
@@ -953,7 +1003,7 @@ class CgateWebBridge {
                     if (levelMatch) {
                         const fullAddress = levelMatch[1]; // e.g., //PROJECT/254/56/10
                         const levelValue = parseInt(levelMatch[2]);
-                        const levelPercent = Math.round(levelValue * 100 / 255).toString();
+                        const levelPercent = Math.round(levelValue * 100 / CGATE_LEVEL_MAX).toString();
                         const addressParts = fullAddress.split('/'); // ['', '', project, network, app, group]
                         if (addressParts.length >= 6) {
                             const netAddr = addressParts[3];
@@ -962,16 +1012,16 @@ class CgateWebBridge {
                             const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
                             const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`;
 
-                            this.internalEventEmitter.emit('level', simpleAddr, levelValue);
+                            this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
 
-                            if (levelValue === 0) {
+                            if (levelValue === CGATE_LEVEL_MIN) {
                                 this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} OFF (0%)`);
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: '0', options: this._mqttOptions });
                             } else {
                                 this.log(`${LOG_PREFIX} C-Bus Status (Cmd/Get): ${simpleAddr} ON (${levelPercent}%)`);
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
-                                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: MQTT_STATE_ON, options: this._mqttOptions });
+                                this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent, options: this._mqttOptions });
                             }
                         } else {
                             this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
@@ -990,7 +1040,7 @@ class CgateWebBridge {
                     this.treeNetwork = statusData || this.treeNetwork;
                     this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
                 } else if (responseCode === CGATE_RESPONSE_TREE_DATA) { // 347
-                    this.treeBuffer += statusData + '\n';
+                    this.treeBuffer += statusData + NEWLINE;
                 } else if (responseCode === CGATE_RESPONSE_TREE_END) { // 344
                     this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
                     const networkForTree = this.treeNetwork; // Capture before clearing
@@ -1007,7 +1057,7 @@ class CgateWebBridge {
                                 // TODO: Decide if manual gettree should also publish to HA?
                                 // For now, only publish simple tree to standard topic
                                 this.mqttPublishQueue.add({ 
-                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
+                                    topic: `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///${MQTT_TOPIC_SUFFIX_TREE}`,
                                     payload: JSON.stringify(result),
                                     options: this._mqttOptions 
                                 });
@@ -1037,7 +1087,7 @@ class CgateWebBridge {
         this.eventBuffer += data.toString();
         let newlineIndex;
 
-        while ((newlineIndex = this.eventBuffer.indexOf('\n')) > -1) {
+        while ((newlineIndex = this.eventBuffer.indexOf(NEWLINE)) > -1) {
             const line = this.eventBuffer.substring(0, newlineIndex).trim();
             this.eventBuffer = this.eventBuffer.substring(newlineIndex + 1);
 
@@ -1074,14 +1124,14 @@ class CgateWebBridge {
         // Try to get raw level first (most accurate for ramp)
         if (event._levelRaw !== null) {
             levelValue = event._levelRaw;
-        } else if (event.Action() === 'on') {
-            levelValue = 255;
-        } else if (event.Action() === 'off') {
-            levelValue = 0;
+        } else if (event.Action() === CGATE_CMD_ON.toLowerCase()) {
+            levelValue = CGATE_LEVEL_MAX;
+        } else if (event.Action() === CGATE_CMD_OFF.toLowerCase()) {
+            levelValue = CGATE_LEVEL_MIN;
         }
 
         if (levelValue !== null) {
-            this.internalEventEmitter.emit('level', simpleAddr, levelValue);
+            this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
         } else {
             this.log(`${LOG_PREFIX} Could not determine level value for event:`, event);
         }
@@ -1101,8 +1151,8 @@ class CgateWebBridge {
         this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state} (${levelPercent || '0'}%)`);
 
         // Publish state and level
-        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
-        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent || '0', options: this._mqttOptions });
+        this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: state, options: this._mqttOptions });
+        this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent || '0', options: this._mqttOptions });
     }
 
     // --- New method to generate and publish HA discovery messages ---
@@ -1116,7 +1166,7 @@ class CgateWebBridge {
         }
 
         const units = projectData.Interface.Network.Unit || [];
-        const lightingAppId = '56'; // TODO: Make configurable?
+        const lightingAppId = DEFAULT_CBUS_APP_LIGHTING; // Use constant
         const coverAppId = this.settings.ha_discovery_cover_app_id; // Get configured cover app ID
         const switchAppId = this.settings.ha_discovery_switch_app_id; // Get switch app ID
         const relayAppId = this.settings.ha_discovery_relay_app_id; // Get relay app ID
@@ -1144,30 +1194,30 @@ class CgateWebBridge {
                 if (coverAppId && appAddress === coverAppId) {
                     const finalLabel = groupLabel || `CBus Cover ${networkId}/${coverAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
-                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/cover/${uniqueId}/config`;
+                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_COVER}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
                     const payload = {
                         name: finalLabel,
                         unique_id: uniqueId,
-                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/state`,
-                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${coverAppId}/${groupId}/switch`,
-                        payload_open: "ON",
-                        payload_close: "OFF",
-                        state_open: "ON",
-                        state_closed: "OFF",
+                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${coverAppId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+                        payload_open: MQTT_STATE_ON,
+                        payload_close: MQTT_STATE_OFF,
+                        state_open: MQTT_STATE_ON,
+                        state_closed: MQTT_STATE_OFF,
                         qos: 0,
                         retain: true,
-                        device_class: "shutter",
+                        device_class: HA_DEVICE_CLASS_SHUTTER,
                         device: {
                             identifiers: [uniqueId],
                             name: finalLabel,
-                            manufacturer: "Clipsal C-Bus via cgateweb",
-                            model: "Enable Control Group (Cover)",
-                            via_device: "cgateweb_bridge"
+                            manufacturer: HA_DEVICE_MANUFACTURER,
+                            model: HA_MODEL_COVER,
+                            via_device: HA_DEVICE_VIA
                         },
                         origin: {
-                            name: "cgateweb",
-                            sw_version: "0.1.0", // TODO: Get version dynamically
-                            support_url: "https://github.com/dougrathbone/cgateweb"
+                            name: HA_ORIGIN_NAME,
+                            sw_version: HA_ORIGIN_SW_VERSION,
+                            support_url: HA_ORIGIN_SUPPORT_URL
                         }
                     };
                     this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
@@ -1179,30 +1229,29 @@ class CgateWebBridge {
                 if (!discovered && switchAppId && appAddress === switchAppId) {
                     const finalLabel = groupLabel || `CBus Switch ${networkId}/${switchAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${switchAppId}_${groupId}`;
-                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/switch/${uniqueId}/config`;
+                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
                     const payload = {
                         name: finalLabel,
                         unique_id: uniqueId,
-                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${switchAppId}/${groupId}/state`,
-                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${switchAppId}/${groupId}/switch`,
-                        payload_on: "ON",
-                        payload_off: "OFF",
-                        state_on: "ON",
-                        state_off: "OFF",
+                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${switchAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${switchAppId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+                        payload_on: MQTT_STATE_ON,
+                        payload_off: MQTT_STATE_OFF,
+                        state_on: MQTT_STATE_ON,
+                        state_off: MQTT_STATE_OFF,
                         qos: 0,
                         retain: true,
-                        // device_class: "switch", // Optional: specific device class if needed
                         device: {
                             identifiers: [uniqueId],
                             name: finalLabel,
-                            manufacturer: "Clipsal C-Bus via cgateweb",
-                            model: "Enable Control Group (Switch)",
-                            via_device: "cgateweb_bridge"
+                            manufacturer: HA_DEVICE_MANUFACTURER,
+                            model: HA_MODEL_SWITCH,
+                            via_device: HA_DEVICE_VIA
                         },
                         origin: {
-                            name: "cgateweb",
-                            sw_version: "0.1.0",
-                            support_url: "https://github.com/dougrathbone/cgateweb"
+                            name: HA_ORIGIN_NAME,
+                            sw_version: HA_ORIGIN_SW_VERSION,
+                            support_url: HA_ORIGIN_SUPPORT_URL
                         }
                     };
                     this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
