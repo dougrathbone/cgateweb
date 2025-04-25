@@ -421,8 +421,119 @@ describe('CgateWebBridge', () => {
 
     });
 
-    // Future tests for other methods (start, stop, handlers, etc.) will go here
-    // describe('Connection Methods', () => { ... });
+    // --- Test Start/Stop Methods ---
+    describe('Start/Stop Methods', () => {
+        let connectMqttSpy, connectCommandSpy, connectEventSpy;
+        let clearTimeoutSpy, clearIntervalSpy;
+        let mockClient, mockCommandSocket, mockEventSocket;
+        let mqttQueueClearSpy, cgateQueueClearSpy, emitterRemoveSpy;
+
+        beforeEach(() => {
+            // --- Mocks for start() ---
+            // Spy on the actual implementation but prevent execution
+            connectMqttSpy = jest.spyOn(bridge, '_connectMqtt').mockImplementation(() => { });
+            connectCommandSpy = jest.spyOn(bridge, '_connectCommandSocket').mockImplementation(() => { });
+            connectEventSpy = jest.spyOn(bridge, '_connectEventSocket').mockImplementation(() => { });
+
+            // --- Mocks/Spies for stop() ---
+            clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+            clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+
+            // Create mock client/sockets with necessary methods
+            mockClient = { end: jest.fn(), removeAllListeners: jest.fn() }; // Add removeAllListeners if needed by stop
+            mockCommandSocket = { destroy: jest.fn(), removeAllListeners: jest.fn() };
+            mockEventSocket = { destroy: jest.fn(), removeAllListeners: jest.fn() };
+
+            // Spy on queue clear methods
+            mqttQueueClearSpy = jest.spyOn(bridge.mqttPublishQueue, 'clear');
+            cgateQueueClearSpy = jest.spyOn(bridge.cgateCommandQueue, 'clear');
+
+            // Spy on internal event emitter
+            emitterRemoveSpy = jest.spyOn(bridge.internalEventEmitter, 'removeAllListeners');
+        });
+
+        afterEach(() => {
+            // Restore all spies
+            connectMqttSpy.mockRestore();
+            connectCommandSpy.mockRestore();
+            connectEventSpy.mockRestore();
+            clearTimeoutSpy.mockRestore();
+            clearIntervalSpy.mockRestore();
+            mqttQueueClearSpy.mockRestore();
+            cgateQueueClearSpy.mockRestore();
+            emitterRemoveSpy.mockRestore();
+        });
+
+        it('start() should call connection methods', () => {
+            bridge.start();
+            expect(connectMqttSpy).toHaveBeenCalledTimes(1);
+            expect(connectCommandSpy).toHaveBeenCalledTimes(1);
+            expect(connectEventSpy).toHaveBeenCalledTimes(1);
+        });
+
+        it('stop() should clean up resources and reset state', () => {
+            // Simulate an active state before stopping
+            bridge.client = mockClient;
+            bridge.commandSocket = mockCommandSocket;
+            bridge.eventSocket = mockEventSocket;
+            bridge.clientConnected = true;
+            bridge.commandConnected = true;
+            bridge.eventConnected = true;
+            bridge.commandReconnectTimeout = setTimeout(() => { }, 1000); // Assign dummy timeout IDs
+            bridge.eventReconnectTimeout = setTimeout(() => { }, 1000);
+            bridge.periodicGetAllInterval = setInterval(() => { }, 1000); // Assign dummy interval ID
+            const cmdTimeoutId = bridge.commandReconnectTimeout;
+            const evtTimeoutId = bridge.eventReconnectTimeout;
+            const getAllIntervalId = bridge.periodicGetAllInterval;
+
+            // Act
+            bridge.stop();
+
+            // Assertions
+            expect(clearTimeoutSpy).toHaveBeenCalledWith(cmdTimeoutId);
+            expect(clearTimeoutSpy).toHaveBeenCalledWith(evtTimeoutId);
+            expect(clearIntervalSpy).toHaveBeenCalledWith(getAllIntervalId);
+            expect(mqttQueueClearSpy).toHaveBeenCalledTimes(1);
+            expect(cgateQueueClearSpy).toHaveBeenCalledTimes(1);
+            expect(mockClient.end).toHaveBeenCalledWith(true); // Expect force close
+            expect(mockCommandSocket.destroy).toHaveBeenCalledTimes(1);
+            expect(mockEventSocket.destroy).toHaveBeenCalledTimes(1);
+            expect(emitterRemoveSpy).toHaveBeenCalledTimes(1);
+            expect(bridge.clientConnected).toBe(false);
+            expect(bridge.commandConnected).toBe(false);
+            expect(bridge.eventConnected).toBe(false);
+            expect(bridge.client).toBeNull();
+            expect(bridge.commandSocket).toBeNull();
+            expect(bridge.eventSocket).toBeNull();
+            expect(bridge.commandReconnectTimeout).toBeNull();
+            expect(bridge.eventReconnectTimeout).toBeNull();
+            expect(bridge.periodicGetAllInterval).toBeNull();
+        });
+
+        it('stop() should handle null resources gracefully', () => {
+             // Ensure everything is null/default before stop()
+             bridge.client = null;
+             bridge.commandSocket = null;
+             bridge.eventSocket = null;
+             bridge.commandReconnectTimeout = null;
+             bridge.eventReconnectTimeout = null;
+             bridge.periodicGetAllInterval = null;
+             bridge.clientConnected = false; // Already false but good to be explicit
+ 
+             // Act & Assert - should not throw errors
+             expect(() => bridge.stop()).not.toThrow();
+ 
+             // Verify mocks were NOT called for null resources
+             expect(clearTimeoutSpy).not.toHaveBeenCalled();
+             expect(clearIntervalSpy).not.toHaveBeenCalled();
+             // Queues and emitter are always present, so clear/removeAllListeners are called
+             expect(mqttQueueClearSpy).toHaveBeenCalledTimes(1);
+             expect(cgateQueueClearSpy).toHaveBeenCalledTimes(1);
+             expect(emitterRemoveSpy).toHaveBeenCalledTimes(1);
+         });
+
+    });
+
     // describe('Data Handlers', () => { ... });
 
 });
