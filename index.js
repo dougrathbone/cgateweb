@@ -855,23 +855,29 @@ class CgateWebBridge {
             this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
 
             try {
-                // Example lines:
-                // 200 OK.
-                // 300 //PROJECT/NET/APP/GROUP level=128
-                // 300-lighting on NET/APP/GROUP [... OID/Session]
-                // 343-NETWORK
-                // 347-<XML Data>
-                // 344-NETWORK
-                // 4xx Error message
-                // 5xx Server error
+                let responseCode = '';
+                let statusData = '';
+                const hyphenIndex = line.indexOf('-');
 
-                const parts = line.split('-'); // Split by first hyphen
-                const responseCode = parts[0].trim();
+                if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
+                    // Handle hyphenated responses (300-, 343-, 347-, 344-)
+                    responseCode = line.substring(0, hyphenIndex).trim();
+                    statusData = line.substring(hyphenIndex + 1).trim();
+                } else {
+                    // Handle space-separated responses (300 level=, 4xx, 5xx, 200 OK)
+                    const spaceParts = line.split(' ');
+                    responseCode = spaceParts[0].trim();
+                    // Reconstruct statusData if there are multiple parts after code
+                    if (spaceParts.length > 1) {
+                         statusData = spaceParts.slice(1).join(' ').trim();
+                    }
+                }
+                
+                if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
+                     continue; // Skip processing this line
+                }
 
                 if (responseCode === CGATE_RESPONSE_OBJECT_STATUS) { // 300
-                    const statusData = parts.length > 1 ? parts[1].trim() : '';
-                    // Check if it's a level report (e.g., from GET command)
-                    // Format: //PROJECT/NET/APP/GROUP level=VALUE
                     const levelMatch = statusData.match(/(\/\/.*?\/.*?\/.*?\/.*?)\s+level=(\d+)/);
 
                     if (levelMatch) {
@@ -886,7 +892,6 @@ class CgateWebBridge {
                             const simpleAddr = `${netAddr}/${appAddr}/${groupAddr}`; // For event emitter
                             const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${simpleAddr}`;
 
-                            // Emit raw level for potential ramp increase/decrease listeners
                             this.internalEventEmitter.emit('level', simpleAddr, levelValue);
 
                             if (levelValue === 0) {
@@ -902,56 +907,50 @@ class CgateWebBridge {
                             this.warn(`${WARN_PREFIX} Could not parse address from command data (level report): ${fullAddress}`);
                         }
                     } else {
-                        // It might be a response like "300-lighting on NET/APP/GROUP" - Use CBusEvent parser
-                        // This assumes the event format follows the response code directly after hyphen
-                        const event = new CBusEvent(statusData); // Pass the part after "300-"
+                        const event = new CBusEvent(statusData);
                         if (event.isValid()) {
-                            this._publishEvent(event, '(Cmd/Event)'); // Publish using common function
-                            // Emit level based on parsed event action/level
+                            this._publishEvent(event, '(Cmd/Event)');
                             this._emitLevelFromEvent(event);
                         } else {
                             this.log(`${LOG_PREFIX} Unhandled status response (300) from command port: ${statusData}`);
                         }
                     }
-                } else if (responseCode === CGATE_RESPONSE_TREE_START) { // 343
-                    this.treeBuffer = ''; // Reset buffer
-                    // Network might be included after hyphen: 343-NETWORK
-                    this.treeNetwork = parts.length > 1 ? parts[1].trim() : this.treeNetwork; // Store network if provided
+                } else if (responseCode === CGATE_RESPONSE_TREE_START) {
+                    this.treeBuffer = '';
+                    this.treeNetwork = statusData || this.treeNetwork;
                     this.log(`${LOG_PREFIX} Started receiving TreeXML for network ${this.treeNetwork || 'unknown'}...`);
-                } else if (responseCode === CGATE_RESPONSE_TREE_DATA && parts.length > 1) { // 347
-                    this.treeBuffer += parts[1] + '\n'; // Append XML data
-                } else if (responseCode.startsWith(CGATE_RESPONSE_TREE_END)) { // 344
+                } else if (responseCode === CGATE_RESPONSE_TREE_DATA) { // 347
+                    this.treeBuffer += statusData + '\n';
+                } else if (responseCode === CGATE_RESPONSE_TREE_END) { // 344
                     this.log(`${LOG_PREFIX} Finished receiving TreeXML. Parsing...`);
-                    // Ensure we have a network context from the gettree command or start code
+                    // Add specific log *before* the condition
+                    console.log(`[DEBUG] Checking TreeXML condition. Network: ${this.treeNetwork}, Buffer Length: ${this.treeBuffer?.length ?? 0}`);
                     if (this.treeNetwork && this.treeBuffer) {
-                        parseString(this.treeBuffer, { explicitArray: false }, (err, result) => { // Use explicitArray: false for simpler structure
+                        parseString(this.treeBuffer, { explicitArray: false }, (err, result) => { 
                             if (err) {
                                 this.error(`${ERROR_PREFIX} Error parsing TreeXML:`, err);
                             } else {
-                                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${this.treeNetwork}`);
-                                this.mqttPublishQueue.add({
+                                this.mqttPublishQueue.add({ 
                                     topic: `${MQTT_TOPIC_PREFIX_READ}/${this.treeNetwork}///tree`,
                                     payload: JSON.stringify(result),
-                                    options: this._mqttOptions // Usually retain tree
+                                    options: this._mqttOptions 
                                 });
                             }
-                            this.treeBuffer = ''; // Clear buffer
-                            this.treeNetwork = null; // Reset network context
+                            this.treeBuffer = ''; 
+                            this.treeNetwork = null; 
                         });
                     } else {
-                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context.`);
-                        this.treeBuffer = ''; // Clear buffer anyway
+                        console.log(`[DEBUG] Skipping parseString. Network: ${this.treeNetwork}, Buffer: '${this.treeBuffer}'`); // <<< TEMP LOG
+                        this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context.`); 
+                        this.treeBuffer = ''; 
                         this.treeNetwork = null;
                     }
                 } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
-                    // Log C-Gate errors
-                    this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${line}`);
+                    this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
                 } else {
-                    // Log other responses if needed for debugging (e.g., 200 OK)
-                    // this.log(`${LOG_PREFIX} Unhandled response from command port: ${line}`);
                 }
             } catch (e) {
-                this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`);
+                this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`); 
             }
         }
     }
@@ -1012,8 +1011,9 @@ class CgateWebBridge {
 
     // Helper to publish state/level based on a parsed CBusEvent
     _publishEvent(event, source = '') {
-        if (!event || !event.isValid()) return;
-
+        if (!event || !event.isValid()) {
+            return;
+        }
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.Host()}/${event.Group()}/${event.Device()}`;
         const levelPercent = event.Level(); // Get 0-100 level
 
@@ -1025,48 +1025,6 @@ class CgateWebBridge {
         // Publish state and level
         this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
         this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent || '0', options: this._mqttOptions });
-
-        // Old logic based on action (kept for reference, but state/level from levelPercent is better)
-        /*
-        if (event.DeviceType() === "lighting") {
-            // For lighting, action determines state/level
-            switch (event.Action()) {
-                case "on":
-                    this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ON (100%)`);
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '100', options: this._mqttOptions });
-                    break;
-                case "off":
-                    this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} OFF (0%)`);
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
-                    this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
-                    break;
-                case "ramp":
-                    if (levelPercent > 0) {
-                        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ON (${levelPercent}%)`);
-                        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_ON, options: this._mqttOptions });
-                        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
-                    } else {
-                        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} OFF (0%)`);
-                        this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: MQTT_STATE_OFF, options: this._mqttOptions });
-                        this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: '0', options: this._mqttOptions });
-                    }
-                    break;
-                default:
-                    this.warn(`${WARN_PREFIX} Unknown lighting action ${source}: ${event.Action()}`);
-            }
-        } else {
-            // Handle other device types if needed in the future
-            this.warn(`${WARN_PREFIX} Unhandled device type ${source}: ${event.DeviceType()}`);
-            // Maybe publish a generic state based on level?
-            if (levelPercent !== null) {
-                const state = levelPercent > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF;
-                this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state} (${levelPercent}%)`);
-                this.mqttPublishQueue.add({ topic: `${topicBase}/state`, payload: state, options: this._mqttOptions });
-                this.mqttPublishQueue.add({ topic: `${topicBase}/level`, payload: levelPercent, options: this._mqttOptions });
-            }
-        }
-        */
     }
 }
 
