@@ -74,11 +74,12 @@ Requesting an update on start or periodic updates can be set in the settings fil
 
 ### Home Assistant MQTT Discovery
 
-This project supports automatic discovery of C-Bus lighting groups (as `light` entities) and basic relay/cover groups (as `cover` entities) in Home Assistant.
+This project supports automatic discovery of C-Bus lighting groups (as `light` entities), basic relay/cover groups (as `cover` entities using `ha_discovery_cover_app_id`), and basic switch groups (as `switch` entities using `ha_discovery_switch_app_id`) in Home Assistant.
 
 *   Enable by setting `ha_discovery_enabled: true` in `settings.js`.
 *   Configure the MQTT discovery prefix (usually `homeassistant`) via `ha_discovery_prefix`.
 *   Specify which C-Bus networks to scan for devices using `ha_discovery_networks`.
+*   Configure the C-Bus Application IDs for covers and switches using `ha_discovery_cover_app_id` (default 203) and `ha_discovery_switch_app_id` (default null).
 *   See `docs/project-homeassistant-discovery.md` for more details.
 
 ### Testing

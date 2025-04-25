@@ -41,3 +41,10 @@ exports.logging = false;
 // e.g., [254] or [254, 255]
 // If empty and getallnetapp is set, will attempt to use network from getallnetapp
 // exports.ha_discovery_networks = [254]; 
+
+// C-Bus Application ID to treat as Covers (e.g., 203 for Enable Control)
+// exports.ha_discovery_cover_app_id = '203';
+
+// C-Bus Application ID to treat as Switches (e.g., 203 for Enable Control or 1 for Relay)
+// Set to a string/number ID to enable switch discovery for that App.
+// exports.ha_discovery_switch_app_id = null; 

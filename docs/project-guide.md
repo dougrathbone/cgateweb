@@ -76,8 +76,8 @@
 
 *   `cgateweb` supports automatic discovery of C-Bus lighting groups within Home Assistant using the MQTT Discovery protocol.
 *   When enabled via `settings.js` (`ha_discovery_enabled: true`), `cgateweb` will query the C-Gate network structure using `TREEXML` and publish configuration messages to the specified MQTT discovery prefix (default: `homeassistant`).
-*   This allows Home Assistant to automatically find and add C-Bus lights as `light` entities, and C-Bus relays/blinds (using the Enable Control application, default App ID 203) as basic `cover` entities (open/close).
-*   Configuration options in `settings.js` include enabling the feature, setting the discovery topic prefix, specifying which C-Bus networks to scan, and configuring the Application ID for covers.
+*   This allows Home Assistant to automatically find and add C-Bus lights (as `light` entities), basic covers (as `cover` entities, using App ID configured by `ha_discovery_cover_app_id`, default 203), and basic switches (as `switch` entities, using App ID configured by `ha_discovery_switch_app_id`, default null).
+*   Configuration options in `settings.js` include enabling the feature, setting the discovery topic prefix, specifying which C-Bus networks to scan, and configuring the Application IDs for covers and switches.
 *   See `docs/project-homeassistant-discovery.md` for detailed requirements and implementation notes.
 
 ---

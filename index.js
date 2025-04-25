@@ -24,7 +24,9 @@ const defaultSettings = {
     ha_discovery_enabled: false, // Default disabled
     ha_discovery_prefix: 'homeassistant', // Default HA prefix
     ha_discovery_networks: [], // Default: Discover no networks explicitly
-    ha_discovery_cover_app_id: '203' // Default App ID for Enable Control (Covers)
+    ha_discovery_cover_app_id: '203', // Default App ID for Enable Control (Covers)
+    ha_discovery_switch_app_id: null, // Default: Don't discover switches
+    ha_discovery_relay_app_id: null // Default: Don't discover relays
 };
 
 // --- Load User Settings ---
@@ -280,6 +282,14 @@ class CgateWebBridge {
         }
         // Ensure cover app ID is treated as string for consistency
         this.settings.ha_discovery_cover_app_id = String(this.settings.ha_discovery_cover_app_id);
+        // Ensure switch app ID is string if set, otherwise keep null
+        this.settings.ha_discovery_switch_app_id = this.settings.ha_discovery_switch_app_id !== null 
+            ? String(this.settings.ha_discovery_switch_app_id) 
+            : null;
+        // Ensure relay app ID is string if set, otherwise keep null
+        this.settings.ha_discovery_relay_app_id = this.settings.ha_discovery_relay_app_id !== null
+            ? String(this.settings.ha_discovery_relay_app_id)
+            : null;
 
         // Use provided factories or default ones
         this.mqttClientFactory = mqttClientFactory || (() => {
@@ -1108,15 +1118,149 @@ class CgateWebBridge {
         const units = projectData.Interface.Network.Unit || [];
         const lightingAppId = '56'; // TODO: Make configurable?
         const coverAppId = this.settings.ha_discovery_cover_app_id; // Get configured cover app ID
+        const switchAppId = this.settings.ha_discovery_switch_app_id; // Get switch app ID
+        const relayAppId = this.settings.ha_discovery_relay_app_id; // Get relay app ID
         let discoveryCount = 0;
+
+        // Function to process EnableControl groups (avoids repetition)
+        const processEnableControl = (enableControlData) => {
+            if (!enableControlData?.Group) return; // Check if group exists
+
+            const appAddress = enableControlData.ApplicationAddress;
+            const groups = Array.isArray(enableControlData.Group)
+                            ? enableControlData.Group
+                            : [enableControlData.Group];
+
+            groups.forEach(group => {
+                const groupId = group.GroupAddress;
+                if (groupId === undefined || groupId === null || groupId === '') {
+                    this.warn(`${WARN_PREFIX} Skipping EnableControl group in HA Discovery due to missing/invalid GroupAddress (App: ${appAddress})...`, group);
+                    return;
+                }
+                const groupLabel = group.Label;
+                let discovered = false;
+
+                // Check if it matches the Cover App ID
+                if (coverAppId && appAddress === coverAppId) {
+                    const finalLabel = groupLabel || `CBus Cover ${networkId}/${coverAppId}/${groupId}`;
+                    const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
+                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/cover/${uniqueId}/config`;
+                    const payload = {
+                        name: finalLabel,
+                        unique_id: uniqueId,
+                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/state`,
+                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${coverAppId}/${groupId}/switch`,
+                        payload_open: "ON",
+                        payload_close: "OFF",
+                        state_open: "ON",
+                        state_closed: "OFF",
+                        qos: 0,
+                        retain: true,
+                        device_class: "shutter",
+                        device: {
+                            identifiers: [uniqueId],
+                            name: finalLabel,
+                            manufacturer: "Clipsal C-Bus via cgateweb",
+                            model: "Enable Control Group (Cover)",
+                            via_device: "cgateweb_bridge"
+                        },
+                        origin: {
+                            name: "cgateweb",
+                            sw_version: "0.1.0", // TODO: Get version dynamically
+                            support_url: "https://github.com/dougrathbone/cgateweb"
+                        }
+                    };
+                    this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                    discoveryCount++;
+                    discovered = true;
+                }
+
+                // Check if it matches the Switch App ID (and wasn't already discovered as a cover)
+                if (!discovered && switchAppId && appAddress === switchAppId) {
+                    const finalLabel = groupLabel || `CBus Switch ${networkId}/${switchAppId}/${groupId}`;
+                    const uniqueId = `cgateweb_${networkId}_${switchAppId}_${groupId}`;
+                    const discoveryTopic = `${this.settings.ha_discovery_prefix}/switch/${uniqueId}/config`;
+                    const payload = {
+                        name: finalLabel,
+                        unique_id: uniqueId,
+                        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${switchAppId}/${groupId}/state`,
+                        command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${switchAppId}/${groupId}/switch`,
+                        payload_on: "ON",
+                        payload_off: "OFF",
+                        state_on: "ON",
+                        state_off: "OFF",
+                        qos: 0,
+                        retain: true,
+                        // device_class: "switch", // Optional: specific device class if needed
+                        device: {
+                            identifiers: [uniqueId],
+                            name: finalLabel,
+                            manufacturer: "Clipsal C-Bus via cgateweb",
+                            model: "Enable Control Group (Switch)",
+                            via_device: "cgateweb_bridge"
+                        },
+                        origin: {
+                            name: "cgateweb",
+                            sw_version: "0.1.0",
+                            support_url: "https://github.com/dougrathbone/cgateweb"
+                        }
+                    };
+                    this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                    discoveryCount++;
+                    discovered = true;
+                }
+
+                // Check if it matches the Relay App ID (and wasn't already discovered)
+                // Treat relays as switches in Home Assistant
+                if (!discovered && relayAppId && appAddress === relayAppId) {
+                     const finalLabel = groupLabel || `CBus Relay ${networkId}/${relayAppId}/${groupId}`;
+                     const uniqueId = `cgateweb_${networkId}_${relayAppId}_${groupId}`;
+                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/switch/${uniqueId}/config`;
+                     const payload = {
+                         name: finalLabel,
+                         unique_id: uniqueId,
+                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${relayAppId}/${groupId}/state`,
+                         command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${relayAppId}/${groupId}/switch`,
+                         payload_on: "ON",
+                         payload_off: "OFF",
+                         state_on: "ON",
+                         state_off: "OFF",
+                         qos: 0,
+                         retain: true,
+                         device_class: "outlet", // Use 'outlet' device class for relays
+                         device: {
+                             identifiers: [uniqueId],
+                             name: finalLabel,
+                             manufacturer: "Clipsal C-Bus via cgateweb",
+                             model: "Enable Control Group (Relay)",
+                             via_device: "cgateweb_bridge"
+                         },
+                         origin: {
+                             name: "cgateweb",
+                             sw_version: "0.1.0", // TODO: Get version dynamically
+                             support_url: "https://github.com/dougrathbone/cgateweb"
+                         }
+                     };
+                     this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                     discoveryCount++;
+                     discovered = true; // Mark as discovered
+                 }
+            });
+        };
 
         try {
             units.forEach(unit => {
-                 // Check for Lighting App
-                if (unit.Application?.Lighting?.Group) { 
-                    const groups = Array.isArray(unit.Application.Lighting.Group) 
-                                    ? unit.Application.Lighting.Group 
-                                    : [unit.Application.Lighting.Group]; 
+                const lightingData = unit.Application?.Lighting;
+                const enableControlData = unit.Application?.EnableControl;
+                // Add other top-level apps here if needed, e.g.: const measurementData = unit.Application?.Measurement;
+
+                // --- Process Lighting --- 
+                if (lightingData?.Group) {
+                    // Check ApplicationAddress if needed (though usually 56)
+                    // if (lightingData.ApplicationAddress !== lightingAppId) { ... }
+                    const groups = Array.isArray(lightingData.Group)
+                                    ? lightingData.Group
+                                    : [lightingData.Group];
                     groups.forEach(group => {
                         const groupId = group.GroupAddress;
                         if (groupId === undefined || groupId === null || groupId === '') {
@@ -1135,14 +1279,14 @@ class CgateWebBridge {
                             payload_off: "OFF",
                             brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${lightingAppId}/${groupId}/level`,
                             brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${lightingAppId}/${groupId}/ramp`,
-                            brightness_scale: 100, 
-                            qos: 0, 
+                            brightness_scale: 100,
+                            qos: 0,
                             retain: true,
                             device: {
                                 identifiers: [uniqueId],
                                 name: groupLabel,
                                 manufacturer: "Clipsal C-Bus via cgateweb",
-                                model: "Lighting Group", 
+                                model: "Lighting Group",
                                 via_device: "cgateweb_bridge"
                             },
                             origin: {
@@ -1154,53 +1298,27 @@ class CgateWebBridge {
                         this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
                         discoveryCount++;
                     });
+                    
+                    // --- Process EnableControl NESTED under Lighting --- 
+                    if (lightingData.EnableControl) {
+                        processEnableControl(lightingData.EnableControl);
+                    }
+                }
+
+                // --- Process TOP-LEVEL EnableControl --- 
+                // (Ensure it wasn't already processed as nested - though unlikely for same group)
+                // The processEnableControl function itself handles the App ID check.
+                if (enableControlData) {
+                    // We might need a check here if the same group could appear both nested and top-level.
+                    // For now, assume distinct groups or that double-processing is harmless 
+                    // if the unique ID prevents duplicate HA entities.
+                    processEnableControl(enableControlData);
                 }
                 
-                // Check for Cover App (Enable Control)
-                if (unit.Application?.EnableControl?.Group && unit.Application.EnableControl.ApplicationAddress === coverAppId) {
-                     const groups = Array.isArray(unit.Application.EnableControl.Group)
-                                     ? unit.Application.EnableControl.Group
-                                     : [unit.Application.EnableControl.Group];
-                     groups.forEach(group => {
-                         const groupId = group.GroupAddress;
-                         if (groupId === undefined || groupId === null || groupId === '') {
-                             this.warn(`${WARN_PREFIX} Skipping cover group in HA Discovery due to missing/invalid GroupAddress...`, group);
-                             return;
-                         }
-                         const groupLabel = group.Label || `CBus Cover ${networkId}/${coverAppId}/${groupId}`; 
-                         const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
-                         const discoveryTopic = `${this.settings.ha_discovery_prefix}/cover/${uniqueId}/config`;
-                         const payload = {
-                             name: groupLabel,
-                             unique_id: uniqueId,
-                             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/state`,
-                             command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${coverAppId}/${groupId}/switch`,
-                             payload_open: "ON",
-                             payload_close: "OFF",
-                             state_open: "ON",
-                             state_closed: "OFF",
-                             qos: 0, 
-                             retain: true,
-                             device_class: "shutter",
-                             device: {
-                                 identifiers: [uniqueId],
-                                 name: groupLabel,
-                                 manufacturer: "Clipsal C-Bus via cgateweb",
-                                 model: "Enable Control Group (Cover)", 
-                                 via_device: "cgateweb_bridge"
-                             },
-                             origin: {
-                                 name: "cgateweb",
-                                 sw_version: "0.1.0", // TODO: Get version dynamically
-                                 support_url: "https://github.com/dougrathbone/cgateweb"
-                             }
-                         };
-                         this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
-                         discoveryCount++;
-                     });
-                }
-                // TODO: Add checks for other discoverable app types here in the future
-            });
+                // --- Process other top-level applications here --- 
+                // e.g., if (measurementData?.Group) { ... }
+
+            }); // end units.forEach
 
             this.log(`${LOG_PREFIX} Published ${discoveryCount} HA Discovery messages for network ${networkId}.`);
 
