@@ -350,6 +350,8 @@ class CgateWebBridge {
 
     start() {
         this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
+        // Add the attempting connection message
+        this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${CGATE_COMMAND_PORT},${CGATE_EVENT_PORT})...`);
         this._connectMqtt();
         this._connectCommandSocket();
         this._connectEventSocket();
@@ -659,6 +661,8 @@ class CgateWebBridge {
     _checkAllConnected() {
         if (this.clientConnected && this.commandConnected && this.eventConnected) {
             this.log(`${LOG_PREFIX} ALL CONNECTED`);
+            // Add the consolidated status message
+            this.log(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${CGATE_COMMAND_PORT},${CGATE_EVENT_PORT}). Awaiting messages...`);
 
             // Initial Get All
             if (this.settings.getallnetapp && this.settings.getallonstart) {
