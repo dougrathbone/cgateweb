@@ -220,16 +220,19 @@ class CBusEvent {
         this._device = null;
         this._levelRaw = null;
 
-        console.log(`[DEBUG] CBusEvent Input: ${dataStr}`);
+        // Wrap input in quotes for logging whitespace
+        console.log(`[DEBUG] CBusEvent Input: "${dataStr}"`);
         
         try {
             // 1. Split by double space first to isolate main event part
             const mainPartStr = dataStr.split("  ")[0];
-            // 2. Split main part by single space
-            const mainParts = mainPartStr.split(' ');
+            // 2. Split main part by one or more whitespace chars, filter empty strings
+            const mainParts = mainPartStr.split(/\s+/).filter(part => part !== '');
+
+            console.log(`[DEBUG] CBusEvent mainParts (split by \s+):`, mainParts);
 
             if (mainParts.length < 3) {
-                throw new Error('Not enough parts after splitting by space');
+                throw new Error(`Not enough parts after splitting by space (found ${mainParts.length})`);
             }
 
             this._deviceType = mainParts[0];
@@ -243,6 +246,7 @@ class CBusEvent {
             if (addressPartRaw.startsWith('//')) {
                 const pathParts = addressPartRaw.split('/');
                 if (pathParts.length >= 5) { // e.g., ['', '', project, net, app, group]
+                    // Reconstruct NET/APP/GROUP from expected indices
                     addressPartSimple = `${pathParts[3]}/${pathParts[4]}/${pathParts[5]}`;
                 } else {
                     throw new Error(`Invalid full path format: ${addressPartRaw}`);
@@ -260,10 +264,16 @@ class CBusEvent {
             this._group = addressParts[1];
             this._device = addressParts[2];
 
-            // 7. Parse optional level
-            if (mainParts.length > 3 && !isNaN(parseInt(mainParts[3]))) {
-                this._levelRaw = parseInt(mainParts[3], 10);
-            }
+            // 7. Parse optional level (specifically from index 3)
+            if (mainParts.length > 3) {
+                const levelStr = mainParts[3];
+                if (!isNaN(parseInt(levelStr))) {
+                    this._levelRaw = parseInt(levelStr, 10);
+                } else {
+                     console.log(`[DEBUG] CBusEvent: Level part '${levelStr}' is not a number.`);
+                     // Keep _levelRaw as null if parsing fails
+                }
+            } // Ignore parts beyond index 3 (like the extra '0')
             
             // 8. Basic Validation
             if (this._deviceType && this._action && this._host && this._group && this._device) {
