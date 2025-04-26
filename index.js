@@ -33,8 +33,18 @@ const defaultSettings = {
 let userSettings = {};
 try {
     userSettings = require('./settings.js');
+    // Optional: Log success if needed for debugging
+    // console.log(`${LOG_PREFIX} Loaded settings from ./settings.js`);
 } catch (e) {
-    console.warn('[WARN] Could not load ./settings.js, using defaults.');
+    // Log an error if settings file is missing or fails to load/parse
+    if (e.code === 'MODULE_NOT_FOUND') {
+        // Specific error for missing file
+        console.error(`${ERROR_PREFIX} Configuration file ./settings.js not found. Using default settings.`);
+    } else {
+        // Generic error for other issues (e.g., syntax error in settings.js)
+        console.error(`${ERROR_PREFIX} Error loading ./settings.js: ${e.message}. Using default settings.`);
+    }
+    // We keep userSettings as {} and merge with defaults later.
 }
 
 // --- Constants ---
