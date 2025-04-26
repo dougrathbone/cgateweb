@@ -118,7 +118,8 @@ const NEWLINE = '\n';
 // Assumes single spaces as separators for main parts.
 // Captures: 1:DeviceType, 2:Action, 3:Address(Net/App/Group), 4:Optional Level
 // Updated to optionally handle //PROJECT/ prefix in address part from some event streams
-const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:\/\/\w+\/)?(\d+\/\d+\/\d+)(?:\s+(\d+))?/;
+// Further refined regex structure for robustness
+const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:(?:\/\/\w+\/)?(\d+\/\d+\/\d+))(?:\s+(\d+))?/;
 // Matches: cbus/write/<Net>/<App>/<Group>/<CommandType>
 // Allows empty Net/App/Group parts.
 // Captures: 1:Net, 2:App, 3:Group, 4:CommandType
@@ -219,40 +220,58 @@ class CBusEvent {
         this._device = null;
         this._levelRaw = null;
 
-        // Attempt to parse using regex
+        console.log(`[DEBUG] CBusEvent Input: ${dataStr}`);
+        
+        // Attempt to parse using refined regex
         const match = dataStr.match(EVENT_REGEX);
 
-        if (match) {
+        console.log(`[DEBUG] CBusEvent Regex Match Result:`, match);
+
+        if (match && match[3]) { // Ensure address part (group 3) was captured
             this._deviceType = match[1];
             this._action = match[2];
-            const addressParts = match[3].split('/'); // Address format (N/N/N) already validated by regex
+            // Group 3 now specifically captures the NET/APP/GROUP part
+            const addressParts = match[3].split('/'); 
             this._host = addressParts[0];
             this._group = addressParts[1];
             this._device = addressParts[2];
             
-            // Parse optional raw level (0-255) captured by regex group 4
+            // Parse optional raw level (group 4)
             this._levelRaw = match[4] ? parseInt(match[4], 10) : null;
-            // Ensure levelRaw is a valid number if present, otherwise nullify
             if (match[4] && isNaN(this._levelRaw)) {
                 this._levelRaw = null; 
             }
 
-            // Mark as valid if essential parts were captured
+            console.log(`[DEBUG] CBusEvent Parsed: Type='${this._deviceType}', Action='${this._action}', Host='${this._host}', Group='${this._group}', Device='${this._device}', LevelRaw=${this._levelRaw}`);
+
+            // Mark as valid ONLY if all essential parts (type, action, address) were parsed correctly
             if (this._deviceType && this._action && this._host && this._group && this._device) {
                 this._isValid = true;
+                console.log(`[DEBUG] CBusEvent Marked Valid.`); 
+            } else {
+                 console.log(`[DEBUG] CBusEvent Invalid: Missing essential parts after regex match.`);
+                 // Ensure properties are reset if validation fails even after match
+                 this._deviceType = null;
+                 this._action = null;
+                 this._host = null;
+                 this._group = null;
+                 this._device = null;
+                 this._levelRaw = null;
             }
+        } else {
+             console.log(`[DEBUG] CBusEvent Invalid: Regex did not match required groups.`);
+             // Ensure properties are null if regex match failed
+             this._deviceType = null;
+             this._action = null;
+             this._host = null;
+             this._group = null;
+             this._device = null;
+             this._levelRaw = null;
         }
 
-        // If parsing failed or essential parts missing, log warning and ensure properties are null
+        // Log warning only if parsing ultimately failed
         if (!this._isValid) {
             console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
-            // Reset all properties if invalid
-            this._deviceType = null;
-            this._action = null;
-            this._host = null;
-            this._group = null;
-            this._device = null;
-            this._levelRaw = null;
         }
     }
 
