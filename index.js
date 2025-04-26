@@ -107,11 +107,12 @@ const NEWLINE = '\n';
 // Matches: <DeviceType> <Action> <Net/App/Group> [<Level>]
 // Assumes single spaces as separators for main parts.
 // Captures: 1:DeviceType, 2:Action, 3:Address(Net/App/Group), 4:Optional Level
-const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(\d+\/\d+\/\d+)(?:\s+(\d+))?/;
+// Updated to optionally handle //PROJECT/ prefix in address part from some event streams
+const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:\/\/\w+\/)?(\d+\/\d+\/\d+)(?:\s+(\d+))?/;
 // Matches: cbus/write/<Net>/<App>/<Group>/<CommandType>
 // Allows empty Net/App/Group parts.
 // Captures: 1:Net, 2:App, 3:Group, 4:CommandType
-const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
+const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/; // Corrected: Escaped forward slashes
 
 // Throttled Queue Implementation
 // Ensures messages are sent to C-Gate/MQTT broker with a minimum interval.
@@ -395,6 +396,9 @@ class CgateWebBridge {
 
         // Assign connection factories (use defaults if not provided - allows testing mocks)
         this.mqttClientFactory = mqttClientFactory || (() => {
+            // Log entry into the factory
+            this.log('[DEBUG] mqttClientFactory called.'); 
+            
             const brokerUrl = 'mqtt://' + (this.settings.mqtt || 'localhost:1883');
             const mqttConnectOptions = {};
             if (this.settings.mqttusername && this.settings.mqttpassword) {
@@ -403,7 +407,23 @@ class CgateWebBridge {
             }
             // Log connection details just before attempting connection
             this.log(`${LOG_PREFIX} Attempting mqtt.connect to ${brokerUrl} with options:`, JSON.stringify(mqttConnectOptions));
-            return mqtt.connect(brokerUrl, mqttConnectOptions);
+            
+            // Wrap connect in try-catch for immediate errors
+            try {
+                const client = mqtt.connect(brokerUrl, mqttConnectOptions);
+                if (!client) {
+                     // This case should ideally not happen with mqtt.js, but check defensively
+                     this.error('[ERROR] mqtt.connect returned null/undefined without throwing.');
+                     return null; // Or handle error appropriately
+                }
+                 this.log('[DEBUG] mqtt.connect call successful, client object created.');
+                return client;
+            } catch (e) {
+                this.error('[ERROR] Synchronous error during mqtt.connect:', e);
+                // Log the full error for more details
+                this.log('[DEBUG] Full synchronous MQTT connect error object:', e);
+                 return null; // Prevent bridge from proceeding with a null client
+            }
         });
         this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
         this.eventSocketFactory = eventSocketFactory || (() => new net.Socket());
@@ -468,15 +488,20 @@ class CgateWebBridge {
 
     // Starts the bridge: initiates connections to MQTT and C-Gate.
     start() {
+        this.log('[DEBUG] Entering start() method...'); // ADDED
         this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
         // Log connection targets
         this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport})...`);
         // Initiate connections
+        this.log('[DEBUG] Calling _connectMqtt()...'); // ADDED
         this._connectMqtt();
+        this.log('[DEBUG] Calling _connectCommandSocket()...'); // ADDED
         this._connectCommandSocket();
+        this.log('[DEBUG] Calling _connectEventSocket()...'); // ADDED
         this._connectEventSocket();
         // Note: Initial actions like GETALL or HA Discovery are triggered 
         // from _checkAllConnected after all connections succeed.
+        this.log('[DEBUG] Exiting start() method.'); // ADDED
     }
 
     // Stops the bridge: disconnects clients, clears timers and queues.
@@ -538,8 +563,11 @@ class CgateWebBridge {
 
     // Establishes connection to the MQTT broker.
     _connectMqtt() {
+        this.log('[DEBUG] Entering _connectMqtt() method...'); // ADDED
         // Prevent multiple simultaneous connection attempts
+        this.log('[DEBUG] Checking if this.client exists...'); // ADDED
         if (this.client) {
+            this.log('[DEBUG] _connectMqtt: this.client already exists, returning.'); // ADDED
             this.log("MQTT client already exists or connection attempt in progress.");
             return;
         }
@@ -547,6 +575,16 @@ class CgateWebBridge {
         // Create client using the factory
         this.client = this.mqttClientFactory(); 
 
+        // --- Add Check: Ensure client object was created --- 
+        if (!this.client) {
+            this.error('[ERROR] MQTT client factory failed to return a valid client object. Cannot attach listeners or proceed with MQTT connection.');
+            // Optionally: Schedule a retry or enter a failed state?
+            // For now, returning prevents crashing on listener attachment.
+            return; 
+        }
+        // --- End Check ---
+
+        this.log('[DEBUG] _connectMqtt: Attaching listeners...'); // ADDED
         // Ensure previous listeners are removed if this is a reconnect attempt
         // where the client object might have been recreated.
         this.client.removeAllListeners();
@@ -558,6 +596,7 @@ class CgateWebBridge {
         this.client.on('error', this._handleMqttError.bind(this));
         this.client.on('offline', () => { this.warn(`${WARN_PREFIX} MQTT Client Offline.`); });
         this.client.on('reconnect', () => { this.log(`${LOG_PREFIX} MQTT Client Reconnecting...`); });
+        this.log('[DEBUG] _connectMqtt: Listeners attached.'); // ADDED
     }
 
     // Establishes connection to the C-Gate command port.
