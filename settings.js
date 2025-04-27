@@ -1,10 +1,31 @@
-
 //cbus ip address
 exports.cbusip = '127.0.0.1';
 
 
 //cbus project name
 exports.cbusname = "HOME";
+
+// --- C-Gate Connection Settings ---
+exports.cbuscommandport = 20023; // C-Gate command port (default 20023)
+exports.cbuseventport = 20025;   // C-Gate event port (usually Status Change Port 20025)
+
+// --- C-Gate SSL/TLS (EXPERIMENTAL) ---
+// NOTE: C-Gate is known to use older TLS versions (potentially only TLS 1.0).
+// Enabling SSL may not work with modern Node.js versions or may require
+// specific Node.js configurations or C-Gate updates.
+// Use with caution and test thoroughly in your environment.
+// Enable SSL/TLS for C-Gate connections (requires C-Gate SSL ports enabled)
+// exports.cgate_ssl_enabled = true;
+// exports.cbuscommandport_ssl = 20123; // C-Gate command port SSL (default 20123)
+// exports.cbuseventport_ssl = 20125;   // C-Gate event port SSL (default 20125)
+
+// Optional TLS options (passed directly to Node.js tls.connect)
+// Useful for self-signed certificates, etc.
+// See: https://nodejs.org/api/tls.html#tlsconnectoptions-callback
+// Example: Allow self-signed certs (UNSECURE! Use only if necessary)
+// exports.cgate_ssl_options = {
+//   rejectUnauthorized: false
+// };
 
 //mqtt server ip:port
 exports.mqtt = '127.0.0.1:1883';

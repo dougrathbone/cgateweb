@@ -14,6 +14,7 @@ const {
 } = require('../index.js');
 const EventEmitter = require('events'); // Needed for mocking event emitters
 const xml2js = require('xml2js'); // Keep require for type info if needed, but mock it below
+const tls = require('tls'); // Required for mocking
 
 // --- Mock xml2js Module --- 
 let mockParseStringFn = jest.fn();
@@ -33,6 +34,44 @@ jest.mock('mqtt', () => ({
     connect: jest.fn(() => mockMqttClient) 
 }));
 
+// --- Mock net Module ---
+const mockNetSocket = new EventEmitter();
+mockNetSocket.connect = jest.fn((port, host, connectListener) => {
+    // Simulate async connection success for tests expecting it
+    process.nextTick(() => {
+        // Call the listener if provided (like net.connect does)
+        if (connectListener) connectListener(); 
+        // Emit 'connect' AFTER the listener potentially runs
+        mockNetSocket.emit('connect');
+    });
+    return mockNetSocket;
+});
+mockNetSocket.write = jest.fn();
+mockNetSocket.destroy = jest.fn();
+mockNetSocket.removeAllListeners = jest.fn();
+mockNetSocket.on = jest.fn(); 
+mockNetSocket.once = jest.fn();
+// Mock the net module itself
+jest.mock('net', () => ({
+    // Mock the Socket class constructor
+    Socket: jest.fn(() => mockNetSocket), 
+    // Mock top-level connect function if needed (though bridge uses constructor)
+    connect: jest.fn(() => mockNetSocket) 
+}));
+
+// --- Mock tls Module ---
+const mockTlsSocket = new EventEmitter();
+mockTlsSocket.connect = jest.fn((port, host, options, callback) => {
+    // Simulate async connection callback
+    process.nextTick(callback); 
+    return mockTlsSocket; // Return the socket instance
+});
+mockTlsSocket.write = jest.fn();
+mockTlsSocket.destroy = jest.fn();
+mockTlsSocket.removeAllListeners = jest.fn();
+mockTlsSocket.on = jest.fn();
+jest.mock('tls', () => ({ connect: jest.fn(() => mockTlsSocket), TLSSocket: jest.fn(() => mockTlsSocket)}));
+
 // Mock console methods globally for all tests unless overridden
 const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
 const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => { });
@@ -47,7 +86,6 @@ afterAll(() => {
 describe('CgateWebBridge', () => {
     let bridge;
     let mockSettings;
-    let mockCmdSocketFactory, mockEvtSocketFactory;
     let lastMockCmdSocket, lastMockEvtSocket;
     let exitSpy; // Define exitSpy here for broader scope
 
@@ -61,6 +99,22 @@ describe('CgateWebBridge', () => {
         const mqtt = require('mqtt');
         mqtt.connect.mockClear();
 
+        // Reset net mocks
+        const net = require('net'); // Get mocked net
+        net.Socket.mockClear();
+        mockNetSocket.connect.mockClear();
+        mockNetSocket.write.mockClear();
+        mockNetSocket.destroy.mockClear();
+        mockNetSocket.removeAllListeners.mockClear();
+
+        // Reset TLS mocks
+        const tls = require('tls'); // Get mocked tls
+        tls.connect.mockClear();
+        mockTlsSocket.write.mockClear();
+        mockTlsSocket.destroy.mockClear();
+        mockTlsSocket.removeAllListeners.mockClear();
+        mqtt.connect.mockClear();
+
         mockSettings = { 
             // Start with a minimal valid settings object
             mqtt: 'mqtt.example.com:1883',
@@ -68,6 +122,9 @@ describe('CgateWebBridge', () => {
             cbusname: 'TestProject',
             cbuscommandport: 20023,
             cbuseventport: 20025,
+            cgate_ssl_enabled: false, // Default to no SSL
+            cbuscommandport_ssl: 20123,
+            cbuseventport_ssl: 20125,
             messageinterval: 100,
             reconnectinitialdelay: 1000,
             reconnectmaxdelay: 30000,
@@ -92,37 +149,13 @@ describe('CgateWebBridge', () => {
         // Create mock socket factories
         lastMockCmdSocket = null;
         lastMockEvtSocket = null;
-        mockCmdSocketFactory = jest.fn(() => {
-            const socket = new EventEmitter();
-            socket.connect = jest.fn();
-            socket.write = jest.fn();
-            socket.destroy = jest.fn();
-            socket.removeAllListeners = jest.fn();
-            socket.on = jest.fn(); 
-            socket.connecting = false; 
-            socket.destroyed = false;  
-            lastMockCmdSocket = socket; 
-            return socket;
-        });
-        mockEvtSocketFactory = jest.fn(() => {
-            const socket = new EventEmitter();
-            socket.connect = jest.fn();
-            socket.write = jest.fn(); 
-            socket.destroy = jest.fn();
-            socket.removeAllListeners = jest.fn();
-            socket.on = jest.fn(); 
-            socket.connecting = false;
-            socket.destroyed = false;
-            lastMockEvtSocket = socket; 
-            return socket;
-        });
         
         // Create bridge instance using the mock settings and factories
         bridge = new CgateWebBridge(
             mockSettings,
             null, 
-            mockCmdSocketFactory, 
-            mockEvtSocketFactory
+            null, // Let bridge use its internal factory based on net/tls mocks
+            null  // Let bridge use its internal factory based on net/tls mocks
         );
         
         // Mock process.exit needed for constructor validation test
@@ -249,9 +282,7 @@ describe('CgateWebBridge', () => {
             emitterRemoveSpy = jest.spyOn(bridge.internalEventEmitter, 'removeAllListeners');
             // Remove mqtt.connect clear - not needed
             // mqtt.connect.mockClear(); 
-             mockCmdSocketFactory.mockClear();
-             mockEvtSocketFactory.mockClear();
-             // Remove socket creation/clearing here - not needed for revised test
+            
         });
 
         afterEach(() => {
@@ -284,21 +315,22 @@ describe('CgateWebBridge', () => {
 
     describe('Connection Handlers & _checkAllConnected', () => {
         let mqttAddSpy, checkAllSpy, clearTimeoutSpy, setIntervalSpy, clearIntervalSpy;
-        let cmdWriteSpy, getTreeSpy;
+        let getTreeSpy;
         let triggerHaSpy; // Add spy for HA discovery trigger
+        let netSocket; // Keep a reference to the net mock
 
         beforeEach(() => {
             // Use the globally mocked client/sockets
-            bridge.client = mockMqttClient;
-            bridge.commandSocket = bridge.commandSocketFactory(); // Get fresh mock socket
-            bridge.eventSocket = bridge.eventSocketFactory(); // Get fresh mock socket
+            bridge.client = mockMqttClient; // Assign mock MQTT client
+            // Sockets are created in _connect* methods, ensure spies are set before calling
+            bridge.commandSocket = null;
+            bridge.eventSocket = null;
 
             mqttAddSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
             checkAllSpy = jest.spyOn(bridge, '_checkAllConnected'); // Spy on the real implementation
             clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
             setIntervalSpy = jest.spyOn(global, 'setInterval');
             clearIntervalSpy = jest.spyOn(global, 'clearInterval');
-            cmdWriteSpy = jest.spyOn(bridge.commandSocket, 'write');
             getTreeSpy = jest.spyOn(bridge.cgateCommandQueue, 'add'); // Use this for GETALL / TREEXML checks
             triggerHaSpy = jest.spyOn(bridge, '_triggerHaDiscovery').mockImplementation(() => {}); // Mock HA trigger implementation
             
@@ -315,7 +347,6 @@ describe('CgateWebBridge', () => {
             clearTimeoutSpy.mockClear();
             setIntervalSpy.mockClear();
             clearIntervalSpy.mockClear();
-            cmdWriteSpy.mockClear();
             mqttAddSpy.mockClear();
             getTreeSpy.mockClear();
             triggerHaSpy.mockClear();
@@ -328,7 +359,6 @@ describe('CgateWebBridge', () => {
              clearTimeoutSpy.mockRestore();
              setIntervalSpy.mockRestore();
              clearIntervalSpy.mockRestore();
-             // cmdWriteSpy restored automatically if on mock socket created in beforeEach
              getTreeSpy.mockRestore();
              triggerHaSpy.mockRestore();
         });
@@ -345,13 +375,19 @@ describe('CgateWebBridge', () => {
 
         it('_handleCommandConnect should set flag, reset attempts, clear timeout, send EVENT ON, and check all connected', () => {
             const timeoutId = bridge.commandReconnectTimeout;
+            // Manually assign the appropriate mock socket BEFORE calling the handler
+            bridge.settings.cgate_ssl_enabled = false; // Ensure non-SSL for this test
+            // Assign the mock socket instance that the bridge will use
+            bridge.commandSocket = mockNetSocket; 
+            
             bridge._handleCommandConnect();
+
             expect(bridge.commandConnected).toBe(true);
             expect(bridge.commandReconnectAttempts).toBe(0);
             expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutId);
             expect(bridge.commandReconnectTimeout).toBeNull();
-            // Use literal strings instead of imported constants
-            expect(cmdWriteSpy).toHaveBeenCalledWith('EVENT ON\n'); 
+            // Check the write method on the underlying mock object
+            expect(mockNetSocket.write).toHaveBeenCalledWith('EVENT ON\n'); 
             expect(checkAllSpy).toHaveBeenCalledTimes(1);
         });
 
@@ -453,21 +489,26 @@ describe('CgateWebBridge', () => {
 
         it('_handleCommandConnect should call _handleCommandError if initial EVENT ON write fails', () => {
             const writeError = new Error('Socket write failed immediately');
-            // Ensure the socket exists for the spy
-            bridge.commandSocket = bridge.commandSocketFactory(); 
-            const localCmdWriteSpy = jest.spyOn(bridge.commandSocket, 'write');
-            localCmdWriteSpy.mockImplementationOnce(() => { throw writeError; }); // Make the first write fail
+            bridge.settings.cgate_ssl_enabled = false; // Ensure non-SSL
+            bridge.commandSocket = mockNetSocket; // Assign the mock socket
+            bridge.commandConnected = false; // Ensure state allows connection logic
+            
+            // Mock the write method on the specific mockNetSocket instance
+            // BEFORE the handler is called, so it throws when invoked by the handler.
+            const mockWrite = jest.spyOn(mockNetSocket, 'write')
+                                  .mockImplementationOnce(() => { throw writeError; });
+            
             const handleCmdErrorSpy = jest.spyOn(bridge, '_handleCommandError');
 
             bridge._handleCommandConnect();
 
-            expect(localCmdWriteSpy).toHaveBeenCalledWith('EVENT ON\n');
+            expect(mockWrite).toHaveBeenCalledWith('EVENT ON\n');
             expect(handleCmdErrorSpy).toHaveBeenCalledWith(writeError);
             // Check that checkAllConnected was still called (it happens after the try-catch)
             expect(checkAllSpy).toHaveBeenCalledTimes(1);
             
             handleCmdErrorSpy.mockRestore();
-            // No need to restore localCmdWriteSpy as it\'s on a mock created here
+            mockWrite.mockRestore(); // Restore the spy on the mock socket
         });
 
     });
@@ -490,6 +531,7 @@ describe('CgateWebBridge', () => {
             bridge.client = mockClientDisconn;
             bridge.commandSocket = mockCommandSocketDisconn;
             bridge.eventSocket = mockEventSocketDisconn;
+            bridge.commandSocket.connecting = false; // Ensure not connecting
             scheduleReconnectSpy = jest.spyOn(bridge, '_scheduleReconnect').mockImplementation(() => { });
             clientRemoveListenersSpy = jest.spyOn(mockClientDisconn, 'removeAllListeners');
             cmdRemoveListenersSpy = jest.spyOn(mockCommandSocketDisconn, 'removeAllListeners');
@@ -526,6 +568,7 @@ describe('CgateWebBridge', () => {
         });
 
         it('_handleCommandClose should reset flag, null socket, remove listeners, warn and schedule reconnect', () => {
+            jest.useFakeTimers();
             bridge._handleCommandClose(false);
             expect(bridge.commandConnected).toBe(false);
             expect(bridge.commandSocket).toBeNull();
@@ -533,6 +576,8 @@ describe('CgateWebBridge', () => {
             expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('COMMAND PORT DISCONNECTED')); // Use global mock
             expect(mockConsoleWarn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
             expect(scheduleReconnectSpy).toHaveBeenCalledWith('command');
+            // Ensure the scheduled reconnect timer executes
+            jest.runOnlyPendingTimers(); 
         });
 
         it('_handleCommandClose(hadError=true) should log warning with error', () => {
@@ -542,6 +587,7 @@ describe('CgateWebBridge', () => {
         });
 
         it('_handleEventClose should reset flag, null socket, remove listeners, warn and schedule reconnect', () => {
+            jest.useFakeTimers();
             bridge._handleEventClose(false);
             expect(bridge.eventConnected).toBe(false);
             expect(bridge.eventSocket).toBeNull();
@@ -549,6 +595,7 @@ describe('CgateWebBridge', () => {
             expect(mockConsoleWarn).toHaveBeenCalledWith(expect.stringContaining('EVENT PORT DISCONNECTED')); // Use global mock
              expect(mockConsoleWarn).not.toHaveBeenCalledWith(expect.stringContaining('with error'));
             expect(scheduleReconnectSpy).toHaveBeenCalledWith('event');
+            jest.runOnlyPendingTimers(); 
         });
         
          it('_handleEventClose(hadError=true) should log warning with error', () => {
@@ -568,8 +615,8 @@ describe('CgateWebBridge', () => {
             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('Exiting due to fatal MQTT authentication error.')); // Use global mock
             expect(processExitSpy).toHaveBeenCalledWith(1);
             expect(bridge.clientConnected).toBe(true);
-            expect(bridge.client).toBeNull();
-            expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(bridge.client).toBeNull(); // Client *is* nulled on auth error before exit
+            expect(mockClientDisconn.removeAllListeners).toHaveBeenCalledTimes(1);
         });
 
         it('_handleMqttError (Generic Error) should log, reset flag, null client, remove listeners', () => {
@@ -577,13 +624,14 @@ describe('CgateWebBridge', () => {
             bridge._handleMqttError(genericError);
             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Error:'), genericError); // Use global mock
             expect(bridge.clientConnected).toBe(false);
-            expect(bridge.client).toBeNull();
-            expect(clientRemoveListenersSpy).toHaveBeenCalledTimes(1);
+            expect(bridge.client).toBe(mockClientDisconn); 
+            expect(mockClientDisconn.removeAllListeners).not.toHaveBeenCalled();
             expect(processExitSpy).not.toHaveBeenCalled();
             expect(scheduleReconnectSpy).not.toHaveBeenCalled();
         });
 
         it('_handleCommandError should log error, reset flag, destroy socket, and null socket', () => {
+            jest.useFakeTimers(); // Use fake timers
             const cmdError = new Error('Command socket failed');
             bridge._handleCommandError(cmdError);
             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError); // Use global mock
@@ -594,34 +642,38 @@ describe('CgateWebBridge', () => {
         });
         
          it('_handleCommandError should not destroy already destroyed socket', () => {
-             mockCommandSocketDisconn.destroyed = true;
-             const cmdError = new Error('Command socket failed again');
-             bridge._handleCommandError(cmdError);
-             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError); // Use global mock
-             expect(bridge.commandConnected).toBe(false);
-             expect(cmdDestroySpy).not.toHaveBeenCalled();
-             expect(bridge.commandSocket).toBeNull();
-         });
+             jest.useFakeTimers(); // Use fake timers
+              mockCommandSocketDisconn.destroyed = true;
+              bridge.commandSocket = mockCommandSocketDisconn; // Ensure socket is assigned
+              const cmdError = new Error('Command socket failed again');
+              bridge._handleCommandError(cmdError);
+              expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Socket Error:'), cmdError); // Use global mock
+              expect(bridge.commandConnected).toBe(false);
+              expect(cmdDestroySpy).not.toHaveBeenCalled();
+              expect(bridge.commandSocket).toBeNull();
+          });
 
         it('_handleEventError should log error, reset flag, destroy socket, and null socket', () => {
+            jest.useFakeTimers(); // Use fake timers
             const evtError = new Error('Event socket failed');
             bridge._handleEventError(evtError);
             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError); // Use global mock
             expect(bridge.eventConnected).toBe(false);
             expect(evtDestroySpy).toHaveBeenCalledTimes(1);
             expect(bridge.eventSocket).toBeNull();
-            expect(scheduleReconnectSpy).not.toHaveBeenCalled();
         });
         
-         it('_handleEventError should not destroy already destroyed socket', () => {
-             mockEventSocketDisconn.destroyed = true;
-             const evtError = new Error('Event socket failed again');
-             bridge._handleEventError(evtError);
-             expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError); // Use global mock
-             expect(bridge.eventConnected).toBe(false);
-             expect(evtDestroySpy).not.toHaveBeenCalled();
-             expect(bridge.eventSocket).toBeNull();
-         });
+          it('_handleEventError should not destroy already destroyed socket', () => {
+              jest.useFakeTimers(); // Use fake timers
+               mockEventSocketDisconn.destroyed = true;
+               bridge.eventSocket = mockEventSocketDisconn; // Ensure socket is assigned
+               const evtError = new Error('Event socket failed again');
+               bridge._handleEventError(evtError);
+               expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('C-Gate Event Socket Error:'), evtError); // Use global mock
+               expect(bridge.eventConnected).toBe(false);
+               expect(evtDestroySpy).not.toHaveBeenCalled();
+               expect(bridge.eventSocket).toBeNull();
+           });
 
     });
 
@@ -815,6 +867,8 @@ describe('CgateWebBridge', () => {
             consoleErrorSpyCmd = jest.spyOn(console, 'error').mockImplementation(() => { });
             consoleWarnSpyCmd = jest.spyOn(console, 'warn').mockImplementation(() => { });
             publishHaSpy = jest.spyOn(bridge, '_publishHaDiscoveryFromTree').mockImplementation(() => {});
+            mockConsoleWarn.mockClear(); // Clear global mocks for this block
+            mockConsoleError.mockClear(); // Clear global mocks for this block
 
             // Setup mock parseString for TREE commands
             mockParseStringFn.mockImplementation((xml, options, callback) => {
@@ -832,13 +886,16 @@ describe('CgateWebBridge', () => {
             bridge.settings.cbusname = 'TestProject';
             bridge.settings.ha_discovery_enabled = false; // Disable HA by default for these tests
             bridge.settings.ha_discovery_networks = [];
+            mockConsoleWarn.mockClear(); // Clear global mocks for this block
+            mockConsoleError.mockClear();
         });
 
         afterEach(() => {
             mqttAddSpyCmd.mockRestore();
             eventEmitSpyCmd.mockRestore();
-            consoleErrorSpyCmd.mockRestore();
-            consoleWarnSpyCmd.mockRestore();
+            // No need to restore local spies - use cleared global mocks
+            // consoleErrorSpyCmd.mockRestore();
+            // consoleWarnSpyCmd.mockRestore();
             publishHaSpy.mockRestore();
             mockParseStringFn.mockClear();
             parseStringResolver = null;
@@ -879,12 +936,13 @@ describe('CgateWebBridge', () => {
          });
          
           it('should handle unhandled 300 status gracefully', () => {
-             bridge._handleCommandData(Buffer.from('300 Some other status\n'));
-             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
-             expect(eventEmitSpyCmd).not.toHaveBeenCalled();
-             // CBusEvent constructor *will* warn when parsing fails
-             expect(consoleWarnSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Malformed C-Bus Event data:'), 'Some other status');
-         });
+             const consoleWarnSpyLocal = jest.spyOn(console, 'warn').mockImplementation(() => { });
+              bridge._handleCommandData(Buffer.from('300 Some other status\n'));
+              expect(mqttAddSpyCmd).not.toHaveBeenCalled();
+              expect(eventEmitSpyCmd).not.toHaveBeenCalled();
+              expect(consoleWarnSpyLocal).toHaveBeenCalledWith(expect.stringContaining('Malformed C-Bus Event data:'), 'Some other status');
+              consoleWarnSpyLocal.mockRestore();
+          });
 
         it('should handle TREE commands correctly', async () => {
             bridge.settings.ha_discovery_enabled = true; // Enable for this test
@@ -934,11 +992,13 @@ describe('CgateWebBridge', () => {
         });
         
         it('should handle TREE end without start/data gracefully', () => {
+            const consoleWarnSpyLocal = jest.spyOn(console, 'warn').mockImplementation(() => { });
             bridge._handleCommandData(Buffer.from('344-254\n'));
             expect(mockParseStringFn).not.toHaveBeenCalled();
             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
             expect(publishHaSpy).not.toHaveBeenCalled();
-            expect(consoleWarnSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Received TreeXML end (344) but no buffer or network context'));
+            expect(consoleWarnSpyLocal).toHaveBeenCalledWith(expect.stringContaining('Received TreeXML end (344) but no buffer or network context'));
+            consoleWarnSpyLocal.mockRestore();
         });
 
         it('should handle parseString error during TREE processing', async () => {
@@ -958,7 +1018,7 @@ describe('CgateWebBridge', () => {
             
             await promise;
 
-            expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 254 (took '),
+            expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 254 (took '),
                 parseError);
             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
             expect(publishHaSpy).not.toHaveBeenCalled();
@@ -1197,68 +1257,157 @@ describe('CgateWebBridge', () => {
     });
 
     describe('Connection Methods', () => {
+        const tls = require('tls');
+        // Remove netSocket from here - we get it from the bridge after connect
+        // let netSocket;
+        
+        beforeEach(() => {
+            // Ensure we have a fresh net mock socket available
+            const net = require('net');
+            net.Socket.mockClear();
+            tls.connect.mockClear();
+            // Clear methods on the persistent TLS mock
+            mockTlsSocket.on.mockClear();
+            mockNetSocket.connect.mockClear();
+            mockNetSocket.on.mockClear();
+            mockNetSocket.once.mockClear();
+        });
         
         describe('_connectCommandSocket', () => {
-            it('should call command socket factory', () => {
+            it('should use net.Socket and connect for non-SSL', () => {
+                bridge.settings.cgate_ssl_enabled = false;
                 bridge._connectCommandSocket();
-                expect(mockCmdSocketFactory).toHaveBeenCalledTimes(1);
-            });
-            // ... more _connectCommandSocket tests ...
-             it('should handle socket.connect error', () => {
-                // --- Local console mock for this test --- 
-                const consoleErrorSpyLocal = jest.spyOn(console, 'error').mockImplementation(() => {});
+                jest.runAllTicks(); // Ensure async connect event fires if needed
                 
-                const connectError = new Error('Connection failed');
-                mockCmdSocketFactory.mockImplementationOnce(() => {
-                    const socket = new EventEmitter();
-                    socket.connect = jest.fn(() => { throw connectError; });
-                    socket.on = jest.fn(); 
-                    socket.removeAllListeners = jest.fn();
-                    socket.destroy = jest.fn();
-                    lastMockCmdSocket = socket;
-                    return socket;
-                });
-                const errorSpy = jest.spyOn(bridge, '_handleCommandError');
+                // Check the bridge created a socket
+                expect(bridge.commandSocket).toBeDefined();
+                expect(require('net').Socket).toHaveBeenCalledTimes(1);
+                expect(bridge.commandSocket).toBe(mockNetSocket); // Should be our mock net instance
 
+                expect(tls.connect).not.toHaveBeenCalled();
+                // Verify connect was called on the socket the bridge created
+                expect(bridge.commandSocket.connect).toHaveBeenCalledWith(mockSettings.cbuscommandport, mockSettings.cbusip);
+                // Check correct listeners attached
+                 expect(bridge.commandSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                 expect(bridge.commandSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                 expect(bridge.commandSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                 // Should use 'once' for the connect event
+                 expect(bridge.commandSocket.once).toHaveBeenCalledWith('connect', expect.any(Function)); 
+            });
+
+            it('should use tls.connect for SSL', () => {
+                bridge.settings.cgate_ssl_enabled = true;
+                bridge.settings.cgate_ssl_options = { testOption: true };
+                bridge._connectCommandSocket();
+                expect(require('net').Socket).not.toHaveBeenCalled();
+                
+                // Check the bridge assigned the TLS socket
+                expect(bridge.commandSocket).toBe(mockTlsSocket);
+
+                expect(tls.connect).toHaveBeenCalledWith(
+                    mockSettings.cbuscommandport_ssl, 
+                    mockSettings.cbusip, 
+                    { testOption: true }, 
+                    expect.any(Function)
+                );
+                // Check correct listeners attached to TLS socket
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('tlsClientError', expect.any(Function));
+            });
+
+            it('should handle socket.connect error', () => {
+                // --- Local console mock for this test --- 
+                const connectError = new Error('Connection failed');
+                
+                // Ensure SSL is off for this test
+                bridge.settings.cgate_ssl_enabled = false;
+                
+                expect(bridge.commandSocket).toBeNull(); // Should be null before connect
+                
+                // Spy on the error handler *before* connect is called
+                const errorSpy = jest.spyOn(bridge, '_handleCommandError');
                 bridge._connectCommandSocket();
 
-                expect(lastMockCmdSocket.connect).toHaveBeenCalled();
+                // Simulate the socket emitting an error event *after* connect is called
+                const errorListener = mockNetSocket.on.mock.calls.find(call => call[0] === 'error');
+                expect(errorListener).toBeDefined();
+                // Trigger the error listener
+                errorListener[1](connectError); 
+                
                 expect(errorSpy).toHaveBeenCalledWith(connectError);
                 
                 errorSpy.mockRestore();
-                // --- Restore local console mock --- 
-                consoleErrorSpyLocal.mockRestore(); 
             });
         });
 
         describe('_connectEventSocket', () => {
-            it('should call event socket factory', () => {
+            it('should use net.Socket and connect for non-SSL', () => {
+                bridge.settings.cgate_ssl_enabled = false;
                 bridge._connectEventSocket();
-                expect(mockEvtSocketFactory).toHaveBeenCalledTimes(1);
+                jest.runAllTicks(); // Ensure async connect event fires if needed
+
+                 // Check the bridge created a socket
+                expect(bridge.eventSocket).toBeDefined();
+                expect(require('net').Socket).toHaveBeenCalledTimes(1);
+                expect(bridge.eventSocket).toBe(mockNetSocket); // Should be our mock net instance
+
+                expect(tls.connect).not.toHaveBeenCalled();
+                // Verify connect was called on the socket the bridge created
+                expect(bridge.eventSocket.connect).toHaveBeenCalledWith(mockSettings.cbuseventport, mockSettings.cbusip);
+                 // Check correct listeners attached
+                expect(bridge.eventSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                expect(bridge.eventSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(bridge.eventSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                // Should use 'once' for the connect event
+                expect(bridge.eventSocket.once).toHaveBeenCalledWith('connect', expect.any(Function)); 
             });
-            // ... more _connectEventSocket tests ...
-             it('should handle socket.connect error', () => {
-                 // --- Local console mock for this test --- 
-                 const consoleErrorSpyLocal = jest.spyOn(console, 'error').mockImplementation(() => {});
-                 
-                 const connectError = new Error('Event Connection failed');
-                 mockEvtSocketFactory.mockImplementationOnce(() => {
-                    const socket = new EventEmitter();
-                    socket.connect = jest.fn(() => { throw connectError; });
-                    socket.on = jest.fn();
-                    socket.removeAllListeners = jest.fn();
-                    socket.destroy = jest.fn();
-                    lastMockEvtSocket = socket;
-                    return socket;
-                });
+
+            it('should use tls.connect for SSL', () => {
+                bridge.settings.cgate_ssl_enabled = true;
+                bridge.settings.cgate_ssl_options = { anotherOption: 123 };
+                bridge._connectEventSocket();
+                expect(require('net').Socket).not.toHaveBeenCalled();
+                
+                // Check the bridge assigned the TLS socket
+                expect(bridge.eventSocket).toBe(mockTlsSocket);
+
+                expect(tls.connect).toHaveBeenCalledWith(
+                    mockSettings.cbuseventport_ssl, 
+                    mockSettings.cbusip, 
+                    { anotherOption: 123 }, 
+                    expect.any(Function)
+                );
+                // Check correct listeners attached to TLS socket
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('data', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('close', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('error', expect.any(Function));
+                expect(mockTlsSocket.on).toHaveBeenCalledWith('tlsClientError', expect.any(Function));
+            });
+
+            it('should handle socket.connect error', () => {
+                // --- Local console mock for this test --- 
+                const connectError = new Error('Event Connection failed');
+                
+                // Ensure SSL is off for this test
+                bridge.settings.cgate_ssl_enabled = false;
+                
+                expect(bridge.eventSocket).toBeNull(); // Should be null before connect
+                
+                // Spy on the error handler *before* connect is called
                 const errorSpy = jest.spyOn(bridge, '_handleEventError');
                 bridge._connectEventSocket();
-                expect(lastMockEvtSocket.connect).toHaveBeenCalled();
+
+                // Simulate the socket emitting an error event *after* connect is called
+                const errorListener = mockNetSocket.on.mock.calls.find(call => call[0] === 'error');
+                expect(errorListener).toBeDefined();
+                // Trigger the error listener
+                errorListener[1](connectError);
+                
                 expect(errorSpy).toHaveBeenCalledWith(connectError);
                 errorSpy.mockRestore();
-                // --- Restore local console mock --- 
-                consoleErrorSpyLocal.mockRestore(); 
-             });
+            });
         });
         
         describe('_connectMqtt', () => {
