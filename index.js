@@ -1,5 +1,6 @@
 const mqtt = require('mqtt'), url = require('url');
 const net = require('net');
+const tls = require('tls'); // Added TLS module
 const events = require('events');
 const parseString = require('xml2js').parseString;
 
@@ -10,6 +11,9 @@ const defaultSettings = {
     cbusname: 'CLIPSAL', // Default C-Gate project name
     cbuscommandport: 20023,
     cbuseventport: 20025,
+    cbuscommandport_ssl: 20123, // Default C-Gate Command SSL port
+    cbuseventport_ssl: 20125,   // Default C-Gate Event (SCP) SSL port
+    cgate_ssl_enabled: false,   // Enable SSL for C-Gate connections
     // Optional C-Gate credentials
     cgateusername: null,
     cgatepassword: null,
@@ -474,6 +478,16 @@ class CgateWebBridge {
             ? String(this.settings.ha_discovery_pir_app_id)
             : null;
 
+        // Ensure C-Gate ports are numbers
+        this.settings.cbuscommandport = parseInt(this.settings.cbuscommandport, 10);
+        this.settings.cbuseventport = parseInt(this.settings.cbuseventport, 10);
+        this.settings.cbuscommandport_ssl = parseInt(this.settings.cbuscommandport_ssl, 10);
+        this.settings.cbuseventport_ssl = parseInt(this.settings.cbuseventport_ssl, 10);
+        
+        // SSL options (allow user to provide options, e.g., for self-signed certs)
+        // Default is empty object, user can override in settings.js if needed
+        this.settings.cgate_ssl_options = this.settings.cgate_ssl_options || {}; 
+
         // Assign connection factories (use defaults if not provided - allows testing mocks)
         this.mqttClientFactory = mqttClientFactory || (() => {
             const brokerUrl = 'mqtt://' + (this.settings.mqtt || 'localhost:1883');
@@ -506,8 +520,14 @@ class CgateWebBridge {
                  return null; // Prevent bridge from proceeding with a null client
             }
         });
-        this.commandSocketFactory = commandSocketFactory || (() => new net.Socket());
-        this.eventSocketFactory = eventSocketFactory || (() => new net.Socket());
+        
+        // Choose socket factory based on SSL setting
+        this.commandSocketFactory = commandSocketFactory || (() => {
+            return this.settings.cgate_ssl_enabled ? new tls.TLSSocket() : new net.Socket();
+        });
+        this.eventSocketFactory = eventSocketFactory || (() => {
+             return this.settings.cgate_ssl_enabled ? new tls.TLSSocket() : new net.Socket();
+        });
 
         // Configure MQTT publish options (e.g., retain flag)
         this._mqttOptions = {};
@@ -567,21 +587,25 @@ class CgateWebBridge {
         };
         // Helper for checking positive numbers
         const checkPositiveNumber = (key) => {
-             if (typeof s[key] !== 'number' || s[key] <= 0) {
-                 logError(key, `Expected positive number, but received: ${JSON.stringify(s[key])}`);
-             }
+             // Allow string numbers from settings.js, constructor will parseInt
+             const num = parseInt(s[key], 10);
+             if (isNaN(num) || num <= 0) { 
+                  logError(key, `Expected positive number, but received: ${JSON.stringify(s[key])}`);
+              }
          };
          // Helper for checking booleans
         const checkBoolean = (key) => {
-             if (typeof s[key] !== 'boolean') {
-                 logError(key, `Expected boolean, but received: ${JSON.stringify(s[key])}`);
-             }
+             // Allow 'true'/'false' strings from settings.js
+             if (typeof s[key] !== 'boolean' && s[key] !== 'true' && s[key] !== 'false') {
+                  logError(key, `Expected boolean, but received: ${JSON.stringify(s[key])}`);
+              }
          };
 
         // Required Settings
         ['mqtt', 'cbusip', 'cbusname'].forEach(checkString);
-        ['cbuscommandport', 'cbuseventport', 'messageinterval', 'reconnectinitialdelay', 'reconnectmaxdelay'].forEach(checkPositiveNumber);
-        ['retainreads', 'logging', 'getallonstart', 'ha_discovery_enabled'].forEach(checkBoolean);
+        ['cbuscommandport', 'cbuseventport', 'cbuscommandport_ssl', 'cbuseventport_ssl', 
+         'messageinterval', 'reconnectinitialdelay', 'reconnectmaxdelay'].forEach(checkPositiveNumber);
+        ['retainreads', 'logging', 'getallonstart', 'ha_discovery_enabled', 'cgate_ssl_enabled'].forEach(checkBoolean);
 
         // Optional Settings
         if (s.getallperiod !== null && (typeof s.getallperiod !== 'number' || s.getallperiod <= 0)) {
@@ -664,16 +688,18 @@ class CgateWebBridge {
 
     // Starts the bridge: initiates connections to MQTT and C-Gate.
     start() {
-        this.log('[DEBUG] Entering start() method...'); // ADDED
         this.log(`${LOG_PREFIX} Starting CgateWebBridge...`);
+
+        // Warn if experimental SSL is enabled
+        if (this.settings.cgate_ssl_enabled) {
+            this.warn(`${WARN_PREFIX} C-Gate SSL/TLS support is EXPERIMENTAL and may not work due to C-Gate's potential use of older TLS versions.`);
+        }
+
         // Log connection targets
         this.log(`${LOG_PREFIX} Attempting connections: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport})...`);
         // Initiate connections
-        this.log('[DEBUG] Calling _connectMqtt()...'); // ADDED
         this._connectMqtt();
-        this.log('[DEBUG] Calling _connectCommandSocket()...'); // ADDED
         this._connectCommandSocket();
-        this.log('[DEBUG] Calling _connectEventSocket()...'); // ADDED
         this._connectEventSocket();
         // Note: Initial actions like GETALL or HA Discovery are triggered 
         // from _checkAllConnected after all connections succeed.
@@ -790,19 +816,46 @@ class CgateWebBridge {
             this.commandSocket = null;
         }
 
-        this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${this.settings.cbusip}:${this.settings.cbuscommandport} (Attempt ${this.commandReconnectAttempts + 1})`);
-        // Create socket using the factory
-        this.commandSocket = this.commandSocketFactory(); 
-
-        // Attach event listeners for the command socket
-        this.commandSocket.on('connect', this._handleCommandConnect.bind(this));
-        this.commandSocket.on('data', this._handleCommandData.bind(this));
-        this.commandSocket.on('close', this._handleCommandClose.bind(this));
-        this.commandSocket.on('error', this._handleCommandError.bind(this));
-
+        const port = this.settings.cgate_ssl_enabled ? this.settings.cbuscommandport_ssl : this.settings.cbuscommandport;
+        const host = this.settings.cbusip;
+        const useSsl = this.settings.cgate_ssl_enabled;
+        const sslOptions = this.settings.cgate_ssl_options || {}; // Use configured SSL options
+        
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Command Port: ${host}:${port} (SSL: ${useSsl}) (Attempt ${this.commandReconnectAttempts + 1})`);
+        
         // Initiate connection
         try {
-            this.commandSocket.connect(this.settings.cbuscommandport, this.settings.cbusip);
+            if (useSsl) {
+                // Use tls.connect for SSL/TLS
+                // Note: tls.connect implicitly creates the socket
+                // tls.connect returns the socket directly
+                this.commandSocket = tls.connect(port, host, sslOptions, () => {
+                     // 'connect' listener equivalent for tls.connect callback
+                     this._handleCommandConnect(); 
+                 });
+            } else {
+                // Use net.connect for plain TCP
+                 // Create socket using the factory first
+                 this.commandSocket = this.commandSocketFactory(); 
+                 // Attach 'connect' listener BEFORE calling connect() for net.Socket
+                 this.commandSocket.once('connect', this._handleCommandConnect.bind(this)); 
+                 // Now call connect
+                 this.commandSocket.connect(port, host);
+            }
+
+            // Common listeners (attach AFTER creating/getting the socket)
+            this.commandSocket.on('data', this._handleCommandData.bind(this));
+            this.commandSocket.on('close', this._handleCommandClose.bind(this));
+            this.commandSocket.on('error', this._handleCommandError.bind(this));
+            // Specific TLS listener for certificate errors etc.
+            if (useSsl) {
+                this.commandSocket.on('tlsClientError', (error, tlsSocket) => {
+                     this.error(`${ERROR_PREFIX} C-Gate Command TLS Error:`, error);
+                     // We might want to trigger _handleCommandError or handle specifically
+                     this._handleCommandError(error); // Treat as a general error for now
+                 });
+            }
+
         } catch (e) {
             this.error("Error initiating command socket connection:", e);
             this._handleCommandError(e); // Treat initiation error like a connection error
@@ -824,19 +877,46 @@ class CgateWebBridge {
             this.eventSocket = null;
         }
 
-        this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${this.settings.cbusip}:${this.settings.cbuseventport} (Attempt ${this.eventReconnectAttempts + 1})`);
-        // Create socket using the factory
-        this.eventSocket = this.eventSocketFactory(); 
+        const port = this.settings.cgate_ssl_enabled ? this.settings.cbuseventport_ssl : this.settings.cbuseventport;
+        const host = this.settings.cbusip;
+        const useSsl = this.settings.cgate_ssl_enabled;
+        const sslOptions = this.settings.cgate_ssl_options || {}; // Use configured SSL options
 
-        // Attach event listeners for the event socket
-        this.eventSocket.on('connect', this._handleEventConnect.bind(this));
-        this.eventSocket.on('data', this._handleEventData.bind(this));
-        this.eventSocket.on('close', this._handleEventClose.bind(this));
-        this.eventSocket.on('error', this._handleEventError.bind(this));
-
+        this.log(`${LOG_PREFIX} Connecting to C-Gate Event Port: ${host}:${port} (SSL: ${useSsl}) (Attempt ${this.eventReconnectAttempts + 1})`);
+        
         // Initiate connection
         try {
-            this.eventSocket.connect(this.settings.cbuseventport, this.settings.cbusip);
+            if (useSsl) {
+                // Use tls.connect for SSL/TLS
+                // tls.connect returns the socket directly
+                 this.eventSocket = tls.connect(port, host, sslOptions, () => {
+                     // 'connect' listener equivalent
+                     this._handleEventConnect(); 
+                 });
+            } else {
+                 // Use net.connect for plain TCP
+                 // Create socket using the factory first
+                 this.eventSocket = this.eventSocketFactory();
+                 // Attach 'connect' listener BEFORE calling connect() for net.Socket
+                 this.eventSocket.once('connect', this._handleEventConnect.bind(this));
+                 // Now call connect
+                 this.eventSocket.connect(port, host);
+            }
+            
+            // Common listeners (attach AFTER creating/getting the socket)
+            this.eventSocket.on('data', this._handleEventData.bind(this));
+            this.eventSocket.on('close', this._handleEventClose.bind(this));
+            this.eventSocket.on('error', this._handleEventError.bind(this));
+            
+             // Specific TLS listener
+             if (useSsl) {
+                 this.eventSocket.on('tlsClientError', (error, tlsSocket) => {
+                     this.error(`${ERROR_PREFIX} C-Gate Event TLS Error:`, error);
+                     // We might want to trigger _handleEventError or handle specifically
+                     this._handleEventError(error); // Treat as a general error for now
+                 });
+             }
+             
         } catch (e) {
             this.error("Error initiating event socket connection:", e);
             this._handleEventError(e); // Treat initiation error like a connection error
@@ -933,23 +1013,33 @@ class CgateWebBridge {
                 this.client = null;
             }
             process.exit(1); // Exit if auth fails
+        } else if (err.message && err.message.includes('ECONNREFUSED')) {
+            this.error(`${ERROR_PREFIX} MQTT Connection Error: Connection refused. Is the broker running at ${this.settings.mqtt} and accessible?`);
+            // Don't exit, let library handle reconnect
+            this.clientConnected = false;
         } else {
-            // Handle generic errors
+            // Handle other generic errors
             this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
             // Log the full error object for more details
             this.log('[DEBUG] Full MQTT error object:', err); 
             this.clientConnected = false; // Assume disconnected on error
-            if (this.client) {
-                this.client.removeAllListeners();
-                this.client = null;
-            }
-            // Potentially trigger explicit reconnect if library doesn\'t handle it
+            // Allow library to handle reconnect attempts
+            // Potentially trigger explicit reconnect if library doesn't handle it
         }
     }
 
     // Handles successful connection to C-Gate command port.
     _handleCommandConnect() {
         this.commandConnected = true;
+        
+        // Check for TLS socket and log cipher details if available
+        if (this.settings.cgate_ssl_enabled && this.commandSocket && typeof this.commandSocket.getCipher === 'function') {
+            const cipher = this.commandSocket.getCipher();
+            if (cipher) {
+                this.log(`${LOG_PREFIX} Command Port TLS Cipher: ${cipher.name} (${cipher.version})`);
+            }
+        }
+        
         this.commandReconnectAttempts = 0; // Reset attempts on successful connect
         // Clear any pending reconnect timeout
         if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
@@ -1013,6 +1103,15 @@ class CgateWebBridge {
     // Handles successful connection to C-Gate event port.
     _handleEventConnect() {
         this.eventConnected = true;
+        
+         // Check for TLS socket and log cipher details if available
+        if (this.settings.cgate_ssl_enabled && this.eventSocket && typeof this.eventSocket.getCipher === 'function') {
+             const cipher = this.eventSocket.getCipher();
+             if (cipher) {
+                 this.log(`${LOG_PREFIX} Event Port TLS Cipher: ${cipher.name} (${cipher.version})`);
+             }
+         }
+         
         this.eventReconnectAttempts = 0; // Reset attempts
         if (this.eventReconnectTimeout) clearTimeout(this.eventReconnectTimeout);
         this.eventReconnectTimeout = null;
