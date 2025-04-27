@@ -45,7 +45,7 @@ These instructions assume a Linux system with Node.js, npm, and systemd.
 ### Usage if not using as service:
 
 1)  Put your settings in `settings.js`.
-2)  Run `node index.js` (useful for testing or foreground operation).
+2)  Run `npm start` or `node index.js` (useful for testing or foreground operation).
 
 ### Status Topic
 
@@ -133,8 +133,8 @@ The crucial step is setting the correct `ha_discovery_*_app_id` values to match 
 This project uses Jest for unit testing.
 
 1.  Install development dependencies: `npm install`
-2.  Run tests: `npx jest`
-3.  Run tests with coverage report: `npx jest --coverage`
+2.  Run tests: `npm test`
+3.  Run tests with coverage report: `npm test -- --coverage`
 
 ### Other notes:
 
