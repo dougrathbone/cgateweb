@@ -451,6 +451,25 @@ describe('CgateWebBridge', () => {
              expect(triggerHaSpy).not.toHaveBeenCalled();
          });
 
+        it('_handleCommandConnect should call _handleCommandError if initial EVENT ON write fails', () => {
+            const writeError = new Error('Socket write failed immediately');
+            // Ensure the socket exists for the spy
+            bridge.commandSocket = bridge.commandSocketFactory(); 
+            const localCmdWriteSpy = jest.spyOn(bridge.commandSocket, 'write');
+            localCmdWriteSpy.mockImplementationOnce(() => { throw writeError; }); // Make the first write fail
+            const handleCmdErrorSpy = jest.spyOn(bridge, '_handleCommandError');
+
+            bridge._handleCommandConnect();
+
+            expect(localCmdWriteSpy).toHaveBeenCalledWith('EVENT ON\n');
+            expect(handleCmdErrorSpy).toHaveBeenCalledWith(writeError);
+            // Check that checkAllConnected was still called (it happens after the try-catch)
+            expect(checkAllSpy).toHaveBeenCalledTimes(1);
+            
+            handleCmdErrorSpy.mockRestore();
+            // No need to restore localCmdWriteSpy as it\'s on a mock created here
+        });
+
     });
 
     describe('Disconnection and Error Handlers', () => {
@@ -1057,6 +1076,25 @@ describe('CgateWebBridge', () => {
             jest.advanceTimersByTime(messageInterval + 1);
             expect(mockCommandSocketQueue.write).toHaveBeenCalledWith(cmdString);
             expect(consoleErrorSpyQueue).toHaveBeenCalledWith(expect.stringContaining('Error writing to C-Gate command socket:'), expect.any(Error), cmdString.trim());
+        });
+
+        it('_processCgateCommand should log error if write fails (but not trigger reconnect directly)', () => {
+            const writeError = new Error('Queued write failed');
+            mockCommandSocketQueue.write.mockImplementationOnce(() => { throw writeError; });
+            const cmdString = 'RAMP //Test/254/56/1 100\n';
+            bridge.commandConnected = true; // Need socket to be connected
+            bridge.commandSocket = mockCommandSocketQueue; // Ensure the correct mock is used
+            
+            bridge.cgateCommandQueue.add(cmdString);
+            jest.advanceTimersByTime(messageInterval + 1); // Process the queue
+
+            expect(mockCommandSocketQueue.write).toHaveBeenCalledWith(cmdString);
+            expect(consoleErrorSpyQueue).toHaveBeenCalledWith(
+                expect.stringContaining('Error writing to C-Gate command socket:'), 
+                writeError, 
+                cmdString.trim()
+            );
+            // Reconnect logic should be handled by socket error/close events, not directly here
         });
     });
 
