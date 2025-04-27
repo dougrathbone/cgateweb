@@ -967,20 +967,21 @@ class CgateWebBridge {
                 // 2. Send LOGIN if credentials provided
                 const user = this.settings.cgateusername;
                 const pass = this.settings.cgatepassword;
-                // Check if user is a non-empty string and password is a string (can be empty)
                 if (user && typeof user === 'string' && user.trim() !== '' && typeof pass === 'string') {
                     const loginCmd = `${CGATE_CMD_LOGIN} ${user.trim()} ${pass}${NEWLINE}`;
                     this.log(`${LOG_PREFIX} Sending LOGIN command for user '${user.trim()}'...`);
-                    // Queue the login command
                     this.cgateCommandQueue.add(loginCmd);
                 } else {
-                     this.log('[DEBUG] No C-Gate credentials provided, skipping LOGIN command.');
+                    // Don't log this in normal operation, only if verbose/debug enabled later
+                    // this.log('[DEBUG] No C-Gate credentials provided, skipping LOGIN command.');
                 }
             } else {
                 this.warn(`${WARN_PREFIX} Command socket not available to send initial commands (EVENT ON / LOGIN).`);
             }
         } catch (e) {
             this.error(`${ERROR_PREFIX} Error sending initial commands (EVENT ON / LOGIN):`, e);
+            // If sending initial commands fails, treat it as a socket error
+            this._handleCommandError(e);
         }
         this._checkAllConnected(); // Check if all connections are now established
     }
