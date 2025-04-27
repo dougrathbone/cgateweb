@@ -441,6 +441,15 @@ class CgateWebBridge {
         // Merge user settings with defaults
         this.settings = { ...defaultSettings, ...userSettings }; 
         
+        // --- Validate Settings --- 
+        if (!this._validateSettings()) {
+             // Error logged in _validateSettings
+             // Consider exiting if critical settings are missing/invalid
+             console.error("FATAL: Invalid settings detected. Exiting.");
+             process.exit(1); // Exit if validation fails
+        }
+        
+        // --- Process Validated Settings --- 
         // Ensure specific settings have correct types after merge
         if (!Array.isArray(this.settings.ha_discovery_networks)) {
             this.warn('[WARN] ha_discovery_networks in settings is not an array, defaulting to [].');
@@ -533,6 +542,81 @@ class CgateWebBridge {
         );
 
         this.log(`${LOG_PREFIX} CgateWebBridge initialized.`);
+    }
+
+    // --- Settings Validation Helper ---
+    _validateSettings() {
+        const s = this.settings;
+        let isValid = true;
+        const logError = (setting, expectedType, receivedValue) => {
+            this.error(`${ERROR_PREFIX} Invalid setting: \'${setting}\'. Expected ${expectedType}, but received: ${JSON.stringify(receivedValue)} (Type: ${typeof receivedValue})`);
+            isValid = false;
+        };
+
+        // Required String Settings
+        ['mqtt', 'cbusip', 'cbusname'].forEach(key => {
+            if (typeof s[key] !== 'string' || s[key].trim() === '') {
+                logError(key, 'non-empty string', s[key]);
+            }
+        });
+
+        // Required Positive Number Settings
+        ['cbuscommandport', 'cbuseventport', 'messageinterval', 'reconnectinitialdelay', 'reconnectmaxdelay'].forEach(key => {
+            if (typeof s[key] !== 'number' || s[key] <= 0) {
+                logError(key, 'positive number', s[key]);
+            }
+        });
+
+        // Optional Number (or null)
+        if (s.getallperiod !== null && (typeof s.getallperiod !== 'number' || s.getallperiod <= 0)) {
+            logError('getallperiod', 'positive number or null', s.getallperiod);
+        }
+
+        // Boolean Settings
+        ['retainreads', 'logging', 'getallonstart', 'ha_discovery_enabled'].forEach(key => {
+            if (typeof s[key] !== 'boolean') {
+                logError(key, 'boolean', s[key]);
+            }
+        });
+        
+        // HA Discovery Settings
+        if (s.ha_discovery_enabled) {
+            if (typeof s.ha_discovery_prefix !== 'string' || s.ha_discovery_prefix.trim() === '') {
+                logError('ha_discovery_prefix', 'non-empty string when ha_discovery_enabled is true', s.ha_discovery_prefix);
+            }
+            if (!Array.isArray(s.ha_discovery_networks)) {
+                logError('ha_discovery_networks', 'array', s.ha_discovery_networks);
+            } else {
+                // Optional: Check if array elements are valid network IDs (strings/numbers)
+                s.ha_discovery_networks.forEach((net, index) => {
+                    if (typeof net !== 'string' && typeof net !== 'number') {
+                         this.error(`${ERROR_PREFIX} Invalid network ID at index ${index} in ha_discovery_networks: ${JSON.stringify(net)}`);
+                         isValid = false;
+                    }
+                });
+            }
+            // App IDs can be string or null
+            ['ha_discovery_cover_app_id', 'ha_discovery_switch_app_id', 'ha_discovery_relay_app_id', 'ha_discovery_pir_app_id'].forEach(key => {
+                 if (s[key] !== null && typeof s[key] !== 'string' && typeof s[key] !== 'number') { // Allow number initially, constructor converts
+                     logError(key, 'string, number, or null', s[key]);
+                 }
+             });
+        }
+        
+        // Basic format checks (optional but helpful)
+        // Simple check for host:port format in mqtt setting
+        if (isValid && typeof s.mqtt === 'string' && !s.mqtt.includes(':')) {
+             this.warn(`${WARN_PREFIX} Setting \'mqtt\' (${s.mqtt}) does not appear to include a port (host:port).`);
+             // Don\'t mark as invalid, just warn
+        }
+        // Simple IP check (doesn\'t cover all edge cases like 0.0.0.0)
+        const ipRegex = /^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$/;
+         if (isValid && typeof s.cbusip === 'string' && !ipRegex.test(s.cbusip)) {
+             this.warn(`${WARN_PREFIX} Setting \'cbusip\' (${s.cbusip}) does not look like a valid IPv4 address.`);
+              // Don\'t mark as invalid, just warn
+         }
+
+        return isValid;
     }
 
     // --- Logging Helpers ---
