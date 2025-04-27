@@ -10,6 +10,9 @@ const defaultSettings = {
     cbusname: 'CLIPSAL', // Default C-Gate project name
     cbuscommandport: 20023,
     cbuseventport: 20025,
+    // Optional C-Gate credentials
+    cgateusername: null,
+    cgatepassword: null,
     retainreads: false,
     logging: true,
     messageinterval: 200,
@@ -61,8 +64,9 @@ const MQTT_TOPIC_PREFIX_WRITE = `${MQTT_TOPIC_PREFIX_CBUS}/write`;
 const MQTT_TOPIC_SUFFIX_STATE = 'state';
 const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_TREE = 'tree';
-const MQTT_TOPIC_STATUS = 'hello/cgateweb';
+const MQTT_TOPIC_STATUS = 'hello/cgateweb'; // Topic for online/offline status
 const MQTT_PAYLOAD_STATUS_ONLINE = 'Online';
+const MQTT_PAYLOAD_STATUS_OFFLINE = 'Offline'; // Payload for LWT
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 const MQTT_STATE_ON = 'ON';
 const MQTT_STATE_OFF = 'OFF';
@@ -80,6 +84,7 @@ const CGATE_PARAM_LEVEL = 'level';
 const CGATE_LEVEL_MIN = 0;
 const CGATE_LEVEL_MAX = 255;
 const RAMP_STEP = Math.round(CGATE_LEVEL_MAX * 0.1); // Approx 10% step for INCREASE/DECREASE
+const CGATE_CMD_LOGIN = 'LOGIN'; // Added LOGIN command
 
 // C-Gate Responses
 const CGATE_RESPONSE_OBJECT_STATUS = '300';
@@ -471,11 +476,16 @@ class CgateWebBridge {
 
         // Assign connection factories (use defaults if not provided - allows testing mocks)
         this.mqttClientFactory = mqttClientFactory || (() => {
-            // Log entry into the factory
-            this.log('[DEBUG] mqttClientFactory called.'); 
-            
             const brokerUrl = 'mqtt://' + (this.settings.mqtt || 'localhost:1883');
-            const mqttConnectOptions = {};
+            const mqttConnectOptions = {
+                // Define LWT message
+                will: {
+                    topic: MQTT_TOPIC_STATUS,
+                    payload: MQTT_PAYLOAD_STATUS_OFFLINE,
+                    qos: 0,     // QoS for LWT (0 or 1 recommended)
+                    retain: true // Retain LWT message
+                }
+            };
             if (this.settings.mqttusername && this.settings.mqttpassword) {
                 mqttConnectOptions.username = this.settings.mqttusername;
                 mqttConnectOptions.password = this.settings.mqttpassword;
@@ -485,18 +495,14 @@ class CgateWebBridge {
             
             // Wrap connect in try-catch for immediate errors
             try {
-                const client = mqtt.connect(brokerUrl, mqttConnectOptions);
+                const client = mqtt.connect(brokerUrl, mqttConnectOptions); 
                 if (!client) {
-                     // This case should ideally not happen with mqtt.js, but check defensively
                      this.error('[ERROR] mqtt.connect returned null/undefined without throwing.');
-                     return null; // Or handle error appropriately
+                     return null; 
                 }
-                 this.log('[DEBUG] mqtt.connect call successful, client object created.');
                 return client;
             } catch (e) {
                 this.error('[ERROR] Synchronous error during mqtt.connect:', e);
-                // Log the full error for more details
-                this.log('[DEBUG] Full synchronous MQTT connect error object:', e);
                  return null; // Prevent bridge from proceeding with a null client
             }
         });
@@ -548,57 +554,77 @@ class CgateWebBridge {
     _validateSettings() {
         const s = this.settings;
         let isValid = true;
-        const logError = (setting, expectedType, receivedValue) => {
-            this.error(`${ERROR_PREFIX} Invalid setting: \'${setting}\'. Expected ${expectedType}, but received: ${JSON.stringify(receivedValue)} (Type: ${typeof receivedValue})`);
+        // Updated logError to take the full message
+        const logError = (setting, message) => {
+            this.error(`${ERROR_PREFIX} Invalid setting: \'${setting}\'. ${message}`);
             isValid = false;
         };
-
-        // Required String Settings
-        ['mqtt', 'cbusip', 'cbusname'].forEach(key => {
+        // Helper for checking non-empty strings
+        const checkString = (key) => {
             if (typeof s[key] !== 'string' || s[key].trim() === '') {
-                logError(key, 'non-empty string', s[key]);
+                 logError(key, `Expected non-empty string, but received: ${JSON.stringify(s[key])}`);
             }
-        });
+        };
+        // Helper for checking positive numbers
+        const checkPositiveNumber = (key) => {
+             if (typeof s[key] !== 'number' || s[key] <= 0) {
+                 logError(key, `Expected positive number, but received: ${JSON.stringify(s[key])}`);
+             }
+         };
+         // Helper for checking booleans
+        const checkBoolean = (key) => {
+             if (typeof s[key] !== 'boolean') {
+                 logError(key, `Expected boolean, but received: ${JSON.stringify(s[key])}`);
+             }
+         };
 
-        // Required Positive Number Settings
-        ['cbuscommandport', 'cbuseventport', 'messageinterval', 'reconnectinitialdelay', 'reconnectmaxdelay'].forEach(key => {
-            if (typeof s[key] !== 'number' || s[key] <= 0) {
-                logError(key, 'positive number', s[key]);
-            }
-        });
+        // Required Settings
+        ['mqtt', 'cbusip', 'cbusname'].forEach(checkString);
+        ['cbuscommandport', 'cbuseventport', 'messageinterval', 'reconnectinitialdelay', 'reconnectmaxdelay'].forEach(checkPositiveNumber);
+        ['retainreads', 'logging', 'getallonstart', 'ha_discovery_enabled'].forEach(checkBoolean);
 
-        // Optional Number (or null)
+        // Optional Settings
         if (s.getallperiod !== null && (typeof s.getallperiod !== 'number' || s.getallperiod <= 0)) {
-            logError('getallperiod', 'positive number or null', s.getallperiod);
+            logError('getallperiod', `Expected positive number or null, but received: ${JSON.stringify(s.getallperiod)}`);
         }
-
-        // Boolean Settings
-        ['retainreads', 'logging', 'getallonstart', 'ha_discovery_enabled'].forEach(key => {
-            if (typeof s[key] !== 'boolean') {
-                logError(key, 'boolean', s[key]);
-            }
-        });
         
-        // HA Discovery Settings
+        // C-Gate Credentials Validation
+        const userProvided = typeof s.cgateusername === 'string' && s.cgateusername.trim() !== '';
+        const passProvided = typeof s.cgatepassword === 'string'; // Allow empty password, C-Gate might permit
+        if (userProvided && !passProvided) {
+            logError('cgatepassword', 'Must be provided (as a string) if cgateusername is set.');
+        }
+        if (!userProvided && s.cgatepassword !== null) { // Only error if password set but user is null/empty
+             logError('cgateusername', 'Must be provided if cgatepassword is set.');
+        }
+        // Check type if provided but not caught above
+        if (s.cgateusername !== null && typeof s.cgateusername !== 'string') {
+             logError('cgateusername', `Expected string or null, but received: ${JSON.stringify(s.cgateusername)}`);
+        }
+         if (s.cgatepassword !== null && typeof s.cgatepassword !== 'string') {
+             logError('cgatepassword', `Expected string or null, but received: ${JSON.stringify(s.cgatepassword)}`);
+         }
+
+        // HA Discovery Settings Validation (only if enabled)
         if (s.ha_discovery_enabled) {
-            if (typeof s.ha_discovery_prefix !== 'string' || s.ha_discovery_prefix.trim() === '') {
-                logError('ha_discovery_prefix', 'non-empty string when ha_discovery_enabled is true', s.ha_discovery_prefix);
-            }
+            checkString('ha_discovery_prefix'); // Use helper
+            
             if (!Array.isArray(s.ha_discovery_networks)) {
-                logError('ha_discovery_networks', 'array', s.ha_discovery_networks);
+                // Pass full message to logError
+                logError('ha_discovery_networks', `Expected array, but received: ${JSON.stringify(s.ha_discovery_networks)}`);
             } else {
-                // Optional: Check if array elements are valid network IDs (strings/numbers)
                 s.ha_discovery_networks.forEach((net, index) => {
                     if (typeof net !== 'string' && typeof net !== 'number') {
-                         this.error(`${ERROR_PREFIX} Invalid network ID at index ${index} in ha_discovery_networks: ${JSON.stringify(net)}`);
-                         isValid = false;
+                         // Pass the base key and a detailed message including index
+                         logError('ha_discovery_networks', `Invalid network ID at index ${index}. Expected string or number, received: ${JSON.stringify(net)}`);
                     }
                 });
             }
-            // App IDs can be string or null
+            // App IDs can be string or null (or number before constructor converts)
             ['ha_discovery_cover_app_id', 'ha_discovery_switch_app_id', 'ha_discovery_relay_app_id', 'ha_discovery_pir_app_id'].forEach(key => {
-                 if (s[key] !== null && typeof s[key] !== 'string' && typeof s[key] !== 'number') { // Allow number initially, constructor converts
-                     logError(key, 'string, number, or null', s[key]);
+                 if (s[key] !== null && typeof s[key] !== 'string' && typeof s[key] !== 'number') { 
+                     // Pass full message to logError
+                     logError(key, `Expected string, number, or null, but received: ${JSON.stringify(s[key])}`);
                  }
              });
         }
@@ -929,17 +955,32 @@ class CgateWebBridge {
         if (this.commandReconnectTimeout) clearTimeout(this.commandReconnectTimeout);
         this.commandReconnectTimeout = null;
         this.log(`${LOG_PREFIX} CONNECTED TO C-GATE COMMAND PORT: ${this.settings.cbusip}:${this.settings.cbuscommandport}`);
-        // Enable events from the C-Gate command interface
+        
+        // Send initial commands (EVENT ON and optional LOGIN)
         try {
             if (this.commandSocket && !this.commandSocket.destroyed) {
-                const commandString = CGATE_CMD_EVENT_ON + NEWLINE;
-                this.commandSocket.write(commandString);
-                this.log(`${LOG_PREFIX} C-Gate Sent: ${commandString.trim()} (Directly on connect)`);
+                // 1. Enable events
+                const eventCmd = CGATE_CMD_EVENT_ON + NEWLINE;
+                this.commandSocket.write(eventCmd);
+                this.log(`${LOG_PREFIX} C-Gate Sent: ${CGATE_CMD_EVENT_ON}`);
+                
+                // 2. Send LOGIN if credentials provided
+                const user = this.settings.cgateusername;
+                const pass = this.settings.cgatepassword;
+                // Check if user is a non-empty string and password is a string (can be empty)
+                if (user && typeof user === 'string' && user.trim() !== '' && typeof pass === 'string') {
+                    const loginCmd = `${CGATE_CMD_LOGIN} ${user.trim()} ${pass}${NEWLINE}`;
+                    this.log(`${LOG_PREFIX} Sending LOGIN command for user '${user.trim()}'...`);
+                    // Queue the login command
+                    this.cgateCommandQueue.add(loginCmd);
+                } else {
+                     this.log('[DEBUG] No C-Gate credentials provided, skipping LOGIN command.');
+                }
             } else {
-                this.warn(`${WARN_PREFIX} Command socket not available to send initial EVENT ON.`);
+                this.warn(`${WARN_PREFIX} Command socket not available to send initial commands (EVENT ON / LOGIN).`);
             }
         } catch (e) {
-            this.error(`${ERROR_PREFIX} Error sending initial EVENT ON:`, e);
+            this.error(`${ERROR_PREFIX} Error sending initial commands (EVENT ON / LOGIN):`, e);
         }
         this._checkAllConnected(); // Check if all connections are now established
     }
