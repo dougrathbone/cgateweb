@@ -226,8 +226,6 @@ class CBusEvent {
             // 2. Split main part by one or more whitespace chars, filter empty strings
             const mainParts = mainPartStr.split(/\s+/).filter(part => part !== '');
 
-            // REMOVED: [DEBUG] CBusEvent mainParts log
-
             if (mainParts.length < 3) {
                 throw new Error(`Not enough parts after splitting by space (found ${mainParts.length})`);
             }
@@ -274,17 +272,17 @@ class CBusEvent {
                 if (!isNaN(parseInt(levelStr))) {
                     this._levelRaw = parseInt(levelStr, 10);
                 }
-                // No need to log non-numeric level here, keep _levelRaw as null
             } // Ignore parts beyond index 3
             
             // 8. Basic Validation
             // Check if essential parts are present AND deviceType/action look like valid words
-            if (this._deviceType && /^[a-zA-Z0-9]+$/.test(this._deviceType) && 
-                this._action && /^[a-zA-Z0-9]+$/.test(this._action) &&       
-                this._host && this._group && this._device) {
+            const typeValid = this._deviceType && /^[a-zA-Z0-9]+$/.test(this._deviceType);
+            const actionValid = this._action && /^[a-zA-Z0-9]+$/.test(this._action);
+            const addressValid = this._host && this._group && this._device;
+
+            if (typeValid && actionValid && addressValid) {
                 this._isValid = true;
             } else {
-                 // REMOVED: [DEBUG] Validation Failed log
                 throw new Error('Missing essential parts or invalid characters after parsing');
             }
 
@@ -297,11 +295,12 @@ class CBusEvent {
             this._group = null;
             this._device = null;
             this._levelRaw = null;
+            // Optionally log the parsing error itself for debugging
+            // console.error(`[DEBUG] CBusEvent Parsing Error: ${error.message}`);
         }
 
         // Log warning only if parsing ultimately failed
         if (!this._isValid) {
-             // REMOVED: [DEBUG] CBusEvent NOT Valid log
             console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
         }
     }
