@@ -1548,7 +1548,21 @@ class CgateWebBridge {
 
     // Handles 4xx/5xx Error responses from command socket.
     _processCommandErrorResponse(responseCode, statusData) {
-        this.error(`${ERROR_PREFIX} C-Gate Command Error Response: ${responseCode} ${statusData}`);
+        let baseMessage = `${ERROR_PREFIX} C-Gate Command Error ${responseCode}:`;
+        let hint = '';
+
+        switch (responseCode) {
+            case '400': hint = ' (Bad Request/Syntax Error)'; break;
+            case '401': hint = ' (Unauthorized - Check Credentials/Permissions)'; break;
+            case '404': hint = ' (Not Found - Check Object Path)'; break;
+            case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
+            case '500': hint = ' (Internal Server Error)'; break;
+            case '503': hint = ' (Service Unavailable)'; break;
+        }
+
+        // Append status data if available, otherwise indicate none
+        const detail = statusData ? statusData : 'No details provided';
+        this.error(`${baseMessage}${hint} - ${detail}`);
     }
 
     // Main handler for data received on the C-Gate event socket.
