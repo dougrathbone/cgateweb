@@ -219,9 +219,6 @@ class CBusEvent {
         this._group = null;
         this._device = null;
         this._levelRaw = null;
-
-        // Wrap input in quotes for logging whitespace
-        console.log(`[DEBUG] CBusEvent Input: "${dataStr}"`);
         
         try {
             // 1. Split by double space first to isolate main event part
@@ -229,7 +226,7 @@ class CBusEvent {
             // 2. Split main part by one or more whitespace chars, filter empty strings
             const mainParts = mainPartStr.split(/\s+/).filter(part => part !== '');
 
-            console.log(`[DEBUG] CBusEvent mainParts (split by \s+):`, mainParts);
+            // REMOVED: [DEBUG] CBusEvent mainParts log
 
             if (mainParts.length < 3) {
                 throw new Error(`Not enough parts after splitting by space (found ${mainParts.length})`);
@@ -240,6 +237,13 @@ class CBusEvent {
             
             // 3. Identify potential address part
             let addressPartRaw = mainParts[2];
+            
+            // Strip trailing # comments from address part if present
+            const hashIndex = addressPartRaw.indexOf('#');
+            if (hashIndex !== -1) {
+                addressPartRaw = addressPartRaw.substring(0, hashIndex);
+            }
+            
             let addressPartSimple = addressPartRaw;
 
             // 4. Handle optional //PROJECT/ prefix
@@ -269,23 +273,22 @@ class CBusEvent {
                 const levelStr = mainParts[3];
                 if (!isNaN(parseInt(levelStr))) {
                     this._levelRaw = parseInt(levelStr, 10);
-                } else {
-                     console.log(`[DEBUG] CBusEvent: Level part '${levelStr}' is not a number.`);
-                     // Keep _levelRaw as null if parsing fails
                 }
-            } // Ignore parts beyond index 3 (like the extra '0')
+                // No need to log non-numeric level here, keep _levelRaw as null
+            } // Ignore parts beyond index 3
             
             // 8. Basic Validation
-            if (this._deviceType && this._action && this._host && this._group && this._device) {
+            // Check if essential parts are present AND deviceType/action look like valid words
+            if (this._deviceType && /^[a-zA-Z0-9]+$/.test(this._deviceType) && 
+                this._action && /^[a-zA-Z0-9]+$/.test(this._action) &&       
+                this._host && this._group && this._device) {
                 this._isValid = true;
-                 console.log(`[DEBUG] CBusEvent Parsed (Split): Type='${this._deviceType}', Action='${this._action}', Host='${this._host}', Group='${this._group}', Device='${this._device}', LevelRaw=${this._levelRaw}`);
-                 console.log(`[DEBUG] CBusEvent Marked Valid (Split).`);
             } else {
-                throw new Error('Missing essential parts after parsing');
+                 // REMOVED: [DEBUG] Validation Failed log
+                throw new Error('Missing essential parts or invalid characters after parsing');
             }
 
         } catch (error) {
-            console.log(`[DEBUG] CBusEvent Parsing Error (Split): ${error.message}`);
             // Ensure properties are null if any error occurred
             this._isValid = false;
             this._deviceType = null;
@@ -298,7 +301,7 @@ class CBusEvent {
 
         // Log warning only if parsing ultimately failed
         if (!this._isValid) {
-             console.log(`[DEBUG] CBusEvent NOT Valid (Split).`);
+             // REMOVED: [DEBUG] CBusEvent NOT Valid log
             console.warn(`${WARN_PREFIX} Malformed C-Bus Event data:`, dataStr);
         }
     }
