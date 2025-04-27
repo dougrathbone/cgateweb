@@ -4,14 +4,15 @@ Wants=cgate.service
 After=network.target cgate.service
 
 [Service]
-ExecStart=/usr/bin/nodejs /usr/local/bin/cgateweb/index.js
+# Use %I as placeholder for the script directory determined by installer
+ExecStart=/usr/bin/nodejs %I/index.js 
 RestartSec=10
 Restart=always
 User=root
 Group=root
 Environment=PATH=/usr/bin:/usr/local/bin
 Environment=NODE_ENV=production
-WorkingDirectory=/usr/local/bin/cgateweb
+WorkingDirectory=%I
 
 [Install]
 WantedBy=multi-user.target

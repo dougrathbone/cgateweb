@@ -5,9 +5,10 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const SERVICE_NAME = 'cgateweb.service';
-const SOURCE_SERVICE_FILE = path.join(__dirname, SERVICE_NAME);
+const SOURCE_SERVICE_FILE_TEMPLATE = path.join(__dirname, 'cgateweb.service.template');
 const TARGET_SYSTEMD_DIR = '/etc/systemd/system';
 const TARGET_SERVICE_FILE = path.join(TARGET_SYSTEMD_DIR, SERVICE_NAME);
+const BASE_INSTALL_PATH = __dirname;
 
 function runCommand(command) {
     try {
@@ -35,28 +36,36 @@ function installService() {
 
     checkRoot();
 
-    // 1. Check if source service file exists
-    if (!fs.existsSync(SOURCE_SERVICE_FILE)) {
-        console.error(`Source service file not found: ${SOURCE_SERVICE_FILE}`);
+    // 1. Check if source service file template exists
+    if (!fs.existsSync(SOURCE_SERVICE_FILE_TEMPLATE)) {
+        console.error(`Source service file template not found: ${SOURCE_SERVICE_FILE_TEMPLATE}`);
+        console.error('Please ensure cgateweb.service.template exists in the same directory.');
         process.exit(1);
     }
-    console.log(`Found source service file: ${SOURCE_SERVICE_FILE}`);
+    console.log(`Found source service file template: ${SOURCE_SERVICE_FILE_TEMPLATE}`);
 
-    // 2. Check if target directory exists (usually does, but good practice)
+    // 2. Check if target directory exists
     if (!fs.existsSync(TARGET_SYSTEMD_DIR)) {
         console.error(`Target systemd directory not found: ${TARGET_SYSTEMD_DIR}`);
         console.error('Is systemd installed and running correctly?');
         process.exit(1);
     }
 
-    // 3. Copy service file
+    // 3. Read template, replace placeholder, and write target service file
     try {
-        console.log(`Copying ${SOURCE_SERVICE_FILE} to ${TARGET_SERVICE_FILE}...`);
-        fs.copyFileSync(SOURCE_SERVICE_FILE, TARGET_SERVICE_FILE);
-        fs.chmodSync(TARGET_SERVICE_FILE, '644'); // Set standard permissions
-        console.log('Service file copied successfully.');
+        console.log(`Reading service template: ${SOURCE_SERVICE_FILE_TEMPLATE}`);
+        let serviceContent = fs.readFileSync(SOURCE_SERVICE_FILE_TEMPLATE, 'utf8');
+        
+        console.log(`Replacing %I placeholder with path: ${BASE_INSTALL_PATH}`);
+        // Use a regular expression with the 'g' flag to replace all occurrences
+        serviceContent = serviceContent.replace(/%I/g, BASE_INSTALL_PATH);
+        
+        console.log(`Writing configured service file to ${TARGET_SERVICE_FILE}...`);
+        fs.writeFileSync(TARGET_SERVICE_FILE, serviceContent, { encoding: 'utf8', mode: 0o644 });
+        console.log('Service file written successfully.');
+
     } catch (error) {
-        console.error(`Failed to copy service file: ${error.message}`);
+        console.error(`Failed to process service file: ${error.message}`);
         process.exit(1);
     }
 
