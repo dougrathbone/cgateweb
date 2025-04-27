@@ -838,7 +838,7 @@ describe('CgateWebBridge', () => {
              expect(consoleWarnSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Malformed C-Bus Event data:'), 'Some other status');
          });
 
-         it('should handle TREE commands correctly', async () => {
+        it('should handle TREE commands correctly', async () => {
             bridge.settings.ha_discovery_enabled = true; // Enable for this test
             bridge.settings.ha_discovery_networks = ['254'];
             
@@ -866,9 +866,9 @@ describe('CgateWebBridge', () => {
             }));
             // Check HA discovery triggered
             expect(publishHaSpy).toHaveBeenCalledWith('254', { mockParsedXml: true });
-         });
-         
-         it('should handle TREE commands when HA discovery is disabled', async () => {
+        });
+        
+        it('should handle TREE commands when HA discovery is disabled', async () => {
             bridge.settings.ha_discovery_enabled = false;
             let promise = new Promise(resolve => { parseStringResolver = resolve; });
 
@@ -883,24 +883,24 @@ describe('CgateWebBridge', () => {
                 payload: JSON.stringify({ mockParsedXml: true })
             }));
             expect(publishHaSpy).not.toHaveBeenCalled(); // Should not be called
-         });
-         
-          it('should handle TREE end without start/data gracefully', () => {
-              bridge._handleCommandData(Buffer.from('344-254\n'));
-              expect(mockParseStringFn).not.toHaveBeenCalled();
-              expect(mqttAddSpyCmd).not.toHaveBeenCalled();
-              expect(publishHaSpy).not.toHaveBeenCalled();
-              expect(consoleWarnSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Received TreeXML end (344) but no buffer or network context'));
-          });
+        });
+        
+        it('should handle TREE end without start/data gracefully', () => {
+            bridge._handleCommandData(Buffer.from('344-254\n'));
+            expect(mockParseStringFn).not.toHaveBeenCalled();
+            expect(mqttAddSpyCmd).not.toHaveBeenCalled();
+            expect(publishHaSpy).not.toHaveBeenCalled();
+            expect(consoleWarnSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Received TreeXML end (344) but no buffer or network context'));
+        });
 
-         it('should handle parseString error during TREE processing', async () => {
-             const parseError = new Error('XML Badness');
-             mockParseStringFn.mockImplementationOnce((xml, options, callback) => {
+        it('should handle parseString error during TREE processing', async () => {
+            const parseError = new Error('XML Badness');
+            mockParseStringFn.mockImplementationOnce((xml, options, callback) => {
                 callback(parseError, null);
-                 if (parseStringResolver) {
-                     parseStringResolver();
-                     parseStringResolver = null;
-                 }
+                if (parseStringResolver) {
+                    parseStringResolver();
+                    parseStringResolver = null;
+                }
             });
             let promise = new Promise(resolve => { parseStringResolver = resolve; });
 
@@ -911,29 +911,29 @@ describe('CgateWebBridge', () => {
             await promise;
 
             expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 254 (took '),
-                 parseError);
+                parseError);
             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
             expect(publishHaSpy).not.toHaveBeenCalled();
-         });
+        });
 
-         it('should log 4xx/5xx command errors', () => {
-             bridge._handleCommandData(Buffer.from('401 Unauthorized\n'));
-             bridge._handleCommandData(Buffer.from('500 Server Error\n'));
-             expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 401 Unauthorized'));
-             expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 500 Server Error'));
-         });
+        it('should log 4xx/5xx command errors', () => {
+            bridge._handleCommandData(Buffer.from('401 Unauthorized\n'));
+            bridge._handleCommandData(Buffer.from('500 Server Error\n'));
+            expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 401 Unauthorized'));
+            expect(consoleErrorSpyCmd).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error Response: 500 Server Error'));
+        });
 
-         it('should ignore invalid response code format', () => {
-             bridge._handleCommandData(Buffer.from('InvalidResponse Code\n'));
-             expect(mqttAddSpyCmd).not.toHaveBeenCalled();
-             expect(eventEmitSpyCmd).not.toHaveBeenCalled();
-             // Check for specific log message? Depends on implementation
-         });
-         
-          it('should ignore empty lines', () => {
-             bridge._handleCommandData(Buffer.from('\n300 //TestProject/254/56/8 level=0\n\n'));
-             expect(mqttAddSpyCmd).toHaveBeenCalledTimes(2); // State and Level for the valid line
-         });
+        it('should ignore invalid response code format', () => {
+            bridge._handleCommandData(Buffer.from('InvalidResponse Code\n'));
+            expect(mqttAddSpyCmd).not.toHaveBeenCalled();
+            expect(eventEmitSpyCmd).not.toHaveBeenCalled();
+            // Check for specific log message? Depends on implementation
+        });
+        
+        it('should ignore empty lines', () => {
+            bridge._handleCommandData(Buffer.from('\n300 //TestProject/254/56/8 level=0\n\n'));
+            expect(mqttAddSpyCmd).toHaveBeenCalledTimes(2); // State and Level for the valid line
+        });
     });
 
     describe('Data Handlers: C-Gate Event Port Processing', () => {
@@ -1229,6 +1229,190 @@ describe('CgateWebBridge', () => {
                  expect(mqttConnectMock).not.toHaveBeenCalled();
              });
         });
+
+    });
+
+    // --- Tests for Settings Validation ---
+    describe('_validateSettings', () => {
+        let bridgeInstance;
+        let errorSpy;
+        let warnSpy;
+        let exitSpy;
+
+        beforeEach(() => {
+            // Create a minimal valid settings object for setup
+            const minimalValidSettings = {
+                mqtt: 'mqtt.example.com:1883',
+                cbusip: '192.168.1.100',
+                cbusname: 'TestProject',
+                cbuscommandport: 20023,
+                cbuseventport: 20025,
+                messageinterval: 100,
+                reconnectinitialdelay: 1000,
+                reconnectmaxdelay: 30000,
+                retainreads: false,
+                logging: false, 
+                getallnetapp: null,
+                getallonstart: false,
+                getallperiod: null,
+                mqttusername: null,
+                mqttpassword: null,
+                ha_discovery_enabled: false,
+                ha_discovery_prefix: 'homeassistant',
+                ha_discovery_networks: [],
+                ha_discovery_cover_app_id: '203',
+                ha_discovery_switch_app_id: null,
+                ha_discovery_relay_app_id: null,
+                ha_discovery_pir_app_id: null
+            };
+            // Create instance *without* calling start
+            bridgeInstance = new CgateWebBridge(minimalValidSettings);
+            // Disable logging during validation tests to avoid clutter, spy on error/warn
+            bridgeInstance.settings.logging = false; 
+            errorSpy = jest.spyOn(bridgeInstance, 'error').mockImplementation(() => {});
+            warnSpy = jest.spyOn(bridgeInstance, 'warn').mockImplementation(() => {});
+            // Mock process.exit for constructor test
+             exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
+                 throw new Error(`process.exit called with code ${code} during validation`);
+             });
+        });
+
+        afterEach(() => {
+            errorSpy.mockRestore();
+            warnSpy.mockRestore();
+            exitSpy.mockRestore();
+        });
+
+        it('should return true for valid default settings', () => {
+            // Use the default settings directly
+            bridgeInstance.settings = { ...defaultSettings };
+            expect(bridgeInstance._validateSettings()).toBe(true);
+            expect(errorSpy).not.toHaveBeenCalled();
+        });
+
+        it('should return true for valid user-provided settings', () => {
+            // Uses the minimalValidSettings from beforeEach
+            expect(bridgeInstance._validateSettings()).toBe(true);
+            expect(errorSpy).not.toHaveBeenCalled();
+        });
+
+        it('should return false and log error for missing required string setting (mqtt)', () => {
+            delete bridgeInstance.settings.mqtt;
+            expect(bridgeInstance._validateSettings()).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'mqtt'"));
+        });
+        
+        it('should return false and log error for empty required string setting (cbusname)', () => {
+             bridgeInstance.settings.cbusname = '  '; // Empty after trim
+             expect(bridgeInstance._validateSettings()).toBe(false);
+             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'cbusname'"));
+         });
+
+        it('should return false and log error for invalid required number setting (cbuscommandport)', () => {
+            bridgeInstance.settings.cbuscommandport = 'not-a-number';
+            expect(bridgeInstance._validateSettings()).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'cbuscommandport'. Expected positive number"));
+        });
+
+        it('should return false and log error for non-positive required number setting (messageinterval)', () => {
+             bridgeInstance.settings.messageinterval = 0; 
+             expect(bridgeInstance._validateSettings()).toBe(false);
+             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'messageinterval'. Expected positive number"));
+         });
+
+        it('should return false and log error for invalid optional number setting (getallperiod)', () => {
+            bridgeInstance.settings.getallperiod = 'sixty';
+            expect(bridgeInstance._validateSettings()).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'getallperiod'. Expected positive number or null"));
+        });
+
+        it('should return true for null optional number setting (getallperiod)', () => {
+             bridgeInstance.settings.getallperiod = null;
+             expect(bridgeInstance._validateSettings()).toBe(true);
+             expect(errorSpy).not.toHaveBeenCalled();
+         });
+
+        it('should return false and log error for invalid boolean setting (logging)', () => {
+            bridgeInstance.settings.logging = 'maybe';
+            expect(bridgeInstance._validateSettings()).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'logging'. Expected boolean"));
+        });
+        
+        // --- HA Discovery Validation --- 
+        it('should return false if HA discovery enabled but prefix is invalid', () => {
+            bridgeInstance.settings.ha_discovery_enabled = true;
+            bridgeInstance.settings.ha_discovery_prefix = null;
+            expect(bridgeInstance._validateSettings()).toBe(false);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'ha_discovery_prefix'"));
+        });
+        
+         it('should return false if HA discovery enabled but networks is not array', () => {
+             bridgeInstance.settings.ha_discovery_enabled = true;
+             bridgeInstance.settings.ha_discovery_networks = '254'; // Should be ['254']
+             expect(bridgeInstance._validateSettings()).toBe(false);
+             expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'ha_discovery_networks'. Expected array"));
+         });
+         
+         it('should return false if HA discovery networks contains invalid type', () => {
+              bridgeInstance.settings.ha_discovery_enabled = true;
+              bridgeInstance.settings.ha_discovery_networks = ['254', 200, null]; // null is invalid
+              expect(bridgeInstance._validateSettings()).toBe(false);
+              expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid network ID at index 2"));
+          });
+          
+          it('should return false if HA discovery App ID is invalid type', () => {
+               bridgeInstance.settings.ha_discovery_enabled = true;
+               bridgeInstance.settings.ha_discovery_cover_app_id = { id: '203' }; // Invalid object
+               expect(bridgeInstance._validateSettings()).toBe(false);
+               expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'ha_discovery_cover_app_id'. Expected string, number, or null"));
+           });
+           
+           it('should return true if HA discovery App ID is valid number (before constructor converts)', () => {
+                bridgeInstance.settings.ha_discovery_enabled = true;
+                bridgeInstance.settings.ha_discovery_cover_app_id = 203; // Use number
+                expect(bridgeInstance._validateSettings()).toBe(true);
+                expect(errorSpy).not.toHaveBeenCalled();
+            });
+            
+            it('should return true if HA discovery App ID is null', () => {
+                 bridgeInstance.settings.ha_discovery_enabled = true;
+                 bridgeInstance.settings.ha_discovery_switch_app_id = null; 
+                 expect(bridgeInstance._validateSettings()).toBe(true);
+                 expect(errorSpy).not.toHaveBeenCalled();
+             });
+             
+             it('should return true if HA discovery is disabled, even with other invalid HA settings', () => {
+                 bridgeInstance.settings.ha_discovery_enabled = false;
+                 bridgeInstance.settings.ha_discovery_prefix = null; // Invalid if enabled
+                 bridgeInstance.settings.ha_discovery_networks = 'not-an-array'; // Invalid if enabled
+                 expect(bridgeInstance._validateSettings()).toBe(true); // Validation for HA section skipped
+                 expect(errorSpy).not.toHaveBeenCalled();
+             });
+
+        // --- Format Warnings --- 
+        it('should return true but log warning for mqtt setting without port', () => {
+            bridgeInstance.settings.mqtt = 'mqtt.example.com';
+            expect(bridgeInstance._validateSettings()).toBe(true);
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Setting 'mqtt' (mqtt.example.com) does not appear to include a port"));
+            expect(errorSpy).not.toHaveBeenCalled();
+        });
+
+        it('should return true but log warning for cbusip setting not looking like IPv4', () => {
+             bridgeInstance.settings.cbusip = 'not-an-ip';
+             expect(bridgeInstance._validateSettings()).toBe(true);
+             expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Setting 'cbusip' (not-an-ip) does not look like a valid IPv4 address"));
+             expect(errorSpy).not.toHaveBeenCalled();
+         });
+         
+         // --- Test constructor exit on validation fail ---
+          it('constructor should exit if validation fails', () => {
+             const invalidSettings = { ...defaultSettings, mqtt: null }; // Invalid mqtt setting
+             expect(() => {
+                 new CgateWebBridge(invalidSettings);
+             }).toThrow('process.exit called with code 1 during validation');
+             // errorSpy might not be reliable here as exit happens fast
+             expect(exitSpy).toHaveBeenCalledWith(1);
+         });
 
     });
 
