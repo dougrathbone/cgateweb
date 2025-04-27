@@ -48,15 +48,29 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
     *   [x] Write unit tests for the (refactored) queue logic. 
     *   [x] Add tests for CgateWebBridge connection logic (`start`, `stop`, `_handle*Connect`, `_checkAllConnected`). (2024-07-30)
     *   [x] Add tests for CgateWebBridge data handling logic (`_handleMqttMessage`, `_handleCommandData`, `_handleEventData` helpers). (2024-07-30)
+    *   [x] Add tests for service installer script (`install-service.js`). (2024-07-30)
     *   [x] Plan for mocking network dependencies (`net`, `mqtt`). // Done (via existing mocks + added reconnect tests) (2024-07-30)
 *   [ ] **Dependency Review:**
     *   Evaluate if `xml2js` dependency can be removed by parsing the text-based `TREE` command instead of `TREEXML`. (Decision: Likely keep `xml2js` for easier XML parsing).
-*   [x] **Configuration (Ports):** (2024-07-30)
-    *   [x] Move hardcoded ports (20023, 20025) to `settings.js` or constants. // Verified already done via settings
+*   [x] **Configuration:** // Complete
+    *   [x] Move hardcoded ports (20023, 20025) to `settings.js` or constants. (Verified already done via settings) (2024-07-30)
+    *   [x] Add SSL/TLS support for C-Gate connections (Experimental, Added Tests). (2024-07-31)
 
-**Future Goals (From project-guide.md):**
+**Future Goals / Improvements:**
 
 *   [ ] **Feature Expansion:** Implement additional C-Gate commands/applications beyond lighting.
 *   [x] **Code Comments:** Add comments where clarity is needed, especially for complex C-Gate interactions. (2024-07-30)
+*   [x] **Error Handling & Resilience:** // Complete
+    *   [x] Parse/interpret C-Gate 4xx/5xx error codes more specifically. (2024-07-30)
+    *   [x] Add specific error handling around socket.write() calls. (2024-07-30)
+*   [ ] **Configuration & Startup:**
+    *   [x] Implement validation for `settings.js` content. (2024-07-30)
+    *   [ ] Read version dynamically from `package.json` for HA Discovery.
+*   [/] **MQTT Enhancements:** // In Progress
+    *   [x] Implement MQTT Last Will & Testament (LWT) for offline status. (2024-07-30)
+    *   [ ] Add more detailed connection status reporting via MQTT.
+*   [ ] **Operational:**
+    *   [ ] Implement configurable logging levels.
+    *   [ ] Add Dockerfile.
 
 ---

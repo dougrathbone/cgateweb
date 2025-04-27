@@ -7,4 +7,6 @@ Some of the key files for context are:
 - @cgateweb.service the linux service to run the script when installed.
 - @cgate-manual.md manual for the c-gate web gateway sdk
 - @settings.js where all settings are stored. Make sure to store any key settings in this file.
+- @test-standards.md a definition of our unit testing approach, how to test, and the fact that we like to write tests for every change and keep fixing the tests until we're done
 
+Today we're going to work on:
