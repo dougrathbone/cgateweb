@@ -41,14 +41,14 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
     *   Created `tests/cbusEvent.test.js` and `tests/cbusCommand.test.js`.
     *   Added tests covering valid/invalid parsing, edge cases, and level calculations.
     *   Fixed edge case bugs found in parsing logic.
-*   [/] **Introduce Testing:** // In Progress
+*   [x] **Introduce Testing:** // Complete
     *   [x] Set up a testing framework (e.g., Jest/Mocha). 
     *   [x] Create a `/tests` directory structure. 
     *   [x] Write initial unit tests for parsing logic (`CBusEvent`, `CBusCommand`). 
     *   [x] Write unit tests for the (refactored) queue logic. 
     *   [x] Add tests for CgateWebBridge connection logic (`start`, `stop`, `_handle*Connect`, `_checkAllConnected`). (2024-07-30)
     *   [x] Add tests for CgateWebBridge data handling logic (`_handleMqttMessage`, `_handleCommandData`, `_handleEventData` helpers). (2024-07-30)
-    *   [/] Plan for mocking network dependencies (`net`, `mqtt`). // Partially done via existing tests
+    *   [x] Plan for mocking network dependencies (`net`, `mqtt`). // Done (via existing mocks + added reconnect tests) (2024-07-30)
 *   [ ] **Dependency Review:**
     *   Evaluate if `xml2js` dependency can be removed by parsing the text-based `TREE` command instead of `TREEXML`. (Decision: Likely keep `xml2js` for easier XML parsing).
 *   [x] **Configuration (Ports):** (2024-07-30)
@@ -57,6 +57,6 @@ Based on initial review of `index.js`, `project-guide.md`, and related files.
 **Future Goals (From project-guide.md):**
 
 *   [ ] **Feature Expansion:** Implement additional C-Gate commands/applications beyond lighting.
-*   [ ] **Code Comments:** Add comments where clarity is needed, especially for complex C-Gate interactions.
+*   [x] **Code Comments:** Add comments where clarity is needed, especially for complex C-Gate interactions. (2024-07-30)
 
 ---
