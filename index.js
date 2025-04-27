@@ -26,7 +26,8 @@ const defaultSettings = {
     ha_discovery_networks: [], // Default: Discover no networks explicitly
     ha_discovery_cover_app_id: '203', // Default App ID for Enable Control (Covers)
     ha_discovery_switch_app_id: null, // Default: Don't discover switches
-    ha_discovery_relay_app_id: null // Default: Don't discover relays
+    ha_discovery_relay_app_id: null, // Default: Don't discover relays
+    ha_discovery_pir_app_id: null // Default: Don't discover PIR motion sensors
 };
 
 // --- Load User Settings ---
@@ -105,6 +106,7 @@ const HA_MODEL_LIGHTING = 'Lighting Group';
 const HA_MODEL_COVER = 'Enable Control Group (Cover)';
 const HA_MODEL_SWITCH = 'Enable Control Group (Switch)';
 const HA_MODEL_RELAY = 'Enable Control Group (Relay)';
+const HA_MODEL_PIR = 'PIR Motion Sensor'; // Added PIR Model
 const HA_ORIGIN_NAME = 'cgateweb';
 const HA_ORIGIN_SW_VERSION = '0.1.0'; // TODO: Replace with dynamic version
 const HA_ORIGIN_SUPPORT_URL = 'https://github.com/dougrathbone/cgateweb';
@@ -444,13 +446,18 @@ class CgateWebBridge {
             this.warn('[WARN] ha_discovery_networks in settings is not an array, defaulting to [].');
             this.settings.ha_discovery_networks = [];
         }
-        // Ensure App IDs are strings for consistent comparison
-        this.settings.ha_discovery_cover_app_id = String(this.settings.ha_discovery_cover_app_id);
+        // Ensure App IDs are strings for consistent comparison (or null)
+        this.settings.ha_discovery_cover_app_id = this.settings.ha_discovery_cover_app_id !== null 
+            ? String(this.settings.ha_discovery_cover_app_id) 
+            : null;
         this.settings.ha_discovery_switch_app_id = this.settings.ha_discovery_switch_app_id !== null 
             ? String(this.settings.ha_discovery_switch_app_id) 
             : null;
         this.settings.ha_discovery_relay_app_id = this.settings.ha_discovery_relay_app_id !== null
             ? String(this.settings.ha_discovery_relay_app_id)
+            : null;
+        this.settings.ha_discovery_pir_app_id = this.settings.ha_discovery_pir_app_id !== null
+            ? String(this.settings.ha_discovery_pir_app_id)
             : null;
 
         // Assign connection factories (use defaults if not provided - allows testing mocks)
@@ -1465,6 +1472,11 @@ class CgateWebBridge {
     // This is primarily used by the INCREASE/DECREASE ramp command logic 
     // to get the current level before calculating the new ramp target.
     _emitLevelFromEvent(event) {
+        // Do not emit level events for PIR sensors
+        if (event.Group() === this.settings.ha_discovery_pir_app_id) {
+            return;
+        }
+        
         const simpleAddr = `${event.Host()}/${event.Group()}/${event.Device()}`;
         let levelValue = null;
         // Try to get raw level first (most accurate for ramp)
@@ -1491,15 +1503,26 @@ class CgateWebBridge {
         }
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.Host()}/${event.Group()}/${event.Device()}`;
         const levelPercent = event.Level(); // Get 0-100 level
+        const isPirSensor = event.Group() === this.settings.ha_discovery_pir_app_id;
 
-        // Determine state based on level (more reliable than action for ramp)
-        const state = (levelPercent !== null && parseInt(levelPercent) > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+        // Determine state based on level or action (ON/OFF)
+        // For PIR, simple ON/OFF action is sufficient
+        let state;
+        if (isPirSensor) {
+            state = (event.Action() === CGATE_CMD_ON.toLowerCase()) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+        } else {
+             state = (levelPercent !== null && parseInt(levelPercent) > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+        }
+       
+        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state}` + (isPirSensor ? '' : ` (${levelPercent || '0'}%)`));
 
-        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.Host()}/${event.Group()}/${event.Device()} ${state} (${levelPercent || '0'}%)`);
-
-        // Publish state and level
+        // Publish state 
         this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, payload: state, options: this._mqttOptions });
-        this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent || '0', options: this._mqttOptions });
+        
+        // Publish level ONLY if it\'s NOT a PIR sensor
+        if (!isPirSensor) {
+            this.mqttPublishQueue.add({ topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, payload: levelPercent || '0', options: this._mqttOptions });
+        }
     }
 
     // --- HA Discovery Methods ---
@@ -1528,18 +1551,18 @@ class CgateWebBridge {
         const coverAppId = this.settings.ha_discovery_cover_app_id;
         const switchAppId = this.settings.ha_discovery_switch_app_id;
         const relayAppId = this.settings.ha_discovery_relay_app_id;
+        const pirAppId = this.settings.ha_discovery_pir_app_id; // Get PIR App ID
         let discoveryCount = 0;
 
         // Helper function to generate and publish discovery payloads for EnableControl groups.
-        // Handles Covers, Switches, and Relays based on configured App IDs and prioritization.
+        // Handles Covers, Switches, Relays, and PIRs based on configured App IDs and prioritization.
         const processEnableControl = (enableControlData) => {
-            // Replace optional chaining
             if (!enableControlData || !enableControlData.Group) return; 
 
             const appAddress = enableControlData.ApplicationAddress;
             const groups = Array.isArray(enableControlData.Group)
                             ? enableControlData.Group
-                            : [enableControlData.Group]; // Ensure groups is always an array
+                            : [enableControlData.Group]; 
 
             groups.forEach(group => {
                 const groupId = group.GroupAddress;
@@ -1551,13 +1574,11 @@ class CgateWebBridge {
                 let discovered = false; // Flag to ensure only one type is discovered per group
 
                 // --- Check for Cover --- 
-                // Prioritize Cover if its App ID matches
                 if (coverAppId && appAddress === coverAppId) {
                     const finalLabel = groupLabel || `CBus Cover ${networkId}/${coverAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${coverAppId}_${groupId}`;
-                    // HA Discovery topic format: <discovery_prefix>/<component>/<unique_id>/config
                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_COVER}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    const payload = { // Standard HA MQTT Cover payload
+                    const payload = { 
                         name: finalLabel,
                         unique_id: uniqueId,
                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${coverAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -1569,14 +1590,14 @@ class CgateWebBridge {
                         qos: 0,
                         retain: true,
                         device_class: HA_DEVICE_CLASS_SHUTTER,
-                        device: { // Device registry information
+                        device: { 
                             identifiers: [uniqueId],
                             name: finalLabel,
                             manufacturer: HA_DEVICE_MANUFACTURER,
                             model: HA_MODEL_COVER,
                             via_device: HA_DEVICE_VIA
                         },
-                        origin: { // Optional: Information about the integration creating the entity
+                        origin: { 
                             name: HA_ORIGIN_NAME,
                             sw_version: HA_ORIGIN_SW_VERSION,
                             support_url: HA_ORIGIN_SUPPORT_URL
@@ -1588,12 +1609,11 @@ class CgateWebBridge {
                 }
 
                 // --- Check for Switch --- 
-                // Check only if not already discovered as a Cover
                 if (!discovered && switchAppId && appAddress === switchAppId) {
                     const finalLabel = groupLabel || `CBus Switch ${networkId}/${switchAppId}/${groupId}`;
                     const uniqueId = `cgateweb_${networkId}_${switchAppId}_${groupId}`;
                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    const payload = { // Standard HA MQTT Switch payload
+                    const payload = { 
                         name: finalLabel,
                         unique_id: uniqueId,
                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${switchAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -1623,25 +1643,22 @@ class CgateWebBridge {
                 }
 
                 // --- Check for Relay --- 
-                // Check only if not already discovered as Cover or Switch
-                // Treat relays as switches in Home Assistant
                 if (!discovered && relayAppId && appAddress === relayAppId) {
                      const finalLabel = groupLabel || `CBus Relay ${networkId}/${relayAppId}/${groupId}`;
                      const uniqueId = `cgateweb_${networkId}_${relayAppId}_${groupId}`;
-                     // Publish relays under the 'switch' component type in HA
                      const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                     const payload = { // Standard HA MQTT Switch payload
+                     const payload = { 
                          name: finalLabel,
                          unique_id: uniqueId,
                          state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${relayAppId}/${groupId}/state`,
                          command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${relayAppId}/${groupId}/switch`,
-                         payload_on: MQTT_STATE_ON,      // Use constant
-                         payload_off: MQTT_STATE_OFF,     // Use constant
-                         state_on: MQTT_STATE_ON,        // Use constant
-                         state_off: MQTT_STATE_OFF,       // Use constant
+                         payload_on: MQTT_STATE_ON,      
+                         payload_off: MQTT_STATE_OFF,     
+                         state_on: MQTT_STATE_ON,        
+                         state_off: MQTT_STATE_OFF,       
                          qos: 0,
                          retain: true,
-                         device_class: HA_DEVICE_CLASS_OUTLET, // Use 'outlet' device class for relays
+                         device_class: HA_DEVICE_CLASS_OUTLET, 
                          device: {
                              identifiers: [uniqueId],
                              name: finalLabel,
@@ -1656,6 +1673,40 @@ class CgateWebBridge {
                          }
                      };
                      this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: true, qos: 0 } });
+                     discoveryCount++;
+                     discovered = true; 
+                 }
+                 
+                 // --- Check for PIR Motion Sensor --- 
+                 // Check only if not already discovered as Cover, Switch, or Relay
+                 if (!discovered && pirAppId && appAddress === pirAppId) {
+                     const finalLabel = groupLabel || `CBus PIR ${networkId}/${pirAppId}/${groupId}`;
+                     const uniqueId = `cgateweb_${networkId}_${pirAppId}_${groupId}`;
+                     // Publish PIR motion sensor under the 'binary_sensor' component type in HA
+                     const discoveryTopic = `${this.settings.ha_discovery_prefix}/binary_sensor/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+                     const payload = { // HA MQTT Binary Sensor payload
+                         name: finalLabel,
+                         unique_id: uniqueId,
+                         state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${pirAppId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                         payload_on: MQTT_STATE_ON,        // Motion detected = ON
+                         payload_off: MQTT_STATE_OFF,       // Motion stopped/clear = OFF
+                         device_class: 'motion',         // Set device class to motion
+                         qos: 0,
+                         retain: false, // Typically motion events are not retained
+                         device: { 
+                             identifiers: [uniqueId],
+                             name: finalLabel,
+                             manufacturer: HA_DEVICE_MANUFACTURER,
+                             model: HA_MODEL_PIR, // Use PIR model constant
+                             via_device: HA_DEVICE_VIA 
+                         },
+                         origin: { 
+                             name: HA_ORIGIN_NAME,
+                             sw_version: HA_ORIGIN_SW_VERSION,
+                             support_url: HA_ORIGIN_SUPPORT_URL
+                         }
+                     };
+                     this.mqttPublishQueue.add({ topic: discoveryTopic, payload: JSON.stringify(payload), options: { retain: false, qos: 0 } }); // Use retain: false
                      discoveryCount++;
                      discovered = true; // Mark as discovered
                  }
