@@ -1216,7 +1216,14 @@ describe('CgateWebBridge', () => {
                  bridge._connectMqtt();
                  const expectedUrl = `mqtt://${mockSettings.mqtt}`;
                  expect(mqttConnectMock).toHaveBeenCalledTimes(1);
-                 expect(mqttConnectMock).toHaveBeenCalledWith(expectedUrl, {});
+                 expect(mqttConnectMock).toHaveBeenCalledWith(expectedUrl, {
+                     will: {
+                        topic: 'hello/cgateweb',
+                        payload: 'Offline',
+                        qos: 0,
+                        retain: true
+                    }
+                 });
                  expect(bridge.client).toBe(mockMqttClient);
              });
              // ... more _connectMqtt tests ...
@@ -1252,18 +1259,8 @@ describe('CgateWebBridge', () => {
                 reconnectmaxdelay: 30000,
                 retainreads: false,
                 logging: false, 
-                getallnetapp: null,
                 getallonstart: false,
-                getallperiod: null,
-                mqttusername: null,
-                mqttpassword: null,
-                ha_discovery_enabled: false,
-                ha_discovery_prefix: 'homeassistant',
-                ha_discovery_networks: [],
-                ha_discovery_cover_app_id: '203',
-                ha_discovery_switch_app_id: null,
-                ha_discovery_relay_app_id: null,
-                ha_discovery_pir_app_id: null
+                ha_discovery_enabled: false 
             };
             // Create instance *without* calling start
             bridgeInstance = new CgateWebBridge(minimalValidSettings);
@@ -1416,4 +1413,98 @@ describe('CgateWebBridge', () => {
 
     });
 
+    // --- Tests for MQTT LWT Configuration ---
+    describe('MQTT LWT Configuration', () => {
+        const mqtt = require('mqtt'); // Get the mocked mqtt module
+
+        beforeEach(() => {
+            // Reset the connect mock before each test
+            mqtt.connect.mockClear();
+        });
+
+        it('default mqttClientFactory should add LWT options to mqtt.connect', () => {
+            // Create bridge instance using default factory
+            const bridgeWithLwt = new CgateWebBridge({ 
+                // Provide minimal valid required settings
+                mqtt: 'mqtt.test:1883', 
+                cbusip: '127.0.0.1', 
+                cbusname: 'Test',
+                // Ensure validation passes for numbers/booleans
+                cbuscommandport: 20023, cbuseventport: 20025,
+                messageinterval: 100, reconnectinitialdelay: 100, reconnectmaxdelay: 1000,
+                retainreads: false, logging: false, getallonstart: false, ha_discovery_enabled: false 
+                // Add other null defaults needed for validation to pass cleanly
+                , getallnetapp: null, getallperiod: null, mqttusername: null, mqttpassword: null,
+                 ha_discovery_prefix: 'homeassistant', ha_discovery_networks: [],
+                 ha_discovery_cover_app_id: '203', ha_discovery_switch_app_id: null,
+                 ha_discovery_relay_app_id: null, ha_discovery_pir_app_id: null,
+                 cgateusername: null, cgatepassword: null
+            });
+            
+            // Trigger the factory call by attempting to connect
+            bridgeWithLwt._connectMqtt(); 
+
+            // Check that mqtt.connect was called
+            expect(mqtt.connect).toHaveBeenCalledTimes(1);
+
+            // Check the options passed to mqtt.connect
+            const connectOptions = mqtt.connect.mock.calls[0][1]; // Second argument is options
+            expect(connectOptions).toBeDefined();
+            expect(connectOptions.will).toBeDefined();
+            expect(connectOptions.will).toEqual({
+                topic: 'hello/cgateweb',       // Using literal string, constant not available here
+                payload: 'Offline',          // Using literal string
+                qos: 0,
+                retain: true
+            });
+        });
+        
+         it('should NOT add LWT options if custom mqttClientFactory is provided', () => {
+             const customFactory = jest.fn(() => {
+                 // Simulate custom factory returning a basic mock client 
+                 // without adding LWT options itself
+                 return { 
+                     on: jest.fn(), 
+                     removeAllListeners: jest.fn(),
+                     // Add other methods if needed by _connectMqtt listener attachment
+                     subscribe: jest.fn(),
+                     publish: jest.fn(),
+                     end: jest.fn()
+                 };
+             });
+             const bridgeCustom = new CgateWebBridge(
+                 { /* minimal valid settings */ 
+                    mqtt: 'm.test:1883', cbusip: '1.1.1.1', cbusname: 'P',
+                    cbuscommandport: 20023, cbuseventport: 20025,
+                    messageinterval: 100, reconnectinitialdelay: 100, reconnectmaxdelay: 1000,
+                    retainreads: false, logging: false, getallonstart: false, ha_discovery_enabled: false,
+                    // Add other null defaults
+                    getallnetapp: null, getallperiod: null, mqttusername: null, mqttpassword: null,
+                    ha_discovery_prefix: 'homeassistant', ha_discovery_networks: [],
+                    ha_discovery_cover_app_id: '203', ha_discovery_switch_app_id: null,
+                    ha_discovery_relay_app_id: null, ha_discovery_pir_app_id: null,
+                    cgateusername: null, cgatepassword: null
+                  },
+                 customFactory // Provide the custom factory
+             );
+
+             // Trigger connection attempt
+             bridgeCustom._connectMqtt();
+
+             // Ensure our custom factory was called, not mqtt.connect
+             expect(customFactory).toHaveBeenCalledTimes(1);
+             expect(mqtt.connect).not.toHaveBeenCalled(); 
+             
+             // In this scenario, the responsibility of setting LWT lies with the custom factory
+             // So we don\'t assert on the options here, just that the default logic wasn\'t used.
+         });
+
+    });
+
+    // --- C-Gate Login Logic ---
+    describe('C-Gate Login Logic', () => {
+        // ... existing login tests ...
+    });
+
+    // ... rest of file ...
 }); 

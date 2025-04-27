@@ -47,6 +47,12 @@ These instructions assume a Linux system with Node.js, npm, and systemd.
 1)  Put your settings in `settings.js`.
 2)  Run `node index.js` (useful for testing or foreground operation).
 
+### Status Topic
+
+`cgateweb` publishes its status to the `hello/cgateweb` topic:
+
+*   `Online`: Published when `cgateweb` successfully connects to MQTT and C-Gate.
+*   `Offline`: Published automatically by the MQTT broker (using Last Will and Testament - LWT) if `cgateweb` disconnects uncleanly.
 
 ### Updates get published on these topics:
 
