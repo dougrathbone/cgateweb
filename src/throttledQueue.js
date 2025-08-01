@@ -73,6 +73,14 @@ class ThrottledQueue {
     size() {
         return this._queue.length;
     }
+
+    get length() {
+        return this._queue.length;
+    }
+
+    isEmpty() {
+        return this._queue.length === 0;
+    }
 }
 
 module.exports = ThrottledQueue;
