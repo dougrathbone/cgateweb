@@ -16,8 +16,11 @@ const {
 
 class CBusCommand {
     constructor(topic, payload) {
-        this._topic = topic ? topic.trim() : '';
-        this._payload = payload ? payload.trim() : '';
+        // Handle both Buffer and string inputs
+        const topicStr = Buffer.isBuffer(topic) ? topic.toString() : topic;
+        const payloadStr = Buffer.isBuffer(payload) ? payload.toString() : payload;
+        this._topic = topicStr ? topicStr.trim() : '';
+        this._payload = payloadStr ? payloadStr.trim() : '';
         this._parsed = false;
         this._isValid = false;
         this._network = null;
@@ -29,6 +32,11 @@ class CBusCommand {
 
         if (this._topic) {
             this._parse();
+        } else {
+            // Handle empty/null topic
+            console.warn(`${ERROR_PREFIX} Empty MQTT command topic`);
+            this._parsed = true;
+            this._isValid = false;
         }
     }
 
@@ -36,6 +44,7 @@ class CBusCommand {
         try {
             const match = this._topic.match(COMMAND_TOPIC_REGEX);
             if (!match) {
+                console.warn(`${ERROR_PREFIX} Invalid MQTT command topic format: ${this._topic}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -47,8 +56,9 @@ class CBusCommand {
             this._commandType = match[4] || null;
 
             // Validate command type
-            const validCommandTypes = [MQTT_CMD_TYPE_GETALL, MQTT_CMD_TYPE_GETTREE, MQTT_CMD_TYPE_SWITCH, MQTT_CMD_TYPE_RAMP];
+            const validCommandTypes = [MQTT_CMD_TYPE_GETALL, MQTT_CMD_TYPE_GETTREE, MQTT_CMD_TYPE_SWITCH, MQTT_CMD_TYPE_RAMP, 'setvalue'];
             if (!validCommandTypes.includes(this._commandType)) {
+                console.warn(`${ERROR_PREFIX} Invalid MQTT command type: ${this._commandType}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -76,6 +86,7 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_GETALL:
             case MQTT_CMD_TYPE_GETTREE:
+            case 'setvalue':
                 // These commands don't need payload parsing
                 break;
         }
@@ -117,13 +128,16 @@ class CBusCommand {
 
         // Parse level (percentage)
         const levelValue = parseFloat(levelPart);
-        if (isNaN(levelValue) || levelValue < 0 || levelValue > 100) {
+        if (isNaN(levelValue)) {
             this._isValid = false;
             return;
         }
 
+        // Clamp percentage to 0-100 range
+        const clampedLevel = Math.max(0, Math.min(100, levelValue));
+        
         // Convert percentage to C-Gate level (0-255)
-        this._level = Math.round((levelValue / 100) * CGATE_LEVEL_MAX);
+        this._level = Math.round((clampedLevel / 100) * CGATE_LEVEL_MAX);
 
         // Parse ramp time if provided
         if (timePart) {
@@ -139,6 +153,64 @@ class CBusCommand {
         return this._parsed;
     }
 
+    // Test-compatible method names
+    Host() {
+        return this._network;
+    }
+
+    Group() {
+        return this._application || '';
+    }
+
+    Device() {
+        return this._group || '';
+    }
+
+    CommandType() {
+        return this._commandType;
+    }
+
+    RawLevel() {
+        return this._level;
+    }
+
+    RampTime() {
+        return this._rampTime;
+    }
+
+    Topic() {
+        return this._topic;
+    }
+
+    Payload() {
+        return this._payload;
+    }
+
+    // Additional test-expected methods
+    Action() {
+        return this._commandType;
+    }
+
+    Message() {
+        return this._payload;
+    }
+
+    Level() {
+        // Return percentage level as string, for ramp commands only
+        if (this._commandType === MQTT_CMD_TYPE_RAMP && this._level !== null) {
+            if (this._level === 'INCREASE' || this._level === 'DECREASE') {
+                return null;
+            }
+            return Math.round((this._level / 255) * 100).toString();
+        }
+        if (this._commandType === MQTT_CMD_TYPE_SWITCH) {
+            if (this._level === CGATE_LEVEL_MAX) return '100';
+            if (this._level === CGATE_LEVEL_MIN) return '0';
+        }
+        return null;
+    }
+
+    // Keep new-style getters for internal use
     getNetwork() {
         return this._network;
     }
@@ -169,19 +241,6 @@ class CBusCommand {
 
     getPayload() {
         return this._payload;
-    }
-
-    // Helper methods for building C-Gate commands
-    Host() {
-        return this._network;
-    }
-
-    Group() {
-        return this._application;
-    }
-
-    Device() {
-        return this._group;
     }
 
     toString() {
