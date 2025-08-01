@@ -1,6 +1,6 @@
 // tests/cbusEvent.test.js
 
-const { CBusEvent } = require('../index.js'); // Adjust path as necessary
+const CBusEvent = require('../src/cbusEvent');
 
 describe('CBusEvent', () => {
     // Mock console.warn to avoid cluttering test output

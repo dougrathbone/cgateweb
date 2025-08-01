@@ -1,17 +1,9 @@
 // tests/cgateWebBridge.test.js
 
 // Import necessary classes/functions
-const { 
-    CgateWebBridge, 
-    ThrottledQueue, 
-    settings: defaultSettings
-    // Remove constant imports - they don\'t work well with Jest module mocks here
-    // MQTT_TOPIC_PREFIX_WRITE, 
-    // MQTT_TOPIC_STATUS, 
-    // MQTT_PAYLOAD_STATUS_ONLINE, 
-    // CGATE_CMD_EVENT_ON, 
-    // NEWLINE 
-} = require('../index.js');
+const CgateWebBridge = require('../src/cgateWebBridge');
+const ThrottledQueue = require('../src/throttledQueue');
+const { defaultSettings } = require('../index.js');
 const EventEmitter = require('events'); // Needed for mocking event emitters
 const xml2js = require('xml2js'); // Keep require for type info if needed, but mock it below
 
