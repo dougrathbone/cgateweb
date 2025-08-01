@@ -5,6 +5,7 @@ const HaDiscovery = require('./haDiscovery');
 const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
 const CBusCommand = require('./cbusCommand');
+const { createLogger } = require('./logger');
 const {
     LOG_PREFIX,
     WARN_PREFIX,
@@ -40,6 +41,11 @@ const {
 class CgateWebBridge {
     constructor(settings) {
         this.settings = settings;
+        this.logger = createLogger({ 
+            component: 'bridge', 
+            level: settings.logging ? 'info' : 'warn',
+            enabled: true 
+        });
         
         // Connection managers
         this.mqttManager = new MqttManager(settings);
@@ -101,7 +107,7 @@ class CgateWebBridge {
     }
 
     start() {
-        this.log(`${LOG_PREFIX} Starting cgateweb bridge...`);
+        this.logger.info('Starting cgateweb bridge');
         
         // Start all connections
         this.mqttManager.connect();
@@ -484,19 +490,17 @@ class CgateWebBridge {
         this.mqttManager.publish(message.topic, message.payload, message.options);
     }
 
-    // Logging methods
-    log(message, ...args) {
-        if (this.settings.logging) {
-            console.log(message, ...args);
-        }
+    // Logging methods (backward compatibility)
+    log(message, meta = {}) {
+        this.logger.info(message, meta);
     }
 
-    warn(message, ...args) {
-        console.warn(message, ...args);
+    warn(message, meta = {}) {
+        this.logger.warn(message, meta);
     }
 
-    error(message, ...args) {
-        console.error(message, ...args);
+    error(message, meta = {}) {
+        this.logger.error(message, meta);
     }
 }
 
