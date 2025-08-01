@@ -171,6 +171,10 @@ class CBusCommand {
     }
 
     RawLevel() {
+        // Return null for special commands like INCREASE/DECREASE
+        if (this._level === 'INCREASE' || this._level === 'DECREASE') {
+            return null;
+        }
         return this._level;
     }
 

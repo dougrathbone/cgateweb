@@ -117,4 +117,15 @@ if (require.main === module) {
     main();
 }
 
-module.exports = { main, defaultSettings };
+// Export classes for tests
+const CBusEvent = require('./src/cbusEvent');
+const CBusCommand = require('./src/cbusCommand');
+
+module.exports = { 
+    main, 
+    defaultSettings, 
+    CgateWebBridge, 
+    CBusEvent, 
+    CBusCommand, 
+    settings: defaultSettings  // Alias for backward compatibility
+};
