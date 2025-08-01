@@ -1,18 +1,29 @@
 [Unit]
-Description=cgateweb
+Description=cgateweb - C-Bus to MQTT Bridge
+Documentation=https://github.com/dougrathbone/cgateweb
 Wants=cgate.service
 After=network.target cgate.service
+Requires=network.target
 
 [Service]
 # Use %I as placeholder for the script directory determined by installer
-ExecStart=/usr/bin/nodejs %I/index.js 
-RestartSec=10
+Type=simple
+ExecStart=/usr/bin/node %I/index.js
+ExecReload=/bin/kill -USR1 $MAINPID
 Restart=always
+RestartSec=10
 User=root
 Group=root
 Environment=PATH=/usr/bin:/usr/local/bin
 Environment=NODE_ENV=production
 WorkingDirectory=%I
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cgateweb
+# Graceful shutdown
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target
