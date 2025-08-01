@@ -2,7 +2,9 @@ const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS, ERROR_PREFIX } = require('./c
 
 class CBusEvent {
     constructor(eventString) {
-        this._rawEvent = eventString ? eventString.trim() : '';
+        // Handle both Buffer and string inputs
+        const eventStr = Buffer.isBuffer(eventString) ? eventString.toString() : eventString;
+        this._rawEvent = eventStr ? eventStr.trim() : '';
         this._parsed = false;
         this._deviceType = null;
         this._action = null;
