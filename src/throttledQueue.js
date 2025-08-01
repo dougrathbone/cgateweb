@@ -13,52 +13,29 @@ class ThrottledQueue {
         this._queue = [];
         this._interval = null;
         this._name = name;
-        this._isProcessing = false;
     }
 
     add(item) {
         this._queue.push(item);
-        // Start processing if not already running and interval not set
-        if (this._interval === null && !this._isProcessing) {
-            // Process immediately if possible
-            this._process();
-            // Start interval if queue still has items
-            if (this._queue.length > 0 && this._interval === null) {
-                this._interval = setInterval(() => this._process(), this._intervalMs);
-            }
+        if (this._interval === null) {
+            this._interval = setInterval(() => this._process(), this._intervalMs);
+            this._process(); // Process immediately on first add
         }
     }
 
     _process() {
-        if (this._isProcessing) return; // Prevent re-entrancy
-
         if (this._queue.length === 0) {
-            // Stop interval if queue is empty
             if (this._interval !== null) {
                 clearInterval(this._interval);
                 this._interval = null;
             }
-            return;
-        }
-
-        this._isProcessing = true;
-        const item = this._queue.shift();
-
-        try {
-            this._processFn(item);
-        } catch (error) {
-            console.error(`${ERROR_PREFIX} Error processing ${this._name} item:`, error, "Item:", item);
-        } finally {
-            this._isProcessing = false;
-            // If queue is now empty, ensure interval is cleared
-            if (this._queue.length === 0 && this._interval !== null) {
-                 clearInterval(this._interval);
-                 this._interval = null;
-             }
-            // If queue not empty but interval got cleared somehow, restart it
-             else if (this._queue.length > 0 && this._interval === null) {
-                 this._interval = setInterval(() => this._process(), this._intervalMs);
-             }
+        } else {
+            const item = this._queue.shift();
+            try {
+                 this._processFn(item);
+            } catch (error) {
+                 console.error(`Error processing ${this._name} item:`, error, "Item:", item);
+            }
         }
     }
 
