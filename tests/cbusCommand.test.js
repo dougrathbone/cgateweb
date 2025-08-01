@@ -1,6 +1,6 @@
 // tests/cbusCommand.test.js
 
-const { CBusCommand } = require('../index.js'); // Adjust path as necessary
+const CBusCommand = require('../src/cbusCommand');
 
 describe('CBusCommand', () => {
     // Mock console.warn to avoid cluttering test output
