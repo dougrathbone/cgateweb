@@ -94,10 +94,16 @@ class CBusEvent {
                 this._group = addressParts[2];
                 this._isValid = true;
             }
+        } else {
+            // Invalid status response format
+            console.warn(`${ERROR_PREFIX} Invalid status response format: ${this._rawEvent}`);
+            this._isValid = false;
         }
 
-        this._deviceType = 'lighting'; // Assume lighting for status responses
-        this._action = (this._level !== null && this._level > 0) ? 'on' : 'off';
+        if (this._isValid) {
+            this._deviceType = 'lighting'; // Assume lighting for status responses
+            this._action = (this._level !== null && this._level > 0) ? 'on' : 'off';
+        }
         this._parsed = true;
     }
 
