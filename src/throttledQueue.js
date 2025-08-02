@@ -47,15 +47,11 @@ class ThrottledQueue {
         }
     }
 
-    size() {
-        return this._queue.length;
-    }
-
     get length() {
         return this._queue.length;
     }
 
-    isEmpty() {
+    get isEmpty() {
         return this._queue.length === 0;
     }
 }
