@@ -144,11 +144,8 @@ describe('CgateWebBridge', () => {
             expect(mergedBridge.settings.cbusname).toBe(defaultSettings.cbusname);
         });
 
-        it('should initialize connection flags to false', () => {
+        it('should initialize allConnected flag to false', () => {
             expect(bridge.allConnected).toBe(false);
-            expect(bridge.clientConnected).toBe(false);
-            expect(bridge.commandConnected).toBe(false);
-            expect(bridge.eventConnected).toBe(false);
         });
 
         it('should initialize underlying connection managers properly', () => {
@@ -160,17 +157,10 @@ describe('CgateWebBridge', () => {
             expect(bridge.eventConnection.connected).toBe(false);
         });
 
-        it('should initialize sockets and client to null', () => {
-            expect(bridge.client).toBeNull();
-            expect(bridge.commandSocket).toBeNull();
-            expect(bridge.eventSocket).toBeNull();
-        });
 
-        it('should initialize buffers and treeNetwork to empty/null', () => {
+        it('should initialize buffers to empty', () => {
             expect(bridge.commandBuffer).toBe('');
             expect(bridge.eventBuffer).toBe('');
-            expect(bridge.treeBuffer).toBe('');
-            expect(bridge.treeNetwork).toBeNull();
         });
 
         it('should initialize haDiscovery with proper state', () => {
@@ -186,12 +176,6 @@ describe('CgateWebBridge', () => {
             expect(bridge.mqttPublishQueue.constructor.name).toBe('ThrottledQueue');
         });
 
-        it('should initialize reconnect properties to null/0', () => {
-            expect(bridge.commandReconnectTimeout).toBeNull();
-            expect(bridge.eventReconnectTimeout).toBeNull();
-            expect(bridge.commandReconnectAttempts).toBe(0);
-            expect(bridge.eventReconnectAttempts).toBe(0);
-        });
 
         it('should set MQTT options based on retainreads setting', () => {
             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });
