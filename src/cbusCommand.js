@@ -14,7 +14,30 @@ const {
     ERROR_PREFIX
 } = require('./constants');
 
+/**
+ * Represents an MQTT command that will be translated to a C-Gate command.
+ * 
+ * MQTT commands follow the format: "cbus/write/network/application/group/command"
+ * Examples:
+ * - "cbus/write/254/56/4/switch" with payload "ON" → turns on light
+ * - "cbus/write/254/56/4/ramp" with payload "50" → dims light to 50%
+ * - "cbus/write/254/56/4/ramp" with payload "75,2s" → dims to 75% over 2 seconds
+ * 
+ * This class parses MQTT topics and payloads into structured C-Bus commands.
+ * 
+ * @example
+ * const cmd = new CBusCommand("cbus/write/254/56/4/switch", "ON");
+ * console.log(cmd.getNetwork()); // "254"
+ * console.log(cmd.getCommandType()); // "switch"
+ * console.log(cmd.getLevel()); // 255 (C-Gate level for ON)
+ */
 class CBusCommand {
+    /**
+     * Creates a new CBusCommand by parsing an MQTT topic and payload.
+     * 
+     * @param {string|Buffer} topic - MQTT topic (e.g., "cbus/write/254/56/4/switch")
+     * @param {string|Buffer} payload - MQTT payload (e.g., "ON", "50", "75,2s")
+     */
     constructor(topic, payload) {
         // Handle both Buffer and string inputs
         const topicStr = Buffer.isBuffer(topic) ? topic.toString() : topic;
@@ -136,7 +159,8 @@ class CBusCommand {
         // Clamp percentage to 0-100 range
         const clampedLevel = Math.max(0, Math.min(100, levelValue));
         
-        // Convert percentage to C-Gate level (0-255)
+        // Convert MQTT percentage (0-100) to C-Gate level (0-255)  
+        // C-Bus uses 8-bit values: 0 = off, 255 = full brightness
         this._level = Math.round((clampedLevel / 100) * CGATE_LEVEL_MAX);
 
         // Parse ramp time if provided
