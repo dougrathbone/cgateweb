@@ -265,28 +265,26 @@ class HaDiscovery {
         });
     }
 
-    _createCoverDiscovery(networkId, appId, groupId, groupLabel) {
-        const finalLabel = groupLabel || `CBus Cover ${networkId}/${appId}/${groupId}`;
+    // Unified discovery creation method to eliminate code duplication
+    _createDiscovery(networkId, appId, groupId, groupLabel, config) {
+        const finalLabel = groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_COVER}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         
         const payload = { 
             name: finalLabel,
             unique_id: uniqueId,
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
             command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
-            payload_open: MQTT_STATE_ON,
-            payload_close: MQTT_STATE_OFF,
-            state_open: MQTT_STATE_ON,
-            state_closed: MQTT_STATE_OFF,
+            ...config.payloads,
             qos: 0,
             retain: true,
-            device_class: HA_DEVICE_CLASS_SHUTTER,
+            ...(config.deviceClass && { device_class: config.deviceClass }),
             device: { 
                 identifiers: [uniqueId],
                 name: finalLabel,
                 manufacturer: HA_DEVICE_MANUFACTURER,
-                model: HA_MODEL_COVER,
+                model: config.model,
                 via_device: HA_DEVICE_VIA
             },
             origin: { 
@@ -298,75 +296,60 @@ class HaDiscovery {
 
         this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
         this.discoveryCount++;
+    }
+
+    // Configuration objects for different discovery types
+    _getDiscoveryConfig(type) {
+        const configs = {
+            cover: {
+                component: HA_COMPONENT_COVER,
+                defaultType: 'Cover',
+                model: HA_MODEL_COVER,
+                deviceClass: HA_DEVICE_CLASS_SHUTTER,
+                payloads: {
+                    payload_open: MQTT_STATE_ON,
+                    payload_close: MQTT_STATE_OFF,
+                    state_open: MQTT_STATE_ON,
+                    state_closed: MQTT_STATE_OFF
+                }
+            },
+            switch: {
+                component: HA_COMPONENT_SWITCH,
+                defaultType: 'Switch',
+                model: HA_MODEL_SWITCH,
+                payloads: {
+                    payload_on: MQTT_STATE_ON,
+                    payload_off: MQTT_STATE_OFF,
+                    state_on: MQTT_STATE_ON,
+                    state_off: MQTT_STATE_OFF
+                }
+            },
+            relay: {
+                component: HA_COMPONENT_SWITCH,
+                defaultType: 'Relay',
+                model: HA_MODEL_RELAY,
+                deviceClass: HA_DEVICE_CLASS_OUTLET,
+                payloads: {
+                    payload_on: MQTT_STATE_ON,
+                    payload_off: MQTT_STATE_OFF,
+                    state_on: MQTT_STATE_ON,
+                    state_off: MQTT_STATE_OFF
+                }
+            }
+        };
+        return configs[type];
+    }
+
+    _createCoverDiscovery(networkId, appId, groupId, groupLabel) {
+        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('cover'));
     }
 
     _createSwitchDiscovery(networkId, appId, groupId, groupLabel) {
-        const finalLabel = groupLabel || `CBus Switch ${networkId}/${appId}/${groupId}`;
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-        
-        const payload = { 
-            name: finalLabel,
-            unique_id: uniqueId,
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
-            payload_on: MQTT_STATE_ON,
-            payload_off: MQTT_STATE_OFF,
-            state_on: MQTT_STATE_ON,
-            state_off: MQTT_STATE_OFF,
-            qos: 0,
-            retain: true,
-            device: { 
-                identifiers: [uniqueId],
-                name: finalLabel,
-                manufacturer: HA_DEVICE_MANUFACTURER,
-                model: HA_MODEL_SWITCH,
-                via_device: HA_DEVICE_VIA
-            },
-            origin: { 
-                name: HA_ORIGIN_NAME,
-                sw_version: HA_ORIGIN_SW_VERSION,
-                support_url: HA_ORIGIN_SUPPORT_URL
-            }
-        };
-
-        this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
-        this.discoveryCount++;
+        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('switch'));
     }
 
     _createRelayDiscovery(networkId, appId, groupId, groupLabel) {
-        const finalLabel = groupLabel || `CBus Relay ${networkId}/${appId}/${groupId}`;
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SWITCH}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-        
-        const payload = { 
-            name: finalLabel,
-            unique_id: uniqueId,
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
-            payload_on: MQTT_STATE_ON,      
-            payload_off: MQTT_STATE_OFF,     
-            state_on: MQTT_STATE_ON,        
-            state_off: MQTT_STATE_OFF,       
-            qos: 0,
-            retain: true,
-            device_class: HA_DEVICE_CLASS_OUTLET,
-            device: { 
-                identifiers: [uniqueId],
-                name: finalLabel,
-                manufacturer: HA_DEVICE_MANUFACTURER,
-                model: HA_MODEL_RELAY,
-                via_device: HA_DEVICE_VIA
-            },
-            origin: { 
-                name: HA_ORIGIN_NAME,
-                sw_version: HA_ORIGIN_SW_VERSION,
-                support_url: HA_ORIGIN_SUPPORT_URL
-            }
-        };
-
-        this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
-        this.discoveryCount++;
+        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('relay'));
     }
 
     _createPirDiscovery(networkId, appId, groupId, groupLabel) {
