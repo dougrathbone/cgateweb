@@ -158,7 +158,7 @@ class CgateConnection extends EventEmitter {
             return; // Already scheduled
         }
 
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        if (this.maxReconnectAttempts > 0 && this.reconnectAttempts >= this.maxReconnectAttempts) {
             this.logger.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.type} connection. Stopping reconnection attempts.`);
             return;
         }

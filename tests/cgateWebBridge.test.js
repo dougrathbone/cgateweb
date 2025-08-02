@@ -296,4 +296,645 @@ describe('CgateWebBridge', () => {
             expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 498: - No details provided');
         });
     });
+
+    describe('Bridge Start/Stop Operations', () => {
+        let infoSpy, logSpy;
+
+        beforeEach(() => {
+            infoSpy = jest.spyOn(bridge.logger, 'info');
+            logSpy = jest.spyOn(bridge, 'log');
+        });
+
+        afterEach(() => {
+            infoSpy.mockRestore();
+            logSpy.mockRestore();
+        });
+
+        describe('start()', () => {
+            it('should start all connections and log startup message', () => {
+                const mqttConnectSpy = jest.spyOn(bridge.mqttManager, 'connect');
+                const cmdConnectSpy = jest.spyOn(bridge.commandConnection, 'connect');
+                const evtConnectSpy = jest.spyOn(bridge.eventConnection, 'connect');
+
+                const result = bridge.start();
+
+                expect(infoSpy).toHaveBeenCalledWith('Starting cgateweb bridge');
+                expect(mqttConnectSpy).toHaveBeenCalled();
+                expect(cmdConnectSpy).toHaveBeenCalled();
+                expect(evtConnectSpy).toHaveBeenCalled();
+                expect(result).toBe(bridge); // Method chaining
+
+                mqttConnectSpy.mockRestore();
+                cmdConnectSpy.mockRestore();
+                evtConnectSpy.mockRestore();
+            });
+        });
+
+        describe('stop()', () => {
+            it('should stop all connections and clear resources', () => {
+                // Set up some state to clean up
+                const intervalId = setInterval(() => {}, 1000);
+                bridge.periodicGetAllInterval = intervalId;
+
+                const mqttDisconnectSpy = jest.spyOn(bridge.mqttManager, 'disconnect');  
+                const cmdDisconnectSpy = jest.spyOn(bridge.commandConnection, 'disconnect');
+                const evtDisconnectSpy = jest.spyOn(bridge.eventConnection, 'disconnect');
+                const clearQueuesSpy = jest.spyOn(bridge.cgateCommandQueue, 'clear');
+                const clearMqttQueueSpy = jest.spyOn(bridge.mqttPublishQueue, 'clear');
+
+                bridge.stop();
+
+                expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Stopping cgateweb bridge'));
+                expect(bridge.periodicGetAllInterval).toBeNull();
+                expect(bridge.allConnected).toBe(false);
+                expect(clearQueuesSpy).toHaveBeenCalled();
+                expect(clearMqttQueueSpy).toHaveBeenCalled();
+                expect(mqttDisconnectSpy).toHaveBeenCalled();
+                expect(cmdDisconnectSpy).toHaveBeenCalled();
+                expect(evtDisconnectSpy).toHaveBeenCalled();
+
+                mqttDisconnectSpy.mockRestore();
+                cmdDisconnectSpy.mockRestore();
+                evtDisconnectSpy.mockRestore();
+                clearQueuesSpy.mockRestore();
+                clearMqttQueueSpy.mockRestore();
+            });
+
+            it('should handle stop when no periodic interval is set', () => {
+                bridge.periodicGetAllInterval = null;
+                
+                expect(() => bridge.stop()).not.toThrow();
+                expect(bridge.periodicGetAllInterval).toBeNull();
+            });
+        });
+    });
+
+    describe('Connection Management', () => {
+        let logSpy, infoSpy;
+
+        beforeEach(() => {
+            logSpy = jest.spyOn(bridge, 'log');
+            infoSpy = jest.spyOn(bridge.logger, 'info');
+        });
+
+        afterEach(() => {
+            logSpy.mockRestore();
+            infoSpy.mockRestore();
+        });
+
+        describe('_handleAllConnected()', () => {
+            it('should set allConnected to true when all services are connected', () => {
+                // Mock all connections as connected
+                bridge.mqttManager.connected = true;
+                bridge.commandConnection.connected = true;
+                bridge.eventConnection.connected = true;
+
+                bridge._handleAllConnected();
+
+                expect(bridge.allConnected).toBe(true);
+                expect(logSpy).toHaveBeenCalledWith('[INFO] ALL CONNECTED');
+            });
+
+            it('should not set allConnected when not all services are connected', () => {
+                bridge.mqttManager.connected = true;
+                bridge.commandConnection.connected = false; // Not connected
+                bridge.eventConnection.connected = true;
+
+                bridge._handleAllConnected();
+
+                expect(bridge.allConnected).toBe(false);
+            });
+
+            it('should handle getall on start when enabled', () => {
+                bridge.settings.getallnetapp = '254/56';
+                bridge.settings.getallonstart = true;
+                bridge.mqttManager.connected = true;
+                bridge.commandConnection.connected = true;
+                bridge.eventConnection.connected = true;
+
+                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+
+                bridge._handleAllConnected();
+
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
+                queueSpy.mockRestore();
+            });
+
+            it('should set up periodic getall when enabled', () => {
+                jest.useFakeTimers();
+                bridge.settings.getallnetapp = '254/56';
+                bridge.settings.getallperiod = 5000; // 5 seconds
+                bridge.mqttManager.connected = true;
+                bridge.commandConnection.connected = true;
+                bridge.eventConnection.connected = true;
+
+                bridge._handleAllConnected();
+
+                expect(bridge.periodicGetAllInterval).not.toBeNull();
+                
+                // Test that periodic execution works
+                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+                jest.advanceTimersByTime(5000);
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
+
+                queueSpy.mockRestore();
+                jest.useRealTimers();
+            });
+
+            it('should trigger HA discovery when enabled', () => {
+                bridge.settings.ha_discovery_enabled = true;
+                bridge.mqttManager.connected = true;
+                bridge.commandConnection.connected = true;
+                bridge.eventConnection.connected = true;
+
+                const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
+
+                bridge._handleAllConnected();
+
+                expect(discoverySpy).toHaveBeenCalled();
+                discoverySpy.mockRestore();
+            });
+        });
+    });
+
+    describe('MQTT Message Handling', () => {
+        let processSpy;
+
+        beforeEach(() => {
+            processSpy = jest.spyOn(bridge, '_processMqttCommand');
+        });
+
+        afterEach(() => {
+            processSpy.mockRestore();
+        });
+
+        describe('_handleMqttMessage()', () => {
+            it('should handle manual trigger messages', () => {
+                const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
+                bridge.settings.ha_discovery_enabled = true;
+
+                bridge._handleMqttMessage('hello/cgateweb', 'trigger');
+
+                expect(discoverySpy).toHaveBeenCalled();
+                discoverySpy.mockRestore();
+            });
+
+            it('should ignore manual trigger when HA discovery disabled', () => {
+                const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
+                bridge.settings.ha_discovery_enabled = false;
+
+                bridge._handleMqttMessage('hello/cgateweb', 'trigger');
+
+                expect(discoverySpy).not.toHaveBeenCalled();
+                discoverySpy.mockRestore();
+            });
+
+            it('should process valid write commands', () => {
+                bridge._handleMqttMessage('cbus/write/254/56/1/switch', 'ON');
+
+                expect(processSpy).toHaveBeenCalledWith(
+                    { network: '254', app: '56', group: '1', type: 'switch' },
+                    'cbus/write/254/56/1/switch',
+                    'ON'
+                );
+            });
+
+            it('should ignore non-write topics', () => {
+                bridge._handleMqttMessage('cbus/read/254/56/1/state', 'ON');
+                bridge._handleMqttMessage('some/other/topic', 'data');
+
+                expect(processSpy).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('_processMqttCommand()', () => {
+            let getTreeSpy, getAllSpy, switchSpy, rampSpy;
+
+            beforeEach(() => {
+                getTreeSpy = jest.spyOn(bridge, '_handleMqttGetTree');
+                getAllSpy = jest.spyOn(bridge, '_handleMqttGetAll');
+                switchSpy = jest.spyOn(bridge, '_handleMqttSwitch');
+                rampSpy = jest.spyOn(bridge, '_handleMqttRamp');
+            });
+
+            afterEach(() => {
+                getTreeSpy.mockRestore();
+                getAllSpy.mockRestore();
+                switchSpy.mockRestore();
+                rampSpy.mockRestore();
+            });
+
+            it('should handle gettree commands', () => {
+                const command = { network: '254', app: '', group: '', type: 'tree' };
+                bridge._processMqttCommand(command, 'cbus/write/254///tree', '');
+
+                expect(getTreeSpy).toHaveBeenCalledWith(command);
+            });
+
+            it('should handle getall commands', () => {
+                const command = { network: '254', app: '56', group: '', type: 'getall' };
+                bridge._processMqttCommand(command, 'cbus/write/254/56//getall', '');
+
+                expect(getAllSpy).toHaveBeenCalledWith(command);
+            });
+
+            it('should handle switch commands with payload', () => {
+                const command = { network: '254', app: '56', group: '1', type: 'switch' };
+                bridge._processMqttCommand(command, 'cbus/write/254/56/1/switch', 'ON');
+
+                expect(switchSpy).toHaveBeenCalledWith(command, 'ON');
+            });
+
+            it('should handle ramp commands', () => {
+                const command = { network: '254', app: '56', group: '1', type: 'ramp' };
+                bridge._processMqttCommand(command, 'cbus/write/254/56/1/ramp', '50');
+
+                expect(rampSpy).toHaveBeenCalledWith(command, '50', 'cbus/write/254/56/1/ramp');
+            });
+        });
+    });
+
+    describe('MQTT Command Handlers', () => {
+        let queueSpy;
+
+        beforeEach(() => {
+            queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'enqueue');
+        });
+
+        afterEach(() => {
+            queueSpy.mockRestore();
+        });
+
+        describe('_handleMqttGetTree()', () => {
+            it('should queue tree command for network', () => {
+                const command = { network: '254', app: '', group: '', type: 'tree' };
+                bridge._handleMqttGetTree(command);
+
+                expect(queueSpy).toHaveBeenCalledWith('TREE //TestProject/254');
+            });
+        });
+
+        describe('_handleMqttGetAll()', () => {
+            it('should queue getall command for network/app', () => {
+                const command = { network: '254', app: '56', group: '' };
+                bridge._handleMqttGetAll(command);
+
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/*');
+            });
+        });
+
+        describe('_handleMqttSwitch()', () => {
+            it('should queue ON command for switch', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                bridge._handleMqttSwitch(command, 'ON');
+
+                expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/56/1');
+            });
+
+            it('should queue OFF command for switch', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                bridge._handleMqttSwitch(command, 'OFF');
+
+                expect(queueSpy).toHaveBeenCalledWith('OFF //TestProject/254/56/1');
+            });
+
+            it('should queue ON command for unknown payload', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                bridge._handleMqttSwitch(command, 'UNKNOWN');
+
+                expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/56/1');
+            });
+        });
+
+        describe('_handleMqttRamp()', () => {
+            it('should handle numeric level ramp', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                bridge._handleMqttRamp(command, '75', 'cbus/write/254/56/1/ramp');
+
+                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 75');
+            });
+
+            it('should handle INCREASE command', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                const increaseSpy = jest.spyOn(bridge, '_queueRampIncreaseDecrease');
+                
+                bridge._handleMqttRamp(command, 'INCREASE', 'cbus/write/254/56/1/ramp');
+
+                expect(increaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '1', 10, 255, 'INCREASE');
+                increaseSpy.mockRestore();
+            });
+
+            it('should handle DECREASE command', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                const decreaseSpy = jest.spyOn(bridge, '_queueRampIncreaseDecrease');
+                
+                bridge._handleMqttRamp(command, 'DECREASE', 'cbus/write/254/56/1/ramp');
+
+                expect(decreaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '1', -10, 0, 'DECREASE');
+                decreaseSpy.mockRestore();
+            });
+
+            it('should handle ramp with time specification', () => {
+                const command = { network: '254', app: '56', group: '1' };
+                bridge._handleMqttRamp(command, '50:5', 'cbus/write/254/56/1/ramp');
+
+                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 50 5s');
+            });
+        });
+    });
+
+    describe('Logging Methods', () => {
+        let loggerSpy;
+
+        beforeEach(() => {
+            loggerSpy = {
+                info: jest.spyOn(bridge.logger, 'info'),
+                warn: jest.spyOn(bridge.logger, 'warn'),
+                error: jest.spyOn(bridge.logger, 'error')
+            };
+        });
+
+        afterEach(() => {
+            Object.values(loggerSpy).forEach(spy => spy.mockRestore());
+        });
+
+        it('should log info messages', () => {
+            bridge.log('test message', { key: 'value' });
+            expect(loggerSpy.info).toHaveBeenCalledWith('test message', { key: 'value' });
+        });
+
+        it('should log warning messages', () => {
+            bridge.warn('warning message', { key: 'value' });
+            expect(loggerSpy.warn).toHaveBeenCalledWith('warning message', { key: 'value' });
+        });
+
+        it('should log error messages', () => {
+            bridge.error('error message', { key: 'value' });
+            expect(loggerSpy.error).toHaveBeenCalledWith('error message', { key: 'value' });
+        });
+    });
+
+    describe('C-Gate Response Processing', () => {
+        let publishSpy;
+
+        beforeEach(() => {
+            publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+        });
+
+        afterEach(() => {
+            publishSpy.mockRestore();
+        });
+
+        describe('_handleCommandData()', () => {
+            it('should process command data through buffer parser', () => {
+                const testData = Buffer.from('200-This is a test response\n201-Another line\n');
+                const processSpy = jest.spyOn(bridge.commandBufferParser, 'processData');
+                
+                bridge._handleCommandData(testData);
+                
+                expect(processSpy).toHaveBeenCalledWith(testData, expect.any(Function));
+                processSpy.mockRestore();
+            });
+        });
+
+        describe('_parseCommandResponseLine()', () => {
+            it('should parse successful responses', () => {
+                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                
+                bridge._parseCommandResponseLine('200-Command successful');
+                
+                expect(processSpy).toHaveBeenCalledWith('200', 'Command successful');
+                processSpy.mockRestore();
+            });
+
+            it('should parse error responses', () => {
+                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                
+                bridge._parseCommandResponseLine('400-Bad request error');
+                
+                expect(processSpy).toHaveBeenCalledWith('400', 'Bad request error');
+                processSpy.mockRestore();
+            });
+
+            it('should handle responses without status data', () => {
+                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                
+                bridge._parseCommandResponseLine('200-');
+                
+                expect(processSpy).toHaveBeenCalledWith('200', '');
+                processSpy.mockRestore();
+            });
+
+            it('should ignore malformed responses', () => {
+                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                
+                bridge._parseCommandResponseLine('Invalid response line');
+                
+                expect(processSpy).not.toHaveBeenCalled();
+                processSpy.mockRestore();
+            });
+        });
+
+        describe('_processCommandResponse()', () => {
+            it('should process object status responses', () => {
+                const objectStatusSpy = jest.spyOn(bridge, '_processCommandObjectStatus');
+                
+                bridge._processCommandResponse('200', 'Object status data');
+                
+                expect(objectStatusSpy).toHaveBeenCalledWith('Object status data');
+                objectStatusSpy.mockRestore();
+            });
+
+            it('should process tree start responses', () => {
+                const treeStartSpy = jest.spyOn(bridge.haDiscovery, 'startBuffer');
+                
+                bridge._processCommandResponse('300', 'Tree start');
+                
+                expect(treeStartSpy).toHaveBeenCalled();
+                treeStartSpy.mockRestore();
+            });
+
+            it('should process tree data responses', () => {
+                const treeDataSpy = jest.spyOn(bridge.haDiscovery, 'addToBuffer');
+                
+                bridge._processCommandResponse('301', 'Tree data content');
+                
+                expect(treeDataSpy).toHaveBeenCalledWith('Tree data content');
+                treeDataSpy.mockRestore();
+            });
+
+            it('should process tree end responses', () => {
+                const treeEndSpy = jest.spyOn(bridge.haDiscovery, 'endBuffer');
+                
+                bridge._processCommandResponse('399', 'Tree end');
+                
+                expect(treeEndSpy).toHaveBeenCalled();
+                treeEndSpy.mockRestore();
+            });
+
+            it('should process error responses', () => {
+                const errorSpy = jest.spyOn(bridge, '_processCommandErrorResponse');
+                
+                bridge._processCommandResponse('404', 'Not found error');
+                
+                expect(errorSpy).toHaveBeenCalledWith('404', 'Not found error');
+                errorSpy.mockRestore();
+            });
+        });
+
+        describe('_processCommandObjectStatus()', () => {
+            it('should publish object status to MQTT', () => {
+                const statusData = '//TestProject/254/56/1: level=75';
+                
+                bridge._processCommandObjectStatus(statusData);
+                
+                expect(publishSpy).toHaveBeenCalledWith({
+                    topic: 'cbus/read/254/56/1/level',
+                    payload: '75',
+                    options: { qos: 0 }
+                });
+            });
+        });
+    });
+
+    describe('Event Processing', () => {
+        let publishSpy;
+
+        beforeEach(() => {
+            publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+        });
+
+        afterEach(() => {
+            publishSpy.mockRestore();
+        });
+
+        describe('_handleEventData()', () => {
+            it('should process event data through buffer parser', () => {
+                const testData = Buffer.from('lighting on //TestProject/254/56/1\n');
+                const processSpy = jest.spyOn(bridge.eventBufferParser, 'processData');
+                
+                bridge._handleEventData(testData);
+                
+                expect(processSpy).toHaveBeenCalledWith(testData, expect.any(Function));
+                processSpy.mockRestore();
+            });
+        });
+
+        describe('_processEventLine()', () => {
+            it('should process lighting events', () => {
+                const publishEventSpy = jest.spyOn(bridge, '_publishEvent');
+                
+                bridge._processEventLine('lighting on //TestProject/254/56/1');
+                
+                expect(publishEventSpy).toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
+
+            it('should ignore invalid event lines', () => {
+                const publishEventSpy = jest.spyOn(bridge, '_publishEvent');
+                
+                bridge._processEventLine('invalid event line');
+                
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
+        });
+
+        describe('_publishEvent()', () => {
+            it('should publish lighting events to MQTT', () => {
+                const mockEvent = {
+                    getNetwork: () => '254',
+                    getApplication: () => '56', 
+                    getGroup: () => '1',
+                    getAction: () => 'on',
+                    getLevel: () => 255,
+                    isPirSensor: () => false
+                };
+                
+                bridge._publishEvent(mockEvent);
+                
+                expect(publishSpy).toHaveBeenCalledWith({
+                    topic: 'cbus/read/254/56/1/state',
+                    payload: 'ON',
+                    options: { qos: 0 }
+                });
+            });
+
+            it('should publish PIR sensor events differently', () => {
+                const mockEvent = {
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => '1', 
+                    getAction: () => 'on',
+                    isPirSensor: () => true
+                };
+                
+                bridge._publishEvent(mockEvent);
+                
+                expect(publishSpy).toHaveBeenCalledWith({
+                    topic: 'cbus/read/254/56/1/state',
+                    payload: 'ON',
+                    options: { qos: 0 }
+                });
+            });
+        });
+
+        describe('_emitLevelFromEvent()', () => {
+            it('should emit level events for internal listeners', () => {
+                const emitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
+                const mockEvent = {
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => '1',
+                    getLevel: () => 75
+                };
+                
+                bridge._emitLevelFromEvent(mockEvent);
+                
+                expect(emitSpy).toHaveBeenCalledWith('level', '254/56/1', 75);
+                emitSpy.mockRestore();
+            });
+
+            it('should not emit when level is null', () => {
+                const emitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
+                const mockEvent = {
+                    getLevel: () => null
+                };
+                
+                bridge._emitLevelFromEvent(mockEvent);
+                
+                expect(emitSpy).not.toHaveBeenCalled();  
+                emitSpy.mockRestore();
+            });
+        });
+    });
+
+    describe('Queue Processing', () => {
+        describe('_sendCgateCommand()', () => {
+            it('should send commands via command connection', () => {
+                const sendSpy = jest.spyOn(bridge.commandConnection, 'send');
+                
+                bridge._sendCgateCommand('TEST COMMAND\n');
+                
+                expect(sendSpy).toHaveBeenCalledWith('TEST COMMAND\n');
+                sendSpy.mockRestore();
+            });
+        });
+
+        describe('_publishMqttMessage()', () => {
+            it('should publish messages via MQTT manager', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+                const message = {
+                    topic: 'test/topic',
+                    payload: 'test payload',
+                    options: { qos: 1 }
+                };
+                
+                bridge._publishMqttMessage(message);
+                
+                expect(publishSpy).toHaveBeenCalledWith('test/topic', 'test payload', { qos: 1 });
+                publishSpy.mockRestore();
+            });
+        });
+    });
 });
