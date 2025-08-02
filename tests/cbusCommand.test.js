@@ -20,15 +20,15 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.Host()).toBe('254');
-        expect(command.Group()).toBe('56');
-        expect(command.Device()).toBe('7');
-        expect(command.CommandType()).toBe('switch');
-        expect(command.Action()).toBe('switch'); // Action often defaults to CommandType
-        expect(command.Message()).toBe('ON');
-        expect(command.Level()).toBe('100');
-        expect(command.RawLevel()).toBe(255);
-        expect(command.RampTime()).toBeNull();
+        expect(command.getNetwork()).toBe('254');
+        expect(command.getApplication()).toBe('56');
+        expect(command.getGroup()).toBe('7');
+        expect(command.getCommandType()).toBe('switch');
+        expect(command.getCommandType()).toBe('switch'); // Action often defaults to CommandType
+        expect(command.getPayload()).toBe('ON');
+        expect(command.getLevel()).toBe(255);
+        expect(command.getLevel()).toBe(255);
+        expect(command.getRampTime()).toBeNull();
     });
 
     it('should parse a valid "switch OFF" command', () => {
@@ -37,10 +37,10 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('switch');
-        expect(command.Message()).toBe('OFF');
-        expect(command.Level()).toBe('0');
-        expect(command.RawLevel()).toBe(0);
+        expect(command.getCommandType()).toBe('switch');
+        expect(command.getPayload()).toBe('OFF');
+        expect(command.getLevel()).toBe(0);
+        expect(command.getLevel()).toBe(0);
     });
 
     it('should parse a valid "ramp" command with percentage level', () => {
@@ -49,11 +49,11 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('ramp');
-        expect(command.Message()).toBe('50');
-        expect(command.Level()).toBe('50');
-        expect(command.RawLevel()).toBe(Math.round(50 * 255 / 100)); // 128
-        expect(command.RampTime()).toBeNull();
+        expect(command.getCommandType()).toBe('ramp');
+        expect(command.getPayload()).toBe('50');
+        expect(command.getLevel()).toBe(Math.round(50 * 255 / 100));
+        expect(command.getLevel()).toBe(Math.round(50 * 255 / 100)); // 128
+        expect(command.getRampTime()).toBeNull();
     });
 
     it('should parse a valid "ramp" command with percentage level and time', () => {
@@ -62,11 +62,11 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('ramp');
-        expect(command.Message()).toBe('75,2s');
-        expect(command.Level()).toBe('75');
-        expect(command.RawLevel()).toBe(Math.round(75 * 255 / 100)); // 191
-        expect(command.RampTime()).toBe('2s');
+        expect(command.getCommandType()).toBe('ramp');
+        expect(command.getPayload()).toBe('75,2s');
+        expect(command.getLevel()).toBe(Math.round(75 * 255 / 100));
+        expect(command.getLevel()).toBe(Math.round(75 * 255 / 100)); // 191
+        expect(command.getRampTime()).toBe('2s');
     });
     
     it('should parse a valid "ramp" command with ON payload', () => {
@@ -75,11 +75,11 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('ramp');
-        expect(command.Message()).toBe('ON');
-        expect(command.Level()).toBe('100');
-        expect(command.RawLevel()).toBe(255);
-        expect(command.RampTime()).toBeNull();
+        expect(command.getCommandType()).toBe('ramp');
+        expect(command.getPayload()).toBe('ON');
+        expect(command.getLevel()).toBe(255);
+        expect(command.getLevel()).toBe(255);
+        expect(command.getRampTime()).toBeNull();
     });
     
      it('should parse a valid "ramp" command with OFF payload', () => {
@@ -88,11 +88,11 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('ramp');
-        expect(command.Message()).toBe('OFF');
-        expect(command.Level()).toBe('0');
-        expect(command.RawLevel()).toBe(0);
-        expect(command.RampTime()).toBeNull();
+        expect(command.getCommandType()).toBe('ramp');
+        expect(command.getPayload()).toBe('OFF');
+        expect(command.getLevel()).toBe(0);
+        expect(command.getLevel()).toBe(0);
+        expect(command.getRampTime()).toBeNull();
     });
 
     it('should parse a valid "getall" command (no device ID)', () => {
@@ -101,14 +101,14 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.Host()).toBe('254');
-        expect(command.Group()).toBe('56');
-        expect(command.Device()).toBe(''); // Device should be empty
-        expect(command.CommandType()).toBe('getall');
-        expect(command.Message()).toBe('');
-        expect(command.Level()).toBeNull();
-        expect(command.RawLevel()).toBeNull();
-        expect(command.RampTime()).toBeNull();
+        expect(command.getNetwork()).toBe('254');
+        expect(command.getApplication()).toBe('56');
+        expect(command.getGroup()).toBe(''); // Device should be empty
+        expect(command.getCommandType()).toBe('getall');
+        expect(command.getPayload()).toBe('');
+        expect(command.getLevel()).toBeNull();
+        expect(command.getLevel()).toBeNull();
+        expect(command.getRampTime()).toBeNull();
     });
 
     it('should parse a valid "gettree" command (no group/device ID)', () => {
@@ -117,11 +117,11 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.Host()).toBe('254');
-        expect(command.Group()).toBe(''); // Group is empty
-        expect(command.Device()).toBe(''); // Device is empty
-        expect(command.CommandType()).toBe('gettree');
-        expect(command.Message()).toBe('');
+        expect(command.getNetwork()).toBe('254');
+        expect(command.getApplication()).toBe(''); // Group is empty
+        expect(command.getGroup()).toBe(''); // Device is empty
+        expect(command.getCommandType()).toBe('gettree');
+        expect(command.getPayload()).toBe('');
     });
     
      it('should handle null message gracefully', () => {
@@ -130,9 +130,9 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.Message()).toBe('');
-        expect(command.Level()).toBeNull(); // Cannot determine level from null message
-        expect(command.RawLevel()).toBeNull();
+        expect(command.getPayload()).toBe('');
+        expect(command.getLevel()).toBeNull(); // Cannot determine level from null message
+        expect(command.getLevel()).toBeNull();
     });
 
     it('should handle undefined message gracefully', () => {
@@ -141,10 +141,10 @@ describe('CBusCommand', () => {
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
-        expect(command.Message()).toBe('');
-        expect(command.Level()).toBeNull();
-        expect(command.RawLevel()).toBeNull();
-        expect(command.RampTime()).toBeNull();
+        expect(command.getPayload()).toBe('');
+        expect(command.getLevel()).toBeNull();
+        expect(command.getLevel()).toBeNull();
+        expect(command.getRampTime()).toBeNull();
     });
 
     // === Invalid Commands / Malformed Topics ===
@@ -187,24 +187,24 @@ describe('CBusCommand', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = Buffer.from('150'); // 150%
         const command = new CBusCommand(topic, message);
-        expect(command.Level()).toBe('100');
-        expect(command.RawLevel()).toBe(255);
+        expect(command.getLevel()).toBe(255);
+        expect(command.getLevel()).toBe(255);
     });
 
     it('should clamp ramp percentage level < 0', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = Buffer.from('-50'); // -50%
         const command = new CBusCommand(topic, message);
-        expect(command.Level()).toBe('0');
-        expect(command.RawLevel()).toBe(0);
+        expect(command.getLevel()).toBe(0);
+        expect(command.getLevel()).toBe(0);
     });
 
     it('should return null for levels if message is non-numeric for ramp/switch', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = Buffer.from('fifty');
         const command = new CBusCommand(topic, message);
-        expect(command.Level()).toBeNull();
-        expect(command.RawLevel()).toBeNull();
+        expect(command.getLevel()).toBeNull();
+        expect(command.getLevel()).toBeNull();
     });
     
     it('should return null for levels if message is numeric but command type is not ramp/switch', () => {
@@ -213,9 +213,9 @@ describe('CBusCommand', () => {
         const message = Buffer.from('42');
         const command = new CBusCommand(topic, message);
         expect(command.isValid()).toBe(true);
-        expect(command.CommandType()).toBe('setvalue');
-        expect(command.Level()).toBeNull(); // Level calculation only applies to ramp/switch
-        expect(command.RawLevel()).toBeNull(); // RawLevel calculation only applies to ramp
+        expect(command.getCommandType()).toBe('setvalue');
+        expect(command.getLevel()).toBeNull(); // Level calculation only applies to ramp/switch
+        expect(command.getLevel()).toBeNull(); // RawLevel calculation only applies to ramp
     });
 
      it('should parse ramp time correctly with spaces', () => {
@@ -223,16 +223,101 @@ describe('CBusCommand', () => {
         const message = Buffer.from(' 75 , 3m '); // Spaces around comma and time
         const command = new CBusCommand(topic, message);
         expect(command.isValid()).toBe(true);
-        expect(command.Level()).toBe('75');
-        expect(command.RawLevel()).toBe(Math.round(75 * 255 / 100));
-        expect(command.RampTime()).toBe('3m');
+        expect(command.getLevel()).toBe(Math.round(75 * 255 / 100));
+        expect(command.getLevel()).toBe(Math.round(75 * 255 / 100));
+        expect(command.getRampTime()).toBe('3m');
     });
     
      it('should return null ramp time if only level specified', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = Buffer.from('50'); 
         const command = new CBusCommand(topic, message);
-        expect(command.RampTime()).toBeNull();
+        expect(command.getRampTime()).toBeNull();
+    });
+
+    // === Tests for new-style getter methods (will remain after simplification) ===
+    describe('New-style getter methods', () => {
+        it('should provide correct values via getNetwork()', () => {
+            const command = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            expect(command.getNetwork()).toBe('254');
+        });
+
+        it('should provide correct values via getApplication()', () => {
+            const command = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            expect(command.getApplication()).toBe('56');
+        });
+
+        it('should provide correct values via getGroup()', () => {
+            const command = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            expect(command.getGroup()).toBe('7');
+        });
+
+        it('should provide correct values via getCommandType()', () => {
+            const switchCmd = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            const rampCmd = new CBusCommand('cbus/write/254/56/7/ramp', '50');
+            const getAllCmd = new CBusCommand('cbus/write/254/56//getall', '');
+            
+            expect(switchCmd.getCommandType()).toBe('switch');
+            expect(rampCmd.getCommandType()).toBe('ramp');
+            expect(getAllCmd.getCommandType()).toBe('getall');
+        });
+
+        it('should provide correct values via getLevel()', () => {
+            const switchOnCmd = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            const switchOffCmd = new CBusCommand('cbus/write/254/56/7/switch', 'OFF');
+            const rampCmd = new CBusCommand('cbus/write/254/56/7/ramp', '75');
+            const increaseCmd = new CBusCommand('cbus/write/254/56/7/ramp', 'INCREASE');
+            
+            expect(switchOnCmd.getLevel()).toBe(255);
+            expect(switchOffCmd.getLevel()).toBe(0);
+            expect(rampCmd.getLevel()).toBe(Math.round(75 * 255 / 100));
+            expect(increaseCmd.getLevel()).toBe('INCREASE');
+        });
+
+        it('should provide correct values via getRampTime()', () => {
+            const rampCmd = new CBusCommand('cbus/write/254/56/7/ramp', '50,3s');
+            const rampCmdNoTime = new CBusCommand('cbus/write/254/56/7/ramp', '50');
+            
+            expect(rampCmd.getRampTime()).toBe('3s');
+            expect(rampCmdNoTime.getRampTime()).toBeNull();
+        });
+
+        it('should provide correct values via getTopic()', () => {
+            const topic = 'cbus/write/254/56/7/switch';
+            const command = new CBusCommand(topic, 'ON');
+            expect(command.getTopic()).toBe(topic);
+        });
+
+        it('should provide correct values via getPayload()', () => {
+            const payload = 'ON';
+            const command = new CBusCommand('cbus/write/254/56/7/switch', payload);
+            expect(command.getPayload()).toBe(payload);
+        });
+
+        it('should handle invalid commands correctly via getter methods', () => {
+            const invalidCmd = new CBusCommand('invalid/topic', 'payload');
+            expect(invalidCmd.isValid()).toBe(false);
+            expect(invalidCmd.getNetwork()).toBeNull();
+            expect(invalidCmd.getApplication()).toBeNull();
+            expect(invalidCmd.getGroup()).toBeNull();
+            expect(invalidCmd.getCommandType()).toBeNull();
+            expect(invalidCmd.getLevel()).toBeNull();
+            expect(invalidCmd.getRampTime()).toBeNull();
+        });
+
+        it('should handle buffer inputs correctly via getter methods', () => {
+            const command = new CBusCommand(
+                Buffer.from('cbus/write/254/56/7/ramp'), 
+                Buffer.from('25,2s')
+            );
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('56');
+            expect(command.getGroup()).toBe('7');
+            expect(command.getCommandType()).toBe('ramp');
+            expect(command.getLevel()).toBe(Math.round(25 * 255 / 100));
+            expect(command.getRampTime()).toBe('2s');
+        });
     });
 
 }); 

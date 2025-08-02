@@ -151,6 +151,15 @@ describe('CgateWebBridge', () => {
             expect(bridge.eventConnected).toBe(false);
         });
 
+        it('should initialize underlying connection managers properly', () => {
+            expect(bridge.mqttManager).toBeDefined();
+            expect(bridge.commandConnection).toBeDefined();
+            expect(bridge.eventConnection).toBeDefined();
+            expect(bridge.mqttManager.connected).toBe(false);
+            expect(bridge.commandConnection.connected).toBe(false);
+            expect(bridge.eventConnection.connected).toBe(false);
+        });
+
         it('should initialize sockets and client to null', () => {
             expect(bridge.client).toBeNull();
             expect(bridge.commandSocket).toBeNull();
@@ -162,6 +171,12 @@ describe('CgateWebBridge', () => {
             expect(bridge.eventBuffer).toBe('');
             expect(bridge.treeBuffer).toBe('');
             expect(bridge.treeNetwork).toBeNull();
+        });
+
+        it('should initialize haDiscovery with proper state', () => {
+            expect(bridge.haDiscovery).toBeDefined();
+            expect(bridge.haDiscovery.treeBuffer).toBe('');
+            expect(bridge.haDiscovery.treeNetwork).toBeNull();
         });
 
         it('should initialize queues', () => {
