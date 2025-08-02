@@ -50,10 +50,10 @@ class CBusCommand {
                 return;
             }
 
-            this._network = match[1] || null;
-            this._application = match[2] || null;
-            this._group = match[3] || null;
-            this._commandType = match[4] || null;
+            this._network = match[1] !== undefined ? match[1] : null;
+            this._application = match[2] !== undefined ? match[2] : null;
+            this._group = match[3] !== undefined ? match[3] : null;
+            this._commandType = match[4] !== undefined ? match[4] : null;
 
             // Validate command type
             const validCommandTypes = [MQTT_CMD_TYPE_GETALL, MQTT_CMD_TYPE_GETTREE, MQTT_CMD_TYPE_SWITCH, MQTT_CMD_TYPE_RAMP, 'setvalue'];
@@ -153,68 +153,7 @@ class CBusCommand {
         return this._parsed;
     }
 
-    // Test-compatible method names
-    Host() {
-        return this._network;
-    }
-
-    Group() {
-        return this._application || '';
-    }
-
-    Device() {
-        return this._group || '';
-    }
-
-    CommandType() {
-        return this._commandType;
-    }
-
-    RawLevel() {
-        // Return null for special commands like INCREASE/DECREASE
-        if (this._level === 'INCREASE' || this._level === 'DECREASE') {
-            return null;
-        }
-        return this._level;
-    }
-
-    RampTime() {
-        return this._rampTime;
-    }
-
-    Topic() {
-        return this._topic;
-    }
-
-    Payload() {
-        return this._payload;
-    }
-
-    // Additional test-expected methods
-    Action() {
-        return this._commandType;
-    }
-
-    Message() {
-        return this._payload;
-    }
-
-    Level() {
-        // Return percentage level as string, for ramp commands only
-        if (this._commandType === MQTT_CMD_TYPE_RAMP && this._level !== null) {
-            if (this._level === 'INCREASE' || this._level === 'DECREASE') {
-                return null;
-            }
-            return Math.round((this._level / 255) * 100).toString();
-        }
-        if (this._commandType === MQTT_CMD_TYPE_SWITCH) {
-            if (this._level === CGATE_LEVEL_MAX) return '100';
-            if (this._level === CGATE_LEVEL_MIN) return '0';
-        }
-        return null;
-    }
-
-    // Keep new-style getters for internal use
+    // New-style getters for internal use
     getNetwork() {
         return this._network;
     }
