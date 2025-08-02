@@ -64,7 +64,7 @@ describe('ThrottledQueue', () => {
         jest.advanceTimersByTime(intervalMs);
         expect(mockProcessFn).toHaveBeenCalledTimes(2);
         expect(queue.length).toBe(0);
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
         // Check that the interval is cleared (Jest's fake timers track this)
         // We can verify by advancing time further and ensuring no more calls
@@ -77,7 +77,7 @@ describe('ThrottledQueue', () => {
         // Add and process items until empty and interval is stopped
         queue.add('item1');
         expect(mockProcessFn).toHaveBeenCalledTimes(1); // Immediate call
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
         // Advance time enough for interval to run and stop itself because queue is empty
         jest.advanceTimersByTime(intervalMs * 2);
@@ -88,7 +88,7 @@ describe('ThrottledQueue', () => {
         // Should be processed immediately, restarting the interval cycle
         expect(mockProcessFn).toHaveBeenCalledTimes(2);
         expect(mockProcessFn).toHaveBeenCalledWith('item2');
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
         // Add another item - interval is running but queue is empty
         queue.add('item3');
@@ -100,7 +100,7 @@ describe('ThrottledQueue', () => {
         jest.advanceTimersByTime(intervalMs);
         expect(mockProcessFn).toHaveBeenCalledTimes(3);
         expect(mockProcessFn).toHaveBeenCalledWith('item3');
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
          // Add two items quickly
         queue.add('item4'); // Item added to empty queue, interval already running -> NOT immediate
@@ -122,7 +122,7 @@ describe('ThrottledQueue', () => {
         jest.advanceTimersByTime(intervalMs);
         expect(mockProcessFn).toHaveBeenCalledTimes(5);
         expect(mockProcessFn).toHaveBeenCalledWith('item5');
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
          // Ensure interval stops again
         const finalCallCount = mockProcessFn.mock.calls.length;
@@ -173,7 +173,7 @@ describe('ThrottledQueue', () => {
 
         queue.clear();
         expect(queue.length).toBe(0);
-        expect(queue.isEmpty()).toBe(true);
+        expect(queue.isEmpty).toBe(true);
 
         // Ensure no more processing happens
         jest.advanceTimersByTime(intervalMs * 5);
