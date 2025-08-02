@@ -153,7 +153,7 @@ describe('ThrottledQueue', () => {
         jest.advanceTimersByTime(intervalMs);
         expect(failingProcessFn).toHaveBeenCalledTimes(2);
         expect(failingProcessFn).toHaveBeenCalledWith('fail');
-        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error processing'), error, "Item:", 'fail');
+        expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error processing Queue item'));
         expect(queue.length).toBe(1); // 'fail' is consumed despite error
 
         // Advance time to process 'ok2'

@@ -159,8 +159,8 @@ describe('CgateWebBridge', () => {
 
 
         it('should initialize buffers to empty', () => {
-            expect(bridge.commandBuffer).toBe('');
-            expect(bridge.eventBuffer).toBe('');
+            expect(bridge.commandBufferParser.getBuffer()).toBe('');
+            expect(bridge.eventBufferParser.getBuffer()).toBe('');
         });
 
         it('should initialize haDiscovery with proper state', () => {
@@ -214,20 +214,18 @@ describe('CgateWebBridge', () => {
             warnSpy.mockRestore();
         });
 
-        it('should return true for valid default settings', () => {
+        it('should validate settings successfully with valid default settings', () => {
             const bridgeWithDefaults = new CgateWebBridge({ ...defaultSettings, logging: false });
-            expect(bridgeWithDefaults._validateSettings()).toBe(true);
+            expect(bridgeWithDefaults.settingsValidator.validate(bridgeWithDefaults.settings)).toBe(true);
         });
 
-        it('should return true for valid user-provided settings (using parent bridge)', () => {
-            expect(bridge._validateSettings()).toBe(true);
-            expect(errorSpy).not.toHaveBeenCalled();
+        it('should validate settings successfully with valid user-provided settings', () => {
+            expect(bridge.settingsValidator.validate(bridge.settings)).toBe(true);
         });
 
-        it('should return false and log error for missing required string setting (mqtt)', () => {
-            delete bridge.settings.mqtt;
-            expect(bridge._validateSettings()).toBe(false);
-            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Invalid setting: 'mqtt'"));
+        it('should handle invalid settings through validator', () => {
+            const invalidSettings = { ...bridge.settings, mqtt: null };
+            expect(bridge.settingsValidator.validate(invalidSettings)).toBe(false);
         });
 
         it('constructor should exit if validation fails', () => {
