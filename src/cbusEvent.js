@@ -115,45 +115,6 @@ class CBusEvent {
         return this._parsed;
     }
 
-    // Method names matching test expectations
-    DeviceType() {
-        return this._deviceType;
-    }
-
-    Action() {
-        return this._action;
-    }
-
-    Address() {
-        return this._address;
-    }
-
-    Level() {
-        // Return percentage level (0-100) as string to match test expectations
-        if (this._levelRaw !== null) {
-            return Math.round((this._levelRaw / 255) * 100).toString();
-        }
-        // Handle on/off actions when no raw level is available
-        if (this._action === 'on') {
-            return '100';
-        }
-        if (this._action === 'off') {
-            return '0';
-        }
-        return '0';
-    }
-
-    Host() {
-        return this._network;
-    }
-
-    Group() {
-        return this._application;
-    }
-
-    Device() {
-        return this._group;
-    }
 
     // Keep new-style getters for internal use
     getDeviceType() {
