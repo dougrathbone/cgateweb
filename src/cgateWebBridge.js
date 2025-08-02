@@ -38,7 +38,41 @@ const {
     NEWLINE
 } = require('./constants');
 
+/**
+ * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
+ * 
+ * This class orchestrates communication between:
+ * - C-Gate server (Clipsal's C-Bus automation gateway)
+ * - MQTT broker (for Home Assistant and other automation systems)
+ * - Home Assistant discovery protocol
+ * 
+ * The bridge translates between C-Bus events and MQTT messages, enabling
+ * bidirectional control of C-Bus devices through MQTT.
+ * 
+ * @example
+ * const bridge = new CgateWebBridge({
+ *   mqtt: 'mqtt://localhost:1883',
+ *   cbusip: '192.168.1.100',
+ *   cbuscommandport: 20023,
+ *   cbuseventport: 20024,
+ *   cbusname: 'SHAC'
+ * });
+ * bridge.start();
+ */
 class CgateWebBridge {
+    /**
+     * Creates a new CgateWebBridge instance.
+     * 
+     * @param {Object} settings - Configuration settings for the bridge
+     * @param {string} settings.mqtt - MQTT broker URL (e.g., 'mqtt://localhost:1883')
+     * @param {string} settings.cbusip - C-Gate server IP address
+     * @param {number} settings.cbuscommandport - C-Gate command port (typically 20023)
+     * @param {number} settings.cbuseventport - C-Gate event port (typically 20024)
+     * @param {string} settings.cbusname - C-Gate project name
+     * @param {Function} [mqttClientFactory=null] - Factory for creating MQTT clients (for testing)
+     * @param {Function} [commandSocketFactory=null] - Factory for command sockets (for testing)
+     * @param {Function} [eventSocketFactory=null] - Factory for event sockets (for testing)
+     */
     constructor(settings, mqttClientFactory = null, commandSocketFactory = null, eventSocketFactory = null) {
         // Merge with default settings
         const { defaultSettings } = require('../index.js');
@@ -124,6 +158,16 @@ class CgateWebBridge {
         });
     }
 
+    /**
+     * Starts the bridge by connecting to MQTT broker and C-Gate server.
+     * 
+     * This method initiates connections to:
+     * - MQTT broker (for receiving commands and publishing events)
+     * - C-Gate command port (for sending commands to C-Bus devices)
+     * - C-Gate event port (for receiving C-Bus device events)
+     * 
+     * @returns {CgateWebBridge} Returns this instance for method chaining
+     */
     start() {
         this.logger.info('Starting cgateweb bridge');
         
@@ -135,6 +179,15 @@ class CgateWebBridge {
         return this;
     }
 
+    /**
+     * Stops the bridge and cleans up all resources.
+     * 
+     * This method:
+     * - Clears any running periodic tasks
+     * - Empties message queues
+     * - Disconnects from MQTT broker and C-Gate server
+     * - Resets connection state
+     */
     stop() {
         this.log(`${LOG_PREFIX} Stopping cgateweb bridge...`);
         
@@ -191,6 +244,18 @@ class CgateWebBridge {
         }
     }
 
+    /**
+     * Handles incoming MQTT messages and converts them to C-Gate commands.
+     * 
+     * Processes MQTT topics like:
+     * - "cbus/write/254/56/4/switch" with payload "ON" → C-Gate "on" command
+     * - "cbus/write/254/56/4/ramp" with payload "50" → C-Gate "ramp" to 50% command
+     * - "cgateweb/trigger_discovery" → triggers Home Assistant discovery
+     * 
+     * @param {string} topic - MQTT topic that was published to
+     * @param {string|Buffer} payload - MQTT message payload
+     * @private
+     */
     _handleMqttMessage(topic, payload) {
         this.log(`${LOG_PREFIX} MQTT Recv: ${topic} -> ${payload}`);
 
@@ -237,21 +302,28 @@ class CgateWebBridge {
     }
 
     _handleMqttGetTree(command) {
+        // Store network for HA discovery to know which network tree was requested
         this.haDiscovery.treeNetwork = command.getNetwork();
+        // C-Gate TREEXML command returns XML describing all devices on the network
         this.cgateCommandQueue.add(`TREEXML ${command.getNetwork()}${NEWLINE}`);
     }
 
     _handleMqttGetAll(command) {
+        // C-Gate path format: //PROJECT/network/application/* (wildcard gets all groups)
         const cbusPath = `//${this.settings.cbusname}/${command.getNetwork()}/${command.getApplication()}/*`;
+        // C-Gate GET command queries current level of all devices in the application
         this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
     }
 
     _handleMqttSwitch(command, payload) {
+        // C-Gate path format: //PROJECT/network/application/group (specific device)
         const cbusPath = `//${this.settings.cbusname}/${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`;
         
         if (payload.toUpperCase() === MQTT_STATE_ON) {
+            // C-Gate "on" command turns device full brightness (level 255)
             this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
         } else if (payload.toUpperCase() === MQTT_STATE_OFF) {
+            // C-Gate "off" command turns device off (level 0)
             this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
         } else {
             this.warn(`${WARN_PREFIX} Invalid payload for switch command: ${payload}`);
@@ -266,28 +338,35 @@ class CgateWebBridge {
 
         const cbusPath = `//${this.settings.cbusname}/${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`;
         const rampAction = payload.toUpperCase();
+        // Simple address format for level tracking (without project name)
         const levelAddress = `${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`;
 
         switch (rampAction) {
             case MQTT_COMMAND_INCREASE:
+                // Relative increase: get current level, add RAMP_STEP (26 = ~10%), cap at 255
                 this._queueRampIncreaseDecrease(cbusPath, levelAddress, RAMP_STEP, CGATE_LEVEL_MAX, "INCREASE");
                 break;
             case MQTT_COMMAND_DECREASE:
+                // Relative decrease: get current level, subtract RAMP_STEP, floor at 0
                 this._queueRampIncreaseDecrease(cbusPath, levelAddress, -RAMP_STEP, CGATE_LEVEL_MIN, "DECREASE");
                 break;
             case MQTT_STATE_ON:
+                // Direct on command (level 255)
                 this.cgateCommandQueue.add(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
                 break;
             case MQTT_STATE_OFF:
+                // Direct off command (level 0)
                 this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
                 break;
             default:
-                // Handle percentage level command
+                // Handle absolute level command (e.g., "50" or "75,2s")
                 const level = command.getLevel();
                 const rampTime = command.getRampTime();
                 if (level !== null) {
+                    // C-Gate ramp command: "ramp //PROJECT/network/app/group level [time]"
                     let rampCmd = `${CGATE_CMD_RAMP} ${cbusPath} ${level}`;
                     if (rampTime) {
+                        // Optional ramp time (e.g., "2s" for 2-second transition)
                         rampCmd += ` ${rampTime}`;
                     }
                     this.cgateCommandQueue.add(rampCmd + NEWLINE);
@@ -298,18 +377,23 @@ class CgateWebBridge {
     }
 
     _queueRampIncreaseDecrease(cbusPath, levelAddress, step, limit, actionName) {
+        // Set up one-time listener for level response from the device we're about to query
         this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
             if (address === levelAddress) {
                 const currentLevelNum = parseInt(currentLevel);
                 if (!isNaN(currentLevelNum)) {
+                    // Calculate new level: current + step (step can be negative for decrease)
                     let newLevel = currentLevelNum + step;
+                    // Apply bounds: increase caps at max (255), decrease floors at min (0)
                     newLevel = (step > 0) ? Math.min(limit, newLevel) : Math.max(limit, newLevel);
+                    // Send ramp command with calculated level
                     this.cgateCommandQueue.add(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);
                 } else {
                     this.warn(`${WARN_PREFIX} Could not parse current level for ${actionName}: ${currentLevel}`);
                 }
             }
         });
+        // First, query current level - response will trigger the listener above
         this.cgateCommandQueue.add(`${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`);
     }
 
@@ -342,9 +426,11 @@ class CgateWebBridge {
         const hyphenIndex = line.indexOf('-');
 
         if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
+            // C-Gate format: "200-OK" or "300-//PROJECT/254/56/1: level=255"
             responseCode = line.substring(0, hyphenIndex).trim();
             statusData = line.substring(hyphenIndex + 1).trim();
         } else {
+            // Alternative format: "200 OK" (space-separated)
             const spaceParts = line.split(' ');
             responseCode = spaceParts[0].trim();
             if (spaceParts.length > 1) {
@@ -352,6 +438,7 @@ class CgateWebBridge {
             }
         }
         
+        // C-Gate response codes are 3-digit numbers starting with 1-6 (like HTTP status codes)
         if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
              this.log(`${LOG_PREFIX} Skipping invalid command response line: ${line}`);
              return null; 
@@ -446,7 +533,7 @@ class CgateWebBridge {
     }
 
     _emitLevelFromEvent(event) {
-        // Do not emit level events for PIR sensors
+        // PIR sensors only send state (motion detected/cleared), not brightness levels
         if (event.getApplication() === this.settings.ha_discovery_pir_app_id) {
             return;
         }
@@ -455,31 +542,51 @@ class CgateWebBridge {
         let levelValue = null;
 
         if (event.getLevel() !== null) {
+            // Ramp events include explicit level (0-255)
             levelValue = event.getLevel();
         } else if (event.getAction() === CGATE_CMD_ON.toLowerCase()) {
+            // "on" events imply full brightness (255)
             levelValue = CGATE_LEVEL_MAX;
         } else if (event.getAction() === CGATE_CMD_OFF.toLowerCase()) {
+            // "off" events imply no brightness (0) 
             levelValue = CGATE_LEVEL_MIN;
         }
 
         if (levelValue !== null) {
+            // Emit internal level event for relative ramp operations (increase/decrease)
             this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
         }
     }
 
+    /**
+     * Publishes C-Bus events to MQTT topics for Home Assistant and other consumers.
+     * 
+     * Converts C-Bus events into MQTT messages:
+     * - C-Bus "lighting on 254/56/4" → MQTT "cbus/read/254/56/4/state" with "ON"
+     * - C-Bus "lighting ramp 254/56/4 128" → MQTT "cbus/read/254/56/4/level" with "50"
+     * 
+     * Special handling for PIR sensors (motion detectors) that only publish state.
+     * 
+     * @param {CBusEvent} event - Parsed C-Bus event to publish
+     * @param {string} [source=''] - Source identifier for logging (e.g., '(Evt)', '(Cmd)')
+     * @private
+     */
     _publishEvent(event, source = '') {
         if (!event || !event.isValid()) {
             return;
         }
 
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
+        // Convert C-Gate level (0-255) to percentage (0-100) for Home Assistant
         const levelPercent = Math.round((event.getLevel() || 0) / CGATE_LEVEL_MAX * 100);
         const isPirSensor = event.getApplication() === this.settings.ha_discovery_pir_app_id;
 
         let state;
         if (isPirSensor) {
+            // PIR sensors: state based on action (motion detected/cleared)
             state = (event.getAction() === CGATE_CMD_ON.toLowerCase()) ? MQTT_STATE_ON : MQTT_STATE_OFF;
         } else {
+            // Lighting devices: state based on brightness level (any level > 0 = ON)
             state = (levelPercent > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
         }
        
@@ -508,15 +615,32 @@ class CgateWebBridge {
         this.mqttManager.publish(message.topic, message.payload, message.options);
     }
 
-    // Logging methods (backward compatibility)
+    /**
+     * Logs an informational message.
+     * 
+     * @param {string} message - The message to log
+     * @param {Object} [meta={}] - Additional metadata for structured logging
+     */
     log(message, meta = {}) {
         this.logger.info(message, meta);
     }
 
+    /**
+     * Logs a warning message.
+     * 
+     * @param {string} message - The warning message to log
+     * @param {Object} [meta={}] - Additional metadata for structured logging
+     */
     warn(message, meta = {}) {
         this.logger.warn(message, meta);
     }
 
+    /**
+     * Logs an error message.
+     * 
+     * @param {string} message - The error message to log
+     * @param {Object} [meta={}] - Additional metadata for structured logging
+     */
     error(message, meta = {}) {
         this.logger.error(message, meta);
     }

@@ -6,9 +6,9 @@ const WARN_PREFIX = '[WARN]';
 const ERROR_PREFIX = '[ERROR]';
 
 // === C-Bus System ===
-const DEFAULT_CBUS_APP_LIGHTING = '56';
-const CGATE_LEVEL_MIN = 0;
-const CGATE_LEVEL_MAX = 255;
+const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
+const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
+const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
 
 // C-Gate Commands
@@ -21,11 +21,11 @@ const CGATE_CMD_EVENT_ON = 'EVENT ON';
 const CGATE_CMD_LOGIN = 'LOGIN';
 const CGATE_PARAM_LEVEL = 'level';
 
-// C-Gate Response Codes
-const CGATE_RESPONSE_OBJECT_STATUS = '300';
-const CGATE_RESPONSE_TREE_START = '343';
-const CGATE_RESPONSE_TREE_END = '344';
-const CGATE_RESPONSE_TREE_DATA = '347';
+// C-Gate Response Codes (similar to HTTP status codes)
+const CGATE_RESPONSE_OBJECT_STATUS = '300';  // Device status response (e.g., "300 //PROJECT/254/56/1: level=255")
+const CGATE_RESPONSE_TREE_START = '343';     // Start of TREEXML response
+const CGATE_RESPONSE_TREE_END = '344';       // End of TREEXML response
+const CGATE_RESPONSE_TREE_DATA = '347';      // TREEXML data line
 
 // === MQTT System ===
 const MQTT_TOPIC_PREFIX_CBUS = 'cbus';

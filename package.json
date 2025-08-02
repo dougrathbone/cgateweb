@@ -1,6 +1,8 @@
 {
   "name": "cgateweb",
   "version": "0.0.1",
+  "description": "Node.js bridge connecting Clipsal C-Bus automation systems to MQTT for Home Assistant integration",
+  "keywords": ["cbus", "clipsal", "mqtt", "home-assistant", "automation", "smart-home", "cgate", "bridge"],
   "private": true,
   "dependencies": {
     "mqtt": "^5.11.0",
@@ -10,7 +12,16 @@
     "jest": "^29.7.0"
   },
   "scripts": {
+    "start": "node index.js",
     "test": "jest",
-    "start": "node index.js" 
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "dev": "node index.js",
+    "dev:debug": "node --inspect index.js",
+    "install-service": "node install-service.js",
+    "uninstall-service": "node uninstall-service.js",
+    "setup": "cp settings.js.example settings.js && echo 'Settings file created! Edit settings.js to configure your C-Gate and MQTT settings.'",
+    "lint": "echo 'No linter configured. Consider adding ESLint for code quality.'",
+    "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\""
   }
 }
