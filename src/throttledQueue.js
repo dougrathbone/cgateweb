@@ -1,3 +1,4 @@
+const { createLogger } = require('./logger');
 const { ERROR_PREFIX } = require('./constants');
 
 class ThrottledQueue {
@@ -13,6 +14,7 @@ class ThrottledQueue {
         this._queue = [];
         this._interval = null;
         this._name = name;
+        this._logger = createLogger({ component: 'ThrottledQueue' });
     }
 
     add(item) {
@@ -34,7 +36,7 @@ class ThrottledQueue {
             try {
                  this._processFn(item);
             } catch (error) {
-                 console.error(`Error processing ${this._name} item:`, error, "Item:", item);
+                 this._logger.error(`Error processing ${this._name} item:`, { error, item });
             }
         }
     }

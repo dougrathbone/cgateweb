@@ -2,37 +2,17 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { runCommand, checkRoot } = require('./src/systemUtils');
 
 const SERVICE_NAME = 'cgateweb.service';
 const TARGET_SYSTEMD_DIR = '/etc/systemd/system';
 const TARGET_SERVICE_FILE = path.join(TARGET_SYSTEMD_DIR, SERVICE_NAME);
 
-function runCommand(command) {
-    try {
-        console.log(`Executing: ${command}`);
-        execSync(command, { stdio: 'inherit' });
-        console.log(`Successfully executed: ${command}`);
-        return true;
-    } catch (error) {
-        console.error(`Failed to execute command: ${command}`);
-        console.error(error.stderr ? error.stderr.toString() : error.message);
-        return false;
-    }
-}
-
-function checkRoot() {
-    if (process.getuid && process.getuid() !== 0) {
-        console.error('This script requires root privileges to manage systemd services and remove files from /etc.');
-        console.error('Please run using sudo: sudo node uninstall-service.js');
-        process.exit(1);
-    }
-}
 
 function uninstallService() {
     console.log('--- cgateweb Systemd Service Uninstaller ---');
 
-    checkRoot();
+    checkRoot('uninstall-service.js');
 
     // 1. Check if service file exists
     if (!fs.existsSync(TARGET_SERVICE_FILE)) {

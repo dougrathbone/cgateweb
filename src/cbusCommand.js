@@ -1,3 +1,4 @@
+const { createLogger } = require('./logger');
 const { 
     COMMAND_TOPIC_REGEX, 
     MQTT_CMD_TYPE_GETALL, 
@@ -52,12 +53,13 @@ class CBusCommand {
         this._commandType = null;
         this._level = null;
         this._rampTime = null;
+        this._logger = createLogger({ component: 'CBusCommand' });
 
         if (this._topic) {
             this._parse();
         } else {
             // Handle empty/null topic
-            console.warn(`${ERROR_PREFIX} Empty MQTT command topic`);
+            this._logger.warn(`Empty MQTT command topic`);
             this._parsed = true;
             this._isValid = false;
         }
@@ -67,7 +69,7 @@ class CBusCommand {
         try {
             const match = this._topic.match(COMMAND_TOPIC_REGEX);
             if (!match) {
-                console.warn(`${ERROR_PREFIX} Invalid MQTT command topic format: ${this._topic}`);
+                this._logger.warn(`Invalid MQTT command topic format: ${this._topic}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -81,7 +83,7 @@ class CBusCommand {
             // Validate command type
             const validCommandTypes = [MQTT_CMD_TYPE_GETALL, MQTT_CMD_TYPE_GETTREE, MQTT_CMD_TYPE_SWITCH, MQTT_CMD_TYPE_RAMP, 'setvalue'];
             if (!validCommandTypes.includes(this._commandType)) {
-                console.warn(`${ERROR_PREFIX} Invalid MQTT command type: ${this._commandType}`);
+                this._logger.warn(`Invalid MQTT command type: ${this._commandType}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -93,7 +95,7 @@ class CBusCommand {
             this._isValid = true;
             this._parsed = true;
         } catch (error) {
-            console.error(`${ERROR_PREFIX} Error parsing MQTT command topic: ${this._topic}`, error);
+            this._logger.error(`Error parsing MQTT command topic: ${this._topic}`, { error });
             this._isValid = false;
             this._parsed = true;
         }

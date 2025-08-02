@@ -1,4 +1,5 @@
 const parseString = require('xml2js').parseString;
+const { createLogger } = require('./logger');
 const { 
     LOG_PREFIX, 
     WARN_PREFIX, 
@@ -41,6 +42,7 @@ class HaDiscovery {
         this.treeBuffer = '';
         this.treeNetwork = null;
         this.discoveryCount = 0;
+        this.logger = createLogger({ component: 'HaDiscovery' });
     }
 
     trigger() {
@@ -48,7 +50,7 @@ class HaDiscovery {
             return;
         }
 
-        this.log(`${LOG_PREFIX} HA Discovery enabled, querying network trees...`);
+        this.logger.info(`HA Discovery enabled, querying network trees...`);
         let networksToDiscover = this.settings.ha_discovery_networks;
         
         // If specific networks aren't configured, attempt to use the network 
@@ -56,27 +58,27 @@ class HaDiscovery {
         if (networksToDiscover.length === 0 && this.settings.getallnetapp) {
             const networkIdMatch = String(this.settings.getallnetapp).match(/^(\d+)/);
             if (networkIdMatch) {
-                this.log(`${LOG_PREFIX} No HA discovery networks configured, using network from getallnetapp: ${networkIdMatch[1]}`);
+                this.logger.info(`No HA discovery networks configured, using network from getallnetapp: ${networkIdMatch[1]}`);
                 networksToDiscover = [networkIdMatch[1]];
             } else {
-                this.warn(`${WARN_PREFIX} No HA discovery networks configured and could not determine network from getallnetapp (${this.settings.getallnetapp}). HA Discovery will not run.`);
+                this.logger.warn(`No HA discovery networks configured and could not determine network from getallnetapp (${this.settings.getallnetapp}). HA Discovery will not run.`);
                 return;
             }
         } else if (networksToDiscover.length === 0) {
-             this.warn(`${WARN_PREFIX} No HA discovery networks configured. HA Discovery will not run.`);
+             this.logger.warn(`No HA discovery networks configured. HA Discovery will not run.`);
              return;
         }
 
         // Request TreeXML for each configured network
         networksToDiscover.forEach(networkId => {
-            this.log(`${LOG_PREFIX} Requesting TreeXML for network ${networkId}...`);
+            this.logger.info(`Requesting TreeXML for network ${networkId}...`);
             this.treeNetwork = networkId;
             this.cgateConnection.send(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
         });
     }
 
     handleTreeStart(statusData) {
-        this.log(`${LOG_PREFIX} Started receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}`);
+        this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}`);
         this.treeBuffer = '';
     }
 
@@ -85,7 +87,7 @@ class HaDiscovery {
     }
 
     handleTreeEnd(statusData) {
-        this.log(`${LOG_PREFIX} Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${this.treeBuffer.length} bytes. Parsing...`);
+        this.logger.info(`Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${this.treeBuffer.length} bytes. Parsing...`);
         const networkForTree = this.treeNetwork;
         const treeXmlData = this.treeBuffer;
         
@@ -94,20 +96,20 @@ class HaDiscovery {
         this.treeNetwork = null; 
 
         if (!networkForTree || !treeXmlData) {
-             this.warn(`${WARN_PREFIX} Received TreeXML end (344) but no buffer or network context was set.`); 
+             this.logger.warn(`Received TreeXML end (344) but no buffer or network context was set.`); 
              return;
         }
 
         // Log before parsing
-        this.log(`${LOG_PREFIX} Starting XML parsing for network ${networkForTree}...`);
+        this.logger.info(`Starting XML parsing for network ${networkForTree}...`);
         const startTime = Date.now();
 
         parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
             const duration = Date.now() - startTime;
             if (err) {
-                this.error(`${ERROR_PREFIX} Error parsing TreeXML for network ${networkForTree} (took ${duration}ms):`, err);
+                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms):`, { error: err });
             } else {
-                this.log(`${LOG_PREFIX} Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
+                this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 
                 // Publish standard tree topic
                 this.mqttManager.publish(
@@ -123,13 +125,13 @@ class HaDiscovery {
     }
 
     _publishDiscoveryFromTree(networkId, treeData) {
-        this.log(`${LOG_PREFIX} Generating HA Discovery messages for network ${networkId}...`);
+        this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
         const startTime = Date.now();
         
         // Basic validation of the parsed tree data structure
         const networkData = treeData && treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
         if (!networkData || networkData.NetworkNumber !== String(networkId)) {
-             this.warn(`${WARN_PREFIX} TreeXML for network ${networkId} seems malformed or doesn't match expected structure.`);
+             this.logger.warn(`TreeXML for network ${networkId} seems malformed or doesn't match expected structure.`);
              return;
         }
 
@@ -173,7 +175,7 @@ class HaDiscovery {
         });
 
         const duration = Date.now() - startTime;
-        this.log(`${LOG_PREFIX} HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms)`);
+        this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms)`);
     }
 
     _processLightingGroups(networkId, appId, groups) {
@@ -182,7 +184,7 @@ class HaDiscovery {
         groupArray.forEach(group => {
             const groupId = group.GroupAddress;
             if (groupId === undefined || groupId === null || groupId === '') {
-                this.warn(`${WARN_PREFIX} Skipping lighting group in HA Discovery due to missing/invalid GroupAddress...`, group);
+                this.logger.warn(`Skipping lighting group in HA Discovery due to missing/invalid GroupAddress`, { group });
                 return;
             }
 
@@ -235,7 +237,7 @@ class HaDiscovery {
         groupArray.forEach(group => {
             const groupId = group.GroupAddress;
             if (groupId === undefined || groupId === null || groupId === '') {
-                this.warn(`${WARN_PREFIX} Skipping EnableControl group in HA Discovery due to missing/invalid GroupAddress (App: ${appAddress})...`, group);
+                this.logger.warn(`Skipping EnableControl group in HA Discovery due to missing/invalid GroupAddress (App: ${appAddress})`, { group });
                 return;
             }
 
@@ -275,7 +277,7 @@ class HaDiscovery {
             name: finalLabel,
             unique_id: uniqueId,
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+            ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
             qos: 0,
             retain: true,
@@ -335,6 +337,18 @@ class HaDiscovery {
                     state_on: MQTT_STATE_ON,
                     state_off: MQTT_STATE_OFF
                 }
+            },
+            pir: {
+                component: 'binary_sensor',
+                defaultType: 'PIR',
+                model: HA_MODEL_PIR,
+                deviceClass: 'motion',
+                payloads: {
+                    payload_on: MQTT_STATE_ON,
+                    payload_off: MQTT_STATE_OFF
+                },
+                // PIR sensors don't have command topics - they're read-only
+                omitCommandTopic: true
             }
         };
         return configs[type];
@@ -353,49 +367,11 @@ class HaDiscovery {
     }
 
     _createPirDiscovery(networkId, appId, groupId, groupLabel) {
-        const finalLabel = groupLabel || `CBus PIR ${networkId}/${appId}/${groupId}`;
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/binary_sensor/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-        
-        const payload = { 
-            name: finalLabel,
-            unique_id: uniqueId,
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            payload_on: MQTT_STATE_ON,
-            payload_off: MQTT_STATE_OFF,
-            qos: 0,
-            retain: true,
-            device_class: 'motion',
-            device: { 
-                identifiers: [uniqueId],
-                name: finalLabel,
-                manufacturer: HA_DEVICE_MANUFACTURER,
-                model: HA_MODEL_PIR,
-                via_device: HA_DEVICE_VIA
-            },
-            origin: { 
-                name: HA_ORIGIN_NAME,
-                sw_version: HA_ORIGIN_SW_VERSION,
-                support_url: HA_ORIGIN_SUPPORT_URL
-            }
-        };
-
-        this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
-        this.discoveryCount++;
+        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('pir'));
     }
+
 
     // Logging methods that can be overridden
-    log(message, ...args) {
-        console.log(message, ...args);
-    }
-
-    warn(message, ...args) {
-        console.warn(message, ...args);
-    }
-
-    error(message, ...args) {
-        console.error(message, ...args);
-    }
 }
 
 module.exports = HaDiscovery;

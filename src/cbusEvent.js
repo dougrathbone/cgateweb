@@ -1,3 +1,4 @@
+const { createLogger } = require('./logger');
 const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS, ERROR_PREFIX } = require('./constants');
 
 /**
@@ -38,12 +39,13 @@ class CBusEvent {
         this._application = null;
         this._group = null;
         this._isValid = false;
+        this._logger = createLogger({ component: 'CBusEvent' });
 
         if (this._rawEvent) {
             this._parse();
         } else {
             // Handle empty input
-            console.warn(`${ERROR_PREFIX} Empty C-Bus event data`);
+            this._logger.warn(`Empty C-Bus event data`);
             this._parsed = true;
             this._isValid = false;
         }
@@ -61,7 +63,7 @@ class CBusEvent {
             const match = this._rawEvent.match(EVENT_REGEX);
             if (!match) {
                 // Not a recognizable event format
-                console.warn(`${ERROR_PREFIX} Could not parse C-Bus event: ${this._rawEvent}`);
+                this._logger.warn(`Could not parse C-Bus event: ${this._rawEvent}`);
                 this._isValid = false;
                 return;
             }
@@ -81,17 +83,17 @@ class CBusEvent {
                     this._group = addressParts[2];
                     this._isValid = true;
                 } else {
-                    console.warn(`${ERROR_PREFIX} Invalid C-Bus address format: ${this._address}`);
+                    this._logger.warn(`Invalid C-Bus address format: ${this._address}`);
                     this._isValid = false;
                 }
             } else {
-                console.warn(`${ERROR_PREFIX} Missing address in C-Bus event: ${this._rawEvent}`);
+                this._logger.warn(`Missing address in C-Bus event: ${this._rawEvent}`);
                 this._isValid = false;
             }
 
             this._parsed = true;
         } catch (error) {
-            console.error(`${ERROR_PREFIX} Error parsing C-Bus event: ${this._rawEvent}`, error);
+            this._logger.error(`Error parsing C-Bus event: ${this._rawEvent}`, { error });
             this._isValid = false;
             this._parsed = true;
         }
@@ -119,7 +121,7 @@ class CBusEvent {
             }
         } else {
             // Invalid status response format
-            console.warn(`${ERROR_PREFIX} Invalid status response format: ${this._rawEvent}`);
+            this._logger.warn(`Invalid status response format: ${this._rawEvent}`);
             this._isValid = false;
         }
 

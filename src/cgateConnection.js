@@ -1,5 +1,6 @@
 const net = require('net');
 const { EventEmitter } = require('events');
+const { createLogger } = require('./logger');
 const { 
     LOG_PREFIX, 
     WARN_PREFIX, 
@@ -24,15 +25,16 @@ class CgateConnection extends EventEmitter {
         this.maxReconnectAttempts = 10;
         this.reconnectInitialDelay = settings.reconnectinitialdelay || 1000;
         this.reconnectMaxDelay = settings.reconnectmaxdelay || 60000;
+        this.logger = createLogger({ component: `CgateConnection-${type}` });
     }
 
     connect() {
         if (this.socket && !this.socket.destroyed) {
-            this.log(`${LOG_PREFIX} ${this.type} socket already exists and is not destroyed. Destroying it first.`);
+            this.logger.info(`${this.type} socket already exists and is not destroyed. Destroying it first.`);
             this.socket.destroy();
         }
 
-        this.log(`${LOG_PREFIX} Connecting to C-Gate ${this.type} port: ${this.host}:${this.port}`);
+        this.logger.info(`Connecting to C-Gate ${this.type} port: ${this.host}:${this.port}`);
         
         this.socket = net.createConnection(this.port, this.host);
         
@@ -62,7 +64,7 @@ class CgateConnection extends EventEmitter {
 
     send(data) {
         if (!this.socket || this.socket.destroyed || !this.connected) {
-            this.warn(`${WARN_PREFIX} Cannot send data on ${this.type} socket: not connected`);
+            this.logger.warn(`Cannot send data on ${this.type} socket: not connected`);
             return false;
         }
 
@@ -70,7 +72,7 @@ class CgateConnection extends EventEmitter {
             this.socket.write(data);
             return true;
         } catch (error) {
-            this.error(`${ERROR_PREFIX} Error writing to ${this.type} socket:`, error);
+            this.logger.error(`Error writing to ${this.type} socket:`, { error });
             return false;
         }
     }
@@ -84,7 +86,7 @@ class CgateConnection extends EventEmitter {
             this.reconnectTimeout = null;
         }
         
-        this.log(`${LOG_PREFIX} CONNECTED TO C-GATE ${this.type.toUpperCase()} PORT: ${this.host}:${this.port}`);
+        this.logger.info(`CONNECTED TO C-GATE ${this.type.toUpperCase()} PORT: ${this.host}:${this.port}`);
         
         // Send initial commands for command connection
         if (this.type === 'command') {
@@ -102,7 +104,7 @@ class CgateConnection extends EventEmitter {
             this.socket = null;
         }
         
-        this.warn(`${WARN_PREFIX} ${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
+        this.logger.warn(`${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
         this.emit('close', hadError);
         
         // Schedule reconnection
@@ -110,7 +112,7 @@ class CgateConnection extends EventEmitter {
     }
 
     _handleError(err) {
-        this.error(`${ERROR_PREFIX} C-Gate ${this.type} Socket Error:`, err);
+        this.logger.error(`C-Gate ${this.type} Socket Error:`, { error: err });
         this.connected = false;
         
         if (this.socket && !this.socket.destroyed) {
@@ -132,21 +134,21 @@ class CgateConnection extends EventEmitter {
                 // 1. Enable events
                 const eventCmd = CGATE_CMD_EVENT_ON + NEWLINE;
                 this.socket.write(eventCmd);
-                this.log(`${LOG_PREFIX} C-Gate Sent: ${CGATE_CMD_EVENT_ON}`);
+                this.logger.info(`C-Gate Sent: ${CGATE_CMD_EVENT_ON}`);
                 
                 // 2. Send LOGIN if credentials provided
                 const user = this.settings.cgateusername;
                 const pass = this.settings.cgatepassword;
                 if (user && typeof user === 'string' && user.trim() !== '' && typeof pass === 'string') {
                     const loginCmd = `${CGATE_CMD_LOGIN} ${user.trim()} ${pass}${NEWLINE}`;
-                    this.log(`${LOG_PREFIX} Sending LOGIN command for user '${user.trim()}'...`);
+                    this.logger.info(`Sending LOGIN command for user '${user.trim()}'...`);
                     this.socket.write(loginCmd);
                 }
             } else {
-                this.warn(`${WARN_PREFIX} Command socket not available to send initial commands (EVENT ON / LOGIN).`);
+                this.logger.warn(`Command socket not available to send initial commands (EVENT ON / LOGIN).`);
             }
         } catch (e) {
-            this.error(`${ERROR_PREFIX} Error sending initial commands (EVENT ON / LOGIN):`, e);
+            this.logger.error(`Error sending initial commands (EVENT ON / LOGIN):`, { error: e });
             this._handleError(e);
         }
     }
@@ -157,7 +159,7 @@ class CgateConnection extends EventEmitter {
         }
 
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            this.error(`${ERROR_PREFIX} Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.type} connection. Stopping reconnection attempts.`);
+            this.logger.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.type} connection. Stopping reconnection attempts.`);
             return;
         }
 
@@ -168,7 +170,7 @@ class CgateConnection extends EventEmitter {
         );
 
         this.reconnectAttempts++;
-        this.log(`${LOG_PREFIX} Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+        this.logger.info(`Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
@@ -177,17 +179,6 @@ class CgateConnection extends EventEmitter {
     }
 
     // Logging methods that can be overridden
-    log(message, ...args) {
-        console.log(message, ...args);
-    }
-
-    warn(message, ...args) {
-        console.warn(message, ...args);
-    }
-
-    error(message, ...args) {
-        console.error(message, ...args);
-    }
 }
 
 module.exports = CgateConnection;
