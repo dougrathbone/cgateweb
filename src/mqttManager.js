@@ -1,5 +1,6 @@
 const mqtt = require('mqtt');
 const { EventEmitter } = require('events');
+const { createLogger } = require('./logger');
 const { 
     LOG_PREFIX, 
     WARN_PREFIX, 
@@ -17,18 +18,19 @@ class MqttManager extends EventEmitter {
         this.settings = settings;
         this.client = null;
         this.connected = false;
+        this.logger = createLogger({ component: 'MqttManager' });
     }
 
     connect() {
         if (this.client) {
-            this.log(`${LOG_PREFIX} MQTT client already exists. Disconnecting first.`);
+            this.logger.info(`MQTT client already exists. Disconnecting first.`);
             this.disconnect();
         }
 
         const mqttUrl = this._buildMqttUrl();
         const connectOptions = this._buildConnectOptions();
 
-        this.log(`${LOG_PREFIX} Connecting to MQTT Broker: ${mqttUrl}`);
+        this.logger.info(`Connecting to MQTT Broker: ${mqttUrl}`);
         
         this.client = mqtt.connect(mqttUrl, connectOptions);
         
@@ -51,7 +53,7 @@ class MqttManager extends EventEmitter {
 
     publish(topic, payload, options = {}) {
         if (!this.client || !this.connected) {
-            this.warn(`${WARN_PREFIX} Cannot publish to MQTT: not connected`);
+            this.logger.warn(`Cannot publish to MQTT: not connected`);
             return false;
         }
 
@@ -59,14 +61,14 @@ class MqttManager extends EventEmitter {
             this.client.publish(topic, payload, options);
             return true;
         } catch (error) {
-            this.error(`${ERROR_PREFIX} Error publishing to MQTT:`, error);
+            this.logger.error(`Error publishing to MQTT:`, { error });
             return false;
         }
     }
 
     subscribe(topic, callback) {
         if (!this.client || !this.connected) {
-            this.warn(`${WARN_PREFIX} Cannot subscribe to MQTT: not connected`);
+            this.logger.warn(`Cannot subscribe to MQTT: not connected`);
             return false;
         }
 
@@ -108,7 +110,7 @@ class MqttManager extends EventEmitter {
 
     _handleConnect() {
         this.connected = true;
-        this.log(`${LOG_PREFIX} CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
+        this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
         
         // Publish online status
         this.publish(MQTT_TOPIC_STATUS, MQTT_PAYLOAD_STATUS_ONLINE, { retain: true, qos: 1 });
@@ -116,9 +118,9 @@ class MqttManager extends EventEmitter {
         // Subscribe to command topics
         this.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
             if (err) {
-                this.error(`${ERROR_PREFIX} MQTT Subscription error:`, err);
+                this.logger.error(`MQTT Subscription error:`, { error: err });
             } else {
-                this.log(`${LOG_PREFIX} Subscribed to MQTT topic: ${MQTT_TOPIC_PREFIX_WRITE}/#`);
+                this.logger.info(`Subscribed to MQTT topic: ${MQTT_TOPIC_PREFIX_WRITE}/#`);
             }
         });
         
@@ -127,8 +129,8 @@ class MqttManager extends EventEmitter {
 
     _handleClose() {
         this.connected = false;
-        this.log('[DEBUG] MQTT Close event received with arguments:', arguments);
-        this.warn(`${WARN_PREFIX} MQTT Client Closed. Reconnection handled by library.`);
+        this.logger.debug('MQTT Close event received', { arguments });
+        this.logger.warn(`MQTT Client Closed. Reconnection handled by library.`);
         
         if (this.client) {
             this.client.removeAllListeners(); 
@@ -141,8 +143,8 @@ class MqttManager extends EventEmitter {
     _handleError(err) {
         // Handle specific authentication error
         if (err.code === MQTT_ERROR_AUTH) { 
-            this.error(`${ERROR_PREFIX} MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
-            this.error(`${ERROR_PREFIX} Exiting due to fatal MQTT authentication error.`);
+            this.logger.error(`MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
+            this.logger.error(`Exiting due to fatal MQTT authentication error.`);
             
             if (this.client) {
                 this.client.removeAllListeners();
@@ -152,8 +154,8 @@ class MqttManager extends EventEmitter {
             process.exit(1); // Exit if auth fails
         } else {
             // Handle generic errors
-            this.error(`${ERROR_PREFIX} MQTT Client Error:`, err);
-            this.log('[DEBUG] Full MQTT error object:', err); 
+            this.logger.error(`MQTT Client Error:`, { error: err });
+            this.logger.debug('Full MQTT error object:', { err }); 
             this.connected = false; // Assume disconnected on error
             
             if (this.client) {
@@ -171,17 +173,6 @@ class MqttManager extends EventEmitter {
     }
 
     // Logging methods that can be overridden
-    log(message, ...args) {
-        console.log(message, ...args);
-    }
-
-    warn(message, ...args) {
-        console.warn(message, ...args);
-    }
-
-    error(message, ...args) {
-        console.error(message, ...args);
-    }
 }
 
 module.exports = MqttManager;

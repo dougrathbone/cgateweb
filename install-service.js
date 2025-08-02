@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { runCommand, checkRoot } = require('./src/systemUtils');
 
 const SERVICE_NAME = 'cgateweb.service';
 const SOURCE_SERVICE_FILE_TEMPLATE = path.join(__dirname, 'cgateweb.service.template');
@@ -10,26 +10,6 @@ const TARGET_SYSTEMD_DIR = '/etc/systemd/system';
 const TARGET_SERVICE_FILE = path.join(TARGET_SYSTEMD_DIR, SERVICE_NAME);
 const BASE_INSTALL_PATH = __dirname;
 
-function runCommand(command) {
-    try {
-        console.log(`Executing: ${command}`);
-        execSync(command, { stdio: 'inherit' });
-        console.log(`Successfully executed: ${command}`);
-        return true;
-    } catch (error) {
-        console.error(`Failed to execute command: ${command}`);
-        console.error(error.stderr ? error.stderr.toString() : error.message);
-        return false;
-    }
-}
-
-function checkRoot() {
-    if (process.getuid && process.getuid() !== 0) {
-        console.error('This script requires root privileges to copy files to /etc and manage systemd.');
-        console.error('Please run using sudo: sudo node install-service.js');
-        process.exit(1);
-    }
-}
 
 function checkDependencies() {
     console.log('Checking dependencies...');
@@ -72,7 +52,7 @@ function checkDependencies() {
 function installService() {
     console.log('--- cgateweb Systemd Service Installer ---');
 
-    checkRoot();
+    checkRoot('install-service.js');
     checkDependencies();
 
     // 1. Check if source service file template exists

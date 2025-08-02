@@ -6,6 +6,8 @@ const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
 const CBusCommand = require('./cbusCommand');
 const { createLogger } = require('./logger');
+const { createValidator } = require('./settingsValidator');
+const { BufferParser } = require('./bufferParser');
 const {
     LOG_PREFIX,
     WARN_PREFIX,
@@ -82,6 +84,7 @@ class CgateWebBridge {
             level: this.settings.logging ? 'info' : 'warn',
             enabled: true 
         });
+        this.settingsValidator = createValidator({ exitOnError: false });
 
         // Store factory references for test compatibility
         this.mqttClientFactory = mqttClientFactory;
@@ -110,8 +113,8 @@ class CgateWebBridge {
         );
 
         // Internal state
-        this.commandBuffer = '';
-        this.eventBuffer = '';
+        this.commandBufferParser = new BufferParser();
+        this.eventBufferParser = new BufferParser();
         this.internalEventEmitter = new EventEmitter();
         this.periodicGetAllInterval = null;
 
@@ -122,7 +125,7 @@ class CgateWebBridge {
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
 
         // Validate settings and exit if invalid
-        if (!this._validateSettings()) {
+        if (!this.settingsValidator.validate(this.settings)) {
             process.exit(1);
         }
 
@@ -398,26 +401,18 @@ class CgateWebBridge {
     }
 
     _handleCommandData(data) {
-        this.commandBuffer += data.toString();
-        let newlineIndex;
-
-        while ((newlineIndex = this.commandBuffer.indexOf(NEWLINE)) > -1) {
-            const line = this.commandBuffer.substring(0, newlineIndex).trim();
-            this.commandBuffer = this.commandBuffer.substring(newlineIndex + 1);
-
-            if (!line) continue;
-
+        this.commandBufferParser.processData(data, (line) => {
             this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
 
             try {
                 const parsedResponse = this._parseCommandResponseLine(line);
-                if (!parsedResponse) continue;
+                if (!parsedResponse) return;
 
                 this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
             } catch (e) {
                 this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`); 
             }
-        }
+        });
     }
 
     _parseCommandResponseLine(line) {
@@ -498,17 +493,9 @@ class CgateWebBridge {
     }
 
     _handleEventData(data) {
-        this.eventBuffer += data.toString();
-        let newlineIndex;
-
-        while ((newlineIndex = this.eventBuffer.indexOf(NEWLINE)) > -1) {
-            const line = this.eventBuffer.substring(0, newlineIndex).trim();
-            this.eventBuffer = this.eventBuffer.substring(newlineIndex + 1);
-
-            if (!line) continue;
-
+        this.eventBufferParser.processData(data, (line) => {
             this._processEventLine(line);
-        }
+        });
     }
 
     _processEventLine(line) {
@@ -659,41 +646,6 @@ class CgateWebBridge {
     }
 
 
-    _validateSettings() {
-        const requiredStringSettings = [
-            'mqtt', 'cbusname', 'cbusip'
-        ];
-        
-        const requiredNumberSettings = [
-            'cbuscommandport', 'cbuseventport', 'messageinterval'
-        ];
-
-        let isValid = true;
-
-        // Check required string settings
-        for (const setting of requiredStringSettings) {
-            if (!this.settings[setting] || typeof this.settings[setting] !== 'string') {
-                this.error(`Invalid setting: '${setting}' must be a non-empty string`);
-                isValid = false;
-            }
-        }
-
-        // Check required number settings
-        for (const setting of requiredNumberSettings) {
-            if (typeof this.settings[setting] !== 'number' || this.settings[setting] <= 0) {
-                this.error(`Invalid setting: '${setting}' must be a positive number`);
-                isValid = false;
-            }
-        }
-
-        // Check mqtt setting specifically (it can be null in the test case)
-        if (this.settings.mqtt === null || this.settings.mqtt === undefined) {
-            this.error(`Invalid setting: 'mqtt' must be a non-empty string`);
-            isValid = false;
-        }
-
-        return isValid;
-    }
 }
 
 module.exports = CgateWebBridge;

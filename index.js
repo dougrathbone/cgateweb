@@ -2,6 +2,7 @@
 
 const path = require('path');
 const CgateWebBridge = require('./src/cgateWebBridge');
+const { validateWithWarnings } = require('./src/settingsValidator');
 
 // --- Default Settings (can be overridden by ./settings.js) ---
 const defaultSettings = {
@@ -46,35 +47,13 @@ try {
 // Merge settings
 const settings = { ...defaultSettings, ...userSettings };
 
-// Validate critical settings
-function validateSettings() {
-    const errors = [];
-    
-    if (!settings.cbusip) {
-        errors.push('cbusip is required');
-    }
-    
-    if (!settings.cbusname) {
-        errors.push('cbusname is required');  
-    }
-    
-    if (!settings.mqtt) {
-        errors.push('mqtt broker address is required');
-    }
-    
-    if (errors.length > 0) {
-        console.error('[ERROR] Invalid configuration:');
-        errors.forEach(error => console.error(`  - ${error}`));
-        process.exit(1);
-    }
-}
 
 // Application startup
 function main() {
     console.log('[INFO] Starting cgateweb...');
     console.log(`[INFO] Version: ${require('./package.json').version}`);
     
-    validateSettings();
+    validateWithWarnings(settings);
     
     // Create and start the bridge
     const bridge = new CgateWebBridge(settings);
