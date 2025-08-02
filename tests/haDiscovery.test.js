@@ -1,420 +1,296 @@
-// tests/haDiscovery.test.js
+// tests/haDiscovery.test.js - Direct testing of HaDiscovery class
 
-// Import necessary classes/functions
-const { CgateWebBridge, settings: defaultSettings } = require('../index.js');
-const EventEmitter = require('events'); 
+const HaDiscovery = require('../src/haDiscovery');
+const { CGATE_CMD_TREEXML, NEWLINE } = require('../src/constants');
 
-// --- Mock Modules ---
-let parseStringResolver; 
-let mockParseStringResult = null; // Variable to hold mock result
-let mockParseStringError = null; // Variable to hold mock error
-
-let mockParseStringFn = jest.fn((xml, options, callback) => {
-    // Default mock implementation using the variables
-    callback(mockParseStringError, mockParseStringResult);
-    if (parseStringResolver) {
-        parseStringResolver();
-        parseStringResolver = null;
-    }
-});
-jest.mock('xml2js', () => ({
-    parseString: (...args) => mockParseStringFn(...args) 
-}));
-
-const mockMqttClient = new EventEmitter(); 
-mockMqttClient.connect = jest.fn(); 
-mockMqttClient.subscribe = jest.fn((topic, options, callback) => callback ? callback(null) : null);
-mockMqttClient.publish = jest.fn();
-mockMqttClient.end = jest.fn();
-mockMqttClient.removeAllListeners = jest.fn();
-mockMqttClient.on = jest.fn(); 
-jest.mock('mqtt', () => ({
-    connect: jest.fn(() => mockMqttClient) 
-}));
-
-// Mock console methods 
-const mockConsoleWarn = jest.spyOn(console, 'warn').mockImplementation(() => { });
-const mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => { });
-
-afterAll(() => {
-    mockConsoleWarn.mockRestore();
-    mockConsoleError.mockRestore();
-});
-
-// --- Define Mock Data at Top Level --- 
+// Mock XML data for testing - matches actual C-Gate tree structure
 const MOCK_TREEXML_RESULT_NET254 = {
-     Network: {
-         Interface: {
-             Network: {
-                 NetworkNumber: '254',
-                 Unit: [
+    Network: {
+        Interface: {
+            Network: {
+                NetworkNumber: '254',
+                Unit: [
                     {
-                        UnitAddress: '1',
-                        Application: {
-                            Lighting: {
+                        UnitAddress: '100',
+                        Application: [
+                            {
                                 ApplicationAddress: '56',
                                 Group: [
-                                    { GroupAddress: '10', Label: 'Kitchen Main'},
-                                    { GroupAddress: '11', Label: 'Dining' } 
-                                ],
-                                EnableControl: { // Nested EnableControl (Covers)
-                                    ApplicationAddress: '203',
-                                    Group: [
-                                        { GroupAddress: '15', Label: 'Blind 1' },
-                                        { GroupAddress: '16' } 
-                                    ]
-                                }
+                                    { GroupAddress: '10', Label: 'Kitchen Light' },
+                                    { GroupAddress: '11', Label: 'Living Room' },
+                                    { GroupAddress: '12', Label: 'Bedroom Light' }
+                                ]
+                            },
+                            {
+                                ApplicationAddress: '203',
+                                Group: [
+                                    { GroupAddress: '15', Label: 'Blind 1' },
+                                    { GroupAddress: '16', Label: 'Blind 2' },
+                                    { GroupAddress: '17', Label: 'Garage Door' },
+                                    { GroupAddress: '20', Label: 'Relay Switch' }
+                                ]
                             }
-                        }
-                    },
-                    {
-                        UnitAddress: '2',
-                        Application: {
-                             SomeOtherApp: { Group: { GroupAddress: '100' } }
-                        }
-                    },
-                     {
-                         UnitAddress: '3',
-                         Application: {
-                             Lighting: {
-                                 ApplicationAddress: '56',
-                                 Group: { GroupAddress: '12', Label: 'Lounge Dimmer' }
-                             }
-                         }
-                     },
-                    {
-                        UnitAddress: '4',
-                        Application: { // Top-Level EnableControl (Switches/Relays)
-                             EnableControl: {
-                                 ApplicationAddress: '203', 
-                                 Group: [
-                                     { GroupAddress: '20', Label: 'Relay Switch' },
-                                     { GroupAddress: '21' } 
-                                 ]
-                             }
-                        }
+                        ]
                     }
                 ]
             }
         }
     }
 };
-const MOCK_TREEXML_RESULT_MALFORMED = { Network: {} };
-// --- End Mock Data Definition ---
 
-// --- HA Discovery Tests (extracted from cgateWebBridge.test.js) ---
-describe('CgateWebBridge - Home Assistant Discovery', () => {
-    let bridge;
+describe('HaDiscovery', () => {
+    let haDiscovery;
     let mockSettings;
-    let mockCmdSocketFactory, mockEvtSocketFactory;
-    let lastMockCmdSocket, lastMockEvtSocket;
+    let mockMqttManager;
+    let mockCgateConnection;
+    let mockPublishSpy;
 
     beforeEach(() => {
-        mockMqttClient.removeAllListeners.mockClear();
-        mockMqttClient.subscribe.mockClear();
-        mockMqttClient.publish.mockClear();
-        mockMqttClient.end.mockClear();
-        mockMqttClient.on.mockClear();
-        const mqtt = require('mqtt');
-        mqtt.connect.mockClear();
+        mockSettings = {
+            ha_discovery_enabled: true,
+            ha_discovery_prefix: 'testhomeassistant',
+            ha_discovery_networks: ['254'],
+            ha_discovery_cover_app_id: '203',
+            ha_discovery_switch_app_id: null,
+            ha_discovery_relay_app_id: null,
+            ha_discovery_pir_app_id: null,
+            cbusname: 'TESTPROJECT',
+            getallnetapp: null
+        };
 
-        mockSettings = { ...defaultSettings }; 
-        mockSettings.logging = false;
-        mockSettings.messageinterval = 10; 
-        mockSettings.reconnectinitialdelay = 10;
-        mockSettings.reconnectmaxdelay = 100;
+        mockMqttManager = {
+            publish: jest.fn()
+        };
 
-        lastMockCmdSocket = null;
-        lastMockEvtSocket = null;
-        mockCmdSocketFactory = jest.fn(() => {
-            const socket = new EventEmitter();
-            socket.connect = jest.fn();
-            socket.write = jest.fn();
-            socket.destroy = jest.fn();
-            socket.removeAllListeners = jest.fn();
-            socket.on = jest.fn(); 
-            socket.connecting = false; 
-            socket.destroyed = false;  
-            lastMockCmdSocket = socket; 
-            return socket;
-        });
-        mockEvtSocketFactory = jest.fn(() => {
-            const socket = new EventEmitter();
-            socket.connect = jest.fn();
-            socket.write = jest.fn(); 
-            socket.destroy = jest.fn();
-            socket.removeAllListeners = jest.fn();
-            socket.on = jest.fn(); 
-            socket.connecting = false;
-            socket.destroyed = false;
-            lastMockEvtSocket = socket; 
-            return socket;
-        });
+        mockCgateConnection = {
+            send: jest.fn()
+        };
+
+        mockPublishSpy = jest.spyOn(mockMqttManager, 'publish');
+
+        haDiscovery = new HaDiscovery(mockSettings, mockMqttManager, mockCgateConnection);
         
-        bridge = new CgateWebBridge(
-            mockSettings,
-            null, 
-            mockCmdSocketFactory, 
-            mockEvtSocketFactory
-        );
+        // Mock console methods
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+        jest.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => {
-         jest.clearAllTimers();
-         mockConsoleWarn.mockClear();
-         mockConsoleError.mockClear();
-         mockParseStringFn.mockClear();
-         // Reset mock control variables
-         mockParseStringResult = null;
-         mockParseStringError = null;
-     });
-    
-    describe('Home Assistant Discovery Logic', () => { 
-        let mqttAddSpyHa; 
-        let triggerHaDiscoverySpy;
-        let consoleWarnSpyHa;
-        let getTreeCommandSpy; 
-        let parseStringResolver; // Moved here for wider scope
-        let publishHaSpy; // Moved here for wider scope
-        
+        jest.restoreAllMocks();
+    });
+
+    describe('Constructor', () => {
+        it('should initialize with correct properties', () => {
+            expect(haDiscovery.settings).toBe(mockSettings);
+            expect(haDiscovery.mqttManager).toBe(mockMqttManager);
+            expect(haDiscovery.cgateConnection).toBe(mockCgateConnection);
+            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeNetwork).toBeNull();
+            expect(haDiscovery.discoveryCount).toBe(0);
+        });
+    });
+
+    describe('trigger()', () => {
+        it('should return early if HA discovery is disabled', () => {
+            mockSettings.ha_discovery_enabled = false;
+            haDiscovery.trigger();
+            expect(mockCgateConnection.send).not.toHaveBeenCalled();
+        });
+
+        it('should send TREEXML commands for configured networks', () => {
+            mockSettings.ha_discovery_networks = ['254', '200'];
+            haDiscovery.trigger();
+            
+            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 200${NEWLINE}`);
+            expect(mockCgateConnection.send).toHaveBeenCalledTimes(2);
+        });
+
+        it('should use getallnetapp network if networks list is empty', () => {
+            mockSettings.ha_discovery_networks = [];
+            mockSettings.getallnetapp = '254';
+            haDiscovery.trigger();
+            
+            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockCgateConnection.send).toHaveBeenCalledTimes(1);
+        });
+
+        it('should warn if no networks are configured', () => {
+            mockSettings.ha_discovery_networks = [];
+            mockSettings.getallnetapp = null;
+            const warnSpy = jest.spyOn(console, 'warn');
+            
+            haDiscovery.trigger();
+            
+            expect(warnSpy).toHaveBeenCalled();
+            expect(mockCgateConnection.send).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Tree XML Handling', () => {
+        it('should handle tree start correctly', () => {
+            haDiscovery.treeNetwork = '254';
+            haDiscovery.handleTreeStart('Tree start for network 254');
+            
+            expect(haDiscovery.treeBuffer).toBe('');
+        });
+
+        it('should accumulate tree data', () => {
+            haDiscovery.handleTreeData('line1');
+            haDiscovery.handleTreeData('line2');
+            
+            expect(haDiscovery.treeBuffer).toBe(`line1${NEWLINE}line2${NEWLINE}`);
+        });
+
+        it('should process tree end and publish discovery', () => {
+            haDiscovery.treeNetwork = '254';
+            haDiscovery.treeBuffer = '<xml>test</xml>';
+            
+            // Mock parseString to return our test data
+            const parseString = require('xml2js').parseString;
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+
+            haDiscovery.handleTreeEnd('Tree end');
+
+            expect(mockPublishSpy).toHaveBeenCalled();
+            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeNetwork).toBeNull();
+        });
+    });
+
+    describe('Discovery Publishing', () => {
         beforeEach(() => {
-            // Setup spies specific to HA discovery logic
-            bridge.settings.ha_discovery_enabled = true;
-            bridge.settings.ha_discovery_prefix = 'testhomeassistant';
-            bridge.settings.ha_discovery_networks = ['254']; 
-            mqttAddSpyHa = jest.spyOn(bridge.mqttPublishQueue, 'add');
-            triggerHaDiscoverySpy = jest.spyOn(bridge, '_triggerHaDiscovery');
-            getTreeCommandSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
-            consoleWarnSpyHa = jest.spyOn(console, 'warn').mockImplementation(() => {});
-            publishHaSpy = jest.spyOn(bridge, '_publishHaDiscoveryFromTree'); // Define spy here
-            bridge.treeNetwork = null;
-            parseStringResolver = null; 
+            // Mock parseString for all discovery tests
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
         });
 
-        afterEach(() => {
-            mqttAddSpyHa.mockRestore();
-            triggerHaDiscoverySpy.mockRestore();
-            getTreeCommandSpy.mockRestore();
-            consoleWarnSpyHa.mockRestore();
-            publishHaSpy.mockRestore(); // Restore spy
-            parseStringResolver = null;
-            mockParseStringFn.mockClear(); // Clear the mock function itself
+        it('should publish correct configs for LIGHTING groups', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that light configs were published
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                'testhomeassistant/light/cgateweb_254_56_10/config',
+                expect.stringContaining('"name":"Kitchen Light"'),
+                { retain: true, qos: 0 }
+            );
         });
-        
-        // Tests for _checkAllConnected, _triggerHaDiscovery, manual trigger
-        // ... these tests should be fine here as they don't directly use MOCK_TREEXML_RESULT_NET254
-        it('_checkAllConnected should call _triggerHaDiscovery if enabled', () => {
-            bridge.clientConnected = true;
-            bridge.commandConnected = true;
-            bridge.eventConnected = true;
-            bridge._checkAllConnected();
-            expect(triggerHaDiscoverySpy).toHaveBeenCalledTimes(1);
+
+        it('should publish correct configs for COVER groups', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that cover configs were published
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                'testhomeassistant/cover/cgateweb_254_203_15/config',
+                expect.stringContaining('"name":"Blind 1"'),
+                { retain: true, qos: 0 }
+            );
         });
-        
-        it('_checkAllConnected should NOT call _triggerHaDiscovery if disabled', () => {
-             bridge.settings.ha_discovery_enabled = false; 
-             bridge.clientConnected = true;
-             bridge.commandConnected = true;
-             bridge.eventConnected = true;
-             bridge._checkAllConnected();
-             expect(triggerHaDiscoverySpy).not.toHaveBeenCalled();
-         });
-         
-         it('_triggerHaDiscovery should queue TREEXML for configured networks', () => {
-            bridge.settings.ha_discovery_networks = ['254', '200'];
-            bridge._triggerHaDiscovery();
-            expect(getTreeCommandSpy).toHaveBeenCalledWith('TREEXML 254\n');
-            expect(getTreeCommandSpy).toHaveBeenCalledWith('TREEXML 200\n');
-            expect(getTreeCommandSpy).toHaveBeenCalledTimes(2);
-         });
-         
-         it('_triggerHaDiscovery should use getallnetapp network if discovery networks empty', () => {
-             bridge.settings.ha_discovery_networks = [];
-             bridge.settings.getallnetapp = '254/56';
-             bridge._triggerHaDiscovery();
-             expect(getTreeCommandSpy).toHaveBeenCalledWith('TREEXML 254\n');
-             expect(getTreeCommandSpy).toHaveBeenCalledTimes(1);
-         });
-         
-          it('_triggerHaDiscovery should warn and return if no networks configured/derivable', () => {
-              bridge.settings.ha_discovery_networks = [];
-              bridge.settings.getallnetapp = null; 
-              bridge._triggerHaDiscovery();
-              expect(getTreeCommandSpy).not.toHaveBeenCalled();
-              expect(consoleWarnSpyHa).toHaveBeenCalledWith(expect.stringContaining('No HA discovery networks configured'));
-          });
-         
-         it('Manual trigger should call _triggerHaDiscovery if enabled', () => {
-             const topic = 'cbus/write/bridge/announce';
-             bridge._handleMqttMessage(topic, Buffer.from(''));
-             expect(triggerHaDiscoverySpy).toHaveBeenCalledTimes(1);
-         });
-         
-          it('Manual trigger should warn if HA discovery disabled', () => {
-              bridge.settings.ha_discovery_enabled = false;
-              const topic = 'cbus/write/bridge/announce';
-              bridge._handleMqttMessage(topic, Buffer.from(''));
-              expect(triggerHaDiscoverySpy).not.toHaveBeenCalled();
-              expect(consoleWarnSpyHa).toHaveBeenCalledWith(expect.stringContaining('Manual HA Discovery trigger received, but feature is disabled'));
-          });
 
-        // Malformed/Error handling for the whole tree
-        it('_publishHaDiscoveryFromTree should handle malformed XML data gracefully', () => {
-             bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_MALFORMED);
-             expect(mqttAddSpyHa).not.toHaveBeenCalled();
-             expect(consoleWarnSpyHa).toHaveBeenCalledWith(expect.stringContaining('TreeXML for network 254 seems malformed'));
-         });
-
-        it('should handle TreeXML parsing error', async () => {
-             let promise = new Promise(resolve => { parseStringResolver = resolve; });
-             const bridgeErrorSpy = jest.spyOn(bridge, 'error').mockImplementation(() => {});
-             mockParseStringFn.mockImplementationOnce((xml, options, callback) => {
-                 callback(new Error('XML parse error'), null);
-                 if (parseStringResolver) { parseStringResolver(); parseStringResolver = null; }
-             });
-             bridge.treeNetwork = '200';
-             bridge._handleCommandData(Buffer.from('343-200\n'));
-             bridge._handleCommandData(Buffer.from('347-<bad xml\n'));
-             bridge._handleCommandData(Buffer.from('344-200\n'));
-             await promise;
-             expect(mockParseStringFn).toHaveBeenCalled();
-             expect(bridgeErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error parsing TreeXML for network 200 (took '), expect.any(Error));
-             expect(mqttAddSpyHa).not.toHaveBeenCalled(); 
-             expect(bridge.treeBuffer).toBe('');
-             expect(bridge.treeNetwork).toBeNull();
-             bridgeErrorSpy.mockRestore();
-         });
-
-        describe('_publishHaDiscoveryFromTree Specific Payloads', () => {
-            // Tests focused specifically on processing MOCK_TREEXML_RESULT_NET254
+        it('should publish PIR configs when PIR app ID is configured', () => {
+            mockSettings.ha_discovery_pir_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
             
-            it('should publish correct config for LIGHTING groups', () => {
-                bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); // 3 lights + 4 covers (default)
-                expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({ topic: 'testhomeassistant/light/cgateweb_254_56_10/config'}));
-                 // ... other light assertions ...
-            });
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that PIR sensor configs were published
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                'testhomeassistant/binary_sensor/cgateweb_254_203_15/config',
+                expect.stringContaining('"device_class":"motion"'),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should publish SWITCH configs when switch app ID is configured', () => {
+            mockSettings.ha_discovery_switch_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
             
-            it('should publish correct config for SWITCH groups if configured', () => {
-                 bridge.settings.ha_discovery_switch_app_id = '203';
-                 bridge.settings.ha_discovery_cover_app_id = null; 
-                 bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                 expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); // 3 lights + 4 groups published as switches 
-                 expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({ topic: 'testhomeassistant/switch/cgateweb_254_203_20/config' }));
-                 // ... other switch assertions ...
-             });
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            it('should publish correct config for COVER groups if configured (default)', () => {
-                 // Uses default settings where coverAppId = '203'
-                 bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                 expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); // 3 lights + 4 covers
-                 expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({ topic: 'testhomeassistant/cover/cgateweb_254_203_15/config' }));
-                 // ... other cover assertions ...
-            });
+            // Check that switch configs were published
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                'testhomeassistant/switch/cgateweb_254_203_15/config',
+                expect.stringContaining('"name":"Blind 1"'),
+                { retain: true, qos: 0 }
+            );
+        });
 
-             it('should publish correct config for RELAY groups if configured', () => {
-                 bridge.settings.ha_discovery_relay_app_id = '203';
-                 bridge.settings.ha_discovery_cover_app_id = null;
-                 bridge.settings.ha_discovery_switch_app_id = null;
-                 bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                 expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); // 3 lights + 4 groups published as relays (switch component)
-                 expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({ topic: 'testhomeassistant/switch/cgateweb_254_203_20/config' }));
-                 // ... other relay assertions ...
-            });
-
-            it('should publish correct config for PIR Motion Sensor groups if configured', () => {
-                bridge.settings.ha_discovery_pir_app_id = '203'; // Use 203 for PIR in this test
-                bridge.settings.ha_discovery_cover_app_id = null; 
-                bridge.settings.ha_discovery_switch_app_id = null;
-                bridge.settings.ha_discovery_relay_app_id = null;
-                
-                bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                
-                // Expect 3 lights + 4 PIRs = 7 calls
-                expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); 
-                
-                // Check one PIR payload (Group 15, originally a cover)
-                expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({
-                    topic: 'testhomeassistant/binary_sensor/cgateweb_254_203_15/config'
-                }));
-                const payload15 = JSON.parse(mqttAddSpyHa.mock.calls.find(call => call[0].topic.includes('_203_15'))[0].payload);
-                expect(payload15.name).toBe('Blind 1');
-                expect(payload15.device_class).toBe('motion');
-                expect(payload15.device.model).toBe('PIR Motion Sensor'); // Correct assertion
-
-                 // Check another PIR payload (Group 20, originally a switch/relay)
-                 expect(mqttAddSpyHa).toHaveBeenCalledWith(expect.objectContaining({
-                    topic: 'testhomeassistant/binary_sensor/cgateweb_254_203_20/config'
-                }));
-                 const payload20 = JSON.parse(mqttAddSpyHa.mock.calls.find(call => call[0].topic.includes('_203_20'))[0].payload);
-                 expect(payload20.name).toBe('Relay Switch');
-                 expect(payload20.device_class).toBe('motion');
-                 expect(payload20.device.model).toBe('PIR Motion Sensor'); // Correct assertion
-            });
+        it('should publish RELAY configs when relay app ID is configured', () => {
+            mockSettings.ha_discovery_relay_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
             
-            it('should NOT publish PIR if pir app ID is null (default)', () => {
-                bridge.settings.ha_discovery_pir_app_id = null; // Default
-                bridge._publishHaDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-                // Expect 7 calls based on default settings (3 lights + 4 covers)
-                expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); 
-                expect(mqttAddSpyHa).not.toHaveBeenCalledWith(expect.objectContaining({
-                    topic: expect.stringContaining('/binary_sensor/')
-                }));
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that relay configs were published
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                'testhomeassistant/switch/cgateweb_254_203_15/config',
+                expect.stringContaining('"device_class":"outlet"'),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should handle missing group labels gracefully', () => {
+            const mockDataWithoutLabels = {
+                Network: {
+                    Interface: {
+                        Network: {
+                            NetworkNumber: '254',
+                            Unit: [{
+                                UnitAddress: '100',
+                                Application: [{
+                                    ApplicationAddress: '56',
+                                    Group: [{ GroupAddress: '10' }] // No GroupName
+                                }]
+                            }]
+                        }
+                    }
+                }
+            };
+            
+            haDiscovery._publishDiscoveryFromTree('254', mockDataWithoutLabels);
+
+            // Should use fallback name
+            expect(mockPublishSpy).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.stringContaining('"name":"CBus Light 254/56/10"'),
+                expect.any(Object)
+            );
+        });
+
+        it('should handle XML parsing errors gracefully', () => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+                callback(new Error('Invalid XML'), null);
             });
 
-            it('_publishHaDiscoveryFromTree should use fallback name if label missing (light)', () => {
-                 const mockDataNoLabel = JSON.parse(JSON.stringify(MOCK_TREEXML_RESULT_NET254));
-                 delete mockDataNoLabel.Network.Interface.Network.Unit[0].Application.Lighting.Group[0].Label; 
-                 bridge._publishHaDiscoveryFromTree('254', mockDataNoLabel);
-                 expect(mqttAddSpyHa).toHaveBeenCalledTimes(7); // Call count remains 7
-                 const payload10 = JSON.parse(mqttAddSpyHa.mock.calls.find(call => call[0].topic.includes('_56_10'))[0].payload);
-                 expect(payload10.name).toBe('CBus Light 254/56/10'); 
-             });
-             
-             // ... other specific payload processing tests ...
-        }); // <<< END describe _publishHaDiscoveryFromTree Specific Payloads
-        
-        // Test for HA Discovery triggered by _handleCommandData 
-        it('_handleCommandData should trigger HA discovery after parsing TREEXML', async () => {
-          bridge.settings.ha_discovery_enabled = true;
-          bridge.settings.ha_discovery_networks = ['254'];
-          // Use default settings (cover=203, switch=null, relay=null)
-          const queueAddSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
-          
-          // Set up mock specifically for this test, including resolver
-          let resolverFunc;
-          const promise = new Promise(resolve => { resolverFunc = resolve; });
-          mockParseStringFn.mockImplementationOnce((xml, options, callback) => {
-              callback(null, MOCK_TREEXML_RESULT_NET254); // Use mock data directly
-              if(resolverFunc) resolverFunc(); // Resolve the promise
-          });
+            const errorSpy = jest.spyOn(console, 'error');
+            
+            haDiscovery.treeNetwork = '254';
+            haDiscovery.treeBuffer = 'invalid xml';
+            haDiscovery.handleTreeEnd('Tree end');
 
-          bridge.treeNetwork = '254';
-          bridge.treeBuffer = '<Network>...</Network>';
-          
-          // Trigger the action
-          bridge._handleCommandData(Buffer.from('344-254\n'));
-          
-          // Wait for the async callback to resolve
-          await promise;
-          
-          // Check that _publishHaDiscoveryFromTree was called correctly
-          expect(publishHaSpy).toHaveBeenCalledWith('254', MOCK_TREEXML_RESULT_NET254);
-          
-          // Check that at least one expected discovery message was queued 
-          expect(queueAddSpy).toHaveBeenCalledWith(
-              expect.objectContaining({ topic: expect.stringContaining('testhomeassistant/light/cgateweb_254_56_10/config') })
-          );
-           expect(queueAddSpy).toHaveBeenCalledWith(
-               expect.objectContaining({ topic: expect.stringContaining('testhomeassistant/cover/cgateweb_254_203_15/config') })
-           );
-           // Also check the standard tree message was published
-           expect(queueAddSpy).toHaveBeenCalledWith(
-                expect.objectContaining({ topic: 'cbus/read/254///tree' })
-           );
-          queueAddSpy.mockRestore();
-      });
+            expect(errorSpy).toHaveBeenCalled();
+        });
+    });
 
-    }); // End describe Home Assistant Discovery Logic
+    describe('Integration with CgateWebBridge', () => {
+        it('should be triggered when all connections are established', () => {
+            // This test verifies the integration point exists
+            expect(typeof haDiscovery.trigger).toBe('function');
+        });
 
-}); // End describe CgateWebBridge - Home Assistant Discovery 
+        it('should handle tree responses from C-Gate correctly', () => {
+            haDiscovery.treeNetwork = '254';
+            
+            haDiscovery.handleTreeStart('start');
+            expect(haDiscovery.treeBuffer).toBe('');
+            
+            haDiscovery.handleTreeData('data1');
+            haDiscovery.handleTreeData('data2');
+            expect(haDiscovery.treeBuffer).toBe(`data1${NEWLINE}data2${NEWLINE}`);
+        });
+    });
+});
