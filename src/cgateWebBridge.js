@@ -1,5 +1,6 @@
 const { EventEmitter } = require('events');
 const CgateConnection = require('./cgateConnection');
+const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');
 const HaDiscovery = require('./haDiscovery');
 const ThrottledQueue = require('./throttledQueue');
@@ -93,11 +94,17 @@ class CgateWebBridge {
         
         // Connection managers
         this.mqttManager = new MqttManager(this.settings);
-        this.commandConnection = new CgateConnection('command', this.settings.cbusip, this.settings.cbuscommandport, this.settings);
+        
+        // Use connection pool for commands (performance optimization)
+        // Event connection remains singular due to its broadcast nature
+        this.commandConnectionPool = new CgateConnectionPool('command', this.settings.cbusip, this.settings.cbuscommandport, this.settings);
         this.eventConnection = new CgateConnection('event', this.settings.cbusip, this.settings.cbuseventport, this.settings);
         
-        // Service modules
-        this.haDiscovery = new HaDiscovery(this.settings, this.mqttManager, this.commandConnection);
+        // Maintain backward compatibility - expose first connection from pool
+        this.commandConnection = null; // Will be set after pool starts
+        
+        // Service modules (haDiscovery will be initialized after pool starts)
+        this.haDiscovery = null;
         
         // Message queues
         this.cgateCommandQueue = new ThrottledQueue(
@@ -142,12 +149,15 @@ class CgateWebBridge {
             this.allConnected = false;
         });
 
-        // C-Gate command connection handlers
-        this.commandConnection.on('connect', () => {
+        // C-Gate command connection pool handlers
+        this.commandConnectionPool.on('started', () => {
+            // Set first connection for backward compatibility
+            const firstConnection = this.commandConnectionPool.connections[0];
+            this.commandConnection = firstConnection;
             this._handleAllConnected();
         });
-        this.commandConnection.on('data', (data) => this._handleCommandData(data));
-        this.commandConnection.on('close', () => {
+        this.commandConnectionPool.on('data', (data) => this._handleCommandData(data));
+        this.commandConnectionPool.on('allConnectionsUnhealthy', () => {
             this.allConnected = false;
         });
 
@@ -171,12 +181,12 @@ class CgateWebBridge {
      * 
      * @returns {CgateWebBridge} Returns this instance for method chaining
      */
-    start() {
+    async start() {
         this.logger.info('Starting cgateweb bridge');
         
         // Start all connections
         this.mqttManager.connect();
-        this.commandConnection.connect();
+        await this.commandConnectionPool.start();
         this.eventConnection.connect();
         
         return this;
@@ -191,7 +201,7 @@ class CgateWebBridge {
      * - Disconnects from MQTT broker and C-Gate server
      * - Resets connection state
      */
-    stop() {
+    async stop() {
         this.log(`${LOG_PREFIX} Stopping cgateweb bridge...`);
         
         // Clear periodic tasks
@@ -206,15 +216,18 @@ class CgateWebBridge {
 
         // Disconnect all connections
         this.mqttManager.disconnect();
-        this.commandConnection.disconnect();
+        await this.commandConnectionPool.stop();
         this.eventConnection.disconnect();
 
         this.allConnected = false;
     }
 
     _handleAllConnected() {
+        const poolHealthy = this.commandConnectionPool.isStarted && 
+                           this.commandConnectionPool.healthyConnections.size > 0;
+        
         if (this.mqttManager.connected && 
-            this.commandConnection.connected && 
+            poolHealthy && 
             this.eventConnection.connected &&
             !this.allConnected) {
             
@@ -238,6 +251,11 @@ class CgateWebBridge {
                     this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
                     this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
                 }, this.settings.getallperiod * 1000);
+            }
+            
+            // Initialize haDiscovery after pool starts
+            if (!this.haDiscovery) {
+                this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
             }
             
             // Trigger HA Discovery
@@ -594,8 +612,12 @@ class CgateWebBridge {
         }
     }
 
-    _sendCgateCommand(command) {
-        this.commandConnection.send(command);
+    async _sendCgateCommand(command) {
+        try {
+            await this.commandConnectionPool.execute(command);
+        } catch (error) {
+            this.logger.error('Failed to send C-Gate command:', { command, error });
+        }
     }
 
     _publishMqttMessage(message) {

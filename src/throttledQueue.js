@@ -25,7 +25,7 @@ class ThrottledQueue {
         }
     }
 
-    _process() {
+    async _process() {
         if (this._queue.length === 0) {
             if (this._interval !== null) {
                 clearInterval(this._interval);
@@ -34,7 +34,7 @@ class ThrottledQueue {
         } else {
             const item = this._queue.shift();
             try {
-                 this._processFn(item);
+                await this._processFn(item);
             } catch (error) {
                  this._logger.error(`Error processing ${this._name} item:`, { error, item });
             }

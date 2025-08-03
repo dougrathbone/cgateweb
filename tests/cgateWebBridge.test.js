@@ -4,6 +4,36 @@ const CgateWebBridge = require('../src/cgateWebBridge');
 const { defaultSettings } = require('../index.js');
 const EventEmitter = require('events');
 
+// --- Mock CgateConnectionPool ---
+const mockConnectionPool = new EventEmitter();
+mockConnectionPool.start = jest.fn().mockImplementation(async () => {
+    mockConnectionPool.isStarted = true;
+    mockConnectionPool.healthyConnections = { size: 3 };
+    mockConnectionPool.connections = [{ poolIndex: 0 }, { poolIndex: 1 }, { poolIndex: 2 }];
+    setImmediate(() => mockConnectionPool.emit('started', { healthy: 3, total: 3 }));
+});
+mockConnectionPool.stop = jest.fn().mockImplementation(async () => {
+    mockConnectionPool.isStarted = false;
+    mockConnectionPool.healthyConnections = { size: 0 };
+    mockConnectionPool.connections = [];
+    setImmediate(() => mockConnectionPool.emit('stopped'));
+});
+mockConnectionPool.execute = jest.fn().mockImplementation(async () => true);
+mockConnectionPool.getStats = jest.fn(() => ({
+    poolSize: 3,
+    totalConnections: 3,
+    healthyConnections: 3,
+    isStarted: mockConnectionPool.isStarted || false,
+    isShuttingDown: false
+}));
+mockConnectionPool.isStarted = false;
+mockConnectionPool.healthyConnections = { size: 0 };
+mockConnectionPool.connections = [];
+
+jest.mock('../src/cgateConnectionPool', () => {
+    return jest.fn().mockImplementation(() => mockConnectionPool);
+});
+
 // --- Mock mqtt Module ---
 const mockMqttClient = new EventEmitter(); 
 mockMqttClient.connect = jest.fn(); 
@@ -34,6 +64,15 @@ describe('CgateWebBridge', () => {
     let exitSpy;
 
     beforeEach(() => {
+        // Reset connection pool mock
+        mockConnectionPool.start.mockClear();
+        mockConnectionPool.stop.mockClear();
+        mockConnectionPool.execute.mockClear();
+        mockConnectionPool.getStats.mockClear();
+        mockConnectionPool.isStarted = false;
+        mockConnectionPool.healthyConnections = { size: 0 };
+        mockConnectionPool.connections = [];
+        
         // Reset MQTT mocks
         mockMqttClient.removeAllListeners.mockClear();
         mockMqttClient.subscribe.mockClear();
@@ -150,10 +189,10 @@ describe('CgateWebBridge', () => {
 
         it('should initialize underlying connection managers properly', () => {
             expect(bridge.mqttManager).toBeDefined();
-            expect(bridge.commandConnection).toBeDefined();
+            expect(bridge.commandConnectionPool).toBeDefined();
             expect(bridge.eventConnection).toBeDefined();
             expect(bridge.mqttManager.connected).toBe(false);
-            expect(bridge.commandConnection.connected).toBe(false);
+            expect(bridge.commandConnectionPool.isStarted).toBe(false);
             expect(bridge.eventConnection.connected).toBe(false);
         });
 
@@ -163,10 +202,8 @@ describe('CgateWebBridge', () => {
             expect(bridge.eventBufferParser.getBuffer()).toBe('');
         });
 
-        it('should initialize haDiscovery with proper state', () => {
-            expect(bridge.haDiscovery).toBeDefined();
-            expect(bridge.haDiscovery.treeBuffer).toBe('');
-            expect(bridge.haDiscovery.treeNetwork).toBeNull();
+        it('should initialize haDiscovery as null initially', () => {
+            expect(bridge.haDiscovery).toBeNull();
         });
 
         it('should initialize queues', () => {

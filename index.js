@@ -23,6 +23,11 @@ const defaultSettings = {
     mqttpassword: null,
     reconnectinitialdelay: 1000,
     reconnectmaxdelay: 60000,
+    connectionPoolSize: 3,
+    healthCheckInterval: 30000,
+    keepAliveInterval: 60000,
+    connectionTimeout: 5000,
+    maxRetries: 3,
     ha_discovery_enabled: false,
     ha_discovery_prefix: 'homeassistant',
     ha_discovery_networks: [],
@@ -85,8 +90,11 @@ function main() {
         process.exit(1);
     });
     
-    // Start the bridge
-    bridge.start();
+    // Start the bridge (async)
+    bridge.start().catch(error => {
+        console.error('[ERROR] Failed to start bridge:', error);
+        process.exit(1);
+    });
     
     console.log('[INFO] cgateweb started successfully');
 }
