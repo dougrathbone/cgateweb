@@ -6,6 +6,7 @@ const EventEmitter = require('events');
 
 // --- Mock CgateConnectionPool ---
 const mockConnectionPool = new EventEmitter();
+mockConnectionPool.setMaxListeners(20); // Prevent memory leak warnings
 mockConnectionPool.start = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = true;
     mockConnectionPool.healthyConnections = { size: 3 };
@@ -481,9 +482,12 @@ describe('CgateWebBridge', () => {
             it('should trigger HA discovery when enabled', () => {
                 bridge.settings.ha_discovery_enabled = true;
                 bridge.mqttManager.connected = true;
-                bridge.commandConnection.connected = true;
+                bridge.commandConnectionPool.isStarted = true;
+                bridge.commandConnectionPool.healthyConnections = { size: 3 };
                 bridge.eventConnection.connected = true;
 
+                // Mock haDiscovery since it gets created in _handleAllConnected
+                bridge.haDiscovery = { trigger: jest.fn() };
                 const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
 
                 bridge._handleAllConnected();
@@ -507,6 +511,8 @@ describe('CgateWebBridge', () => {
 
         describe('_handleMqttMessage()', () => {
             it('should handle manual trigger messages', () => {
+                // Mock haDiscovery
+                bridge.haDiscovery = { trigger: jest.fn() };
                 const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
                 bridge.settings.ha_discovery_enabled = true;
 
@@ -517,6 +523,8 @@ describe('CgateWebBridge', () => {
             });
 
             it('should ignore manual trigger when HA discovery disabled', () => {
+                // Mock haDiscovery
+                bridge.haDiscovery = { trigger: jest.fn() };
                 const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
                 bridge.settings.ha_discovery_enabled = false;
 
@@ -595,7 +603,7 @@ describe('CgateWebBridge', () => {
         let queueSpy;
 
         beforeEach(() => {
-            queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'enqueue');
+            queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
         });
 
         afterEach(() => {
@@ -783,16 +791,20 @@ describe('CgateWebBridge', () => {
             });
 
             it('should process tree start responses', () => {
-                const treeStartSpy = jest.spyOn(bridge.haDiscovery, 'startBuffer');
+                // Mock haDiscovery
+                bridge.haDiscovery = { handleTreeStart: jest.fn() };
+                const treeStartSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeStart');
                 
                 bridge._processCommandResponse('300', 'Tree start');
                 
-                expect(treeStartSpy).toHaveBeenCalled();
+                expect(treeStartSpy).toHaveBeenCalledWith('Tree start');
                 treeStartSpy.mockRestore();
             });
 
             it('should process tree data responses', () => {
-                const treeDataSpy = jest.spyOn(bridge.haDiscovery, 'addToBuffer');
+                // Mock haDiscovery
+                bridge.haDiscovery = { handleTreeData: jest.fn() };
+                const treeDataSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeData');
                 
                 bridge._processCommandResponse('301', 'Tree data content');
                 
@@ -801,7 +813,9 @@ describe('CgateWebBridge', () => {
             });
 
             it('should process tree end responses', () => {
-                const treeEndSpy = jest.spyOn(bridge.haDiscovery, 'endBuffer');
+                // Mock haDiscovery
+                bridge.haDiscovery = { handleTreeEnd: jest.fn() };
+                const treeEndSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeEnd');
                 
                 bridge._processCommandResponse('399', 'Tree end');
                 
@@ -948,13 +962,13 @@ describe('CgateWebBridge', () => {
 
     describe('Queue Processing', () => {
         describe('_sendCgateCommand()', () => {
-            it('should send commands via command connection', () => {
-                const sendSpy = jest.spyOn(bridge.commandConnection, 'send');
+            it('should send commands via connection pool', async () => {
+                const executeSpy = jest.spyOn(bridge.commandConnectionPool, 'execute');
                 
-                bridge._sendCgateCommand('TEST COMMAND\n');
+                await bridge._sendCgateCommand('TEST COMMAND\n');
                 
-                expect(sendSpy).toHaveBeenCalledWith('TEST COMMAND\n');
-                sendSpy.mockRestore();
+                expect(executeSpy).toHaveBeenCalledWith('TEST COMMAND\n');
+                executeSpy.mockRestore();
             });
         });
 

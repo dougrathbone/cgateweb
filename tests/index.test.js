@@ -27,8 +27,8 @@ describe('index.js', () => {
         
         // Mock CgateWebBridge instance
         mockBridge = {
-            start: jest.fn(),
-            stop: jest.fn()
+            start: jest.fn().mockResolvedValue(), // Now async
+            stop: jest.fn().mockResolvedValue()   // Now async
         };
         MockCgateWebBridge.mockImplementation(() => mockBridge);
         
@@ -61,6 +61,10 @@ describe('index.js', () => {
 
     describe('Settings loading', () => {
         it('should handle missing settings.js file', () => {
+            // Reset module cache to ensure fresh require
+            delete require.cache[require.resolve('../index.js')];
+            delete require.cache[require.resolve('../settings.js')];
+            
             // Mock MODULE_NOT_FOUND error
             jest.doMock('../settings.js', () => {
                 const error = new Error('Cannot find module');
@@ -78,6 +82,10 @@ describe('index.js', () => {
         });
 
         it('should handle other settings.js loading errors', () => {
+            // Reset module cache to ensure fresh require
+            delete require.cache[require.resolve('../index.js')];
+            delete require.cache[require.resolve('../settings.js')];
+            
             // Mock generic error
             jest.doMock('../settings.js', () => {
                 throw new Error('Syntax error in settings file');

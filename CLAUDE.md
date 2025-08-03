@@ -13,6 +13,10 @@ cgateweb is a Node.js MQTT bridge for C-Bus lighting systems that connects to C-
 - **Run tests with coverage**: `npm test -- --coverage`
 - **Install dependencies**: `npm install`
 
+## Development Guidelines
+
+**IMPORTANT**: Before making any source code commits, you MUST run the full test suite (`npm test`) and ensure all tests pass. No code should be committed with failing tests. This ensures code quality and prevents regressions in the codebase.
+
 ## Architecture
 
 ### Core Components
