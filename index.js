@@ -91,12 +91,14 @@ function main() {
     });
     
     // Start the bridge (async)
-    bridge.start().catch(error => {
-        console.error('[ERROR] Failed to start bridge:', error);
-        process.exit(1);
-    });
-    
-    console.log('[INFO] cgateweb started successfully');
+    bridge.start()
+        .then(() => {
+            console.log('[INFO] cgateweb started successfully');
+        })
+        .catch(error => {
+            console.error('[ERROR] Failed to start bridge:', error);
+            process.exit(1);
+        });
 }
 
 // Only run if this script is executed directly
