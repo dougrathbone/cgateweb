@@ -26,6 +26,12 @@ class CgateConnection extends EventEmitter {
         this.reconnectInitialDelay = settings.reconnectinitialdelay || 1000;
         this.reconnectMaxDelay = settings.reconnectmaxdelay || 60000;
         this.logger = createLogger({ component: `CgateConnection-${type}` });
+        
+        // Pool support properties
+        this.poolIndex = -1;
+        this.lastActivity = Date.now();
+        this.retryCount = 0;
+        this.isDestroyed = false;
     }
 
     connect() {
@@ -60,6 +66,7 @@ class CgateConnection extends EventEmitter {
         this.socket = null;
         this.connected = false;
         this.reconnectAttempts = 0;
+        this.isDestroyed = true;
     }
 
     send(data) {
@@ -70,6 +77,7 @@ class CgateConnection extends EventEmitter {
 
         try {
             this.socket.write(data);
+            this.lastActivity = Date.now(); // Update activity timestamp for pool health monitoring
             return true;
         } catch (error) {
             this.logger.error(`Error writing to ${this.type} socket:`, { error });
@@ -124,6 +132,7 @@ class CgateConnection extends EventEmitter {
     }
 
     _handleData(data) {
+        this.lastActivity = Date.now(); // Update activity timestamp for pool health monitoring
         // Emit raw data for processing by parent classes
         this.emit('data', data);
     }
