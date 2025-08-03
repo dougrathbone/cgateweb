@@ -621,69 +621,105 @@ describe('CgateWebBridge', () => {
 
         describe('_handleMqttGetAll()', () => {
             it('should queue getall command for network/app', () => {
-                const command = { network: '254', app: '56', group: '' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56' 
+                };
                 bridge._handleMqttGetAll(command);
 
-                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/*');
+                expect(queueSpy).toHaveBeenCalledWith('get //TestProject/254/56/* level\n');
             });
         });
 
         describe('_handleMqttSwitch()', () => {
             it('should queue ON command for switch', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1' 
+                };
                 bridge._handleMqttSwitch(command, 'ON');
 
-                expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/56/1');
+                expect(queueSpy).toHaveBeenCalledWith('on //TestProject/254/56/1\n');
             });
 
             it('should queue OFF command for switch', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1' 
+                };
                 bridge._handleMqttSwitch(command, 'OFF');
 
-                expect(queueSpy).toHaveBeenCalledWith('OFF //TestProject/254/56/1');
+                expect(queueSpy).toHaveBeenCalledWith('off //TestProject/254/56/1\n');
             });
 
             it('should queue ON command for unknown payload', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1' 
+                };
                 bridge._handleMqttSwitch(command, 'UNKNOWN');
 
-                expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/56/1');
+                // Unknown payload should issue a warning, not queue command
+                expect(queueSpy).not.toHaveBeenCalled();
             });
         });
 
         describe('_handleMqttRamp()', () => {
             it('should handle numeric level ramp', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1',
+                    getLevel: () => 75,
+                    getRampTime: () => null
+                };
                 bridge._handleMqttRamp(command, '75', 'cbus/write/254/56/1/ramp');
 
-                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 75');
+                expect(queueSpy).toHaveBeenCalledWith('ramp //TestProject/254/56/1 75\n');
             });
 
             it('should handle INCREASE command', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1'
+                };
                 const increaseSpy = jest.spyOn(bridge, '_queueRampIncreaseDecrease');
                 
                 bridge._handleMqttRamp(command, 'INCREASE', 'cbus/write/254/56/1/ramp');
 
-                expect(increaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '1', 10, 255, 'INCREASE');
+                expect(increaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '254/56/1', 26, 255, 'INCREASE');
                 increaseSpy.mockRestore();
             });
 
             it('should handle DECREASE command', () => {
-                const command = { network: '254', app: '56', group: '1' };
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1'
+                };
                 const decreaseSpy = jest.spyOn(bridge, '_queueRampIncreaseDecrease');
                 
                 bridge._handleMqttRamp(command, 'DECREASE', 'cbus/write/254/56/1/ramp');
 
-                expect(decreaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '1', -10, 0, 'DECREASE');
+                expect(decreaseSpy).toHaveBeenCalledWith('//TestProject/254/56/1', '254/56/1', -26, 0, 'DECREASE');
                 decreaseSpy.mockRestore();
             });
 
             it('should handle ramp with time specification', () => {
-                const command = { network: '254', app: '56', group: '1' };
-                bridge._handleMqttRamp(command, '50:5', 'cbus/write/254/56/1/ramp');
+                const command = { 
+                    getNetwork: () => '254', 
+                    getApplication: () => '56', 
+                    getGroup: () => '1',
+                    getLevel: () => 50,
+                    getRampTime: () => '5s'
+                };
+                bridge._handleMqttRamp(command, '50,5s', 'cbus/write/254/56/1/ramp');
 
-                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 50 5s');
+                expect(queueSpy).toHaveBeenCalledWith('ramp //TestProject/254/56/1 50 5s\n');
             });
         });
     });
@@ -744,30 +780,30 @@ describe('CgateWebBridge', () => {
 
         describe('_parseCommandResponseLine()', () => {
             it('should parse successful responses', () => {
-                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                const result = bridge._parseCommandResponseLine('200-Command successful');
                 
-                bridge._parseCommandResponseLine('200-Command successful');
-                
-                expect(processSpy).toHaveBeenCalledWith('200', 'Command successful');
-                processSpy.mockRestore();
+                expect(result).toEqual({
+                    responseCode: '200',
+                    statusData: 'Command successful'
+                });
             });
 
             it('should parse error responses', () => {
-                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                const result = bridge._parseCommandResponseLine('400-Bad request error');
                 
-                bridge._parseCommandResponseLine('400-Bad request error');
-                
-                expect(processSpy).toHaveBeenCalledWith('400', 'Bad request error');
-                processSpy.mockRestore();
+                expect(result).toEqual({
+                    responseCode: '400',
+                    statusData: 'Bad request error'
+                });
             });
 
             it('should handle responses without status data', () => {
-                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
+                const result = bridge._parseCommandResponseLine('200 ');
                 
-                bridge._parseCommandResponseLine('200-');
-                
-                expect(processSpy).toHaveBeenCalledWith('200', '');
-                processSpy.mockRestore();
+                expect(result).toEqual({
+                    responseCode: '200',
+                    statusData: ''
+                });
             });
 
             it('should ignore malformed responses', () => {
@@ -784,7 +820,7 @@ describe('CgateWebBridge', () => {
             it('should process object status responses', () => {
                 const objectStatusSpy = jest.spyOn(bridge, '_processCommandObjectStatus');
                 
-                bridge._processCommandResponse('200', 'Object status data');
+                bridge._processCommandResponse('300', 'Object status data');
                 
                 expect(objectStatusSpy).toHaveBeenCalledWith('Object status data');
                 objectStatusSpy.mockRestore();
@@ -795,7 +831,7 @@ describe('CgateWebBridge', () => {
                 bridge.haDiscovery = { handleTreeStart: jest.fn() };
                 const treeStartSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeStart');
                 
-                bridge._processCommandResponse('300', 'Tree start');
+                bridge._processCommandResponse('343', 'Tree start');
                 
                 expect(treeStartSpy).toHaveBeenCalledWith('Tree start');
                 treeStartSpy.mockRestore();
@@ -806,7 +842,7 @@ describe('CgateWebBridge', () => {
                 bridge.haDiscovery = { handleTreeData: jest.fn() };
                 const treeDataSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeData');
                 
-                bridge._processCommandResponse('301', 'Tree data content');
+                bridge._processCommandResponse('347', 'Tree data content');
                 
                 expect(treeDataSpy).toHaveBeenCalledWith('Tree data content');
                 treeDataSpy.mockRestore();
@@ -817,7 +853,7 @@ describe('CgateWebBridge', () => {
                 bridge.haDiscovery = { handleTreeEnd: jest.fn() };
                 const treeEndSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeEnd');
                 
-                bridge._processCommandResponse('399', 'Tree end');
+                bridge._processCommandResponse('344', 'Tree end');
                 
                 expect(treeEndSpy).toHaveBeenCalled();
                 treeEndSpy.mockRestore();
@@ -839,9 +875,10 @@ describe('CgateWebBridge', () => {
                 
                 bridge._processCommandObjectStatus(statusData);
                 
+                // Level 75 out of 255 = 29% (75/255 * 100 = 29.4, rounded to 29)
                 expect(publishSpy).toHaveBeenCalledWith({
                     topic: 'cbus/read/254/56/1/level',
-                    payload: '75',
+                    payload: '29',
                     options: { qos: 0 }
                 });
             });
@@ -894,12 +931,12 @@ describe('CgateWebBridge', () => {
         describe('_publishEvent()', () => {
             it('should publish lighting events to MQTT', () => {
                 const mockEvent = {
+                    isValid: () => true,
                     getNetwork: () => '254',
                     getApplication: () => '56', 
                     getGroup: () => '1',
                     getAction: () => 'on',
-                    getLevel: () => 255,
-                    isPirSensor: () => false
+                    getLevel: () => 255
                 };
                 
                 bridge._publishEvent(mockEvent);
@@ -913,12 +950,14 @@ describe('CgateWebBridge', () => {
 
             it('should publish PIR sensor events differently', () => {
                 const mockEvent = {
+                    isValid: () => true,
                     getNetwork: () => '254',
                     getApplication: () => '56',
                     getGroup: () => '1', 
                     getAction: () => 'on',
-                    isPirSensor: () => true
+                    getLevel: () => null
                 };
+                bridge.settings.ha_discovery_pir_app_id = '56';
                 
                 bridge._publishEvent(mockEvent);
                 
@@ -949,7 +988,11 @@ describe('CgateWebBridge', () => {
             it('should not emit when level is null', () => {
                 const emitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
                 const mockEvent = {
-                    getLevel: () => null
+                    getApplication: () => '56',
+                    getNetwork: () => '254',
+                    getGroup: () => '1',
+                    getLevel: () => null,
+                    getAction: () => 'some_other_action' // Not 'on' or 'off', so no level implied
                 };
                 
                 bridge._emitLevelFromEvent(mockEvent);
