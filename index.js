@@ -91,7 +91,7 @@ function main() {
     });
     
     // Start the bridge (async)
-    bridge.start()
+    return bridge.start()
         .then(() => {
             console.log('[INFO] cgateweb started successfully');
         })
@@ -102,7 +102,7 @@ function main() {
 }
 
 // Only run if this script is executed directly
-if (require.main === module) {
+if (require.main === module || (require.main && require.main.filename === __filename)) {
     main();
 }
 
