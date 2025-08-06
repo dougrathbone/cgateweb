@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 
 // --- Mock CgateConnectionPool ---
 const mockConnectionPool = new EventEmitter();
-mockConnectionPool.setMaxListeners(20); // Prevent memory leak warnings
+mockConnectionPool.setMaxListeners(50); // Prevent memory leak warnings
 mockConnectionPool.start = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = true;
     mockConnectionPool.healthyConnections = { size: 3 };
@@ -463,7 +463,8 @@ describe('CgateWebBridge', () => {
                 bridge.settings.getallnetapp = '254/56';
                 bridge.settings.getallperiod = 5000; // 5 seconds
                 bridge.mqttManager.connected = true;
-                bridge.commandConnection.connected = true;
+                mockConnectionPool.isStarted = true;
+                mockConnectionPool.healthyConnections = { size: 3 };
                 bridge.eventConnection.connected = true;
 
                 bridge._handleAllConnected();
@@ -570,28 +571,53 @@ describe('CgateWebBridge', () => {
             });
 
             it('should handle gettree commands', () => {
-                const command = { network: '254', app: '', group: '', type: 'tree' };
+                // Mock haDiscovery to prevent null reference error
+                bridge.haDiscovery = { treeNetwork: null };
+                
+                const command = {
+                    getCommandType: jest.fn().mockReturnValue('gettree'),
+                    getNetwork: jest.fn().mockReturnValue('254'),
+                    getApplication: jest.fn().mockReturnValue(''),
+                    getGroup: jest.fn().mockReturnValue('')
+                };
                 bridge._processMqttCommand(command, 'cbus/write/254///tree', '');
 
                 expect(getTreeSpy).toHaveBeenCalledWith(command);
             });
 
             it('should handle getall commands', () => {
-                const command = { network: '254', app: '56', group: '', type: 'getall' };
+                const command = {
+                    getCommandType: jest.fn().mockReturnValue('getall'),
+                    getNetwork: jest.fn().mockReturnValue('254'),
+                    getApplication: jest.fn().mockReturnValue('56'),
+                    getGroup: jest.fn().mockReturnValue('')
+                };
                 bridge._processMqttCommand(command, 'cbus/write/254/56//getall', '');
 
                 expect(getAllSpy).toHaveBeenCalledWith(command);
             });
 
             it('should handle switch commands with payload', () => {
-                const command = { network: '254', app: '56', group: '1', type: 'switch' };
+                const command = {
+                    getCommandType: jest.fn().mockReturnValue('switch'),
+                    getNetwork: jest.fn().mockReturnValue('254'),
+                    getApplication: jest.fn().mockReturnValue('56'),
+                    getGroup: jest.fn().mockReturnValue('1')
+                };
                 bridge._processMqttCommand(command, 'cbus/write/254/56/1/switch', 'ON');
 
                 expect(switchSpy).toHaveBeenCalledWith(command, 'ON');
             });
 
             it('should handle ramp commands', () => {
-                const command = { network: '254', app: '56', group: '1', type: 'ramp' };
+                const command = {
+                    getCommandType: jest.fn().mockReturnValue('ramp'),
+                    getNetwork: jest.fn().mockReturnValue('254'),
+                    getApplication: jest.fn().mockReturnValue('56'),
+                    getGroup: jest.fn().mockReturnValue('1'),
+                    getLevel: jest.fn().mockReturnValue(50),
+                    getRampTime: jest.fn().mockReturnValue(null)
+                };
                 bridge._processMqttCommand(command, 'cbus/write/254/56/1/ramp', '50');
 
                 expect(rampSpy).toHaveBeenCalledWith(command, '50', 'cbus/write/254/56/1/ramp');
@@ -627,7 +653,7 @@ describe('CgateWebBridge', () => {
                 };
                 bridge._handleMqttGetAll(command);
 
-                expect(queueSpy).toHaveBeenCalledWith('get //TestProject/254/56/* level\n');
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
             });
         });
 
@@ -640,7 +666,7 @@ describe('CgateWebBridge', () => {
                 };
                 bridge._handleMqttSwitch(command, 'ON');
 
-                expect(queueSpy).toHaveBeenCalledWith('on //TestProject/254/56/1\n');
+                expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/56/1\n');
             });
 
             it('should queue OFF command for switch', () => {
@@ -651,7 +677,7 @@ describe('CgateWebBridge', () => {
                 };
                 bridge._handleMqttSwitch(command, 'OFF');
 
-                expect(queueSpy).toHaveBeenCalledWith('off //TestProject/254/56/1\n');
+                expect(queueSpy).toHaveBeenCalledWith('OFF //TestProject/254/56/1\n');
             });
 
             it('should queue ON command for unknown payload', () => {
@@ -678,7 +704,7 @@ describe('CgateWebBridge', () => {
                 };
                 bridge._handleMqttRamp(command, '75', 'cbus/write/254/56/1/ramp');
 
-                expect(queueSpy).toHaveBeenCalledWith('ramp //TestProject/254/56/1 75\n');
+                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 75\n');
             });
 
             it('should handle INCREASE command', () => {
@@ -719,7 +745,7 @@ describe('CgateWebBridge', () => {
                 };
                 bridge._handleMqttRamp(command, '50,5s', 'cbus/write/254/56/1/ramp');
 
-                expect(queueSpy).toHaveBeenCalledWith('ramp //TestProject/254/56/1 50 5s\n');
+                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 50 5s\n');
             });
         });
     });
