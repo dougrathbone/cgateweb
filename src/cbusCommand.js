@@ -10,9 +10,7 @@ const {
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
     CGATE_LEVEL_MIN,
-    CGATE_LEVEL_MAX,
-    RAMP_STEP,
-    ERROR_PREFIX
+    CGATE_LEVEL_MAX
 } = require('./constants');
 
 /**

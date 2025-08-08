@@ -27,17 +27,19 @@ class SettingsValidator {
             'cbuscommandport', 'cbuseventport', 'messageinterval'
         ];
 
-        // Check required string settings
+        // Check required string settings with helpful error messages
         for (const setting of requiredStringSettings) {
             if (!settings[setting] || typeof settings[setting] !== 'string') {
-                errors.push(`'${setting}' must be a non-empty string`);
+                const suggestions = this._getSuggestion(setting);
+                errors.push(`'${setting}' must be a non-empty string${suggestions ? '. ' + suggestions : ''}`);
             }
         }
 
-        // Check required number settings
+        // Check required number settings with helpful error messages
         for (const setting of requiredNumberSettings) {
             if (typeof settings[setting] !== 'number' || settings[setting] <= 0) {
-                errors.push(`'${setting}' must be a positive number`);
+                const suggestions = this._getSuggestion(setting);
+                errors.push(`'${setting}' must be a positive number${suggestions ? '. ' + suggestions : ''}`);
             }
         }
 
@@ -153,6 +155,65 @@ class SettingsValidator {
             this.logger.info('Home Assistant discovery is disabled - devices will need manual configuration');
         }
     }
+
+    /**
+     * Get helpful suggestions for common configuration errors
+     * @private
+     */
+    _getSuggestion(setting) {
+        const suggestions = {
+            'mqtt': 'Example: "localhost:1883" or "mqtt.home.local:1883"',
+            'cbusip': 'The IP address of your C-Gate server, e.g., "192.168.1.100"',
+            'cbusname': 'The name of your C-Bus project as configured in C-Gate',
+            'cbuscommandport': 'Default is 20023 for C-Gate command interface',
+            'cbuseventport': 'Default is 20025 for C-Gate event interface',
+            'messageinterval': 'Recommended value is 200ms to avoid overwhelming C-Gate'
+        };
+        return suggestions[setting] || null;
+    }
+
+    /**
+     * Validate and provide configuration setup guidance
+     */
+    validateSetup(settings) {
+        const issues = [];
+        const recommendations = [];
+
+        // Check if this looks like a first-time setup
+        if (!settings || Object.keys(settings).length === 0) {
+            return {
+                isFirstTime: true,
+                message: 'No configuration found. Run "npm run setup" to create settings.js from template.'
+            };
+        }
+
+        // Check for common misconfigurations
+        if (settings.cbusip === 'your-cgate-ip') {
+            recommendations.push('Update cbusip to match your actual C-Gate server IP address');
+        }
+
+        if (settings.mqtt === 'localhost:1883' && process.env.NODE_ENV === 'production') {
+            recommendations.push('Consider updating MQTT broker address for production deployment');
+        }
+
+        if (settings.cbusname === 'CLIPSAL') {
+            recommendations.push('Update cbusname to match your actual C-Bus project name');
+        }
+
+        // Check for development vs production settings
+        if (process.env.NODE_ENV === 'production') {
+            if (!settings.mqttusername || !settings.mqttpassword) {
+                issues.push('MQTT authentication is recommended for production environments');
+            }
+        }
+
+        return {
+            isFirstTime: false,
+            issues,
+            recommendations,
+            isValid: issues.length === 0
+        };
+    }
 }
 
 // Create default validator instance
@@ -162,5 +223,6 @@ module.exports = {
     SettingsValidator,
     validate: (settings) => defaultValidator.validate(settings),
     validateWithWarnings: (settings) => defaultValidator.validateWithWarnings(settings),
+    validateSetup: (settings) => defaultValidator.validateSetup(settings),
     createValidator: (options) => new SettingsValidator(options)
 };

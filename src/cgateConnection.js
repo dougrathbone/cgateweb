@@ -2,9 +2,6 @@ const net = require('net');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 const { 
-    LOG_PREFIX, 
-    WARN_PREFIX, 
-    ERROR_PREFIX, 
     CGATE_CMD_EVENT_ON, 
     CGATE_CMD_LOGIN, 
     NEWLINE 

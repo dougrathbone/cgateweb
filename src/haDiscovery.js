@@ -1,9 +1,6 @@
 const parseString = require('xml2js').parseString;
 const { createLogger } = require('./logger');
-const { 
-    LOG_PREFIX, 
-    WARN_PREFIX, 
-    ERROR_PREFIX,
+const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_PREFIX_WRITE,
@@ -77,7 +74,7 @@ class HaDiscovery {
         });
     }
 
-    handleTreeStart(statusData) {
+    handleTreeStart(_statusData) {
         this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}`);
         this.treeBuffer = '';
     }
@@ -86,7 +83,7 @@ class HaDiscovery {
         this.treeBuffer += statusData + NEWLINE;
     }
 
-    handleTreeEnd(statusData) {
+    handleTreeEnd(_statusData) {
         this.logger.info(`Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${this.treeBuffer.length} bytes. Parsing...`);
         const networkForTree = this.treeNetwork;
         const treeXmlData = this.treeBuffer;

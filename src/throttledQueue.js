@@ -1,5 +1,4 @@
 const { createLogger } = require('./logger');
-const { ERROR_PREFIX } = require('./constants');
 
 class ThrottledQueue {
     constructor(processFn, intervalMs, name = 'Queue') {

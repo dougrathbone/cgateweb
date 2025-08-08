@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS, ERROR_PREFIX } = require('./constants');
+const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS } = require('./constants');
 
 /**
  * Represents a C-Bus event received from the C-Gate server.

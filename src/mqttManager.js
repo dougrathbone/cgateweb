@@ -1,10 +1,8 @@
 const mqtt = require('mqtt');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
+const { createErrorHandler } = require('./errorHandler');
 const { 
-    LOG_PREFIX, 
-    WARN_PREFIX, 
-    ERROR_PREFIX, 
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_STATUS,
     MQTT_PAYLOAD_STATUS_ONLINE,
@@ -12,15 +10,48 @@ const {
     MQTT_ERROR_AUTH
 } = require('./constants');
 
+/**
+ * Manages MQTT broker connection and message handling for the C-Bus bridge.
+ * 
+ * This class provides a high-level interface for MQTT operations including:
+ * - Connection management with automatic reconnection
+ * - Message publishing and subscription
+ * - Status publishing for Home Assistant integration
+ * - Error handling and logging
+ * 
+ * @extends EventEmitter
+ * @emits 'connected' - When successfully connected to MQTT broker
+ * @emits 'disconnected' - When disconnected from MQTT broker
+ * @emits 'message' - When a message is received from subscribed topics
+ * @emits 'error' - When MQTT errors occur
+ */
 class MqttManager extends EventEmitter {
+    /**
+     * Creates a new MQTT manager instance.
+     * 
+     * @param {Object} settings - Configuration settings
+     * @param {string} settings.mqtt - MQTT broker URL (e.g., 'mqtt://localhost:1883')
+     * @param {string} [settings.mqttusername] - MQTT username for authentication
+     * @param {string} [settings.mqttpassword] - MQTT password for authentication
+     */
     constructor(settings) {
         super();
         this.settings = settings;
         this.client = null;
         this.connected = false;
         this.logger = createLogger({ component: 'MqttManager' });
+        this.errorHandler = createErrorHandler('MqttManager');
     }
 
+    /**
+     * Connects to the MQTT broker.
+     * 
+     * Establishes connection with the configured MQTT broker using the settings
+     * provided during construction. If a client already exists, it will be
+     * disconnected first.
+     * 
+     * @throws {Error} When connection fails or broker is unreachable
+     */
     connect() {
         if (this.client) {
             this.logger.info(`MQTT client already exists. Disconnecting first.`);
@@ -51,6 +82,16 @@ class MqttManager extends EventEmitter {
         this.connected = false;
     }
 
+    /**
+     * Publishes a message to an MQTT topic.
+     * 
+     * @param {string} topic - The MQTT topic to publish to
+     * @param {string} payload - The message payload to publish
+     * @param {Object} [options={}] - MQTT publish options (qos, retain, etc.)
+     * @param {number} [options.qos=0] - Quality of Service level (0, 1, or 2)
+     * @param {boolean} [options.retain=false] - Whether to retain the message
+     * @returns {boolean} True if publish succeeded, false otherwise
+     */
     publish(topic, payload, options = {}) {
         if (!this.client || !this.connected) {
             this.logger.warn(`Cannot publish to MQTT: not connected`);
@@ -141,27 +182,27 @@ class MqttManager extends EventEmitter {
     }
 
     _handleError(err) {
-        // Handle specific authentication error
-        if (err.code === MQTT_ERROR_AUTH) { 
-            this.logger.error(`MQTT Connection Error: Authentication failed. Please check username/password in settings.js.`);
-            this.logger.error(`Exiting due to fatal MQTT authentication error.`);
-            
-            if (this.client) {
-                this.client.removeAllListeners();
-                this.client = null;
-            }
-            
-            process.exit(1); // Exit if auth fails
+        this.connected = false; // Assume disconnected on error
+        
+        // Handle specific authentication error as fatal
+        if (err.code === MQTT_ERROR_AUTH) {
+            this.errorHandler.handle(err, {
+                brokerUrl: this.settings.mqtt,
+                hasUsername: !!this.settings.mqttusername
+            }, 'MQTT authentication', true); // Fatal error
         } else {
-            // Handle generic errors
-            this.logger.error(`MQTT Client Error:`, { error: err });
-            this.logger.debug('Full MQTT error object:', { err }); 
-            this.connected = false; // Assume disconnected on error
-            
-            if (this.client) {
-                this.client.removeAllListeners();
-                this.client = null;
-            }
+            // Handle generic connection errors with context
+            this.errorHandler.handle(err, {
+                brokerUrl: this.settings.mqtt,
+                connected: this.connected,
+                errorCode: err.code
+            }, 'MQTT connection');
+        }
+        
+        // Clean up client
+        if (this.client) {
+            this.client.removeAllListeners();
+            this.client = null;
         }
         
         this.emit('error', err);
