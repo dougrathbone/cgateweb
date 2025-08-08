@@ -286,65 +286,7 @@ describe('CgateWebBridge', () => {
         });
     });
 
-    describe('_processCommandErrorResponse', () => {
-        let errorSpy;
-        beforeEach(() => {
-            errorSpy = jest.spyOn(bridge, 'error');
-        });
-        afterEach(() => {
-            errorSpy.mockRestore();
-        });
-
-        it('should log specific message for 400 Bad Request', () => {
-            bridge._processCommandErrorResponse('400', 'Syntax error near GET');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 400: (Bad Request/Syntax Error) - Syntax error near GET');
-        });
-
-        it('should log specific message for 401 Unauthorized', () => {
-            bridge._processCommandErrorResponse('401', 'Access denied');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 401: (Unauthorized - Check Credentials/Permissions) - Access denied');
-        });
-
-        it('should log specific message for 404 Not Found', () => {
-            bridge._processCommandErrorResponse('404', 'Object not found');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 404: (Not Found - Check Object Path) - Object not found');
-        });
-
-        it('should log specific message for 406 Not Acceptable', () => {
-            bridge._processCommandErrorResponse('406', 'Invalid parameter');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 406: (Not Acceptable - Invalid Parameter Value) - Invalid parameter');
-        });
-
-        it('should log specific message for 500 Internal Server Error', () => {
-            bridge._processCommandErrorResponse('500', 'Server error');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 500: (Internal Server Error) - Server error');
-        });
-
-        it('should log specific message for 503 Service Unavailable', () => {
-            bridge._processCommandErrorResponse('503', 'Service not available');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 503: (Service Unavailable) - Service not available');
-        });
-
-        it('should log generic message for other 4xx errors', () => {
-            bridge._processCommandErrorResponse('498', 'Custom client error');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 498: - Custom client error');
-        });
-
-        it('should log generic message for other 5xx errors', () => {
-            bridge._processCommandErrorResponse('598', 'Custom server error');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 598: - Custom server error');
-        });
-
-        it('should handle missing statusData correctly for specific codes', () => {
-            bridge._processCommandErrorResponse('404', '');
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 404: (Not Found - Check Object Path) - No details provided');
-        });
-
-        it('should handle missing statusData correctly for generic codes', () => {
-            bridge._processCommandErrorResponse('498', null);
-            expect(errorSpy).toHaveBeenCalledWith('[ERROR] C-Gate Command Error 498: - No details provided');
-        });
-    });
+    // Error response processing tests are now handled by CommandResponseProcessor tests
 
     describe('Bridge Start/Stop Operations', () => {
         let infoSpy, logSpy;
@@ -551,6 +493,14 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleCommandData()', () => {
+            beforeEach(() => {
+                publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+            });
+
+            afterEach(() => {
+                publishSpy.mockRestore();
+            });
+
             it('should process command data through line processor', () => {
                 const testData = Buffer.from('200-This is a test response\n201-Another line\n');
                 const processSpy = jest.spyOn(bridge.commandLineProcessor, 'processData');
@@ -560,111 +510,42 @@ describe('CgateWebBridge', () => {
                 expect(processSpy).toHaveBeenCalledWith(testData, expect.any(Function));
                 processSpy.mockRestore();
             });
-        });
 
-        describe('_parseCommandResponseLine()', () => {
-            it('should parse successful responses', () => {
-                const result = bridge._parseCommandResponseLine('200-Command successful');
+            it('should delegate to CommandResponseProcessor for single line', () => {
+                const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
+                const testData = Buffer.from('300-//PROJECT/254/56/1: level=128\n');
                 
-                expect(result).toEqual({
-                    responseCode: '200',
-                    statusData: 'Command successful'
-                });
+                bridge._handleCommandData(testData);
+                
+                expect(processSpy).toHaveBeenCalledWith('300-//PROJECT/254/56/1: level=128');
+                processSpy.mockRestore();
             });
 
-            it('should parse error responses', () => {
-                const result = bridge._parseCommandResponseLine('400-Bad request error');
+            it('should delegate to CommandResponseProcessor for multiple lines', () => {
+                const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
+                const testData = Buffer.from('300-//PROJECT/254/56/1: level=128\n343-Begin tree\n344-End tree\n');
                 
-                expect(result).toEqual({
-                    responseCode: '400',
-                    statusData: 'Bad request error'
-                });
-            });
-
-            it('should handle responses without status data', () => {
-                const result = bridge._parseCommandResponseLine('200 ');
+                bridge._handleCommandData(testData);
                 
-                expect(result).toEqual({
-                    responseCode: '200',
-                    statusData: ''
-                });
-            });
-
-            it('should ignore malformed responses', () => {
-                const processSpy = jest.spyOn(bridge, '_processCommandResponse');
-                
-                bridge._parseCommandResponseLine('Invalid response line');
-                
-                expect(processSpy).not.toHaveBeenCalled();
+                expect(processSpy).toHaveBeenCalledTimes(3);
+                expect(processSpy).toHaveBeenCalledWith('300-//PROJECT/254/56/1: level=128');
+                expect(processSpy).toHaveBeenCalledWith('343-Begin tree');
+                expect(processSpy).toHaveBeenCalledWith('344-End tree');
                 processSpy.mockRestore();
             });
         });
 
-        describe('_processCommandResponse()', () => {
-            it('should process object status responses', () => {
-                const objectStatusSpy = jest.spyOn(bridge, '_processCommandObjectStatus');
+        // Command response processing tests are now handled by CommandResponseProcessor tests
+        
+        describe('Command data integration with CommandResponseProcessor', () => {
+            it('should delegate command processing to CommandResponseProcessor', () => {
+                const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
+                const testData = Buffer.from('300-//TestProject/254/56/1: level=128\n');
                 
-                bridge._processCommandResponse('300', 'Object status data');
+                bridge._handleCommandData(testData);
                 
-                expect(objectStatusSpy).toHaveBeenCalledWith('Object status data');
-                objectStatusSpy.mockRestore();
-            });
-
-            it('should process tree start responses', () => {
-                // Mock haDiscovery
-                bridge.haDiscovery = { handleTreeStart: jest.fn() };
-                const treeStartSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeStart');
-                
-                bridge._processCommandResponse('343', 'Tree start');
-                
-                expect(treeStartSpy).toHaveBeenCalledWith('Tree start');
-                treeStartSpy.mockRestore();
-            });
-
-            it('should process tree data responses', () => {
-                // Mock haDiscovery
-                bridge.haDiscovery = { handleTreeData: jest.fn() };
-                const treeDataSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeData');
-                
-                bridge._processCommandResponse('347', 'Tree data content');
-                
-                expect(treeDataSpy).toHaveBeenCalledWith('Tree data content');
-                treeDataSpy.mockRestore();
-            });
-
-            it('should process tree end responses', () => {
-                // Mock haDiscovery
-                bridge.haDiscovery = { handleTreeEnd: jest.fn() };
-                const treeEndSpy = jest.spyOn(bridge.haDiscovery, 'handleTreeEnd');
-                
-                bridge._processCommandResponse('344', 'Tree end');
-                
-                expect(treeEndSpy).toHaveBeenCalled();
-                treeEndSpy.mockRestore();
-            });
-
-            it('should process error responses', () => {
-                const errorSpy = jest.spyOn(bridge, '_processCommandErrorResponse');
-                
-                bridge._processCommandResponse('404', 'Not found error');
-                
-                expect(errorSpy).toHaveBeenCalledWith('404', 'Not found error');
-                errorSpy.mockRestore();
-            });
-        });
-
-        describe('_processCommandObjectStatus()', () => {
-            it('should publish object status to MQTT', () => {
-                const statusData = '//TestProject/254/56/1: level=75';
-                
-                bridge._processCommandObjectStatus(statusData);
-                
-                // Level 75 out of 255 = 29% (75/255 * 100 = 29.4, rounded to 29)
-                expect(publishSpy).toHaveBeenCalledWith({
-                    topic: 'cbus/read/254/56/1/level',
-                    payload: '29',
-                    options: { qos: 0 }
-                });
+                expect(processSpy).toHaveBeenCalledWith('300-//TestProject/254/56/1: level=128');
+                processSpy.mockRestore();
             });
         });
     });
