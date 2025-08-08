@@ -7,6 +7,7 @@ const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
 const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
+const ConnectionManager = require('./connectionManager');
 const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
@@ -102,6 +103,13 @@ class CgateWebBridge {
         
         // Maintain backward compatibility - expose first connection from pool
         this.commandConnection = null; // Will be set after pool starts
+
+        // Connection manager to coordinate all connections
+        this.connectionManager = new ConnectionManager({
+            mqttManager: this.mqttManager,
+            commandConnectionPool: this.commandConnectionPool,
+            eventConnection: this.eventConnection
+        }, this.settings);
         
         // Service modules (haDiscovery will be initialized after pool starts)
         this.haDiscovery = null;
@@ -136,8 +144,8 @@ class CgateWebBridge {
         // Wire up the router after internal event emitter is created
         this.mqttCommandRouter.internalEventEmitter = this.internalEventEmitter;
 
-        // Internal state tracking
-        this.allConnected = false;
+        // Internal state tracking (delegated to connection manager)
+        // this.allConnected = false; // Now managed by ConnectionManager
 
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
@@ -151,35 +159,23 @@ class CgateWebBridge {
     }
 
     _setupEventHandlers() {
-        // MQTT event handlers
-        this.mqttManager.on('connect', () => {
+        // Connection manager handles all connection state coordination
+        this.connectionManager.on('allConnected', () => {
             this._handleAllConnected();
         });
-        this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
-        this.mqttManager.on('close', () => {
-            this.allConnected = false;
-        });
 
-        // C-Gate command connection pool handlers
+        // Set first connection for backward compatibility when pool starts
         this.commandConnectionPool.on('started', () => {
-            // Set first connection for backward compatibility
             const firstConnection = this.commandConnectionPool.connections[0];
             this.commandConnection = firstConnection;
-            this._handleAllConnected();
-        });
-        this.commandConnectionPool.on('data', (data) => this._handleCommandData(data));
-        this.commandConnectionPool.on('allConnectionsUnhealthy', () => {
-            this.allConnected = false;
         });
 
-        // C-Gate event connection handlers
-        this.eventConnection.on('connect', () => {
-            this._handleAllConnected();
-        });
+        // MQTT message routing
+        this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
+
+        // Data processing handlers
+        this.commandConnectionPool.on('data', (data) => this._handleCommandData(data));
         this.eventConnection.on('data', (data) => this._handleEventData(data));
-        this.eventConnection.on('close', () => {
-            this.allConnected = false;
-        });
 
         // MQTT command router event handlers
         this.mqttCommandRouter.on('haDiscoveryTrigger', () => {
@@ -207,10 +203,8 @@ class CgateWebBridge {
     async start() {
         this.logger.info('Starting cgateweb bridge');
         
-        // Start all connections
-        this.mqttManager.connect();
-        await this.commandConnectionPool.start();
-        this.eventConnection.connect();
+        // Start all connections via connection manager
+        await this.connectionManager.start();
         
         return this;
     }
@@ -241,54 +235,40 @@ class CgateWebBridge {
         this.commandLineProcessor.close();
         this.eventLineProcessor.close();
 
-        // Disconnect all connections
-        this.mqttManager.disconnect();
-        await this.commandConnectionPool.stop();
-        this.eventConnection.disconnect();
-
-        this.allConnected = false;
+        // Disconnect all connections via connection manager
+        await this.connectionManager.stop();
     }
 
     _handleAllConnected() {
-        const poolHealthy = this.commandConnectionPool.isStarted && 
-                           this.commandConnectionPool.healthyConnections.size > 0;
-        
-        if (this.mqttManager.connected && 
-            poolHealthy && 
-            this.eventConnection.connected &&
-            !this.allConnected) {
-            
-            this.allConnected = true;
-            this.log(`${LOG_PREFIX} ALL CONNECTED`);
-            this.log(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport}). Awaiting messages...`);
+        // Called when connection manager signals all connections are ready
+        this.log(`${LOG_PREFIX} ALL CONNECTED - Initializing services...`);
 
-            // Trigger initial get all
-            if (this.settings.getallnetapp && this.settings.getallonstart) {
-                this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
+        // Trigger initial get all
+        if (this.settings.getallnetapp && this.settings.getallonstart) {
+            this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
+            this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
+        }
+
+        // Setup periodic get all
+        if (this.settings.getallnetapp && this.settings.getallperiod) {
+            if (this.periodicGetAllInterval) {
+                clearInterval(this.periodicGetAllInterval);
+            }
+            this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
+            this.periodicGetAllInterval = setInterval(() => {
+                this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
                 this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
-            }
-
-            // Setup periodic get all
-            if (this.settings.getallnetapp && this.settings.getallperiod) {
-                if (this.periodicGetAllInterval) {
-                    clearInterval(this.periodicGetAllInterval);
-                }
-                this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
-                this.periodicGetAllInterval = setInterval(() => {
-                    this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
-                    this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
-                }, this.settings.getallperiod * 1000);
-            }
-            
-            // Initialize haDiscovery after pool starts
-            if (!this.haDiscovery) {
-                this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
-            }
-            
-            // Trigger HA Discovery
-            if (this.settings.ha_discovery_enabled) {
-                this.haDiscovery.trigger();
-            }
+            }, this.settings.getallperiod * 1000);
+        }
+        
+        // Initialize haDiscovery after pool starts
+        if (!this.haDiscovery) {
+            this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
+        }
+        
+        // Trigger HA Discovery
+        if (this.settings.ha_discovery_enabled) {
+            this.haDiscovery.trigger();
         }
     }
 
