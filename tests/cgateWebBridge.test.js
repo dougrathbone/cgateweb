@@ -208,9 +208,9 @@ describe('CgateWebBridge', () => {
         });
 
 
-        it('should initialize buffers to empty', () => {
-            expect(bridge.commandBufferParser.getBuffer()).toBe('');
-            expect(bridge.eventBufferParser.getBuffer()).toBe('');
+        it('should initialize line processors', () => {
+            expect(bridge.commandLineProcessor.getBuffer()).toBe('');
+            expect(bridge.eventLineProcessor.getBuffer()).toBe('');
         });
 
         it('should initialize haDiscovery as null initially', () => {
@@ -554,9 +554,9 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleCommandData()', () => {
-            it('should process command data through buffer parser', () => {
+            it('should process command data through line processor', () => {
                 const testData = Buffer.from('200-This is a test response\n201-Another line\n');
-                const processSpy = jest.spyOn(bridge.commandBufferParser, 'processData');
+                const processSpy = jest.spyOn(bridge.commandLineProcessor, 'processData');
                 
                 bridge._handleCommandData(testData);
                 
@@ -684,9 +684,9 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleEventData()', () => {
-            it('should process event data through buffer parser', () => {
+            it('should process event data through line processor', () => {
                 const testData = Buffer.from('lighting on //TestProject/254/56/1\n');
-                const processSpy = jest.spyOn(bridge.eventBufferParser, 'processData');
+                const processSpy = jest.spyOn(bridge.eventLineProcessor, 'processData');
                 
                 bridge._handleEventData(testData);
                 
