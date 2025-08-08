@@ -8,6 +8,7 @@ const CBusEvent = require('./cbusEvent');
 const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
+const EventPublisher = require('./eventPublisher');
 const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
@@ -149,6 +150,14 @@ class CgateWebBridge {
 
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
+
+        // Event publisher for MQTT messages
+        this.eventPublisher = new EventPublisher({
+            settings: this.settings,
+            mqttPublishQueue: this.mqttPublishQueue,
+            mqttOptions: this._mqttOptions,
+            logger: this.logger
+        });
 
         // Validate settings and exit if invalid
         if (!this.settingsValidator.validate(this.settings)) {
@@ -344,7 +353,7 @@ class CgateWebBridge {
     _processCommandObjectStatus(statusData) {
         const event = new CBusEvent(`${CGATE_RESPONSE_OBJECT_STATUS} ${statusData}`);
         if (event.isValid()) {
-            this._publishEvent(event, '(Cmd)');
+            this.eventPublisher.publishEvent(event, '(Cmd)');
             this._emitLevelFromEvent(event);
         } else {
             this.warn(`${WARN_PREFIX} Could not parse object status: ${statusData}`);
@@ -385,7 +394,7 @@ class CgateWebBridge {
         try {
             const event = new CBusEvent(line);
             if (event.isValid()) {
-                this._publishEvent(event, '(Evt)');
+                this.eventPublisher.publishEvent(event, '(Evt)');
                 this._emitLevelFromEvent(event);
             } else {
                 this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
@@ -421,54 +430,7 @@ class CgateWebBridge {
         }
     }
 
-    /**
-     * Publishes C-Bus events to MQTT topics for Home Assistant and other consumers.
-     * 
-     * Converts C-Bus events into MQTT messages:
-     * - C-Bus "lighting on 254/56/4" → MQTT "cbus/read/254/56/4/state" with "ON"
-     * - C-Bus "lighting ramp 254/56/4 128" → MQTT "cbus/read/254/56/4/level" with "50"
-     * 
-     * Special handling for PIR sensors (motion detectors) that only publish state.
-     * 
-     * @param {CBusEvent} event - Parsed C-Bus event to publish
-     * @param {string} [source=''] - Source identifier for logging (e.g., '(Evt)', '(Cmd)')
-     * @private
-     */
-    _publishEvent(event, source = '') {
-        if (!event || !event.isValid()) {
-            return;
-        }
-
-        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
-        // Convert C-Gate level (0-255) to percentage (0-100) for Home Assistant
-        const levelPercent = Math.round((event.getLevel() || 0) / CGATE_LEVEL_MAX * 100);
-        const isPirSensor = event.getApplication() === this.settings.ha_discovery_pir_app_id;
-
-        let state;
-        if (isPirSensor) {
-            // PIR sensors: state based on action (motion detected/cleared)
-            state = (event.getAction() === CGATE_CMD_ON.toLowerCase()) ? MQTT_STATE_ON : MQTT_STATE_OFF;
-        } else {
-            // Lighting devices: state based on brightness level (any level > 0 = ON)
-            state = (levelPercent > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
-        }
-       
-        this.log(`${LOG_PREFIX} C-Bus Status ${source}: ${event.getNetwork()}/${event.getApplication()}/${event.getGroup()} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
-
-        this.mqttPublishQueue.add({ 
-            topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, 
-            payload: state, 
-            options: this._mqttOptions 
-        });
-        
-        if (!isPirSensor) {
-            this.mqttPublishQueue.add({ 
-                topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, 
-                payload: levelPercent.toString(), 
-                options: this._mqttOptions 
-            });
-        }
-    }
+    // Event publishing now delegated to EventPublisher
 
     async _sendCgateCommand(command) {
         try {
