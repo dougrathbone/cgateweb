@@ -86,7 +86,7 @@ describe('BufferParser', () => {
         });
 
         it('should re-throw errors from lineProcessor with context', () => {
-            const errorProcessor = (line) => {
+            const errorProcessor = (_line) => {
                 throw new Error('Processing failed');
             };
             

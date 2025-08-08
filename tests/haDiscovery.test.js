@@ -148,7 +148,7 @@ describe('HaDiscovery', () => {
             haDiscovery.treeBuffer = '<xml>test</xml>';
             
             // Mock parseString to return our test data
-            const parseString = require('xml2js').parseString;
+            const _parseString = require('xml2js').parseString;
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
                 callback(null, MOCK_TREEXML_RESULT_NET254);
             });

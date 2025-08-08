@@ -3,6 +3,26 @@ const { SettingsValidator, validate, validateWithWarnings, createValidator } = r
 describe('SettingsValidator', () => {
     let validator;
     let validSettings;
+    let originalConsole;
+
+    beforeAll(() => {
+        // Suppress console output during tests
+        originalConsole = {
+            error: console.error,
+            warn: console.warn,
+            log: console.log
+        };
+        console.error = jest.fn();
+        console.warn = jest.fn();
+        console.log = jest.fn();
+    });
+
+    afterAll(() => {
+        // Restore console methods
+        console.error = originalConsole.error;
+        console.warn = originalConsole.warn;
+        console.log = originalConsole.log;
+    });
 
     beforeEach(() => {
         validator = new SettingsValidator({ exitOnError: false });

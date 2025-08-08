@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars */
+ 
 // tests/cbusParser.test.js
 
 // Import necessary classes/functions from the main module
