@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-const path = require('path');
 const CgateWebBridge = require('./src/cgateWebBridge');
 const { validateWithWarnings } = require('./src/settingsValidator');
 
