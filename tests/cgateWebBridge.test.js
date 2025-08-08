@@ -194,8 +194,9 @@ describe('CgateWebBridge', () => {
             expect(mergedBridge.settings.cbusname).toBe(defaultSettings.cbusname);
         });
 
-        it('should initialize allConnected flag to false', () => {
-            expect(bridge.allConnected).toBe(false);
+        it('should initialize connection manager', () => {
+            expect(bridge.connectionManager).toBeDefined();
+            expect(bridge.connectionManager.isAllConnected).toBe(false);
         });
 
         it('should initialize underlying connection managers properly', () => {
@@ -393,7 +394,7 @@ describe('CgateWebBridge', () => {
 
                 expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Stopping cgateweb bridge'));
                 expect(bridge.periodicGetAllInterval).toBeNull();
-                expect(bridge.allConnected).toBe(false);
+                expect(bridge.connectionManager.isAllConnected).toBe(false);
                 expect(clearQueuesSpy).toHaveBeenCalled();
                 expect(clearMqttQueueSpy).toHaveBeenCalled();
                 expect(mqttDisconnectSpy).toHaveBeenCalled();
@@ -430,26 +431,22 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleAllConnected()', () => {
-            it('should set allConnected to true when all services are connected', () => {
-                // Mock all connections as connected
-                bridge.mqttManager.connected = true;
-                bridge.commandConnectionPool.isStarted = true;
-                bridge.commandConnectionPool.healthyConnections = { size: 3 };
-                bridge.eventConnection.connected = true;
-
+            it('should initialize services when all connections are ready', () => {
+                const logSpy = jest.spyOn(bridge, 'log');
+                
                 bridge._handleAllConnected();
 
-                expect(bridge.allConnected).toBe(true);
+                expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ALL CONNECTED - Initializing services'));
             });
 
-            it('should not set allConnected when not all services are connected', () => {
-                bridge.mqttManager.connected = true;
-                bridge.commandConnectionPool.isStarted = false; // Not connected
-                bridge.eventConnection.connected = true;
+            it('should trigger initial getall when configured', () => {
+                bridge.settings.getallnetapp = '254/56';
+                bridge.settings.getallonstart = true;
+                const addSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
 
                 bridge._handleAllConnected();
 
-                expect(bridge.allConnected).toBe(false);
+                expect(addSpy).toHaveBeenCalledWith(expect.stringContaining('GET //TestProject/254/56/* level'));
             });
 
             it('should handle getall on start when enabled', () => {
