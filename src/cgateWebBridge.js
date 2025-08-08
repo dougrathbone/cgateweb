@@ -9,6 +9,7 @@ const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
+const CommandResponseProcessor = require('./commandResponseProcessor');
 const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
@@ -36,10 +37,7 @@ const {
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
-    CGATE_RESPONSE_OBJECT_STATUS,
-    CGATE_RESPONSE_TREE_START,
-    CGATE_RESPONSE_TREE_DATA,
-    CGATE_RESPONSE_TREE_END,
+
     NEWLINE
 } = require('./constants');
 
@@ -159,6 +157,14 @@ class CgateWebBridge {
             logger: this.logger
         });
 
+        // Command response processor for handling C-Gate command responses
+        this.commandResponseProcessor = new CommandResponseProcessor({
+            eventPublisher: this.eventPublisher,
+            haDiscovery: null, // Will be set after haDiscovery is initialized
+            onObjectStatus: (event) => this._emitLevelFromEvent(event),
+            logger: this.logger
+        });
+
         // Validate settings and exit if invalid
         if (!this.settingsValidator.validate(this.settings)) {
             process.exit(1);
@@ -273,6 +279,8 @@ class CgateWebBridge {
         // Initialize haDiscovery after pool starts
         if (!this.haDiscovery) {
             this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
+            // Update command response processor with haDiscovery reference
+            this.commandResponseProcessor.haDiscovery = this.haDiscovery;
         }
         
         // Trigger HA Discovery
@@ -287,95 +295,11 @@ class CgateWebBridge {
 
     _handleCommandData(data) {
         this.commandLineProcessor.processData(data, (line) => {
-            this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
-
-            try {
-                const parsedResponse = this._parseCommandResponseLine(line);
-                if (!parsedResponse) return;
-
-                this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
-            } catch (e) {
-                this.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`); 
-            }
+            this.commandResponseProcessor.processLine(line);
         });
     }
 
-    _parseCommandResponseLine(line) {
-        let responseCode = '';
-        let statusData = '';
-        const hyphenIndex = line.indexOf('-');
 
-        if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
-            // C-Gate format: "200-OK" or "300-//PROJECT/254/56/1: level=255"
-            responseCode = line.substring(0, hyphenIndex).trim();
-            statusData = line.substring(hyphenIndex + 1).trim();
-        } else {
-            // Alternative format: "200 OK" (space-separated)
-            const spaceParts = line.split(' ');
-            responseCode = spaceParts[0].trim();
-            if (spaceParts.length > 1) {
-                 statusData = spaceParts.slice(1).join(' ').trim();
-            }
-        }
-        
-        // C-Gate response codes are 3-digit numbers starting with 1-6 (like HTTP status codes)
-        if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
-             this.log(`${LOG_PREFIX} Skipping invalid command response line: ${line}`);
-             return null; 
-        }
-
-        return { responseCode, statusData };
-    }
-
-    _processCommandResponse(responseCode, statusData) {
-        switch (responseCode) {
-            case CGATE_RESPONSE_OBJECT_STATUS:
-                this._processCommandObjectStatus(statusData);
-                break;
-            case CGATE_RESPONSE_TREE_START:
-                this.haDiscovery.handleTreeStart(statusData);
-                break;
-            case CGATE_RESPONSE_TREE_DATA:
-                this.haDiscovery.handleTreeData(statusData);
-                break;
-            case CGATE_RESPONSE_TREE_END:
-                this.haDiscovery.handleTreeEnd(statusData);
-                break;
-            default:
-                if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
-                    this._processCommandErrorResponse(responseCode, statusData);
-                } else {
-                    this.log(`${LOG_PREFIX} Unhandled C-Gate response ${responseCode}: ${statusData}`);
-                }
-        }
-    }
-
-    _processCommandObjectStatus(statusData) {
-        const event = new CBusEvent(`${CGATE_RESPONSE_OBJECT_STATUS} ${statusData}`);
-        if (event.isValid()) {
-            this.eventPublisher.publishEvent(event, '(Cmd)');
-            this._emitLevelFromEvent(event);
-        } else {
-            this.warn(`${WARN_PREFIX} Could not parse object status: ${statusData}`);
-        }
-    }
-
-    _processCommandErrorResponse(responseCode, statusData) {
-        const baseMessage = `${ERROR_PREFIX} C-Gate Command Error ${responseCode}:`;
-        let hint = '';
-
-        switch (responseCode) {
-            case '400': hint = ' (Bad Request/Syntax Error)'; break;
-            case '401': hint = ' (Unauthorized - Check Credentials/Permissions)'; break;
-            case '404': hint = ' (Not Found - Check Object Path)'; break;
-            case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
-            case '500': hint = ' (Internal Server Error)'; break;
-            case '503': hint = ' (Service Unavailable)'; break;
-        }
-
-        const detail = statusData ? statusData : 'No details provided';
-        this.error(`${baseMessage}${hint} - ${detail}`);
-    }
 
     _handleEventData(data) {
         this.eventLineProcessor.processData(data, (line) => {
