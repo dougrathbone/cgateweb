@@ -191,7 +191,7 @@ describe('CgateConnection', () => {
                 eventConnection.socket = mockSocket;
                 
                 // Mock the command connection
-                const mockCommandConnection = {
+                const _mockCommandConnection = {
                     send: jest.fn()
                 };
                 eventConnection.emit('connected');

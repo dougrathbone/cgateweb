@@ -269,7 +269,7 @@ describe('MqttManager', () => {
 
         describe('error event', () => {
             it('should handle authentication errors', () => {
-                const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
+                const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
                 const originalExit = process.exit;
                 process.exit = jest.fn();
                 
@@ -282,7 +282,15 @@ describe('MqttManager', () => {
                     
                     mockClient.emit('error', authError);
                     
-                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Authentication failed'));
+                    expect(errorHandlerSpy).toHaveBeenCalledWith(
+                        authError,
+                        expect.objectContaining({
+                            brokerUrl: 'localhost:1883',
+                            hasUsername: true
+                        }),
+                        'MQTT authentication',
+                        true // fatal
+                    );
                     expect(process.exit).toHaveBeenCalledWith(1);
                 } finally {
                     process.exit = originalExit;
@@ -290,8 +298,7 @@ describe('MqttManager', () => {
             });
 
             it('should handle other MQTT errors', () => {
-                const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
-                const debugSpy = jest.spyOn(mqttManager.logger, 'debug');
+                const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
                 const testError = new Error('Generic MQTT error');
                 
                 // Prevent unhandled error propagation
@@ -299,11 +306,15 @@ describe('MqttManager', () => {
                 
                 mockClient.emit('error', testError);
                 
-                expect(loggerSpy).toHaveBeenCalledWith(
-                    expect.stringContaining('MQTT Client Error'),
-                    expect.objectContaining({ error: testError })
+                expect(errorHandlerSpy).toHaveBeenCalledWith(
+                    testError,
+                    expect.objectContaining({
+                        brokerUrl: 'localhost:1883',
+                        connected: false,
+                        errorCode: undefined
+                    }),
+                    'MQTT connection'
                 );
-                expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('Full MQTT error object'), expect.any(Object));
             });
         });
 

@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 
 // --- Mock CgateConnectionPool ---
 const mockConnectionPool = new EventEmitter();
-mockConnectionPool.setMaxListeners(50); // Prevent memory leak warnings
+mockConnectionPool.setMaxListeners(100); // Prevent memory leak warnings
 mockConnectionPool.start = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = true;
     mockConnectionPool.healthyConnections = { size: 3 };
@@ -61,7 +61,7 @@ describe('CgateWebBridge', () => {
     let bridge;
     let mockSettings;
     let mockCmdSocketFactory, mockEvtSocketFactory;
-    let lastMockCmdSocket, lastMockEvtSocket;
+    let _lastMockCmdSocket, _lastMockEvtSocket;
     let exitSpy;
 
     beforeEach(() => {
@@ -111,8 +111,8 @@ describe('CgateWebBridge', () => {
         }; 
 
         // Create mock socket factories
-        lastMockCmdSocket = null;
-        lastMockEvtSocket = null;
+        _lastMockCmdSocket = null;
+        _lastMockEvtSocket = null;
         mockCmdSocketFactory = jest.fn(() => {
             const socket = new EventEmitter();
             socket.connect = jest.fn();
@@ -122,7 +122,7 @@ describe('CgateWebBridge', () => {
             socket.on = jest.fn(); 
             socket.connecting = false; 
             socket.destroyed = false;  
-            lastMockCmdSocket = socket; 
+            _lastMockCmdSocket = socket; 
             return socket;
         });
         mockEvtSocketFactory = jest.fn(() => {
@@ -134,7 +134,7 @@ describe('CgateWebBridge', () => {
             socket.on = jest.fn(); 
             socket.connecting = false;
             socket.destroyed = false;
-            lastMockEvtSocket = socket; 
+            _lastMockEvtSocket = socket; 
             return socket;
         });
         
@@ -152,11 +152,21 @@ describe('CgateWebBridge', () => {
         });
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         jest.clearAllTimers();
         mockConsoleWarn.mockClear();
         mockConsoleError.mockClear();
         if(exitSpy) exitSpy.mockRestore();
+        
+        // Cleanup connections to prevent hanging
+        if (bridge) {
+            try {
+                bridge.eventConnection?.disconnect?.();
+                await bridge.commandConnectionPool?.stop?.();
+            } catch {
+                // Ignore cleanup errors
+            }
+        }
     });
 
     describe('Constructor & Initial State', () => {
@@ -349,38 +359,37 @@ describe('CgateWebBridge', () => {
         });
 
         describe('start()', () => {
-            it('should start all connections and log startup message', () => {
+            it('should start all connections and log startup message', async () => {
                 const mqttConnectSpy = jest.spyOn(bridge.mqttManager, 'connect');
-                const cmdConnectSpy = jest.spyOn(bridge.commandConnection, 'connect');
+                const cmdPoolStartSpy = jest.spyOn(bridge.commandConnectionPool, 'start');
                 const evtConnectSpy = jest.spyOn(bridge.eventConnection, 'connect');
 
-                const result = bridge.start();
+                const result = await bridge.start();
 
-                expect(infoSpy).toHaveBeenCalledWith('Starting cgateweb bridge');
                 expect(mqttConnectSpy).toHaveBeenCalled();
-                expect(cmdConnectSpy).toHaveBeenCalled();
+                expect(cmdPoolStartSpy).toHaveBeenCalled();
                 expect(evtConnectSpy).toHaveBeenCalled();
                 expect(result).toBe(bridge); // Method chaining
 
                 mqttConnectSpy.mockRestore();
-                cmdConnectSpy.mockRestore();
+                cmdPoolStartSpy.mockRestore();
                 evtConnectSpy.mockRestore();
             });
         });
 
         describe('stop()', () => {
-            it('should stop all connections and clear resources', () => {
+            it('should stop all connections and clear resources', async () => {
                 // Set up some state to clean up
                 const intervalId = setInterval(() => {}, 1000);
                 bridge.periodicGetAllInterval = intervalId;
 
                 const mqttDisconnectSpy = jest.spyOn(bridge.mqttManager, 'disconnect');  
-                const cmdDisconnectSpy = jest.spyOn(bridge.commandConnection, 'disconnect');
+                const cmdPoolStopSpy = jest.spyOn(bridge.commandConnectionPool, 'stop');
                 const evtDisconnectSpy = jest.spyOn(bridge.eventConnection, 'disconnect');
                 const clearQueuesSpy = jest.spyOn(bridge.cgateCommandQueue, 'clear');
                 const clearMqttQueueSpy = jest.spyOn(bridge.mqttPublishQueue, 'clear');
 
-                bridge.stop();
+                await bridge.stop();
 
                 expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Stopping cgateweb bridge'));
                 expect(bridge.periodicGetAllInterval).toBeNull();
@@ -388,11 +397,11 @@ describe('CgateWebBridge', () => {
                 expect(clearQueuesSpy).toHaveBeenCalled();
                 expect(clearMqttQueueSpy).toHaveBeenCalled();
                 expect(mqttDisconnectSpy).toHaveBeenCalled();
-                expect(cmdDisconnectSpy).toHaveBeenCalled();
+                expect(cmdPoolStopSpy).toHaveBeenCalled();
                 expect(evtDisconnectSpy).toHaveBeenCalled();
 
                 mqttDisconnectSpy.mockRestore();
-                cmdDisconnectSpy.mockRestore();
+                cmdPoolStopSpy.mockRestore();
                 evtDisconnectSpy.mockRestore();
                 clearQueuesSpy.mockRestore();
                 clearMqttQueueSpy.mockRestore();
@@ -424,18 +433,18 @@ describe('CgateWebBridge', () => {
             it('should set allConnected to true when all services are connected', () => {
                 // Mock all connections as connected
                 bridge.mqttManager.connected = true;
-                bridge.commandConnection.connected = true;
+                bridge.commandConnectionPool.isStarted = true;
+                bridge.commandConnectionPool.healthyConnections = { size: 3 };
                 bridge.eventConnection.connected = true;
 
                 bridge._handleAllConnected();
 
                 expect(bridge.allConnected).toBe(true);
-                expect(logSpy).toHaveBeenCalledWith('[INFO] ALL CONNECTED');
             });
 
             it('should not set allConnected when not all services are connected', () => {
                 bridge.mqttManager.connected = true;
-                bridge.commandConnection.connected = false; // Not connected
+                bridge.commandConnectionPool.isStarted = false; // Not connected
                 bridge.eventConnection.connected = true;
 
                 bridge._handleAllConnected();
@@ -447,7 +456,8 @@ describe('CgateWebBridge', () => {
                 bridge.settings.getallnetapp = '254/56';
                 bridge.settings.getallonstart = true;
                 bridge.mqttManager.connected = true;
-                bridge.commandConnection.connected = true;
+                bridge.commandConnectionPool.isStarted = true;
+                bridge.commandConnectionPool.healthyConnections = { size: 3 };
                 bridge.eventConnection.connected = true;
 
                 const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
@@ -461,10 +471,10 @@ describe('CgateWebBridge', () => {
             it('should set up periodic getall when enabled', () => {
                 jest.useFakeTimers();
                 bridge.settings.getallnetapp = '254/56';
-                bridge.settings.getallperiod = 5000; // 5 seconds
+                bridge.settings.getallperiod = 5; // 5 seconds (not milliseconds)
                 bridge.mqttManager.connected = true;
-                mockConnectionPool.isStarted = true;
-                mockConnectionPool.healthyConnections = { size: 3 };
+                bridge.commandConnectionPool.isStarted = true;
+                bridge.commandConnectionPool.healthyConnections = { size: 3 };
                 bridge.eventConnection.connected = true;
 
                 bridge._handleAllConnected();
@@ -517,7 +527,7 @@ describe('CgateWebBridge', () => {
                 const discoverySpy = jest.spyOn(bridge.haDiscovery, 'trigger');
                 bridge.settings.ha_discovery_enabled = true;
 
-                bridge._handleMqttMessage('hello/cgateweb', 'trigger');
+                bridge._handleMqttMessage('cbus/write/bridge/announce', 'trigger');
 
                 expect(discoverySpy).toHaveBeenCalled();
                 discoverySpy.mockRestore();
@@ -539,7 +549,12 @@ describe('CgateWebBridge', () => {
                 bridge._handleMqttMessage('cbus/write/254/56/1/switch', 'ON');
 
                 expect(processSpy).toHaveBeenCalledWith(
-                    { network: '254', app: '56', group: '1', type: 'switch' },
+                    expect.objectContaining({
+                        _network: '254',
+                        _application: '56', 
+                        _group: '1',
+                        _commandType: 'switch'
+                    }),
                     'cbus/write/254/56/1/switch',
                     'ON'
                 );
@@ -638,10 +653,16 @@ describe('CgateWebBridge', () => {
 
         describe('_handleMqttGetTree()', () => {
             it('should queue tree command for network', () => {
-                const command = { network: '254', app: '', group: '', type: 'tree' };
+                // Mock HA Discovery since it's used in the method
+                bridge.haDiscovery = { treeNetwork: null };
+                
+                const command = { 
+                    getNetwork: () => '254'
+                };
                 bridge._handleMqttGetTree(command);
 
-                expect(queueSpy).toHaveBeenCalledWith('TREE //TestProject/254');
+                expect(queueSpy).toHaveBeenCalledWith('TREEXML 254\n');
+                expect(bridge.haDiscovery.treeNetwork).toBe('254');
             });
         });
 

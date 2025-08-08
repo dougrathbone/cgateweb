@@ -22,7 +22,7 @@ describe('Logger', () => {
     describe('Constructor', () => {
         it('should initialize with default options', () => {
             const defaultLogger = new Logger();
-            expect(defaultLogger.level).toBe('info');
+            expect(defaultLogger.level).toBe('warn'); // Default in test environment
             expect(defaultLogger.component).toBe('cgateweb');
             expect(defaultLogger.enabled).toBe(true);
         });
@@ -81,23 +81,25 @@ describe('Logger', () => {
             testLogger.info('test message');
             
             const call = consoleLogSpy.mock.calls[0][0];
-            expect(call).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z INFO  \[test\] test message/);
+            expect(call).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z INFO {2}\[test\] test message/);
         });
 
         it('should format messages without component when not provided', () => {
-            const noComponentLogger = new Logger({ component: '' });
+            const noComponentLogger = new Logger({ component: '', level: 'info' });
             noComponentLogger.info('test message');
             
             const call = consoleLogSpy.mock.calls[0][0];
             // When component is empty string, it still shows default component 'cgateweb'
-            expect(call).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z INFO  \[cgateweb\] test message/);
+            expect(call).toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z INFO {2}\[cgateweb\] test message/);
         });
 
         it('should include metadata when provided', () => {
             testLogger.info('test message', { key: 'value', number: 42 });
             
             const call = consoleLogSpy.mock.calls[0][0];
-            expect(call).toContain('{"key":"value","number":42}');
+            // In development mode, metadata is pretty-printed on multiple lines
+            expect(call).toContain('"key": "value"');
+            expect(call).toContain('"number": 42');
         });
 
         it('should handle empty metadata', () => {
@@ -221,8 +223,15 @@ describe('Module exports', () => {
         });
 
         it('should provide info convenience function', () => {
+            // Need to set logger to info level since default is warn in test environment
+            const originalLevel = logger.level;
+            logger.setLevel('info');
+            
             info('test info');
             expect(consoleLogSpy).toHaveBeenCalled();
+            
+            // Restore original level
+            logger.setLevel(originalLevel);
         });
 
         it('should provide debug convenience function', () => {
@@ -239,11 +248,18 @@ describe('Module exports', () => {
         });
 
         it('should pass metadata to convenience functions', () => {
+            // Need to set logger to info level since default is warn in test environment
+            const originalLevel = logger.level;
+            logger.setLevel('info');
+            
             const metadata = { key: 'value' };
             info('test message', metadata);
             
             const call = consoleLogSpy.mock.calls[0][0];
-            expect(call).toContain('{"key":"value"}');
+            expect(call).toContain('"key": "value"');
+            
+            // Restore original level
+            logger.setLevel(originalLevel);
         });
     });
 });
