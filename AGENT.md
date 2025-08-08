@@ -9,6 +9,13 @@
 - `npm run setup` - Create settings.js | `npm run validate-settings` - Validate config
 - **No build/lint configured** - Add ESLint for code quality
 
+## Testing Requirements
+**⚠️ CRITICAL**: After ANY code change, you MUST:
+1. Run `npm test` to execute the full test suite
+2. Ensure ALL tests pass (364 total tests expected)
+3. Only then proceed with commits or further changes
+4. Console warnings during tests are expected from error condition testing
+
 ## Architecture
 **Core**: CgateWebBridge (orchestrator), CgateConnectionPool (telnet pool), MqttManager (MQTT), HADiscovery (Home Assistant)
 **Dirs**: `src/` (source), `tests/` (Jest tests), `settings.js` (config), `index.js` (entry)
@@ -18,7 +25,7 @@
 **Imports**: `const { Module } = require('./path')` | **Classes**: PascalCase | **Variables**: camelCase  
 **Private**: `_methodName` | **Constants**: SCREAMING_SNAKE_CASE | **Files**: camelCase.js
 **Errors**: Use `createErrorHandler(component)` for standardized error handling with context
-**Testing**: Jest with mocks, run `npm test` before commits (most tests passing - some complex async issues remain)
+**Testing**: Jest with mocks, ALL tests pass - run `npm test` after EVERY change to ensure no regressions
 **Linting**: `npm run lint` (ESLint configured) | `npm run lint:fix` for auto-fixes
 **Documentation**: JSDoc comments added to core functions, see `docs/CBUS_PROTOCOL.md` for C-Bus specifics
 
