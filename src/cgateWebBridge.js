@@ -13,7 +13,6 @@ const {
     LOG_PREFIX,
     WARN_PREFIX,
     ERROR_PREFIX,
-    MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
@@ -301,6 +300,14 @@ class CgateWebBridge {
         this._processMqttCommand(command, topic, payload);
     }
 
+    /**
+     * Processes a validated MQTT command and dispatches it to the appropriate handler.
+     * 
+     * @param {CBusCommand} command - The parsed and validated MQTT command
+     * @param {string} topic - Original MQTT topic for logging
+     * @param {string} payload - Original MQTT payload for logging
+     * @private
+     */
     _processMqttCommand(command, topic, payload) {
         const commandType = command.getCommandType();
         
@@ -379,7 +386,7 @@ class CgateWebBridge {
                 // Direct off command (level 0)
                 this.cgateCommandQueue.add(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
                 break;
-            default:
+            default: {
                 // Handle absolute level command (e.g., "50" or "75,2s")
                 const level = command.getLevel();
                 const rampTime = command.getRampTime();
@@ -394,6 +401,7 @@ class CgateWebBridge {
                 } else {
                     this.warn(`${WARN_PREFIX} Invalid payload for ramp command: ${payload}`);
                 }
+            }
         }
     }
 
@@ -494,7 +502,7 @@ class CgateWebBridge {
     }
 
     _processCommandErrorResponse(responseCode, statusData) {
-        let baseMessage = `${ERROR_PREFIX} C-Gate Command Error ${responseCode}:`;
+        const baseMessage = `${ERROR_PREFIX} C-Gate Command Error ${responseCode}:`;
         let hint = '';
 
         switch (responseCode) {
