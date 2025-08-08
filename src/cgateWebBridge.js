@@ -9,7 +9,7 @@ const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
-const { BufferParser } = require('./bufferParser');
+const { LineProcessor } = require('./lineProcessor');
 const {
     LOG_PREFIX,
     WARN_PREFIX,
@@ -128,8 +128,8 @@ class CgateWebBridge {
         });
 
         // Internal state
-        this.commandBufferParser = new BufferParser();
-        this.eventBufferParser = new BufferParser();
+        this.commandLineProcessor = new LineProcessor();
+        this.eventLineProcessor = new LineProcessor();
         this.internalEventEmitter = new EventEmitter();
         this.periodicGetAllInterval = null;
 
@@ -237,6 +237,10 @@ class CgateWebBridge {
         this.cgateCommandQueue.clear();
         this.mqttPublishQueue.clear();
 
+        // Clean up line processors
+        this.commandLineProcessor.close();
+        this.eventLineProcessor.close();
+
         // Disconnect all connections
         this.mqttManager.disconnect();
         await this.commandConnectionPool.stop();
@@ -293,7 +297,7 @@ class CgateWebBridge {
 
 
     _handleCommandData(data) {
-        this.commandBufferParser.processData(data, (line) => {
+        this.commandLineProcessor.processData(data, (line) => {
             this.log(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
 
             try {
@@ -385,7 +389,7 @@ class CgateWebBridge {
     }
 
     _handleEventData(data) {
-        this.eventBufferParser.processData(data, (line) => {
+        this.eventLineProcessor.processData(data, (line) => {
             this._processEventLine(line);
         });
     }
