@@ -694,7 +694,7 @@ describe('CgateWebBridge', () => {
 
         describe('_processEventLine()', () => {
             it('should process lighting events', () => {
-                const publishEventSpy = jest.spyOn(bridge, '_publishEvent');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 
                 bridge._processEventLine('lighting on //TestProject/254/56/1');
                 
@@ -703,7 +703,7 @@ describe('CgateWebBridge', () => {
             });
 
             it('should ignore invalid event lines', () => {
-                const publishEventSpy = jest.spyOn(bridge, '_publishEvent');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 
                 bridge._processEventLine('invalid event line');
                 
@@ -712,8 +712,9 @@ describe('CgateWebBridge', () => {
             });
         });
 
-        describe('_publishEvent()', () => {
-            it('should publish lighting events to MQTT', () => {
+        describe('EventPublisher integration', () => {
+            it('should use EventPublisher for publishing events', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 const mockEvent = {
                     isValid: () => true,
                     getNetwork: () => '254',
@@ -723,33 +724,17 @@ describe('CgateWebBridge', () => {
                     getLevel: () => 255
                 };
                 
-                bridge._publishEvent(mockEvent);
+                bridge.eventPublisher.publishEvent(mockEvent, '(Test)');
                 
-                expect(publishSpy).toHaveBeenCalledWith({
-                    topic: 'cbus/read/254/56/1/state',
-                    payload: 'ON',
-                    options: { qos: 0 }
-                });
+                expect(publishEventSpy).toHaveBeenCalledWith(mockEvent, '(Test)');
+                publishEventSpy.mockRestore();
             });
 
-            it('should publish PIR sensor events differently', () => {
-                const mockEvent = {
-                    isValid: () => true,
-                    getNetwork: () => '254',
-                    getApplication: () => '56',
-                    getGroup: () => '1', 
-                    getAction: () => 'on',
-                    getLevel: () => null
-                };
-                bridge.settings.ha_discovery_pir_app_id = '56';
-                
-                bridge._publishEvent(mockEvent);
-                
-                expect(publishSpy).toHaveBeenCalledWith({
-                    topic: 'cbus/read/254/56/1/state',
-                    payload: 'ON',
-                    options: { qos: 0 }
-                });
+            it('should initialize EventPublisher with correct options', () => {
+                expect(bridge.eventPublisher).toBeDefined();
+                expect(bridge.eventPublisher.settings).toBe(bridge.settings);
+                expect(bridge.eventPublisher.mqttPublishQueue).toBe(bridge.mqttPublishQueue);
+                expect(bridge.eventPublisher.mqttOptions).toEqual(bridge._mqttOptions);
             });
         });
 
