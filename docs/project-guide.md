@@ -28,7 +28,7 @@
     * Receives commands (e.g., `ON`, `OFF`, percentage level, `INCREASE`/`DECREASE`, `getall`, `gettree`) published to these topics.
     * Parses these commands.
     * Translates them into the appropriate C-Gate Telnet commands and sends them to the C-Gate server.
-* **Configuration:** Key parameters like C-Gate server IP/port, MQTT broker IP/port, credentials (if any), and optional behaviors (like update on start/periodic updates) are managed in the `settings.js` file.
+* **Configuration:** Key parameters like C-Gate server IP/port, MQTT broker IP/port, credentials (if any), and optional behaviors (like update on start/periodic updates) are managed in the `settings.js` file for standalone installations, or through Home Assistant's addon configuration UI when installed as an addon.
 
 **4. Key Features Detailed by MQTT Topics**
 
@@ -69,8 +69,8 @@
 
 **7. Deployment**
 
-* Designed to run as a persistent background service.
-* Includes a `systemd` service file (`cgateweb.service`) for easy setup on Linux systems (like Raspberry Pi).
+* **Standalone Installation:** Designed to run as a persistent background service. Includes a `systemd` service file (`cgateweb.service`) for easy setup on Linux systems (like Raspberry Pi).
+* **Home Assistant Addon:** Available as a native Home Assistant addon through HACS (Home Assistant Community Store). Configuration is managed through Home Assistant's addon configuration UI instead of `settings.js`.
 
 **8. Home Assistant MQTT Discovery**
 

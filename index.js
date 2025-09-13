@@ -2,6 +2,7 @@
 
 const CgateWebBridge = require('./src/cgateWebBridge');
 const { validateWithWarnings } = require('./src/settingsValidator');
+const ConfigLoader = require('./src/config/ConfigLoader');
 
 // --- Default Settings (can be overridden by ./settings.js) ---
 const defaultSettings = {
@@ -36,20 +37,27 @@ const defaultSettings = {
     ha_discovery_pir_app_id: null
 };
 
-// --- Load User Settings ---
-let userSettings = {};
+// --- Load Settings using ConfigLoader ---
+let settings = defaultSettings;
 try {
-    userSettings = require('./settings.js');
-} catch (e) {
-    if (e.code === 'MODULE_NOT_FOUND') {
-        console.error('[ERROR] Configuration file ./settings.js not found. Using default settings.');
-    } else {
-        console.error(`[ERROR] Error loading ./settings.js: ${e.message}. Using default settings.`);
+    const configLoader = new ConfigLoader();
+    const loadedConfig = configLoader.load();
+    settings = { ...defaultSettings, ...loadedConfig };
+    
+    // Log environment info
+    const envInfo = configLoader.getEnvironment();
+    console.log(`[INFO] Environment: ${envInfo.type}`);
+    if (envInfo.details) {
+        console.log(`[INFO] ${envInfo.details}`);
     }
+    
+    // Determine source from environment metadata
+    const source = loadedConfig._environment ? loadedConfig._environment.type : 'unknown';
+    console.log(`[INFO] Configuration loaded from: ${source}`);
+} catch (error) {
+    console.error(`[ERROR] Failed to load configuration: ${error.message}`);
+    console.error('[ERROR] Using default settings only');
 }
-
-// Merge settings
-const settings = { ...defaultSettings, ...userSettings };
 
 
 // Application startup

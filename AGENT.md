@@ -12,7 +12,7 @@
 ## Testing Requirements
 **⚠️ CRITICAL**: After ANY code change, you MUST:
 1. Run `npm test` to execute the full test suite
-2. Ensure ALL tests pass (364 total tests expected)
+2. Ensure ALL tests pass (468 total tests expected - includes dual configuration system)
 3. Only then proceed with commits or further changes
 4. Console warnings during tests are expected from error condition testing
 
@@ -33,6 +33,16 @@
 **IMPORTANT**: Before making any source code commits, you MUST run the full test suite (`npm test`) and ensure all tests pass. No code should be committed with failing tests. This ensures code quality and prevents regressions in the codebase.
 
 **Commit Messages**: Do not mention "Amp", "Claude", or AI assistants in commit messages. Keep commit messages professional and focused on the technical changes being made.
+
+## Home Assistant Addon Development
+**Branch**: `develop/homeassistant` - Contains HA addon development work
+**Directory**: `homeassistant-addon/` - Contains addon files (config.yaml, Dockerfile, run.sh, DOCS.md)
+**Key Components**:
+- `src/config/EnvironmentDetector.js` - Detects installation environment (standalone vs HA addon)
+- `src/config/ConfigLoader.js` - Loads config from settings.js OR /data/options.json
+- Dual configuration system supports both standalone and HA addon installations
+**Testing**: Addon development includes comprehensive tests for environment detection and configuration loading
+**Documentation**: See `docs/project-homeassistant-addon.md` for implementation plan and scope
 
 ## CLAUDE.md Rules
 **IMPORTANT**: Before making any source code commits, you MUST run the full test suite (`npm test`) and ensure all tests pass. No code should be committed with failing tests. This ensures code quality and prevents regressions in the codebase.
