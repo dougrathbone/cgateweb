@@ -1,0 +1,98 @@
+name: "C-Gate Web Bridge"
+version: "1.0.0"
+slug: cgateweb
+description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
+url: "https://github.com/dougrathbone/cgateweb"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+
+startup: application
+boot: auto
+init: false
+host_network: true
+
+# Expose web interface port
+ports:
+  "8080/tcp": 8080
+
+ports_description:
+  "8080/tcp": "Web interface for debugging and status"
+
+# Access to Home Assistant API
+homeassistant_api: true
+
+# Mount configuration directory
+map:
+  - "config:rw"
+
+# Default configuration options
+options:
+  # C-Gate connection settings
+  cgate_host: "127.0.0.1"
+  cgate_port: 20023
+  cgate_control_port: 20024
+  cgate_project: "HOME"
+  
+  # MQTT settings
+  mqtt_host: "127.0.0.1"
+  mqtt_port: 1883
+  mqtt_username: ""
+  mqtt_password: ""
+  
+  # C-Bus monitoring settings
+  getall_networks: []
+  getall_on_start: false
+  getall_period: 3600
+  
+  # MQTT settings
+  retain_reads: false
+  message_interval: 200
+  
+  # Logging
+  log_level: "info"
+  
+  # Home Assistant Discovery
+  ha_discovery_enabled: true
+  ha_discovery_prefix: "homeassistant"
+  ha_discovery_networks: []
+  ha_discovery_cover_app_id: 203
+  ha_discovery_switch_app_id: null
+
+# Schema defines the validation for user options
+schema:
+  # C-Gate connection settings
+  cgate_host: "str"
+  cgate_port: "int(1,65535)"
+  cgate_control_port: "int(1,65535)" 
+  cgate_project: "str"
+  
+  # MQTT settings
+  mqtt_host: "str"
+  mqtt_port: "int(1,65535)"
+  mqtt_username: "str?"
+  mqtt_password: "password?"
+  
+  # C-Bus monitoring settings  
+  getall_networks: ["int(1,255)"]
+  getall_on_start: "bool"
+  getall_period: "int(60,86400)"
+  
+  # MQTT settings
+  retain_reads: "bool"
+  message_interval: "int(100,10000)"
+  
+  # Logging
+  log_level: "list(debug|info|warn|error)"
+  
+  # Home Assistant Discovery
+  ha_discovery_enabled: "bool"
+  ha_discovery_prefix: "str"
+  ha_discovery_networks: ["int(1,255)"]
+  ha_discovery_cover_app_id: "int(1,255)?"
+  ha_discovery_switch_app_id: "int(1,255)?"
+
+image: "ghcr.io/dougrathbone/cgateweb-addon-{arch}"
