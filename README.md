@@ -9,6 +9,23 @@ This script acts as a middleware broker that connects to C-Gate over telnet and 
 
 ### Install:
 
+**Option 1: Home Assistant Addon (Recommended for HA users)**
+
+1. **Add HACS Repository:**
+   - In Home Assistant, go to HACS → Integrations
+   - Click the 3-dot menu → Custom repositories
+   - Add repository: `https://github.com/dougrathbone/cgateweb-hacs`
+   - Category: Add-on
+
+2. **Install Addon:**
+   - Search for "cgateweb" in HACS
+   - Install the addon
+   - Go to Settings → Add-ons → cgateweb
+   - Configure your C-Gate and MQTT settings in the Configuration tab
+   - Start the addon
+
+**Option 2: Standalone Installation**
+
 These instructions assume a Linux system with Node.js, npm, and systemd.
 
 1.  **Clone the repository:**
