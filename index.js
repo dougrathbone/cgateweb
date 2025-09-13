@@ -3,6 +3,7 @@
 const CgateWebBridge = require('./src/cgateWebBridge');
 const { validateWithWarnings } = require('./src/settingsValidator');
 const ConfigLoader = require('./src/config/ConfigLoader');
+const HAIntegration = require('./src/config/HAIntegration');
 
 // --- Default Settings (can be overridden by ./settings.js) ---
 const defaultSettings = {
@@ -37,6 +38,10 @@ const defaultSettings = {
     ha_discovery_pir_app_id: null
 };
 
+// --- Initialize Home Assistant Integration ---
+const haIntegration = new HAIntegration();
+const haConfig = haIntegration.initialize();
+
 // --- Load Settings using ConfigLoader ---
 let settings = defaultSettings;
 try {
@@ -49,6 +54,14 @@ try {
     console.log(`[INFO] Environment: ${envInfo.type}`);
     if (envInfo.details) {
         console.log(`[INFO] ${envInfo.details}`);
+    }
+    
+    // Add HA-specific information if in addon mode
+    if (haConfig.isAddon) {
+        console.log(`[INFO] Home Assistant optimizations: ${haConfig.optimizationsApplied.join(', ')}`);
+        if (haConfig.ingressConfig) {
+            console.log(`[INFO] Ingress configured: ${haConfig.ingressConfig.ingressUrl}`);
+        }
     }
     
     // Determine source from environment metadata
