@@ -10,6 +10,7 @@ const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const CommandResponseProcessor = require('./commandResponseProcessor');
+const DeviceStateManager = require('./deviceStateManager');
 const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
@@ -19,7 +20,6 @@ const {
     ERROR_PREFIX,
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
-    MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
@@ -29,13 +29,10 @@ const {
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
-    CGATE_CMD_ON,
-    CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
-    CGATE_LEVEL_MIN,
-    CGATE_LEVEL_MAX,
+
     RAMP_STEP,
 
     NEWLINE
@@ -126,22 +123,24 @@ class CgateWebBridge {
             'MQTT Publish Queue'
         );
 
+        // Device state manager for coordinating device state between components
+        this.deviceStateManager = new DeviceStateManager({
+            settings: this.settings,
+            logger: this.logger
+        });
+
         // MQTT command router
         this.mqttCommandRouter = new MqttCommandRouter({
             cbusname: this.settings.cbusname,
             ha_discovery_enabled: this.settings.ha_discovery_enabled,
-            internalEventEmitter: null, // Will be set after internal event emitter is created
+            internalEventEmitter: this.deviceStateManager.getEventEmitter(),
             cgateCommandQueue: this.cgateCommandQueue
         });
 
         // Internal state
         this.commandLineProcessor = new LineProcessor();
         this.eventLineProcessor = new LineProcessor();
-        this.internalEventEmitter = new EventEmitter();
         this.periodicGetAllInterval = null;
-
-        // Wire up the router after internal event emitter is created
-        this.mqttCommandRouter.internalEventEmitter = this.internalEventEmitter;
 
         // Internal state tracking (delegated to connection manager)
         // this.allConnected = false; // Now managed by ConnectionManager
@@ -161,7 +160,7 @@ class CgateWebBridge {
         this.commandResponseProcessor = new CommandResponseProcessor({
             eventPublisher: this.eventPublisher,
             haDiscovery: null, // Will be set after haDiscovery is initialized
-            onObjectStatus: (event) => this._emitLevelFromEvent(event),
+            onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             logger: this.logger
         });
 
@@ -250,6 +249,9 @@ class CgateWebBridge {
         this.commandLineProcessor.close();
         this.eventLineProcessor.close();
 
+        // Shut down device state manager
+        this.deviceStateManager.shutdown();
+
         // Disconnect all connections via connection manager
         await this.connectionManager.stop();
     }
@@ -319,7 +321,7 @@ class CgateWebBridge {
             const event = new CBusEvent(line);
             if (event.isValid()) {
                 this.eventPublisher.publishEvent(event, '(Evt)');
-                this._emitLevelFromEvent(event);
+                this.deviceStateManager.updateLevelFromEvent(event);
             } else {
                 this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
             }
@@ -328,31 +330,7 @@ class CgateWebBridge {
         }
     }
 
-    _emitLevelFromEvent(event) {
-        // PIR sensors only send state (motion detected/cleared), not brightness levels
-        if (event.getApplication() === this.settings.ha_discovery_pir_app_id) {
-            return;
-        }
-        
-        const simpleAddr = `${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
-        let levelValue = null;
 
-        if (event.getLevel() !== null) {
-            // Ramp events include explicit level (0-255)
-            levelValue = event.getLevel();
-        } else if (event.getAction() === CGATE_CMD_ON.toLowerCase()) {
-            // "on" events imply full brightness (255)
-            levelValue = CGATE_LEVEL_MAX;
-        } else if (event.getAction() === CGATE_CMD_OFF.toLowerCase()) {
-            // "off" events imply no brightness (0) 
-            levelValue = CGATE_LEVEL_MIN;
-        }
-
-        if (levelValue !== null) {
-            // Emit internal level event for relative ramp operations (increase/decrease)
-            this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
-        }
-    }
 
     // Event publishing now delegated to EventPublisher
 
