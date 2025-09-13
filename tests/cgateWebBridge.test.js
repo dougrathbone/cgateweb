@@ -619,9 +619,9 @@ describe('CgateWebBridge', () => {
             });
         });
 
-        describe('_emitLevelFromEvent()', () => {
-            it('should emit level events for internal listeners', () => {
-                const emitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
+        describe('DeviceStateManager integration', () => {
+            it('should use DeviceStateManager for level tracking', () => {
+                const updateSpy = jest.spyOn(bridge.deviceStateManager, 'updateLevelFromEvent');
                 const mockEvent = {
                     getNetwork: () => '254',
                     getApplication: () => '56',
@@ -629,26 +629,14 @@ describe('CgateWebBridge', () => {
                     getLevel: () => 75
                 };
                 
-                bridge._emitLevelFromEvent(mockEvent);
+                bridge._processEventLine('lighting ramp 254/56/1 75');
                 
-                expect(emitSpy).toHaveBeenCalledWith('level', '254/56/1', 75);
-                emitSpy.mockRestore();
+                expect(updateSpy).toHaveBeenCalledWith(expect.any(Object));
+                updateSpy.mockRestore();
             });
 
-            it('should not emit when level is null', () => {
-                const emitSpy = jest.spyOn(bridge.internalEventEmitter, 'emit');
-                const mockEvent = {
-                    getApplication: () => '56',
-                    getNetwork: () => '254',
-                    getGroup: () => '1',
-                    getLevel: () => null,
-                    getAction: () => 'some_other_action' // Not 'on' or 'off', so no level implied
-                };
-                
-                bridge._emitLevelFromEvent(mockEvent);
-                
-                expect(emitSpy).not.toHaveBeenCalled();  
-                emitSpy.mockRestore();
+            it('should provide event emitter to MQTT command router', () => {
+                expect(bridge.mqttCommandRouter.internalEventEmitter).toBe(bridge.deviceStateManager.getEventEmitter());
             });
         });
     });

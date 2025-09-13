@@ -39,11 +39,11 @@ LABEL \
     io.hass.arch="${BUILD_ARCH}" \
     io.hass.type="addon" \
     io.hass.version="${BUILD_VERSION}" \
-    maintainer="Doug Rathbone <doug@rathbone.id.au>" \
+    maintainer="Doug Rathbone <doug@dougrathbone.com>" \
     org.opencontainers.image.title="C-Gate Web Bridge" \
     org.opencontainers.image.description="Bridge between Clipsal C-Bus systems and MQTT/Home Assistant" \
     org.opencontainers.image.vendor="Doug Rathbone" \
-    org.opencontainers.image.authors="Doug Rathbone <doug@rathbone.id.au>" \
+    org.opencontainers.image.authors="Doug Rathbone <doug@dougrathbone.com>" \
     org.opencontainers.image.licenses="MIT" \
     org.opencontainers.image.url="https://github.com/dougrathbone/cgateweb" \
     org.opencontainers.image.source="https://github.com/dougrathbone/cgateweb" \
