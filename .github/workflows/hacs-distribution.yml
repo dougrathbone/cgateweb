@@ -1,4 +1,4 @@
-name: Build and Deploy HACS Distribution
+name: Build and Deploy Home Assistant Addon
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:  # Allow manual triggering
 
 env:
-  DISTRIBUTION_REPO: 'dougrathbone/cgateweb-hacs'
+  DISTRIBUTION_REPO: 'dougrathbone/cgateweb-homeassistant'
 
 jobs:
   build-and-deploy:
@@ -59,14 +59,33 @@ jobs:
         cp README.md distribution/
         cp LICENSE.txt distribution/
         
+        # Create repository.json for addon repository
+        cat > distribution/repository.json << 'EOF'
+        {
+          "name": "C-Gate Web Bridge - Home Assistant Add-on",
+          "url": "https://github.com/dougrathbone/cgateweb-homeassistant",
+          "maintainer": "Doug Rathbone"
+        }
+        EOF
+        
+        # Create .addons.yml for addon repository
+        cat > distribution/.addons.yml << 'EOF'
+        channel: stable
+        addons:
+          cgateweb:
+            repository: dougrathbone/cgateweb-addon
+            target: cgateweb
+            image: dougrathbone/cgateweb-addon
+        EOF
+        
         # Update version in config.yaml
         sed -i "s/version: .*/version: \"${{ steps.version.outputs.version }}\"/" distribution/config.yaml
         
         # Create distribution-specific README
         cat > distribution/README.md << 'EOF'
-        # C-Gate Web Bridge - Home Assistant Addon
+        # C-Gate Web Bridge - Home Assistant Add-on
         
-        **🚨 This repository is automatically generated for HACS distribution only.**
+        **🚨 This repository is automatically generated for Home Assistant add-on distribution only.**
         
         ## For Development, Issues, and Contributions
         
@@ -79,18 +98,16 @@ jobs:
         - **Submit PRs**: [Pull Requests](https://github.com/dougrathbone/cgateweb/pulls)
         - **Documentation**: [Main Docs](https://github.com/dougrathbone/cgateweb#readme)
         
-        ### 📦 HACS Installation
+        ### 📦 Home Assistant Add-on Installation
         
-        1. **Add Custom Repository**:
-           - Go to HACS → Integrations
-           - Click the 3-dot menu → Custom repositories
-           - Add: `https://github.com/dougrathbone/cgateweb-hacs`
-           - Category: Add-on
+        1. **Add Repository**:
+           - Go to Home Assistant → Add-on Store → ⋮ → Repositories
+           - Add: `https://github.com/dougrathbone/cgateweb-homeassistant`
         
-        2. **Install Addon**:
-           - Search for "cgateweb" 
-           - Install the addon
-           - Configure in Settings → Add-ons → cgateweb
+        2. **Install Add-on**:
+           - Find "C-Gate Web Bridge" in the add-on store
+           - Install the add-on
+           - Configure in Settings → Add-ons → C-Gate Web Bridge
         
         ## About C-Gate Web Bridge
         
@@ -236,15 +253,16 @@ jobs:
         body: |
           ## C-Gate Web Bridge v${{ steps.version.outputs.version }}
           
-          **🏠 Home Assistant Addon Release**
+          **🏠 Home Assistant Add-on Release**
           
-          This is an automated release of the C-Gate Web Bridge Home Assistant addon.
+          This is an automated release of the C-Gate Web Bridge Home Assistant add-on.
           
-          ### 📦 Installation via HACS
+          ### 📦 Installation
           
-          1. Add this repository to HACS as a custom repository
-          2. Install the addon through HACS
-          3. Configure in Home Assistant Settings → Add-ons
+          1. **Add Repository**: In Home Assistant, go to Add-on Store → ⋮ → Repositories
+          2. **Add URL**: `https://github.com/dougrathbone/cgateweb-homeassistant`  
+          3. **Install**: Find "C-Gate Web Bridge" and install
+          4. **Configure**: Set your C-Gate and MQTT settings
           
           ### 🔗 Main Repository
           
