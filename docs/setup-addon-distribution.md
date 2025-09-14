@@ -1,6 +1,6 @@
-# HACS Distribution Setup Guide
+# Home Assistant Add-on Distribution Setup Guide
 
-This guide explains how to set up the HACS distribution repository and GitHub Actions workflow.
+This guide explains how to set up the Home Assistant add-on distribution repository and GitHub Actions workflow.
 
 ## Prerequisites
 
@@ -9,9 +9,9 @@ Before running the automated distribution workflow, you need to:
 ### 1. Create the Distribution Repository
 
 1. Go to GitHub and create a new **public** repository:
-   - Repository name: `cgateweb-hacs`
-   - Description: "C-Gate Web Bridge - Home Assistant Addon (HACS Distribution)"
-   - Make it **public** (required for HACS)
+   - Repository name: `cgateweb-homeassistant`
+   - Description: "C-Gate Web Bridge - Home Assistant Add-on (Distribution Repository)"
+   - Make it **public** (required for Home Assistant add-ons)
    - **Do not** initialize with README, .gitignore, or license (the workflow will populate it)
 
 ### 2. Create a Personal Access Token
@@ -42,9 +42,9 @@ The GitHub Actions workflow (`.github/workflows/hacs-distribution.yml`) is trigg
 ### Workflow Steps:
 
 1. **Checkout & Test**: Gets the source code and runs tests
-2. **Build Distribution**: Creates the addon structure in `distribution/`
-3. **Initialize Repository**: Clones or initializes the HACS distribution repo
-4. **Deploy Content**: Copies distribution files to the HACS repo
+2. **Build Distribution**: Creates the add-on structure in `distribution/`
+3. **Initialize Repository**: Clones or initializes the add-on distribution repo
+4. **Deploy Content**: Copies distribution files to the add-on repo
 5. **Create Release**: Creates a GitHub release in the distribution repo
 
 ## First Run
