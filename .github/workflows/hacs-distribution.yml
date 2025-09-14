@@ -140,27 +140,58 @@ jobs:
         This distribution repository is automatically updated when releases are tagged in the main repository.
         EOF
         
-    - name: Checkout distribution repository
-      uses: actions/checkout@v4
-      with:
-        repository: ${{ env.DISTRIBUTION_REPO }}
-        token: ${{ secrets.HACS_DEPLOY_TOKEN }}
-        path: hacs-repo
-        
-    - name: Update distribution repository
+    - name: Checkout or initialize distribution repository
       run: |
-        # Clear existing content (except .git)
-        find hacs-repo -mindepth 1 -name '.git' -prune -o -type f -exec rm {} + 2>/dev/null || true
-        find hacs-repo -mindepth 1 -name '.git' -prune -o -type d -exec rm -rf {} + 2>/dev/null || true
+        echo "🔍 Attempting to checkout distribution repository: ${{ env.DISTRIBUTION_REPO }}"
         
-        # Copy new distribution files
-        cp -r distribution/* hacs-repo/
-        
-        cd hacs-repo
+        # Try to checkout the existing repository
+        if git clone https://${{ secrets.HACS_DEPLOY_TOKEN }}@github.com/${{ env.DISTRIBUTION_REPO }}.git hacs-repo 2>/dev/null; then
+          echo "✅ Distribution repository exists, checked out successfully"
+          cd hacs-repo
+          
+          # Ensure we're on the main branch (GitHub's default)
+          if git show-ref --verify --quiet refs/heads/main; then
+            git checkout main
+            echo "✅ Switched to main branch"
+          elif git show-ref --verify --quiet refs/heads/master; then
+            git checkout master
+            # Rename master to main for consistency
+            git branch -m master main
+            echo "✅ Renamed master branch to main"
+          else
+            git checkout -b main
+            echo "✅ Created main branch"
+          fi
+        else
+          echo "⚠️  Distribution repository does not exist or is empty"
+          echo "📝 Creating local repository structure for first-time setup..."
+          
+          mkdir hacs-repo
+          cd hacs-repo
+          
+          # Initialize new repository
+          git init --initial-branch=main
+          git remote add origin https://${{ secrets.HACS_DEPLOY_TOKEN }}@github.com/${{ env.DISTRIBUTION_REPO }}.git
+          
+          echo "✅ Initialized local repository with main branch"
+        fi
         
         # Configure git
         git config user.name 'HACS Distribution Bot'
         git config user.email 'actions@github.com'
+        
+        echo "✅ Git configuration complete"
+        
+    - name: Update distribution repository
+      run: |
+        cd hacs-repo
+        
+        # Clear existing content (except .git)
+        find . -mindepth 1 -name '.git' -prune -o -type f -exec rm {} + 2>/dev/null || true
+        find . -mindepth 1 -name '.git' -prune -o -type d -exec rm -rf {} + 2>/dev/null || true
+        
+        # Copy new distribution files
+        cp -r ../distribution/* .
         
         # Add all files
         git add .
@@ -173,12 +204,26 @@ jobs:
         
         # Commit and push
         git commit -m "Release v${{ steps.version.outputs.version }}
-        
+
         Automated release from main repository
         Source: ${{ github.repository }}@${{ github.sha }}
         "
         
-        git push origin main
+        echo "📤 Pushing to distribution repository..."
+        
+        # Push to main branch, creating it if it doesn't exist on remote
+        if git push -u origin main; then
+          echo "✅ Successfully pushed to distribution repository"
+        else
+          echo "❌ Failed to push to distribution repository"
+          echo "🔍 Checking remote repository status..."
+          git remote -v
+          echo "📋 Current branch:"
+          git branch -a
+          echo "📊 Repository status:"
+          git status
+          exit 1
+        fi
         
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
