@@ -101,13 +101,25 @@ class CommandResponseProcessor {
                 this._processCommandObjectStatus(statusData);
                 break;
             case CGATE_RESPONSE_TREE_START:
-                this.haDiscovery.handleTreeStart(statusData);
+                // Guard against race condition: haDiscovery may not be initialized yet
+                // if tree responses arrive before _handleAllConnected() runs
+                if (this.haDiscovery) {
+                    this.haDiscovery.handleTreeStart(statusData);
+                } else {
+                    this.logger.warn(`${WARN_PREFIX} Received tree start before HA Discovery initialized, ignoring`);
+                }
                 break;
             case CGATE_RESPONSE_TREE_DATA:
-                this.haDiscovery.handleTreeData(statusData);
+                if (this.haDiscovery) {
+                    this.haDiscovery.handleTreeData(statusData);
+                }
+                // Silently ignore tree data if haDiscovery not ready (start already warned)
                 break;
             case CGATE_RESPONSE_TREE_END:
-                this.haDiscovery.handleTreeEnd(statusData);
+                if (this.haDiscovery) {
+                    this.haDiscovery.handleTreeEnd(statusData);
+                }
+                // Silently ignore tree end if haDiscovery not ready (start already warned)
                 break;
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {

@@ -204,6 +204,51 @@ describe('CommandResponseProcessor', () => {
                 expect.stringContaining('Unhandled C-Gate response 100: Info response')
             );
         });
+
+        describe('haDiscovery null guard (race condition protection)', () => {
+            let processorWithNullHaDiscovery;
+
+            beforeEach(() => {
+                processorWithNullHaDiscovery = new CommandResponseProcessor({
+                    eventPublisher: mockEventPublisher,
+                    haDiscovery: null, // Simulates race condition before _handleAllConnected
+                    onObjectStatus: mockOnObjectStatus,
+                    logger: mockLogger
+                });
+            });
+
+            it('should not crash when receiving tree start before haDiscovery is initialized', () => {
+                expect(() => {
+                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_START, 'tree start data');
+                }).not.toThrow();
+                
+                expect(mockLogger.warn).toHaveBeenCalledWith(
+                    expect.stringContaining('Received tree start before HA Discovery initialized')
+                );
+            });
+
+            it('should not crash when receiving tree data before haDiscovery is initialized', () => {
+                expect(() => {
+                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'tree data');
+                }).not.toThrow();
+            });
+
+            it('should not crash when receiving tree end before haDiscovery is initialized', () => {
+                expect(() => {
+                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_END, 'tree end data');
+                }).not.toThrow();
+            });
+
+            it('should still process object status when haDiscovery is null', () => {
+                const statusData = '//SHAC/254/56/1: level=255';
+                
+                expect(() => {
+                    processorWithNullHaDiscovery._processCommandObjectStatus(statusData);
+                }).not.toThrow();
+                
+                expect(mockEventPublisher.publishEvent).toHaveBeenCalled();
+            });
+        });
     });
 
     describe('_processCommandObjectStatus', () => {
