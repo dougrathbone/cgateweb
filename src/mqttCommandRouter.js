@@ -7,6 +7,8 @@ const {
     MQTT_CMD_TYPE_GETTREE,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_STOP,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -15,6 +17,7 @@ const {
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
+    CGATE_CMD_TERMINATERAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
     CGATE_LEVEL_MIN,
@@ -109,6 +112,12 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_RAMP:
                 this._handleRamp(command, payload, topic);
+                break;
+            case MQTT_CMD_TYPE_POSITION:
+                this._handlePosition(command, topic);
+                break;
+            case MQTT_CMD_TYPE_STOP:
+                this._handleStop(command, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -264,6 +273,54 @@ class MqttCommandRouter extends EventEmitter {
         // Query current level first
         const queryCommand = `${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`;
         this._queueCommand(queryCommand);
+    }
+
+    /**
+     * Handles cover position commands (set position 0-100%).
+     * Uses RAMP command to set the position level.
+     * @param {CBusCommand} command - The position command
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handlePosition(command, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`Position command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+        const level = command.getLevel();
+        
+        if (level !== null) {
+            // Use RAMP command to set cover position
+            // Level is already converted from percentage (0-100) to C-Gate level (0-255)
+            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
+            this._queueCommand(cgateCommand);
+            this.logger.debug(`Setting cover position: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
+        } else {
+            this.logger.warn(`Invalid position value for topic ${topic}`);
+        }
+    }
+
+    /**
+     * Handles stop commands for covers/blinds.
+     * Uses TERMINATERAMP to stop any in-progress movement.
+     * @param {CBusCommand} command - The stop command
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handleStop(command, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`Stop command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+        
+        // TERMINATERAMP stops any in-progress ramp operation, effectively stopping the cover
+        const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
+        this._queueCommand(cgateCommand);
+        this.logger.debug(`Stopping cover: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
     }
 
     /**

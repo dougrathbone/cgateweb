@@ -320,4 +320,84 @@ describe('CBusCommand', () => {
         });
     });
 
+    // === Cover Position Commands ===
+    describe('Cover position commands', () => {
+        it('should parse a valid "position" command with percentage', () => {
+            const topic = 'cbus/write/254/203/1/position';
+            const message = Buffer.from('50'); // 50% position
+            const command = new CBusCommand(topic, message);
+
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('203');
+            expect(command.getGroup()).toBe('1');
+            expect(command.getCommandType()).toBe('position');
+            expect(command.getLevel()).toBe(Math.round(50 * 255 / 100)); // 128
+        });
+
+        it('should parse position 0 (fully closed)', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '0');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(0);
+        });
+
+        it('should parse position 100 (fully open)', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '100');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(255);
+        });
+
+        it('should clamp position > 100', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '150');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(255);
+        });
+
+        it('should clamp position < 0', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '-20');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(0);
+        });
+
+        it('should return null level for non-numeric position', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', 'halfway');
+            // Topic is valid, but level parsing fails
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBeNull();
+        });
+
+        it('should handle decimal positions', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '33.5');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(Math.round(33.5 * 255 / 100)); // 85
+        });
+    });
+
+    // === Cover Stop Commands ===
+    describe('Cover stop commands', () => {
+        it('should parse a valid "stop" command', () => {
+            const topic = 'cbus/write/254/203/1/stop';
+            const message = Buffer.from('STOP');
+            const command = new CBusCommand(topic, message);
+
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('203');
+            expect(command.getGroup()).toBe('1');
+            expect(command.getCommandType()).toBe('stop');
+        });
+
+        it('should parse stop command with empty payload', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/stop', '');
+            expect(command.isValid()).toBe(true);
+            expect(command.getCommandType()).toBe('stop');
+        });
+
+        it('should parse stop command with null payload', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/stop', null);
+            expect(command.isValid()).toBe(true);
+            expect(command.getCommandType()).toBe('stop');
+        });
+    });
+
 }); 

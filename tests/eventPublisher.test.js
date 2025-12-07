@@ -11,6 +11,7 @@ describe('EventPublisher', () => {
     beforeEach(() => {
         mockSettings = {
             ha_discovery_pir_app_id: '202', // PIR sensors app ID
+            ha_discovery_cover_app_id: '203', // Covers app ID
             logging: false
         };
 
@@ -273,6 +274,122 @@ describe('EventPublisher', () => {
                     options: mockMqttOptions
                 });
             });
+        });
+    });
+
+    describe('Cover position publishing', () => {
+        it('should publish cover event with state, level, and position', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '203', // Cover app ID
+                getGroup: () => '1',
+                getLevel: () => 128, // 50%
+                getAction: () => 'ramp'
+            };
+            
+            eventPublisher.publishEvent(mockEvent, '(Test)');
+
+            // Should publish 3 messages: state, level, and position
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledTimes(3);
+            
+            // Check state message
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/state',
+                payload: 'ON',
+                options: mockMqttOptions
+            });
+            
+            // Check level message
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/level',
+                payload: '50',
+                options: mockMqttOptions
+            });
+            
+            // Check position message
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/position',
+                payload: '50',
+                options: mockMqttOptions
+            });
+        });
+
+        it('should publish cover closed state correctly', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '203',
+                getGroup: () => '1',
+                getLevel: () => 0, // 0% - closed
+                getAction: () => 'ramp'
+            };
+            
+            eventPublisher.publishEvent(mockEvent);
+
+            // Check state message - should be OFF (closed)
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/state',
+                payload: 'OFF',
+                options: mockMqttOptions
+            });
+            
+            // Check position message
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/position',
+                payload: '0',
+                options: mockMqttOptions
+            });
+        });
+
+        it('should publish cover fully open state correctly', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '203',
+                getGroup: () => '1',
+                getLevel: () => 255, // 100% - fully open
+                getAction: () => 'ramp'
+            };
+            
+            eventPublisher.publishEvent(mockEvent);
+
+            // Check state message - should be ON (open)
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/state',
+                payload: 'ON',
+                options: mockMqttOptions
+            });
+            
+            // Check position message
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledWith({
+                topic: 'cbus/read/254/203/1/position',
+                payload: '100',
+                options: mockMqttOptions
+            });
+        });
+
+        it('should not publish position for non-cover devices', () => {
+            // Regular lighting device (not a cover)
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56', // Lighting app, not cover
+                getGroup: () => '1',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+            
+            eventPublisher.publishEvent(mockEvent);
+
+            // Should only publish state and level (2 messages), not position
+            expect(mockMqttPublishQueue.add).toHaveBeenCalledTimes(2);
+            
+            // Verify no position topic was published
+            const positionCall = mockMqttPublishQueue.add.mock.calls.find(
+                call => call[0].topic.endsWith('/position')
+            );
+            expect(positionCall).toBeUndefined();
         });
     });
 });

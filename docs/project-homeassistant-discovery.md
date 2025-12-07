@@ -82,17 +82,21 @@ For each C-Bus Enable Control group (`<network>/203/<group>`) identified as a co
 {
   "name": "<Group Label or Fallback Name>",
   "unique_id": "cgateweb_<network>_203_<group>",
-  "state_topic": "cbus/read/<network>/203/<group>/state", // Assuming ON=open, OFF=closed
+  "state_topic": "cbus/read/<network>/203/<group>/state",
   "command_topic": "cbus/write/<network>/203/<group>/switch",
   "payload_open": "ON",
   "payload_close": "OFF",
-  "state_open": "ON", // Map C-Bus ON state to HA open state
-  "state_closed": "OFF", // Map C-Bus OFF state to HA closed state
-  // "payload_stop": "STOP", // STOP not directly supported by basic C-Bus ON/OFF
-  // "position_topic": ..., // Position not supported by basic C-Bus ON/OFF
+  "state_open": "ON",
+  "state_closed": "OFF",
+  "position_topic": "cbus/read/<network>/203/<group>/position",
+  "set_position_topic": "cbus/write/<network>/203/<group>/position",
+  "stop_topic": "cbus/write/<network>/203/<group>/stop",
+  "payload_stop": "STOP",
+  "position_open": 100,
+  "position_closed": 0,
   "qos": 0, 
   "retain": true,
-  "device_class": "shutter", // Assume shutter/blind type
+  "device_class": "shutter",
   "device": {
     "identifiers": ["cgateweb_<network>_203_<group>"],
     "name": "<Group Label or Fallback Name>",
@@ -107,7 +111,11 @@ For each C-Bus Enable Control group (`<network>/203/<group>`) identified as a co
   }
 }
 ```
-*   **Note on Covers:** This initial implementation assumes basic open/close mapping. C-Bus ON command triggers `payload_open`, C-Bus OFF triggers `payload_close`. State reporting maps ON to `state_open` and OFF to `state_closed`.
+*   **Note on Covers:** Covers now support full position control:
+    - **Position**: 0-100% where 0=closed, 100=fully open
+    - **Stop**: Stops the cover at its current position using TERMINATERAMP
+    - **Open/Close**: Basic ON/OFF commands for full open/close
+    - State is reported as ON (open/opening) or OFF (closed)
 
 For each C-Bus group (`<network>/<switch_app_id>/<group>`) identified as a switch:
 ```json

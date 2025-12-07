@@ -6,10 +6,14 @@ const {
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
+    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_STOP,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_COMMAND_STOP,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
@@ -276,6 +280,15 @@ class HaDiscovery {
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
             ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
+            // Add position topics for covers
+            ...(config.positionSupport && {
+                position_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+                set_position_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_POSITION}`,
+                stop_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_STOP}`,
+                payload_stop: MQTT_COMMAND_STOP,
+                position_open: 100,
+                position_closed: 0
+            }),
             qos: 0,
             retain: true,
             ...(config.deviceClass && { device_class: config.deviceClass }),
@@ -305,6 +318,8 @@ class HaDiscovery {
                 defaultType: 'Cover',
                 model: HA_MODEL_COVER,
                 deviceClass: HA_DEVICE_CLASS_SHUTTER,
+                // Enable position support for covers (0-100%)
+                positionSupport: true,
                 payloads: {
                     payload_open: MQTT_STATE_ON,
                     payload_close: MQTT_STATE_OFF,
