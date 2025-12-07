@@ -191,6 +191,56 @@ describe('HaDiscovery', () => {
             );
         });
 
+        it('should publish cover config with position support', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Find the cover config call
+            const coverCall = mockPublishSpy.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            
+            // Verify position topics are included
+            expect(payload.position_topic).toBe('cbus/read/254/203/15/position');
+            expect(payload.set_position_topic).toBe('cbus/write/254/203/15/position');
+            expect(payload.stop_topic).toBe('cbus/write/254/203/15/stop');
+            expect(payload.payload_stop).toBe('STOP');
+            expect(payload.position_open).toBe(100);
+            expect(payload.position_closed).toBe(0);
+        });
+
+        it('should publish cover config with correct device class', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that cover configs include shutter device class
+            const coverCall = mockPublishSpy.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.device_class).toBe('shutter');
+        });
+
+        it('should publish cover config with open/close payloads', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishSpy.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            
+            // Verify open/close payloads
+            expect(payload.payload_open).toBe('ON');
+            expect(payload.payload_close).toBe('OFF');
+            expect(payload.state_open).toBe('ON');
+            expect(payload.state_closed).toBe('OFF');
+        });
+
         it('should publish PIR configs when PIR app ID is configured', () => {
             mockSettings.ha_discovery_pir_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
