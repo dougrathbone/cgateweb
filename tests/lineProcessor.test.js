@@ -50,7 +50,7 @@ describe('LineProcessor', () => {
         });
 
         it('should process multiple complete lines', (done) => {
-            let expectedLines = ['line1', 'line2', 'line3'];
+            const expectedLines = ['line1', 'line2', 'line3'];
             let processedCount = 0;
             
             processor.processData('line1\nline2\nline3\n', (line) => {
@@ -82,7 +82,7 @@ describe('LineProcessor', () => {
         });
 
         it('should skip empty lines by default', (done) => {
-            let expectedLines = ['line1', 'line2'];
+            const expectedLines = ['line1', 'line2'];
             let processedCount = 0;
             
             processor.processData('line1\n\n\nline2\n', (line) => {
@@ -114,7 +114,7 @@ describe('LineProcessor', () => {
 
         it('should not skip empty lines when skipEmptyLines is false', (done) => {
             const noSkipProcessor = new LineProcessor({ skipEmptyLines: false });
-            let expectedLines = ['line1', '', '', 'line2'];
+            const expectedLines = ['line1', '', '', 'line2'];
             let processedCount = 0;
             
             noSkipProcessor.processData('line1\n\n\nline2\n', (line) => {

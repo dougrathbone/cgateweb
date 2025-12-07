@@ -5,7 +5,6 @@ const MqttManager = require('./mqttManager');
 const HaDiscovery = require('./haDiscovery');
 const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
-const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
@@ -17,27 +16,13 @@ const {
     LOG_PREFIX,
     WARN_PREFIX,
     ERROR_PREFIX,
-    MQTT_TOPIC_PREFIX_READ,
-    MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
-    MQTT_TOPIC_MANUAL_TRIGGER,
-    MQTT_CMD_TYPE_GETALL,
-    MQTT_CMD_TYPE_GETTREE,
-    MQTT_CMD_TYPE_SWITCH,
-    MQTT_CMD_TYPE_RAMP,
-    MQTT_STATE_ON,
-    MQTT_STATE_OFF,
-    MQTT_COMMAND_INCREASE,
-    MQTT_COMMAND_DECREASE,
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
-    CGATE_CMD_RAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
-    RAMP_STEP,
-
     NEWLINE
 } = require('./constants');
 
