@@ -1,6 +1,5 @@
 const { EventEmitter } = require('events');
 const MqttCommandRouter = require('../src/mqttCommandRouter');
-const CBusCommand = require('../src/cbusCommand');
 
 describe('MqttCommandRouter', () => {
     let router;

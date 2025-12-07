@@ -153,20 +153,26 @@ describe('CgateWebBridge', () => {
     });
 
     afterEach(async () => {
-        jest.clearAllTimers();
-        mockConsoleWarn.mockClear();
-        mockConsoleError.mockClear();
-        if(exitSpy) exitSpy.mockRestore();
-        
-        // Cleanup connections to prevent hanging
+        // Cleanup connections and queues to prevent hanging
         if (bridge) {
             try {
+                // Clear queues first to stop async operations
+                bridge.cgateCommandQueue?.clear?.();
+                bridge.mqttPublishQueue?.clear?.();
                 bridge.eventConnection?.disconnect?.();
                 await bridge.commandConnectionPool?.stop?.();
             } catch {
                 // Ignore cleanup errors
             }
         }
+        
+        // Run any pending setImmediate callbacks before clearing
+        await new Promise(resolve => setImmediate(resolve));
+        
+        jest.clearAllTimers();
+        mockConsoleWarn.mockClear();
+        mockConsoleError.mockClear();
+        if(exitSpy) exitSpy.mockRestore();
     });
 
     describe('Constructor & Initial State', () => {

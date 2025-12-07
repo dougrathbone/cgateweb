@@ -2,7 +2,6 @@
 
 const CgateConnectionPool = require('../src/cgateConnectionPool');
 const CgateConnection = require('../src/cgateConnection');
-const EventEmitter = require('events');
 
 // Mock CgateConnection
 jest.mock('../src/cgateConnection');
@@ -50,7 +49,6 @@ describe('CgateConnectionPool', () => {
         if (pool.isStarted) {
             await pool.stop();
         }
-        mockConnections = [];
     });
 
     describe('Constructor', () => {

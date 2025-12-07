@@ -2,8 +2,6 @@ const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const { createLogger } = require('./logger');
 const {
-    LOG_PREFIX,
-    WARN_PREFIX,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
