@@ -13,9 +13,6 @@ const { createLogger } = require('./logger');
 const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
 const {
-    LOG_PREFIX,
-    WARN_PREFIX,
-    ERROR_PREFIX,
     MQTT_TOPIC_SUFFIX_LEVEL,
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
@@ -63,7 +60,7 @@ class CgateWebBridge {
      */
     constructor(settings, mqttClientFactory = null, commandSocketFactory = null, eventSocketFactory = null) {
         // Merge with default settings
-        const { defaultSettings } = require('../index.js');
+        const { defaultSettings } = require('./defaultSettings');
         this.settings = { ...defaultSettings, ...settings };
         this.logger = createLogger({ 
             component: 'bridge', 
@@ -219,7 +216,7 @@ class CgateWebBridge {
      * - Resets connection state
      */
     async stop() {
-        this.log(`${LOG_PREFIX} Stopping cgateweb bridge...`);
+        this.log(`Stopping cgateweb bridge...`);
         
         // Clear periodic tasks
         if (this.periodicGetAllInterval) {
@@ -241,11 +238,11 @@ class CgateWebBridge {
 
     _handleAllConnected() {
         // Called when connection manager signals all connections are ready
-        this.log(`${LOG_PREFIX} ALL CONNECTED - Initializing services...`);
+        this.log(`ALL CONNECTED - Initializing services...`);
 
         // Trigger initial get all
         if (this.settings.getallnetapp && this.settings.getallonstart) {
-            this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
+            this.log(`Getting all initial values for ${this.settings.getallnetapp}...`);
             this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
         }
 
@@ -254,9 +251,9 @@ class CgateWebBridge {
             if (this.periodicGetAllInterval) {
                 clearInterval(this.periodicGetAllInterval);
             }
-            this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
+            this.log(`Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
             this.periodicGetAllInterval = setInterval(() => {
-                this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
+                this.log(`Getting all periodic values for ${this.settings.getallnetapp}...`);
                 this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
             }, this.settings.getallperiod * 1000);
         }
@@ -294,11 +291,11 @@ class CgateWebBridge {
 
     _processEventLine(line) {
         if (line.startsWith('#')) {
-            this.log(`${LOG_PREFIX} Ignoring comment from event port:`, line);
+            this.log(`Ignoring comment from event port:`, line);
             return;
         }
 
-        this.log(`${LOG_PREFIX} C-Gate Recv (Evt): ${line}`);
+        this.log(`C-Gate Recv (Evt): ${line}`);
 
         try {
             const event = new CBusEvent(line);
@@ -306,10 +303,10 @@ class CgateWebBridge {
                 this.eventPublisher.publishEvent(event, '(Evt)');
                 this._emitLevelFromEvent(event);
             } else {
-                this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
+                this.warn(`Could not parse event line: ${line}`);
             }
         } catch (e) {
-            this.error(`${ERROR_PREFIX} Error processing event data line:`, e, `Line: ${line}`);
+            this.error(`Error processing event data line:`, e, `Line: ${line}`);
         }
     }
 

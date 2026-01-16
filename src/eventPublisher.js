@@ -1,6 +1,5 @@
 const { createLogger } = require('./logger');
 const {
-    LOG_PREFIX,
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
@@ -95,7 +94,7 @@ class EventPublisher {
             }
         }
        
-        this.logger.info(`${LOG_PREFIX} C-Bus Status ${source}: ${event.getNetwork()}/${event.getApplication()}/${event.getGroup()} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
+        this.logger.info(`C-Bus Status ${source}: ${event.getNetwork()}/${event.getApplication()}/${event.getGroup()} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
 
         // Publish state message
         this.mqttPublishQueue.add({ 
