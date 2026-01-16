@@ -1,10 +1,5 @@
 const packageJson = require('../package.json');
 
-// === Logging ===
-const LOG_PREFIX = '[INFO]';
-const WARN_PREFIX = '[WARN]';
-const ERROR_PREFIX = '[ERROR]';
-
 // === C-Bus System ===
 const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
@@ -90,11 +85,6 @@ const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
 
 // Export all constants - maintain compatibility with destructuring imports
 module.exports = {
-    // Logging
-    LOG_PREFIX,
-    WARN_PREFIX,
-    ERROR_PREFIX,
-    
     // C-Bus System  
     DEFAULT_CBUS_APP_LIGHTING,
     CGATE_LEVEL_MIN,

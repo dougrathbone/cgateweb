@@ -230,10 +230,12 @@ class HaDiscovery {
 
     _processEnableControlGroups(networkId, appAddress, groups) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
-        const coverAppId = this.settings.ha_discovery_cover_app_id;
-        const switchAppId = this.settings.ha_discovery_switch_app_id;
-        const relayAppId = this.settings.ha_discovery_relay_app_id;
-        const pirAppId = this.settings.ha_discovery_pir_app_id;
+        
+        // Determine the discovery type based on application address
+        const discoveryType = this._getDiscoveryTypeForApp(appAddress);
+        if (!discoveryType) {
+            return;
+        }
 
         groupArray.forEach(group => {
             const groupId = group.GroupAddress;
@@ -242,30 +244,30 @@ class HaDiscovery {
                 return;
             }
 
-            const groupLabel = group.Label;
-            let discovered = false;
-
-            // Check for Cover (highest priority)
-            if (coverAppId && appAddress === coverAppId) {
-                this._createCoverDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for Switch
-            else if (!discovered && switchAppId && appAddress === switchAppId) {
-                this._createSwitchDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for Relay
-            else if (!discovered && relayAppId && appAddress === relayAppId) {
-                this._createRelayDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for PIR
-            else if (!discovered && pirAppId && appAddress === pirAppId) {
-                this._createPirDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
+            this._createDiscovery(networkId, appAddress, groupId, group.Label, this._getDiscoveryConfig(discoveryType));
         });
+    }
+
+    /**
+     * Determines the discovery type for a given application address.
+     * @param {string} appAddress - The application address
+     * @returns {string|null} The discovery type ('cover', 'switch', 'relay', 'pir') or null if not configured
+     * @private
+     */
+    _getDiscoveryTypeForApp(appAddress) {
+        if (this.settings.ha_discovery_cover_app_id && appAddress === this.settings.ha_discovery_cover_app_id) {
+            return 'cover';
+        }
+        if (this.settings.ha_discovery_switch_app_id && appAddress === this.settings.ha_discovery_switch_app_id) {
+            return 'switch';
+        }
+        if (this.settings.ha_discovery_relay_app_id && appAddress === this.settings.ha_discovery_relay_app_id) {
+            return 'relay';
+        }
+        if (this.settings.ha_discovery_pir_app_id && appAddress === this.settings.ha_discovery_pir_app_id) {
+            return 'pir';
+        }
+        return null;
     }
 
     // Unified discovery creation method to eliminate code duplication
@@ -365,25 +367,6 @@ class HaDiscovery {
         };
         return configs[type];
     }
-
-    _createCoverDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('cover'));
-    }
-
-    _createSwitchDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('switch'));
-    }
-
-    _createRelayDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('relay'));
-    }
-
-    _createPirDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('pir'));
-    }
-
-
-    // Logging methods that can be overridden
 }
 
 module.exports = HaDiscovery;

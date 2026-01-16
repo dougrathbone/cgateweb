@@ -27,17 +27,6 @@ declare module '@cgateweb/error-handler' {
     export class ErrorHandler {
         constructor(component: string);
         handle(error: Error, context?: object, action?: string | null, fatal?: boolean): void;
-        handleConnectionError(
-            error: Error, 
-            context?: object, 
-            retryCallback?: (() => void) | null, 
-            retryCount?: number, 
-            maxRetries?: number
-        ): boolean;
-        handleValidationError(error: Error, data?: object, field?: string | null): void;
-        handleParsingError(error: Error, input?: string, expectedFormat?: string | null): void;
-        wrapAsync(asyncFn: Function, action: string, context?: object): Function;
-        createTimeoutPromise(timeoutMs: number, operation?: string): Promise<never>;
     }
 
     export function createErrorHandler(component: string): ErrorHandler;

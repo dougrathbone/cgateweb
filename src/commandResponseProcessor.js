@@ -1,9 +1,6 @@
 const CBusEvent = require('./cbusEvent');
 const { createLogger } = require('./logger');
 const {
-    LOG_PREFIX,
-    WARN_PREFIX,
-    ERROR_PREFIX,
     CGATE_RESPONSE_OBJECT_STATUS,
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_DATA,
@@ -44,7 +41,7 @@ class CommandResponseProcessor {
      * @param {string} line - Command response line to process
      */
     processLine(line) {
-        this.logger.info(`${LOG_PREFIX} C-Gate Recv (Cmd): ${line}`);
+        this.logger.info(`C-Gate Recv (Cmd): ${line}`);
 
         try {
             const parsedResponse = this._parseCommandResponseLine(line);
@@ -52,7 +49,7 @@ class CommandResponseProcessor {
 
             this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
         } catch (e) {
-            this.logger.error(`${ERROR_PREFIX} Error processing command data line:`, e, `Line: ${line}`); 
+            this.logger.error(`Error processing command data line:`, e, `Line: ${line}`); 
         }
     }
 
@@ -82,7 +79,7 @@ class CommandResponseProcessor {
         
         // C-Gate response codes are 3-digit numbers starting with 1-6 (like HTTP status codes)
         if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
-             this.logger.info(`${LOG_PREFIX} Skipping invalid command response line: ${line}`);
+             this.logger.info(`Skipping invalid command response line: ${line}`);
              return null; 
         }
 
@@ -106,7 +103,7 @@ class CommandResponseProcessor {
                 if (this.haDiscovery) {
                     this.haDiscovery.handleTreeStart(statusData);
                 } else {
-                    this.logger.warn(`${WARN_PREFIX} Received tree start before HA Discovery initialized, ignoring`);
+                    this.logger.warn(`Received tree start before HA Discovery initialized, ignoring`);
                 }
                 break;
             case CGATE_RESPONSE_TREE_DATA:
@@ -125,7 +122,7 @@ class CommandResponseProcessor {
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
                 } else {
-                    this.logger.info(`${LOG_PREFIX} Unhandled C-Gate response ${responseCode}: ${statusData}`);
+                    this.logger.info(`Unhandled C-Gate response ${responseCode}: ${statusData}`);
                 }
         }
     }
@@ -143,7 +140,7 @@ class CommandResponseProcessor {
                 this.onObjectStatus(event);
             }
         } else {
-            this.logger.warn(`${WARN_PREFIX} Could not parse object status: ${statusData}`);
+            this.logger.warn(`Could not parse object status: ${statusData}`);
         }
     }
 
@@ -154,7 +151,7 @@ class CommandResponseProcessor {
      * @param {string} statusData - Error details from C-Gate
      */
     _processCommandErrorResponse(responseCode, statusData) {
-        const baseMessage = `${ERROR_PREFIX} C-Gate Command Error ${responseCode}:`;
+        const baseMessage = `C-Gate Command Error ${responseCode}:`;
         let hint = '';
 
         switch (responseCode) {
