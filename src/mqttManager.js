@@ -120,11 +120,19 @@ class MqttManager extends EventEmitter {
     }
 
     _buildMqttUrl() {
-        // Parse MQTT connection string (format: "host:port" or "host")  
-        const mqttParts = this.settings.mqtt.split(':');
+        const raw = this.settings.mqtt || 'localhost:1883';
+        
+        // If URL already has a protocol, use it directly
+        if (/^mqtts?:\/\//.test(raw)) {
+            return raw;
+        }
+        
+        // Parse "host:port" format and add appropriate protocol
+        const mqttParts = raw.split(':');
         const mqttHost = mqttParts[0] || 'localhost';
         const mqttPort = mqttParts[1] || '1883';
-        return `mqtt://${mqttHost}:${mqttPort}`;
+        const protocol = this.settings.mqttUseTls ? 'mqtts' : 'mqtt';
+        return `${protocol}://${mqttHost}:${mqttPort}`;
     }
 
     _buildConnectOptions() {
@@ -139,13 +147,30 @@ class MqttManager extends EventEmitter {
             }
         };
 
-        // Add authentication if provided
         if (this.settings.mqttusername && typeof this.settings.mqttusername === 'string') {
             options.username = this.settings.mqttusername;
             
             if (this.settings.mqttpassword && typeof this.settings.mqttpassword === 'string') {
                 options.password = this.settings.mqttpassword;
             }
+        }
+
+        // TLS options for mqtts:// connections
+        if (this.settings.mqttCaFile || this.settings.mqttCertFile || this.settings.mqttKeyFile) {
+            const fs = require('fs');
+            if (this.settings.mqttCaFile) {
+                options.ca = fs.readFileSync(this.settings.mqttCaFile);
+            }
+            if (this.settings.mqttCertFile) {
+                options.cert = fs.readFileSync(this.settings.mqttCertFile);
+            }
+            if (this.settings.mqttKeyFile) {
+                options.key = fs.readFileSync(this.settings.mqttKeyFile);
+            }
+        }
+
+        if (this.settings.mqttRejectUnauthorized === false) {
+            options.rejectUnauthorized = false;
         }
 
         return options;

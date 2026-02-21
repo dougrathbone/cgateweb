@@ -80,8 +80,7 @@ describe('MqttManager', () => {
             
             urlManager.connect();
             
-            // Current implementation will parse 'mqtt' as host and '//example.com' as port
-            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://mqtt://example.com', expect.any(Object));
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://example.com:1883', expect.any(Object));
         });
 
         it('should handle mqtt URL with mqtts protocol', () => {
@@ -90,8 +89,7 @@ describe('MqttManager', () => {
             
             tlsManager.connect();
             
-            // Current implementation will parse 'mqtts' as host and '//secure.example.com' as port
-            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://mqtts://secure.example.com', expect.any(Object));
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://secure.example.com:8883', expect.any(Object));
         });
 
         it('should disconnect existing client before creating new one', () => {
@@ -358,8 +356,8 @@ describe('MqttManager', () => {
         const testCases = [
             { input: 'localhost:1883', expected: 'mqtt://localhost:1883' },
             { input: 'example.com:1883', expected: 'mqtt://example.com:1883' },
-            { input: 'mqtt://localhost:1883', expected: 'mqtt://mqtt://localhost' },
-            { input: 'mqtts://secure.example.com:8883', expected: 'mqtt://mqtts://secure.example.com' },
+            { input: 'mqtt://localhost:1883', expected: 'mqtt://localhost:1883' },
+            { input: 'mqtts://secure.example.com:8883', expected: 'mqtts://secure.example.com:8883' },
             { input: '192.168.1.100:1883', expected: 'mqtt://192.168.1.100:1883' }
         ];
 
@@ -372,6 +370,33 @@ describe('MqttManager', () => {
                 
                 expect(mqtt.connect).toHaveBeenCalledWith(expected, expect.any(Object));
             });
+        });
+
+        it('should use mqtts:// when mqttUseTls is true', () => {
+            const testSettings = { mqtt: 'broker.example.com:8883', mqttUseTls: true };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://broker.example.com:8883', expect.any(Object));
+        });
+
+        it('should use mqtt:// when mqttUseTls is false', () => {
+            const testSettings = { mqtt: 'localhost:1883', mqttUseTls: false };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://localhost:1883', expect.any(Object));
+        });
+
+        it('should prefer explicit protocol over mqttUseTls flag', () => {
+            const testSettings = { mqtt: 'mqtts://secure.broker.com:8883', mqttUseTls: false };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://secure.broker.com:8883', expect.any(Object));
         });
     });
 

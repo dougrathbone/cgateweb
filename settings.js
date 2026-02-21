@@ -9,9 +9,21 @@ exports.cbusname = "HOME";
 //mqtt server ip:port
 exports.mqtt = '127.0.0.1:1883';
 
-//username and password (unncomment to use)
+//username and password (uncomment to use)
 //exports.mqttusername = 'user1';
 //exports.mqttpassword = 'password1';
+
+// --- MQTT TLS Settings ---
+// Use TLS when connecting with host:port format (mqtts:// URLs enable TLS automatically)
+// exports.mqttUseTls = true;
+// Path to CA certificate file (PEM format)
+// exports.mqttCaFile = '/path/to/ca.crt';
+// Path to client certificate file (PEM format, for mutual TLS)
+// exports.mqttCertFile = '/path/to/client.crt';
+// Path to client private key file (PEM format, for mutual TLS)
+// exports.mqttKeyFile = '/path/to/client.key';
+// Set to false to skip server certificate verification (not recommended for production)
+// exports.mqttRejectUnauthorized = false;
 
 // net and app for automatically requesting values
 // exports.getallnetapp = '254/56';
