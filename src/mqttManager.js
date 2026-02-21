@@ -77,6 +77,13 @@ class MqttManager extends EventEmitter {
     disconnect() {
         this._intentionalDisconnect = true;
         if (this.client) {
+            if (this.connected) {
+                try {
+                    this.client.publish(MQTT_TOPIC_STATUS, MQTT_PAYLOAD_STATUS_OFFLINE, { retain: true, qos: 1 });
+                } catch (_e) {
+                    // Best effort - don't block shutdown if publish fails
+                }
+            }
             this.client.removeAllListeners();
             this.client.end();
             this.client = null;

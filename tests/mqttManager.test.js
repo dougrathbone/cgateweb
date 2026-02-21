@@ -124,6 +124,30 @@ describe('MqttManager', () => {
             expect(mockClient.end).toHaveBeenCalled();
         });
 
+        it('should publish offline status before disconnecting', () => {
+            mqttManager.disconnect();
+            
+            expect(mockClient.publish).toHaveBeenCalledWith(
+                'hello/cgateweb', 'Offline', { retain: true, qos: 1 }
+            );
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
+        it('should not publish offline status when not connected', () => {
+            mqttManager.connected = false;
+            mqttManager.disconnect();
+            
+            expect(mockClient.publish).not.toHaveBeenCalled();
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
+        it('should handle publish error during disconnect gracefully', () => {
+            mockClient.publish.mockImplementation(() => { throw new Error('Publish failed'); });
+            
+            expect(() => mqttManager.disconnect()).not.toThrow();
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
         it('should handle null client gracefully', () => {
             mqttManager.client = null;
             
