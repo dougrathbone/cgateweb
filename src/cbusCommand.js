@@ -97,10 +97,9 @@ class CBusCommand {
                 return;
             }
 
-            // Parse payload based on command type
-            this._parsePayload();
-            
+            // Topic parsed successfully - payload validation may override
             this._isValid = true;
+            this._parsePayload();
             this._parsed = true;
         } catch (error) {
             this._logger.error(`Error parsing MQTT command topic: ${this._topic}`, { error });
@@ -179,9 +178,15 @@ class CBusCommand {
         // C-Bus uses 8-bit values: 0 = off, 255 = full brightness
         this._level = Math.round((clampedLevel / 100) * CGATE_LEVEL_MAX);
 
-        // Parse ramp time if provided
+        // Validate ramp time against strict pattern to prevent command injection.
+        // C-Gate accepts time values like "4s", "2m", "500ms", or bare numbers.
         if (timePart) {
-            this._rampTime = timePart;
+            if (/^\d+(\.\d+)?(ms|s|m|h)?$/.test(timePart)) {
+                this._rampTime = timePart;
+            } else {
+                this._logger.warn(`Invalid ramp time format rejected: ${timePart}`);
+                this._isValid = false;
+            }
         }
     }
 

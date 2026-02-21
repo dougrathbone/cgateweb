@@ -287,8 +287,7 @@ describe('CBusCommand Parsing', () => {
           const topic = 'cbus/write/200/56/1/ramp';
           const message = 'dim';
           const cbusCmd = new CBusCommand(topic, message);
-          expect(cbusCmd.isValid()).toBe(true);
-          expect(cbusCmd.getLevel()).toBeNull(); // Cannot determine level
+          expect(cbusCmd.isValid()).toBe(false);
           expect(cbusCmd.getLevel()).toBeNull();
       });
 }); 

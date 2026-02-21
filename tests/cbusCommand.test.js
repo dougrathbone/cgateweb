@@ -124,25 +124,31 @@ describe('CBusCommand', () => {
         expect(command.getPayload()).toBe('');
     });
     
-     it('should handle null message gracefully', () => {
+     it('should handle null message gracefully for switch', () => {
         const topic = 'cbus/write/254/56/7/switch';
+        const message = null;
+        const command = new CBusCommand(topic, message);
+
+        expect(command.isValid()).toBe(false);
+        expect(command.getPayload()).toBe('');
+    });
+
+    it('should handle null message gracefully for commands that ignore payload', () => {
+        const topic = 'cbus/write/254/56//getall';
         const message = null;
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
         expect(command.getPayload()).toBe('');
-        expect(command.getLevel()).toBeNull(); // Cannot determine level from null message
-        expect(command.getLevel()).toBeNull();
     });
 
-    it('should handle undefined message gracefully', () => {
+    it('should handle undefined message gracefully for ramp', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = undefined;
         const command = new CBusCommand(topic, message);
 
-        expect(command.isValid()).toBe(true);
+        expect(command.isValid()).toBe(false);
         expect(command.getPayload()).toBe('');
-        expect(command.getLevel()).toBeNull();
         expect(command.getLevel()).toBeNull();
         expect(command.getRampTime()).toBeNull();
     });
@@ -317,6 +323,75 @@ describe('CBusCommand', () => {
             expect(command.getCommandType()).toBe('ramp');
             expect(command.getLevel()).toBe(Math.round(25 * 255 / 100));
             expect(command.getRampTime()).toBe('2s');
+        });
+    });
+
+    // === Ramp Time Validation (Command Injection Prevention) ===
+    describe('Ramp time validation', () => {
+        it('should accept valid ramp time with seconds', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('4s');
+        });
+
+        it('should accept valid ramp time with minutes', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,2m');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('2m');
+        });
+
+        it('should accept valid ramp time with hours', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,1h');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('1h');
+        });
+
+        it('should accept valid ramp time with milliseconds', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,500ms');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('500ms');
+        });
+
+        it('should accept bare numeric ramp time', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('4');
+        });
+
+        it('should accept decimal ramp time', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,1.5s');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('1.5s');
+        });
+
+        it('should reject ramp time with newline (command injection)', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s\nON //HOME/254/56/99');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with carriage return', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s\rOFF //HOME/254/56/1');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with spaces (potential injection)', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s DELETE //HOME');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with semicolons', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s;ON //HOME/254/56/1');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with letters only', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,abc');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
         });
     });
 
