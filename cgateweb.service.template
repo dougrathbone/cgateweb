@@ -12,18 +12,31 @@ ExecStart=/usr/bin/node %I/index.js
 ExecReload=/bin/kill -USR1 $MAINPID
 Restart=always
 RestartSec=10
-User=root
-Group=root
+User=cgateweb
+Group=cgateweb
 Environment=PATH=/usr/bin:/usr/local/bin
 Environment=NODE_ENV=production
 WorkingDirectory=%I
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=cgateweb
+
 # Graceful shutdown
 KillMode=mixed
 KillSignal=SIGTERM
 TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+ReadWritePaths=%I
+CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target

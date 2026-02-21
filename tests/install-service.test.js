@@ -113,7 +113,11 @@ Description=cgateweb test
 [Service]
 WorkingDirectory=%I
 ExecStart=/usr/bin/node %I/index.js
-User=testuser
+User=cgateweb
+Group=cgateweb
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=%I
 
 [Install]
 WantedBy=multi-user.target
@@ -290,4 +294,44 @@ WantedBy=multi-user.target
         expect(mockExecSync).toHaveBeenCalledWith('systemctl enable cgateweb.service', expectedOptions);
     });
 
+    describe('service template security', () => {
+        const realFs = jest.requireActual('fs');
+        const realPath = require('path');
+        let templateContent;
+        
+        beforeAll(() => {
+            const templatePath = realPath.join(__dirname, '..', 'cgateweb.service.template');
+            templateContent = realFs.readFileSync(templatePath, 'utf8');
+        });
+
+        it('should not run as root', () => {
+            expect(templateContent).toContain('User=cgateweb');
+            expect(templateContent).toContain('Group=cgateweb');
+            expect(templateContent).not.toMatch(/User=root/);
+        });
+
+        it('should have NoNewPrivileges enabled', () => {
+            expect(templateContent).toContain('NoNewPrivileges=yes');
+        });
+
+        it('should protect the system filesystem', () => {
+            expect(templateContent).toContain('ProtectSystem=strict');
+        });
+
+        it('should protect home directories', () => {
+            expect(templateContent).toContain('ProtectHome=yes');
+        });
+
+        it('should use private tmp', () => {
+            expect(templateContent).toContain('PrivateTmp=yes');
+        });
+
+        it('should drop all capabilities', () => {
+            expect(templateContent).toContain('CapabilityBoundingSet=');
+        });
+
+        it('should restrict ReadWritePaths to install directory', () => {
+            expect(templateContent).toContain('ReadWritePaths=%I');
+        });
+    });
 }); 

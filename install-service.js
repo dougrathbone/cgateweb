@@ -49,11 +49,27 @@ function checkDependencies() {
     console.log('Dependencies installed ✓');
 }
 
+function ensureServiceUser() {
+    const username = 'cgateweb';
+    try {
+        runCommand(`id ${username}`);
+        console.log(`Service user '${username}' already exists ✓`);
+    } catch (_e) {
+        console.log(`Creating service user '${username}'...`);
+        if (!runCommand(`useradd --system --no-create-home --shell /usr/sbin/nologin ${username}`)) {
+            console.error(`Failed to create service user '${username}'.`);
+            process.exit(1);
+        }
+        console.log(`Service user '${username}' created ✓`);
+    }
+}
+
 function installService() {
     console.log('--- cgateweb Systemd Service Installer ---');
 
     checkRoot('install-service.js');
     checkDependencies();
+    ensureServiceUser();
 
     // 1. Check if source service file template exists
     if (!fs.existsSync(SOURCE_SERVICE_FILE_TEMPLATE)) {
