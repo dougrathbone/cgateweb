@@ -260,8 +260,11 @@ class CgateWebBridge {
         
         // Initialize haDiscovery after pool starts
         if (!this.haDiscovery) {
-            this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
-            // Update command response processor with haDiscovery reference
+            this.haDiscovery = new HaDiscovery(
+                this.settings,
+                (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
+                (command) => this._sendCgateCommand(command)
+            );
             this.commandResponseProcessor.haDiscovery = this.haDiscovery;
         }
         

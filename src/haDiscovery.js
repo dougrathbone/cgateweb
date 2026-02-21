@@ -35,10 +35,15 @@ const {
 } = require('./constants');
 
 class HaDiscovery {
-    constructor(settings, mqttManager, cgateConnection) {
+    /**
+     * @param {Object} settings - Configuration settings
+     * @param {Function} publishFn - Function to publish MQTT messages: (topic, payload, options) => void
+     * @param {Function} sendCommandFn - Function to send C-Gate commands: (command) => void
+     */
+    constructor(settings, publishFn, sendCommandFn) {
         this.settings = settings;
-        this.mqttManager = mqttManager;
-        this.cgateConnection = cgateConnection;
+        this._publish = publishFn;
+        this._sendCommand = sendCommandFn;
         
         this.treeBuffer = '';
         this.treeNetwork = null;
@@ -74,7 +79,7 @@ class HaDiscovery {
         networksToDiscover.forEach(networkId => {
             this.logger.info(`Requesting TreeXML for network ${networkId}...`);
             this.treeNetwork = networkId;
-            this.cgateConnection.send(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
+            this._sendCommand(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
         });
     }
 
@@ -113,7 +118,7 @@ class HaDiscovery {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 
                 // Publish standard tree topic
-                this.mqttManager.publish(
+                this._publish(
                     `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
                     JSON.stringify(result),
                     { retain: true, qos: 0 }
@@ -223,7 +228,7 @@ class HaDiscovery {
                 }
             };
 
-            this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+            this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
             this.discoveryCount++;
         });
     }
@@ -308,7 +313,7 @@ class HaDiscovery {
             }
         };
 
-        this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
         this.discoveryCount++;
     }
 
