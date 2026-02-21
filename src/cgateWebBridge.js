@@ -95,17 +95,20 @@ class CgateWebBridge {
         // Service modules (haDiscovery will be initialized after pool starts)
         this.haDiscovery = null;
         
-        // Message queues
+        // Message queues with configurable size limits
+        const queueOptions = { maxSize: this.settings.maxQueueSize || 1000 };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
             this.settings.messageinterval,
-            'C-Gate Command Queue'
+            'C-Gate Command Queue',
+            queueOptions
         );
         
         this.mqttPublishQueue = new ThrottledQueue(
             (message) => this._publishMqttMessage(message),
             this.settings.messageinterval,
-            'MQTT Publish Queue'
+            'MQTT Publish Queue',
+            queueOptions
         );
 
         // MQTT command router

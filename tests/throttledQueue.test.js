@@ -190,4 +190,81 @@ describe('ThrottledQueue', () => {
         expect(() => new ThrottledQueue(jest.fn(), -100)).toThrow('intervalMs for Queue must be a positive number');
         expect(() => new ThrottledQueue(jest.fn(), 'not a number')).toThrow('intervalMs for Queue must be a positive number');
     });
+
+    describe('Queue size limits', () => {
+        it('should default to maxSize of 1000', () => {
+            const queue = new ThrottledQueue(jest.fn(), 100);
+            expect(queue.maxSize).toBe(1000);
+        });
+
+        it('should accept custom maxSize', () => {
+            const queue = new ThrottledQueue(jest.fn(), 100, 'Test', { maxSize: 5 });
+            expect(queue.maxSize).toBe(5);
+        });
+
+        it('should drop oldest items when queue is full', () => {
+            jest.useFakeTimers();
+            const processed = [];
+            const queue = new ThrottledQueue(
+                (item) => processed.push(item),
+                100,
+                'Test',
+                { maxSize: 3 }
+            );
+
+            // First item processed immediately, remaining 4 queued
+            queue.add('a');
+            queue.add('b');
+            queue.add('c');
+            queue.add('d'); // Should drop 'b' (oldest in queue after 'a' was processed)
+            
+            // 'a' is processed immediately, queue has [b, c, d] but max is 3
+            // Actually: after add('a'), queue has ['a'], process runs immediately and removes 'a'
+            // After add('b'), queue has ['b']
+            // After add('c'), queue has ['b', 'c']
+            // After add('d'), queue has ['b', 'c', 'd'] - exactly at max, no drop
+            
+            // Let's fill past the limit
+            queue.add('e'); // Now queue has ['c', 'd', 'e'] - 'b' dropped
+            
+            expect(queue.droppedCount).toBe(1);
+            expect(queue.length).toBe(3);
+            
+            jest.useRealTimers();
+        });
+
+        it('should allow unlimited queue when maxSize is 0', () => {
+            jest.useFakeTimers();
+            const queue = new ThrottledQueue(jest.fn(), 100, 'Test', { maxSize: 0 });
+            
+            for (let i = 0; i < 5000; i++) {
+                queue.add(i);
+            }
+            
+            expect(queue.droppedCount).toBe(0);
+            // 1 processed immediately, 4999 in queue
+            expect(queue.length).toBe(4999);
+            
+            queue.clear();
+            jest.useRealTimers();
+        });
+
+        it('should track total dropped count', () => {
+            jest.useFakeTimers();
+            const queue = new ThrottledQueue(jest.fn(), 100, 'Test', { maxSize: 2 });
+            
+            // Fill queue: first item processed immediately
+            queue.add('a'); // Processed immediately, queue empty
+            queue.add('b'); // queue: [b]
+            queue.add('c'); // queue: [b, c]
+            queue.add('d'); // drop b, queue: [c, d]
+            queue.add('e'); // drop c, queue: [d, e]
+            queue.add('f'); // drop d, queue: [e, f]
+            
+            expect(queue.droppedCount).toBe(3);
+            
+            queue.clear();
+            jest.useRealTimers();
+        });
+    });
 }); 

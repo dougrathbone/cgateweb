@@ -13,6 +13,7 @@ const defaultSettings = {
     retainreads: false,
     logging: true,
     messageinterval: 200,
+    maxQueueSize: 1000,
     getallnetapp: null,
     getallonstart: false,
     getallperiod: null,
