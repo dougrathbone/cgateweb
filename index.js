@@ -16,8 +16,24 @@ try {
     }
 }
 
-// Merge settings
+// Merge settings, then apply environment variable overrides for sensitive values
 const settings = { ...defaultSettings, ...userSettings };
+
+const envOverrides = {
+    MQTT_HOST: 'mqtt',
+    MQTT_USERNAME: 'mqttusername',
+    MQTT_PASSWORD: 'mqttpassword',
+    CGATE_IP: 'cbusip',
+    CGATE_USERNAME: 'cgateusername',
+    CGATE_PASSWORD: 'cgatepassword',
+    CGATE_PROJECT: 'cbusname',
+};
+
+for (const [envKey, settingKey] of Object.entries(envOverrides)) {
+    if (process.env[envKey] !== undefined) {
+        settings[settingKey] = process.env[envKey];
+    }
+}
 
 
 // Application startup
