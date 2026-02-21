@@ -39,6 +39,7 @@ class MqttManager extends EventEmitter {
         this.settings = settings;
         this.client = null;
         this.connected = false;
+        this._intentionalDisconnect = false;
         this.logger = createLogger({ component: 'MqttManager' });
         this.errorHandler = createErrorHandler('MqttManager');
     }
@@ -74,6 +75,7 @@ class MqttManager extends EventEmitter {
     }
 
     disconnect() {
+        this._intentionalDisconnect = true;
         if (this.client) {
             this.client.removeAllListeners();
             this.client.end();
@@ -170,39 +172,30 @@ class MqttManager extends EventEmitter {
 
     _handleClose() {
         this.connected = false;
-        this.logger.debug('MQTT Close event received', { arguments });
-        this.logger.warn(`MQTT Client Closed. Reconnection handled by library.`);
         
-        if (this.client) {
-            this.client.removeAllListeners(); 
-            this.client = null;
+        if (this._intentionalDisconnect) {
+            this.logger.info('MQTT Client closed (intentional disconnect).');
+        } else {
+            this.logger.warn('MQTT Client closed. Library will attempt reconnection.');
         }
         
         this.emit('close');
     }
 
     _handleError(err) {
-        this.connected = false; // Assume disconnected on error
+        this.connected = false;
         
-        // Handle specific authentication error as fatal
         if (err.code === MQTT_ERROR_AUTH) {
             this.errorHandler.handle(err, {
                 brokerUrl: this.settings.mqtt,
                 hasUsername: !!this.settings.mqttusername
             }, 'MQTT authentication', true); // Fatal error
         } else {
-            // Handle generic connection errors with context
             this.errorHandler.handle(err, {
                 brokerUrl: this.settings.mqtt,
                 connected: this.connected,
                 errorCode: err.code
             }, 'MQTT connection');
-        }
-        
-        // Clean up client
-        if (this.client) {
-            this.client.removeAllListeners();
-            this.client = null;
         }
         
         this.emit('error', err);

@@ -252,18 +252,29 @@ describe('MqttManager', () => {
         });
 
         describe('close event', () => {
-            it('should handle connection close', () => {
+            it('should handle transient connection close without destroying client', () => {
                 const loggerSpy = jest.spyOn(mqttManager.logger, 'warn');
-                const debugSpy = jest.spyOn(mqttManager.logger, 'debug');
                 const emitSpy = jest.spyOn(mqttManager, 'emit');
                 
                 mqttManager.connected = true;
                 mockClient.emit('close');
                 
                 expect(mqttManager.connected).toBe(false);
-                expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Close event received'), expect.any(Object));
-                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Closed'));
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Library will attempt reconnection'));
                 expect(emitSpy).toHaveBeenCalledWith('close');
+                // Client should NOT be destroyed on transient close
+                expect(mqttManager.client).toBe(mockClient);
+            });
+
+            it('should log intentional disconnect differently', () => {
+                const loggerSpy = jest.spyOn(mqttManager.logger, 'info');
+                
+                mqttManager.connected = true;
+                mqttManager._intentionalDisconnect = true;
+                mockClient.emit('close');
+                
+                expect(mqttManager.connected).toBe(false);
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('intentional disconnect'));
             });
         });
 
@@ -297,7 +308,7 @@ describe('MqttManager', () => {
                 }
             });
 
-            it('should handle other MQTT errors', () => {
+            it('should handle other MQTT errors without destroying client', () => {
                 const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
                 const testError = new Error('Generic MQTT error');
                 
@@ -315,6 +326,8 @@ describe('MqttManager', () => {
                     }),
                     'MQTT connection'
                 );
+                // Client should NOT be destroyed on transient errors
+                expect(mqttManager.client).toBe(mockClient);
             });
         });
 
