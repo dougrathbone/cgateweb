@@ -378,7 +378,7 @@ class HaDiscovery {
             const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
             const payload = { 
-                name: finalLabel,
+                name: null,
                 unique_id: uniqueId,
                 ...(entityId && { object_id: entityId }),
                 state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -473,7 +473,7 @@ class HaDiscovery {
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         
         const payload = { 
-            name: finalLabel,
+            name: null,
             unique_id: uniqueId,
             ...(entityId && { object_id: entityId }),
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,

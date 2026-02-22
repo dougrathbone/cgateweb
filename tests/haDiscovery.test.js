@@ -497,7 +497,7 @@ describe('HaDiscovery', () => {
             );
             expect(call).toBeDefined();
             const payload = JSON.parse(call[1]);
-            expect(payload.name).toBe('My Custom Kitchen');
+            expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('My Custom Kitchen');
         });
 
@@ -510,7 +510,8 @@ describe('HaDiscovery', () => {
             );
             expect(call).toBeDefined();
             const payload = JSON.parse(call[1]);
-            expect(payload.name).toBe('Kitchen Light');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Kitchen Light');
         });
 
         it('should use custom label for cover groups too', () => {
@@ -523,7 +524,8 @@ describe('HaDiscovery', () => {
             );
             expect(call).toBeDefined();
             const payload = JSON.parse(call[1]);
-            expect(payload.name).toBe('Master Bedroom Blind');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Master Bedroom Blind');
         });
 
         it('should track label stats correctly', () => {
@@ -550,7 +552,8 @@ describe('HaDiscovery', () => {
                 c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
             );
             const payload = JSON.parse(call[1]);
-            expect(payload.name).toBe('Updated Name');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Updated Name');
         });
 
         it('should initialize with empty label map by default', () => {
@@ -634,7 +637,8 @@ describe('HaDiscovery', () => {
             );
             expect(coverCall).toBeDefined();
             const payload = JSON.parse(coverCall[1]);
-            expect(payload.name).toBe('Kitchen Blind');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Kitchen Blind');
             expect(payload.device_class).toBe('shutter');
         });
 
@@ -653,7 +657,8 @@ describe('HaDiscovery', () => {
             );
             expect(switchCall).toBeDefined();
             const payload = JSON.parse(switchCall[1]);
-            expect(payload.name).toBe('Pond Pump');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Pond Pump');
         });
 
         it('should inject object_id when entity_ids has an entry', () => {
@@ -708,7 +713,8 @@ describe('HaDiscovery', () => {
             expect(coverCall).toBeDefined();
             const payload = JSON.parse(coverCall[1]);
             expect(payload.object_id).toBe('main_blind');
-            expect(payload.name).toBe('Main Blind');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Main Blind');
         });
 
         it('should also exclude groups from _createDiscovery (cover app)', () => {
@@ -754,14 +760,17 @@ describe('HaDiscovery', () => {
             );
             expect(extraCall).toBeDefined();
             const payload = JSON.parse(extraCall[1]);
-            expect(payload.name).toBe('Extra Group Not In Tree');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Extra Group Not In Tree');
             expect(payload.object_id).toBe('extra_group');
 
             const anotherCall = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/light/cgateweb_254_56_201/config'
             );
             expect(anotherCall).toBeDefined();
-            expect(JSON.parse(anotherCall[1]).name).toBe('Another Extra Group');
+            const anotherPayload = JSON.parse(anotherCall[1]);
+            expect(anotherPayload.name).toBeNull();
+            expect(anotherPayload.device.name).toBe('Another Extra Group');
         });
 
         it('should not duplicate groups already found in TREEXML', () => {
@@ -811,7 +820,8 @@ describe('HaDiscovery', () => {
             );
             expect(coverCall).toBeDefined();
             const payload = JSON.parse(coverCall[1]);
-            expect(payload.name).toBe('Extra Blind');
+            expect(payload.name).toBeNull();
+            expect(payload.device.name).toBe('Extra Blind');
             expect(payload.object_id).toBe('extra_blind');
         });
     });
