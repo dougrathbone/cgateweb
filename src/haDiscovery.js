@@ -39,13 +39,17 @@ class HaDiscovery {
      * @param {Object} settings - Configuration settings
      * @param {Function} publishFn - Function to publish MQTT messages: (topic, payload, options) => void
      * @param {Function} sendCommandFn - Function to send C-Gate commands: (command) => void
-     * @param {Map<string, string>} [labelMap] - Optional label overrides keyed by "network/app/group"
+     * @param {Object} [labelData] - Optional label data object from LabelLoader.getLabelData()
+     * @param {Map<string, string>} [labelData.labels] - Label overrides keyed by "network/app/group"
+     * @param {Map<string, string>} [labelData.typeOverrides] - Type overrides ("cover"|"switch"|"light")
+     * @param {Map<string, string>} [labelData.entityIds] - Entity ID hints (object_id for HA)
+     * @param {Set<string>} [labelData.exclude] - Addresses to skip during discovery
      */
-    constructor(settings, publishFn, sendCommandFn, labelMap = null) {
+    constructor(settings, publishFn, sendCommandFn, labelData = null) {
         this.settings = settings;
         this._publish = publishFn;
         this._sendCommand = sendCommandFn;
-        this.labelMap = labelMap || new Map();
+        this._applyLabelData(labelData);
         
         this.treeBufferParts = [];
         this.treeNetwork = null;
@@ -55,12 +59,36 @@ class HaDiscovery {
     }
 
     /**
-     * Replace the label map (used for hot-reload).
-     * @param {Map<string, string>} newLabelMap
+     * Replace the label data (used for hot-reload).
+     * Accepts either a full labelData object or a plain Map for backward compatibility.
+     * @param {Object|Map<string, string>} labelData
      */
-    updateLabels(newLabelMap) {
-        this.labelMap = newLabelMap || new Map();
-        this.logger.info(`Label map updated (${this.labelMap.size} custom labels)`);
+    updateLabels(labelData) {
+        this._applyLabelData(labelData);
+        const parts = [`${this.labelMap.size} labels`];
+        if (this.typeOverrides.size > 0) parts.push(`${this.typeOverrides.size} type overrides`);
+        if (this.entityIds.size > 0) parts.push(`${this.entityIds.size} entity IDs`);
+        if (this.exclude.size > 0) parts.push(`${this.exclude.size} excluded`);
+        this.logger.info(`Label data updated (${parts.join(', ')})`);
+    }
+
+    _applyLabelData(labelData) {
+        if (labelData instanceof Map) {
+            this.labelMap = labelData;
+            this.typeOverrides = new Map();
+            this.entityIds = new Map();
+            this.exclude = new Set();
+        } else if (labelData && typeof labelData === 'object') {
+            this.labelMap = labelData.labels || new Map();
+            this.typeOverrides = labelData.typeOverrides || new Map();
+            this.entityIds = labelData.entityIds || new Map();
+            this.exclude = labelData.exclude || new Set();
+        } else {
+            this.labelMap = new Map();
+            this.typeOverrides = new Map();
+            this.entityIds = new Map();
+            this.exclude = new Set();
+        }
     }
 
     trigger() {
@@ -285,6 +313,23 @@ class HaDiscovery {
             }
 
             const labelKey = `${networkId}/${appId}/${groupId}`;
+
+            if (this.exclude.has(labelKey)) {
+                this.logger.debug(`Excluding group ${labelKey} from discovery`);
+                return;
+            }
+
+            const typeOverride = this.typeOverrides.get(labelKey);
+            if (typeOverride && typeOverride !== 'light') {
+                const config = this._getDiscoveryConfig(typeOverride);
+                if (config) {
+                    this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
+                    this._createDiscovery(networkId, appId, groupId, group.Label, config);
+                    return;
+                }
+                this.logger.warn(`Unknown type override "${typeOverride}" for ${labelKey}, falling back to light`);
+            }
+
             const customLabel = this.labelMap.get(labelKey);
             const groupLabel = group.Label;
             const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
@@ -292,11 +337,13 @@ class HaDiscovery {
             else if (groupLabel) this.labelStats.treexml++;
             else this.labelStats.fallback++;
             const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+            const entityId = this.entityIds.get(labelKey);
             const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
             const payload = { 
                 name: finalLabel,
                 unique_id: uniqueId,
+                ...(entityId && { object_id: entityId }),
                 state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
                 command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
                 brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
@@ -371,24 +418,30 @@ class HaDiscovery {
         return null;
     }
 
-    // Unified discovery creation method to eliminate code duplication
     _createDiscovery(networkId, appId, groupId, groupLabel, config) {
         const labelKey = `${networkId}/${appId}/${groupId}`;
+
+        if (this.exclude.has(labelKey)) {
+            this.logger.debug(`Excluding group ${labelKey} from discovery`);
+            return;
+        }
+
         const customLabel = this.labelMap.get(labelKey);
         const finalLabel = customLabel || groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
         if (customLabel) this.labelStats.custom++;
         else if (groupLabel) this.labelStats.treexml++;
         else this.labelStats.fallback++;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const entityId = this.entityIds.get(labelKey);
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         
         const payload = { 
             name: finalLabel,
             unique_id: uniqueId,
+            ...(entityId && { object_id: entityId }),
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
             ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
-            // Add position topics for covers
             ...(config.positionSupport && {
                 position_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_POSITION}`,
                 set_position_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_POSITION}`,

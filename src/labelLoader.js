@@ -15,6 +15,9 @@ class LabelLoader extends EventEmitter {
         this.filePath = filePath ? path.resolve(filePath) : null;
         this.logger = createLogger({ component: 'LabelLoader' });
         this._labels = new Map();
+        this._typeOverrides = new Map();
+        this._entityIds = new Map();
+        this._exclude = new Set();
         this._watcher = null;
         this._debounceTimer = null;
         this._lastSaveTime = 0;
@@ -28,13 +31,13 @@ class LabelLoader extends EventEmitter {
     load() {
         if (!this.filePath) {
             this.logger.debug('No label file configured');
-            this._labels = new Map();
+            this._clearAll();
             return this._labels;
         }
 
         if (!fs.existsSync(this.filePath)) {
             this.logger.info(`Label file not found: ${this.filePath} (will be created on first save)`);
-            this._labels = new Map();
+            this._clearAll();
             return this._labels;
         }
 
@@ -48,11 +51,37 @@ class LabelLoader extends EventEmitter {
                 this._labels.set(key, value);
             }
 
-            this.logger.info(`Loaded ${this._labels.size} labels from ${this.filePath} (source: ${data.source || 'unknown'})`);
+            this._typeOverrides = new Map();
+            if (data.type_overrides && typeof data.type_overrides === 'object') {
+                for (const [key, value] of Object.entries(data.type_overrides)) {
+                    this._typeOverrides.set(key, value);
+                }
+            }
+
+            this._entityIds = new Map();
+            if (data.entity_ids && typeof data.entity_ids === 'object') {
+                for (const [key, value] of Object.entries(data.entity_ids)) {
+                    this._entityIds.set(key, value);
+                }
+            }
+
+            this._exclude = new Set();
+            if (Array.isArray(data.exclude)) {
+                for (const addr of data.exclude) {
+                    this._exclude.add(addr);
+                }
+            }
+
+            const extras = [];
+            if (this._typeOverrides.size > 0) extras.push(`${this._typeOverrides.size} type overrides`);
+            if (this._entityIds.size > 0) extras.push(`${this._entityIds.size} entity IDs`);
+            if (this._exclude.size > 0) extras.push(`${this._exclude.size} excluded`);
+            const extrasStr = extras.length > 0 ? `, ${extras.join(', ')}` : '';
+            this.logger.info(`Loaded ${this._labels.size} labels from ${this.filePath}${extrasStr} (source: ${data.source || 'unknown'})`);
             return this._labels;
         } catch (err) {
             this.logger.error(`Failed to load label file ${this.filePath}: ${err.message}`);
-            this._labels = new Map();
+            this._clearAll();
             return this._labels;
         }
     }
@@ -68,7 +97,7 @@ class LabelLoader extends EventEmitter {
 
         let fileData;
         if (labelsObj.version !== undefined && labelsObj.labels !== undefined) {
-            fileData = labelsObj;
+            fileData = { ...labelsObj };
         } else {
             fileData = {
                 version: LABEL_FILE_VERSION,
@@ -76,6 +105,18 @@ class LabelLoader extends EventEmitter {
                 generated: new Date().toISOString(),
                 labels: labelsObj
             };
+        }
+
+        // Preserve extended sections if present on the incoming data,
+        // otherwise keep whatever is currently on disk by re-reading
+        if (!fileData.type_overrides && this._typeOverrides.size > 0) {
+            fileData.type_overrides = Object.fromEntries(this._typeOverrides);
+        }
+        if (!fileData.entity_ids && this._entityIds.size > 0) {
+            fileData.entity_ids = Object.fromEntries(this._entityIds);
+        }
+        if (!fileData.exclude && this._exclude.size > 0) {
+            fileData.exclude = Array.from(this._exclude);
         }
 
         const dir = path.dirname(this.filePath);
@@ -89,6 +130,16 @@ class LabelLoader extends EventEmitter {
         this._labels = new Map();
         for (const [key, value] of Object.entries(fileData.labels)) {
             this._labels.set(key, value);
+        }
+
+        if (fileData.type_overrides) {
+            this._typeOverrides = new Map(Object.entries(fileData.type_overrides));
+        }
+        if (fileData.entity_ids) {
+            this._entityIds = new Map(Object.entries(fileData.entity_ids));
+        }
+        if (fileData.exclude) {
+            this._exclude = new Set(fileData.exclude);
         }
 
         this.logger.info(`Saved ${this._labels.size} labels to ${this.filePath}`);
@@ -156,6 +207,39 @@ class LabelLoader extends EventEmitter {
     }
 
     /**
+     * @returns {Map<string, string>} Type overrides (address -> "cover"|"switch"|"light"|"binary_sensor")
+     */
+    getTypeOverrides() {
+        return this._typeOverrides;
+    }
+
+    /**
+     * @returns {Map<string, string>} Entity ID hints (address -> object_id for HA)
+     */
+    getEntityIds() {
+        return this._entityIds;
+    }
+
+    /**
+     * @returns {Set<string>} Addresses to exclude from discovery
+     */
+    getExcludeSet() {
+        return this._exclude;
+    }
+
+    /**
+     * @returns {Object} All label data as a single object for passing to HaDiscovery
+     */
+    getLabelData() {
+        return {
+            labels: this._labels,
+            typeOverrides: this._typeOverrides,
+            entityIds: this._entityIds,
+            exclude: this._exclude
+        };
+    }
+
+    /**
      * @returns {Object} Current labels as a plain object (for JSON serialization)
      */
     getLabelsObject() {
@@ -166,12 +250,36 @@ class LabelLoader extends EventEmitter {
         return obj;
     }
 
+    /**
+     * @returns {Object} Full file data for JSON serialization (all sections)
+     */
+    getFullData() {
+        const data = { labels: this.getLabelsObject() };
+        if (this._typeOverrides.size > 0) {
+            data.type_overrides = Object.fromEntries(this._typeOverrides);
+        }
+        if (this._entityIds.size > 0) {
+            data.entity_ids = Object.fromEntries(this._entityIds);
+        }
+        if (this._exclude.size > 0) {
+            data.exclude = Array.from(this._exclude);
+        }
+        return data;
+    }
+
+    _clearAll() {
+        this._labels = new Map();
+        this._typeOverrides = new Map();
+        this._entityIds = new Map();
+        this._exclude = new Set();
+    }
+
     _onFileChanged() {
         this.logger.info('Label file changed on disk, reloading...');
         const previousSize = this._labels.size;
         this.load();
         this.logger.info(`Labels reloaded: ${previousSize} -> ${this._labels.size} labels`);
-        this.emit('labels-changed', this._labels);
+        this.emit('labels-changed', this.getLabelData());
     }
 
     _validate(data) {

@@ -215,10 +215,10 @@ class CgateWebBridge {
         this.logger.info('Starting cgateweb bridge');
         
         // Start label file watcher for hot-reload
-        this.labelLoader.on('labels-changed', (newLabels) => {
-            this.logger.info(`Labels reloaded (${newLabels.size} labels), re-triggering HA Discovery`);
+        this.labelLoader.on('labels-changed', (labelData) => {
+            this.logger.info(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
             if (this.haDiscovery) {
-                this.haDiscovery.updateLabels(newLabels);
+                this.haDiscovery.updateLabels(labelData);
                 this.haDiscovery.trigger();
             }
         });
@@ -305,13 +305,13 @@ class CgateWebBridge {
             }, this.settings.getallperiod * 1000);
         }
         
-        // Initialize haDiscovery after pool starts, with label map
+        // Initialize haDiscovery after pool starts, with label data
         if (!this.haDiscovery) {
             this.haDiscovery = new HaDiscovery(
                 this.settings,
                 (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
                 (command) => this._sendCgateCommand(command),
-                this.labelLoader.getLabels()
+                this.labelLoader.getLabelData()
             );
             this.commandResponseProcessor.haDiscovery = this.haDiscovery;
         }

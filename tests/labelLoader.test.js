@@ -136,6 +136,150 @@ describe('LabelLoader', () => {
         });
     });
 
+    describe('extended label data (type_overrides, entity_ids, exclude)', () => {
+        it('should load type_overrides from file', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                type_overrides: { '254/56/0': 'cover', '254/56/6': 'switch' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getTypeOverrides().get('254/56/0')).toBe('cover');
+            expect(loader.getTypeOverrides().get('254/56/6')).toBe('switch');
+            expect(loader.getTypeOverrides().size).toBe(2);
+        });
+
+        it('should load entity_ids from file', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                entity_ids: { '254/56/4': 'mainbedroom', '254/56/0': 'mainbedsouthblind' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getEntityIds().get('254/56/4')).toBe('mainbedroom');
+            expect(loader.getEntityIds().size).toBe(2);
+        });
+
+        it('should load exclude list from file', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                exclude: ['254/56/255', '254/56/50', '254/56/66']
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getExcludeSet().has('254/56/255')).toBe(true);
+            expect(loader.getExcludeSet().has('254/56/50')).toBe(true);
+            expect(loader.getExcludeSet().size).toBe(3);
+        });
+
+        it('should return empty collections when extended sections are missing', () => {
+            const data = { version: 1, labels: { '254/56/4': 'Test' } };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getTypeOverrides().size).toBe(0);
+            expect(loader.getEntityIds().size).toBe(0);
+            expect(loader.getExcludeSet().size).toBe(0);
+        });
+
+        it('should return all data via getLabelData()', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                type_overrides: { '254/56/0': 'cover' },
+                entity_ids: { '254/56/4': 'mainbedroom' },
+                exclude: ['254/56/255']
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+            const ld = loader.getLabelData();
+
+            expect(ld.labels).toBeInstanceOf(Map);
+            expect(ld.typeOverrides).toBeInstanceOf(Map);
+            expect(ld.entityIds).toBeInstanceOf(Map);
+            expect(ld.exclude).toBeInstanceOf(Set);
+            expect(ld.labels.get('254/56/4')).toBe('Main Bedroom');
+            expect(ld.typeOverrides.get('254/56/0')).toBe('cover');
+            expect(ld.entityIds.get('254/56/4')).toBe('mainbedroom');
+            expect(ld.exclude.has('254/56/255')).toBe(true);
+        });
+
+        it('should return all sections via getFullData()', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                type_overrides: { '254/56/0': 'cover' },
+                entity_ids: { '254/56/4': 'mainbedroom' },
+                exclude: ['254/56/255']
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+            const full = loader.getFullData();
+
+            expect(full.labels).toEqual({ '254/56/4': 'Main Bedroom' });
+            expect(full.type_overrides).toEqual({ '254/56/0': 'cover' });
+            expect(full.entity_ids).toEqual({ '254/56/4': 'mainbedroom' });
+            expect(full.exclude).toEqual(['254/56/255']);
+        });
+
+        it('should preserve extended sections through save()', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                type_overrides: { '254/56/0': 'cover' },
+                entity_ids: { '254/56/4': 'mainbedroom' },
+                exclude: ['254/56/255']
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            // Save only labels -- extended sections should be preserved
+            loader.save({ '254/56/4': 'Updated Name' });
+
+            const saved = JSON.parse(fs.readFileSync(labelFile, 'utf8'));
+            expect(saved.labels['254/56/4']).toBe('Updated Name');
+            expect(saved.type_overrides).toEqual({ '254/56/0': 'cover' });
+            expect(saved.entity_ids).toEqual({ '254/56/4': 'mainbedroom' });
+            expect(saved.exclude).toEqual(['254/56/255']);
+        });
+
+        it('should update extended sections when saved as full file data', () => {
+            const loader = new LabelLoader(labelFile);
+            loader.save({
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                type_overrides: { '254/56/0': 'cover', '254/56/6': 'switch' },
+                entity_ids: { '254/56/4': 'mainbedroom' },
+                exclude: ['254/56/255']
+            });
+
+            expect(loader.getTypeOverrides().get('254/56/0')).toBe('cover');
+            expect(loader.getTypeOverrides().get('254/56/6')).toBe('switch');
+            expect(loader.getEntityIds().get('254/56/4')).toBe('mainbedroom');
+            expect(loader.getExcludeSet().has('254/56/255')).toBe(true);
+        });
+    });
+
     describe('watch / hot-reload', () => {
         it('should emit labels-changed when the file is modified', (done) => {
             const data = { version: 1, labels: { '254/56/10': 'Original' } };
@@ -145,8 +289,8 @@ describe('LabelLoader', () => {
             loader.load();
             loader.watch();
 
-            loader.on('labels-changed', (newLabels) => {
-                expect(newLabels.get('254/56/10')).toBe('Updated');
+            loader.on('labels-changed', (labelData) => {
+                expect(labelData.labels.get('254/56/10')).toBe('Updated');
                 loader.unwatch();
                 done();
             });

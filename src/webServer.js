@@ -109,8 +109,14 @@ class WebServer {
     }
 
     _handleGetLabels(_req, res) {
-        const labels = this.labelLoader.getLabelsObject();
-        this._sendJSON(res, 200, { labels, count: Object.keys(labels).length });
+        const fullData = this.labelLoader.getFullData();
+        this._sendJSON(res, 200, {
+            labels: fullData.labels,
+            count: Object.keys(fullData.labels).length,
+            ...(fullData.type_overrides && { type_overrides: fullData.type_overrides }),
+            ...(fullData.entity_ids && { entity_ids: fullData.entity_ids }),
+            ...(fullData.exclude && { exclude: fullData.exclude })
+        });
     }
 
     async _handlePutLabels(req, res) {
@@ -129,9 +135,23 @@ class WebServer {
         }
 
         try {
-            this.labelLoader.save(data.labels);
-            const labels = this.labelLoader.getLabelsObject();
-            this._sendJSON(res, 200, { labels, count: Object.keys(labels).length, saved: true });
+            const fileData = {
+                version: 1,
+                source: 'web-ui',
+                generated: new Date().toISOString(),
+                labels: data.labels
+            };
+            if (data.type_overrides) fileData.type_overrides = data.type_overrides;
+            if (data.entity_ids) fileData.entity_ids = data.entity_ids;
+            if (data.exclude) fileData.exclude = data.exclude;
+
+            this.labelLoader.save(fileData);
+            const fullData = this.labelLoader.getFullData();
+            this._sendJSON(res, 200, {
+                labels: fullData.labels,
+                count: Object.keys(fullData.labels).length,
+                saved: true
+            });
         } catch (err) {
             this._sendJSON(res, 500, { error: `Failed to save: ${err.message}` });
         }

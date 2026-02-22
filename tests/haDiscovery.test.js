@@ -558,5 +558,171 @@ describe('HaDiscovery', () => {
             expect(ha.labelMap).toBeInstanceOf(Map);
             expect(ha.labelMap.size).toBe(0);
         });
+
+        it('should accept labelData object with all sections', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Kitchen']]),
+                typeOverrides: new Map([['254/56/10', 'switch']]),
+                entityIds: new Map([['254/56/10', 'kitchen_light']]),
+                exclude: new Set(['254/56/255'])
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            expect(ha.labelMap.get('254/56/10')).toBe('Kitchen');
+            expect(ha.typeOverrides.get('254/56/10')).toBe('switch');
+            expect(ha.entityIds.get('254/56/10')).toBe('kitchen_light');
+            expect(ha.exclude.has('254/56/255')).toBe(true);
+        });
+
+        it('should update all sections via updateLabels()', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'New Name']]),
+                typeOverrides: new Map([['254/56/10', 'cover']]),
+                entityIds: new Map([['254/56/10', 'my_cover']]),
+                exclude: new Set(['254/56/99'])
+            };
+            haDiscovery.updateLabels(labelData);
+            expect(haDiscovery.labelMap.get('254/56/10')).toBe('New Name');
+            expect(haDiscovery.typeOverrides.get('254/56/10')).toBe('cover');
+            expect(haDiscovery.entityIds.get('254/56/10')).toBe('my_cover');
+            expect(haDiscovery.exclude.has('254/56/99')).toBe(true);
+        });
+    });
+
+    describe('Type Overrides, Exclusions, and Entity IDs', () => {
+        beforeEach(() => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+        });
+
+        it('should exclude groups in the exclude set', () => {
+            const labelData = {
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/56/10'])
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const excludedCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(excludedCall).toBeUndefined();
+        });
+
+        it('should override a lighting group to cover type', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Kitchen Blind']]),
+                typeOverrides: new Map([['254/56/10', 'cover']]),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Should be published as cover, not light
+            const lightCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(lightCall).toBeUndefined();
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
+            );
+            expect(coverCall).toBeDefined();
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.name).toBe('Kitchen Blind');
+            expect(payload.device_class).toBe('shutter');
+        });
+
+        it('should override a lighting group to switch type', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Pond Pump']]),
+                typeOverrides: new Map([['254/56/10', 'switch']]),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const switchCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/switch/cgateweb_254_56_10/config'
+            );
+            expect(switchCall).toBeDefined();
+            const payload = JSON.parse(switchCall[1]);
+            expect(payload.name).toBe('Pond Pump');
+        });
+
+        it('should inject object_id when entity_ids has an entry', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Kitchen']]),
+                typeOverrides: new Map(),
+                entityIds: new Map([['254/56/10', 'kitchen_light']]),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.object_id).toBe('kitchen_light');
+        });
+
+        it('should not include object_id when no entity_id is configured', () => {
+            const labelData = {
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.object_id).toBeUndefined();
+        });
+
+        it('should inject object_id on type-overridden cover entities', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Main Blind']]),
+                typeOverrides: new Map([['254/56/10', 'cover']]),
+                entityIds: new Map([['254/56/10', 'main_blind']]),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
+            );
+            expect(coverCall).toBeDefined();
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.object_id).toBe('main_blind');
+            expect(payload.name).toBe('Main Blind');
+        });
+
+        it('should also exclude groups from _createDiscovery (cover app)', () => {
+            const labelData = {
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/203/15'])
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const excludedCover = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(excludedCover).toBeUndefined();
+        });
     });
 });
