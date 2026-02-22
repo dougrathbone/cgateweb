@@ -1,0 +1,36 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Run C-Gate server (managed mode only)
+# ==============================================================================
+
+CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+
+if [[ "${CGATE_MODE}" != "managed" ]]; then
+    bashio::log.info "C-Gate mode is '${CGATE_MODE}', C-Gate service disabled"
+    exec s6-svc -Od /var/run/s6/services/cgate
+fi
+
+CGATE_DIR="/data/cgate"
+CGATE_JAR="${CGATE_DIR}/cgate.jar"
+
+if [[ ! -f "${CGATE_JAR}" ]]; then
+    bashio::log.error "C-Gate not installed. Check cont-init.d logs."
+    sleep 30
+    exit 1
+fi
+
+CGATE_PORT=$(bashio::config 'cgate_port' '20023')
+CGATE_EVENT_PORT=$(bashio::config 'cgate_event_port' '20025')
+
+bashio::log.info "Starting C-Gate server..."
+bashio::log.info "  Command port: ${CGATE_PORT}"
+bashio::log.info "  Event port: ${CGATE_EVENT_PORT}"
+
+cd "${CGATE_DIR}" || exit 1
+
+exec java \
+    -Djava.awt.headless=true \
+    -jar "${CGATE_JAR}" \
+    -p "${CGATE_PORT}" \
+    -e "${CGATE_EVENT_PORT}" \
+    -nogui

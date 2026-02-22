@@ -1,0 +1,35 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Run cgateweb application
+# ==============================================================================
+
+CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+
+# In managed mode, wait for C-Gate to be ready
+if [[ "${CGATE_MODE}" == "managed" ]]; then
+    CGATE_PORT=$(bashio::config 'cgate_port' '20023')
+    bashio::log.info "Waiting for C-Gate to be ready on port ${CGATE_PORT}..."
+
+    RETRIES=0
+    MAX_RETRIES=30
+    while ! nc -z 127.0.0.1 "${CGATE_PORT}" 2>/dev/null; do
+        RETRIES=$((RETRIES + 1))
+        if [[ ${RETRIES} -ge ${MAX_RETRIES} ]]; then
+            bashio::log.error "C-Gate did not start within ${MAX_RETRIES} attempts"
+            exit 1
+        fi
+        bashio::log.debug "Waiting for C-Gate... (${RETRIES}/${MAX_RETRIES})"
+        sleep 2
+    done
+    bashio::log.info "C-Gate is ready"
+fi
+
+LOG_LEVEL=$(bashio::config 'log_level' 'info')
+
+export NODE_ENV="production"
+export LOG_LEVEL="${LOG_LEVEL}"
+
+cd /app || exit 1
+
+bashio::log.info "Starting C-Gate Web Bridge application..."
+exec node index.js

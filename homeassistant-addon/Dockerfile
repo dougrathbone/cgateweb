@@ -6,7 +6,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN \
     apk add --no-cache \
         nodejs \
-        npm
+        npm \
+        openjdk17-jre-headless \
+        curl \
+        unzip \
+        netcat-openbsd
 
 WORKDIR /app
 
@@ -17,10 +21,15 @@ RUN npm ci --only=production
 COPY src/ ./src/
 COPY index.js ./
 
-RUN mkdir -p /data
+RUN mkdir -p /data /share/cgate
+
+COPY homeassistant-addon/rootfs /
 
 COPY homeassistant-addon/run.sh /
-RUN chmod a+x /run.sh
+RUN chmod a+x /run.sh && \
+    chmod a+x /etc/cont-init.d/*.sh && \
+    chmod a+x /etc/services.d/*/run && \
+    chmod a+x /etc/services.d/*/finish
 
 ARG BUILD_ARCH
 ARG BUILD_DATE
