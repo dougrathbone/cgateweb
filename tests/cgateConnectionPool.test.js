@@ -97,6 +97,58 @@ describe('CgateConnectionPool', () => {
         });
     });
 
+    describe('Healthy connection caching', () => {
+        it('should cache healthy array and return consistent connections via round-robin', () => {
+            pool.isStarted = true;
+            const conn0 = { poolIndex: 0, connected: true, send: jest.fn().mockReturnValue(true) };
+            const conn1 = { poolIndex: 1, connected: true, send: jest.fn().mockReturnValue(true) };
+            pool._addHealthy(conn0);
+            pool._addHealthy(conn1);
+
+            const first = pool._getHealthyConnection();
+            const second = pool._getHealthyConnection();
+            expect([conn0, conn1]).toContain(first);
+            expect([conn0, conn1]).toContain(second);
+            expect(first).not.toBe(second);
+        });
+
+        it('should invalidate cache when a connection is added', () => {
+            const conn0 = { poolIndex: 0 };
+            pool._addHealthy(conn0);
+            pool._getHealthyConnection(); // populates cache
+            expect(pool._healthyArray).not.toBeNull();
+
+            const conn1 = { poolIndex: 1 };
+            pool._addHealthy(conn1);
+            expect(pool._healthyArray).toBeNull();
+        });
+
+        it('should invalidate cache when a connection is removed', () => {
+            const conn0 = { poolIndex: 0 };
+            pool._addHealthy(conn0);
+            pool._getHealthyConnection(); // populates cache
+            expect(pool._healthyArray).not.toBeNull();
+
+            pool._removeHealthy(conn0);
+            expect(pool._healthyArray).toBeNull();
+        });
+
+        it('should return null when no healthy connections exist', () => {
+            expect(pool._getHealthyConnection()).toBeNull();
+        });
+
+        it('should clear cache on stop', async () => {
+            const conn0 = { poolIndex: 0 };
+            pool._addHealthy(conn0);
+            pool._getHealthyConnection();
+            expect(pool._healthyArray).not.toBeNull();
+
+            pool.isStarted = true;
+            await pool.stop();
+            expect(pool._healthyArray).toBeNull();
+        });
+    });
+
     describe('Exponential backoff', () => {
         it('should track retry counts at the pool level, not on connection objects', () => {
             expect(pool.retryCounts).toEqual([0, 0, 0]);

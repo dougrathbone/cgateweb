@@ -59,6 +59,7 @@ class CgateConnectionPool extends EventEmitter {
         // Pool state
         this.connections = [];
         this.healthyConnections = new Set();
+        this._healthyArray = null; // Cached array of healthy connections
         this.connectionIndex = 0; // Round-robin index
         this.retryCounts = new Array(this.poolSize).fill(0);
         this.pendingReconnects = new Set(); // Tracks indices with scheduled reconnection
@@ -161,6 +162,7 @@ class CgateConnectionPool extends EventEmitter {
         
         this.connections = [];
         this.healthyConnections.clear();
+        this._healthyArray = null;
         this.pendingReconnects.clear();
         this.retryCounts.fill(0);
         this.isStarted = false;
@@ -231,7 +233,7 @@ class CgateConnectionPool extends EventEmitter {
             // Connection event handlers
             connection.on('connect', () => {
                 this.logger.info(`Pool connection ${index} established`);
-                this.healthyConnections.add(connection);
+                this._addHealthy(connection);
                 connection.lastActivity = Date.now();
                 this.emit('connectionAdded', { index, connection });
                 resolve(connection);
@@ -239,7 +241,7 @@ class CgateConnectionPool extends EventEmitter {
             
             connection.on('close', (hadError) => {
                 this.logger.warn(`Pool connection ${index} closed ${hadError ? 'with error' : 'normally'}`);
-                this.healthyConnections.delete(connection);
+                this._removeHealthy(connection);
                 this.emit('connectionLost', { index, connection, hadError });
                 
                 // Attempt to reconnect if pool is still active
@@ -250,7 +252,7 @@ class CgateConnectionPool extends EventEmitter {
             
             connection.on('error', (error) => {
                 this.logger.error(`Pool connection ${index} error:`, { error });
-                this.healthyConnections.delete(connection);
+                this._removeHealthy(connection);
                 this.emit('connectionError', { index, connection, error });
             });
             
@@ -327,6 +329,24 @@ class CgateConnectionPool extends EventEmitter {
     }
     
     /**
+     * Adds a connection to the healthy set and invalidates the cached array.
+     * @private
+     */
+    _addHealthy(connection) {
+        this.healthyConnections.add(connection);
+        this._healthyArray = null;
+    }
+
+    /**
+     * Removes a connection from the healthy set and invalidates the cached array.
+     * @private
+     */
+    _removeHealthy(connection) {
+        this.healthyConnections.delete(connection);
+        this._healthyArray = null;
+    }
+
+    /**
      * Gets the next healthy connection using round-robin load balancing.
      * 
      * @private
@@ -337,12 +357,13 @@ class CgateConnectionPool extends EventEmitter {
             return null;
         }
         
-        // Convert Set to Array for indexing
-        const healthyArray = Array.from(this.healthyConnections);
+        if (!this._healthyArray) {
+            this._healthyArray = Array.from(this.healthyConnections);
+        }
         
         // Round-robin selection
-        const connection = healthyArray[this.connectionIndex % healthyArray.length];
-        this.connectionIndex = (this.connectionIndex + 1) % healthyArray.length;
+        const connection = this._healthyArray[this.connectionIndex % this._healthyArray.length];
+        this.connectionIndex = (this.connectionIndex + 1) % this._healthyArray.length;
         
         return connection;
     }
@@ -429,14 +450,14 @@ class CgateConnectionPool extends EventEmitter {
      */
     _checkConnectionHealth(connection) {
         if (!connection || connection.isDestroyed) {
-            this.healthyConnections.delete(connection);
+            this._removeHealthy(connection);
             return;
         }
         
         // Check if connection is responsive
         if (!connection.connected || connection.socket?.destroyed) {
             this.logger.warn(`Pool connection ${connection.poolIndex} is not connected, removing from healthy set`);
-            this.healthyConnections.delete(connection);
+            this._removeHealthy(connection);
             return;
         }
         
@@ -451,7 +472,7 @@ class CgateConnectionPool extends EventEmitter {
                 connection.lastActivity = Date.now();
             } catch (error) {
                 this.logger.error(`Health check ping failed for connection ${connection.poolIndex}:`, { error });
-                this.healthyConnections.delete(connection);
+                this._removeHealthy(connection);
             }
         }
     }
@@ -473,7 +494,7 @@ class CgateConnectionPool extends EventEmitter {
                 connection.lastActivity = Date.now();
             } catch (error) {
                 this.logger.error(`Keep-alive failed for connection ${connection.poolIndex}:`, { error });
-                this.healthyConnections.delete(connection);
+                this._removeHealthy(connection);
             }
         }
     }
