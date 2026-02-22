@@ -112,3 +112,10 @@ configuration:
       仅在 C-Gate 模式为 "managed" 且安装来源为 "download" 时使用。
       如果官方 Clipsal 下载位置发生更改，可覆盖默认 URL。留空以使用
       默认 URL。
+  cbus_label_file:
+    name: Custom Label File
+    description: >-
+      Path to a JSON file with custom device names for C-Bus groups. Generated
+      by the import tool or the built-in label editor. Labels from this file
+      take priority over names from C-Gate. Auto-detected from common paths
+      if not set. The file is watched and changes are applied automatically.

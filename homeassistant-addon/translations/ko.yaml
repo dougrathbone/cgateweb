@@ -118,3 +118,10 @@ configuration:
       C-Gate 모드가 "managed"이고 설치 소스가 "download"인 경우에만
       사용됩니다. 공식 Clipsal 다운로드 위치가 변경된 경우 기본 URL을
       재정의할 수 있습니다. 기본 URL을 사용하려면 비워 두세요.
+  cbus_label_file:
+    name: Custom Label File
+    description: >-
+      Path to a JSON file with custom device names for C-Bus groups. Generated
+      by the import tool or the built-in label editor. Labels from this file
+      take priority over names from C-Gate. Auto-detected from common paths
+      if not set. The file is watched and changes are applied automatically.

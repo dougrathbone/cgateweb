@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C-Bus Label Editor - cgateweb</title>
+<style>
+:root {
+  --bg: #f8f9fa;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f5;
+  --border: #dee2e6;
+  --text: #212529;
+  --text-muted: #868e96;
+  --primary: #228be6;
+  --primary-hover: #1c7ed6;
+  --success: #40c057;
+  --success-bg: #d3f9d8;
+  --danger: #fa5252;
+  --danger-bg: #ffe3e3;
+  --warning: #fd7e14;
+  --warning-bg: #fff3bf;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1b1e;
+    --surface: #25262b;
+    --surface-alt: #2c2e33;
+    --border: #373a40;
+    --text: #c1c2c5;
+    --text-muted: #909296;
+    --primary: #4dabf7;
+    --primary-hover: #74c0fc;
+    --success: #51cf66;
+    --success-bg: #2b3a2e;
+    --danger: #ff6b6b;
+    --danger-bg: #3a2b2b;
+    --warning: #ffa94d;
+    --warning-bg: #3a352b;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 0;
+}
+.app {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+.status-bar {
+  display: flex;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+.status-item { display: flex; gap: 4px; align-items: center; }
+.status-value { font-weight: 600; }
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.section-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.section-header h2 { font-size: 0.95rem; font-weight: 600; }
+.section-body { padding: 14px; }
+.section-body.collapsed { display: none; }
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone.dragover {
+  border-color: var(--primary);
+  background: rgba(34, 139, 230, 0.05);
+}
+.drop-zone p { color: var(--text-muted); margin-bottom: 8px; }
+.drop-zone input[type="file"] { display: none; }
+
+.import-options {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: center;
+}
+.import-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface-alt);
+  border-radius: var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  font-family: monospace;
+  display: none;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.search-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.search-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+thead th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+thead th:hover { color: var(--text); }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:nth-child(even) { background: var(--surface-alt); }
+tbody tr:hover { background: rgba(34, 139, 230, 0.04); }
+td { padding: 6px 10px; vertical-align: middle; }
+td.addr { font-family: monospace; font-size: 0.85rem; white-space: nowrap; }
+td.label-cell { position: relative; }
+.label-display {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-height: 1.5em;
+  display: block;
+}
+.label-display:hover { background: rgba(34, 139, 230, 0.08); }
+.label-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: inherit;
+  font-family: inherit;
+}
+td.source-cell {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge-custom { background: var(--success-bg); color: var(--success); }
+.badge-fallback { background: var(--warning-bg); color: var(--warning); }
+td.actions-cell { white-space: nowrap; }
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.1s;
+}
+button:hover { background: var(--surface-alt); }
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+button.primary:hover { background: var(--primary-hover); }
+button.danger { color: var(--danger); }
+button.danger:hover { background: var(--danger-bg); }
+button.small { padding: 2px 8px; font-size: 0.8rem; }
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--success);
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform 0.2s, opacity 0.2s;
+  z-index: 100;
+}
+.toast.visible { transform: translateY(0); opacity: 1; }
+.toast.error { background: var(--danger); }
+
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+.add-row input {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+.empty-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty-state p { margin-bottom: 8px; }
+
+.chevron { transition: transform 0.15s; display: inline-block; }
+.chevron.open { transform: rotate(90deg); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>C-Bus Label Editor</h1>
+    <div class="header-actions">
+      <button class="primary" id="saveBtn" disabled>Save Labels</button>
+    </div>
+  </header>
+
+  <div class="status-bar" id="statusBar">
+    <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
+    <div class="status-item">Custom: <span class="status-value" id="statCustom">-</span></div>
+    <div class="status-item">Unsaved: <span class="status-value" id="statDirty">0</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-section="import">
+      <h2><span class="chevron open" id="importChevron">&#9654;</span> Import from Clipsal Toolkit</h2>
+    </div>
+    <div class="section-body" id="importBody">
+      <div class="drop-zone" id="dropZone">
+        <p>Drag and drop a .cbz or .xml file here, or click to browse</p>
+        <button>Choose File</button>
+        <input type="file" id="fileInput" accept=".cbz,.xml">
+      </div>
+      <div class="import-options" id="importOptions" style="display:none">
+        <label><input type="checkbox" id="mergeCheck" checked> Merge with existing labels</label>
+        <button class="primary" id="confirmImport">Import Labels</button>
+        <button id="cancelImport">Cancel</button>
+      </div>
+      <div class="import-preview" id="importPreview"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-section="labels">
+      <h2><span class="chevron open" id="labelsChevron">&#9654;</span> Labels</h2>
+    </div>
+    <div class="section-body" id="labelsBody">
+      <div class="toolbar">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by address or label...">
+      </div>
+      <div id="tableContainer"></div>
+      <div class="add-row">
+        <input type="text" id="addAddress" placeholder="network/app/group" style="width:160px">
+        <input type="text" id="addLabel" placeholder="Label name" style="flex:1">
+        <button id="addBtn">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  const API_BASE = getApiBase();
+  let labels = {};
+  let dirtyLabels = {};
+  let sortCol = 'address';
+  let sortDir = 1;
+  let pendingImport = null;
+
+  function getApiBase() {
+    // Detect HA ingress base path from current URL
+    const match = window.location.pathname.match(/^(\/api\/hassio_ingress\/[^/]+)/);
+    return match ? match[1] : '';
+  }
+
+  async function api(path, options = {}) {
+    const res = await fetch(API_BASE + path, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options
+    });
+    return res.json();
+  }
+
+  async function loadLabels() {
+    try {
+      const data = await api('/api/labels');
+      labels = data.labels || {};
+      dirtyLabels = {};
+      render();
+    } catch (e) {
+      showToast('Failed to load labels: ' + e.message, true);
+    }
+  }
+
+  async function saveLabels() {
+    const merged = { ...labels, ...dirtyLabels };
+    // Remove null entries (deleted)
+    for (const k of Object.keys(merged)) {
+      if (merged[k] === null) delete merged[k];
+    }
+    try {
+      const data = await api('/api/labels', {
+        method: 'PUT',
+        body: JSON.stringify({ labels: merged })
+      });
+      labels = data.labels || merged;
+      dirtyLabels = {};
+      render();
+      showToast('Labels saved (' + data.count + ' labels). HA Discovery will update shortly.');
+    } catch (e) {
+      showToast('Failed to save: ' + e.message, true);
+    }
+  }
+
+  function getAllLabels() {
+    const all = { ...labels };
+    for (const [k, v] of Object.entries(dirtyLabels)) {
+      if (v === null) delete all[k];
+      else all[k] = v;
+    }
+    return all;
+  }
+
+  function render() {
+    const all = getAllLabels();
+    const keys = Object.keys(all);
+    const search = document.getElementById('searchInput').value.toLowerCase();
+
+    const filtered = keys.filter(k => {
+      if (!search) return true;
+      return k.toLowerCase().includes(search) || (all[k] || '').toLowerCase().includes(search);
+    });
+
+    filtered.sort((a, b) => {
+      let va, vb;
+      if (sortCol === 'address') {
+        const pa = a.split('/').map(Number);
+        const pb = b.split('/').map(Number);
+        va = pa[0] * 100000 + pa[1] * 1000 + pa[2];
+        vb = pb[0] * 100000 + pb[1] * 1000 + pb[2];
+      } else {
+        va = (all[a] || '').toLowerCase();
+        vb = (all[b] || '').toLowerCase();
+      }
+      if (va < vb) return -sortDir;
+      if (va > vb) return sortDir;
+      return 0;
+    });
+
+    const container = document.getElementById('tableContainer');
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>No labels found</p><p>Import a Clipsal project file or add labels manually below.</p></div>';
+    } else {
+      const rows = filtered.map(k => {
+        const isDirty = k in dirtyLabels;
+        const isCustom = true;
+        const val = all[k];
+        return '<tr>' +
+          '<td class="addr">' + esc(k) + '</td>' +
+          '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
+          '<td class="source-cell">' + (isDirty ? '<span class="badge badge-custom">unsaved</span>' : '<span class="badge badge-custom">custom</span>') + '</td>' +
+          '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
+          '</tr>';
+      }).join('');
+
+      container.innerHTML =
+        '<table><thead><tr>' +
+        '<th data-sort="address">Address' + sortArrow('address') + '</th>' +
+        '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
+        '<th>Source</th>' +
+        '<th></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    // Stats
+    const allCount = Object.keys(all).length;
+    const dirtyCount = Object.keys(dirtyLabels).length;
+    document.getElementById('statTotal').textContent = allCount;
+    document.getElementById('statCustom').textContent = allCount;
+    document.getElementById('statDirty').textContent = dirtyCount;
+    document.getElementById('saveBtn').disabled = dirtyCount === 0;
+  }
+
+  function sortArrow(col) {
+    if (sortCol !== col) return '';
+    return sortDir === 1 ? ' &#9650;' : ' &#9660;';
+  }
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast visible' + (isError ? ' error' : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.className = 'toast'; }, 3000);
+  }
+
+  // --- Inline editing ---
+  document.getElementById('tableContainer').addEventListener('click', function(e) {
+    const display = e.target.closest('.label-display');
+    if (display) {
+      const key = display.dataset.key;
+      const current = getAllLabels()[key] || '';
+      const input = document.createElement('input');
+      input.className = 'label-input';
+      input.value = current;
+      display.replaceWith(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        const newVal = input.value.trim();
+        if (newVal !== (labels[key] || '')) {
+          dirtyLabels[key] = newVal;
+        } else {
+          delete dirtyLabels[key];
+        }
+        render();
+      }
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+        if (ev.key === 'Escape') { delete dirtyLabels[key]; render(); }
+      });
+      return;
+    }
+
+    const delBtn = e.target.closest('[data-delete]');
+    if (delBtn) {
+      const key = delBtn.dataset.delete;
+      if (key in labels) {
+        dirtyLabels[key] = null;
+      } else {
+        delete dirtyLabels[key];
+      }
+      render();
+    }
+
+    const sortTh = e.target.closest('[data-sort]');
+    if (sortTh) {
+      const col = sortTh.dataset.sort;
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = 1; }
+      render();
+    }
+  });
+
+  // --- Search ---
+  document.getElementById('searchInput').addEventListener('input', render);
+
+  // --- Save ---
+  document.getElementById('saveBtn').addEventListener('click', saveLabels);
+
+  // --- Add row ---
+  document.getElementById('addBtn').addEventListener('click', function() {
+    const addr = document.getElementById('addAddress').value.trim();
+    const label = document.getElementById('addLabel').value.trim();
+    if (!addr || !label) return showToast('Both address and label are required', true);
+    if (!/^\d+\/\d+\/\d+$/.test(addr)) return showToast('Address must be in format: network/app/group (e.g. 254/56/10)', true);
+    dirtyLabels[addr] = label;
+    document.getElementById('addAddress').value = '';
+    document.getElementById('addLabel').value = '';
+    render();
+  });
+
+  // --- Section toggle ---
+  document.querySelectorAll('.section-header').forEach(function(hdr) {
+    hdr.addEventListener('click', function() {
+      const body = hdr.nextElementSibling;
+      const chevron = hdr.querySelector('.chevron');
+      body.classList.toggle('collapsed');
+      chevron.classList.toggle('open');
+    });
+  });
+
+  // --- File import ---
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+  dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function() {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  function handleFile(file) {
+    pendingImport = file;
+    const preview = document.getElementById('importPreview');
+    preview.style.display = 'block';
+    preview.textContent = 'Selected: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)\nClick "Import Labels" to process...';
+    document.getElementById('importOptions').style.display = 'flex';
+  }
+
+  document.getElementById('confirmImport').addEventListener('click', async function() {
+    if (!pendingImport) return;
+    const merge = document.getElementById('mergeCheck').checked;
+    const formData = new FormData();
+    formData.append('file', pendingImport);
+
+    try {
+      const res = await fetch(API_BASE + '/api/labels/import?merge=' + merge, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      showToast('Imported ' + data.imported + ' labels (' + data.total + ' total). HA Discovery will update shortly.');
+      pendingImport = null;
+      document.getElementById('importOptions').style.display = 'none';
+      document.getElementById('importPreview').style.display = 'none';
+      await loadLabels();
+    } catch (e) {
+      showToast('Import failed: ' + e.message, true);
+    }
+  });
+
+  document.getElementById('cancelImport').addEventListener('click', function() {
+    pendingImport = null;
+    document.getElementById('importOptions').style.display = 'none';
+    document.getElementById('importPreview').style.display = 'none';
+  });
+
+  // Keyboard shortcut: Ctrl/Cmd+S to save
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (Object.keys(dirtyLabels).length > 0) saveLabels();
+    }
+  });
+
+  // Init
+  loadLabels();
+})();
+</script>
+</body>
+</html>

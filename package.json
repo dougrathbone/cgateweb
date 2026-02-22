@@ -17,6 +17,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "mqtt": "^5.11.0",
     "xml2js": "^0.6.2"
   },
@@ -42,6 +43,7 @@
     "install-service": "node install-service.js",
     "uninstall-service": "node uninstall-service.js",
     "setup": "cp settings.js.example settings.js && echo 'Settings file created! Edit settings.js to configure your C-Gate and MQTT settings.'",
+    "import-labels": "node tools/import-cbus-labels.js",
     "lint": "eslint src/ tests/ index.js",
     "lint:fix": "eslint src/ tests/ index.js --fix",
     "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\"",

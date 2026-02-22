@@ -479,4 +479,84 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.treeBufferParts).toEqual(['data1', 'data2']);
         });
     });
+
+    describe('Custom Label Override (three-tier priority)', () => {
+        beforeEach(() => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+        });
+
+        it('should use custom label over TREEXML label when both exist', () => {
+            const labelMap = new Map([['254/56/10', 'My Custom Kitchen']]);
+            const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelMap);
+            haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.name).toBe('My Custom Kitchen');
+            expect(payload.device.name).toBe('My Custom Kitchen');
+        });
+
+        it('should use TREEXML label when no custom label exists', () => {
+            const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, new Map());
+            haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.name).toBe('Kitchen Light');
+        });
+
+        it('should use custom label for cover groups too', () => {
+            const labelMap = new Map([['254/203/15', 'Master Bedroom Blind']]);
+            const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelMap);
+            haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.name).toBe('Master Bedroom Blind');
+        });
+
+        it('should track label stats correctly', () => {
+            const labelMap = new Map([
+                ['254/56/10', 'Custom Kitchen'],
+                ['254/203/16', 'Custom Blind 2']
+            ]);
+            const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelMap);
+            haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // 2 custom (254/56/10, 254/203/16), rest are treexml labels
+            expect(haWithLabels.labelStats.custom).toBe(2);
+            expect(haWithLabels.labelStats.treexml).toBeGreaterThan(0);
+            expect(haWithLabels.labelStats.fallback).toBe(0);
+        });
+
+        it('should update labels via updateLabels() method', () => {
+            haDiscovery.updateLabels(new Map([['254/56/10', 'Updated Name']]));
+            expect(haDiscovery.labelMap.get('254/56/10')).toBe('Updated Name');
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const call = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            const payload = JSON.parse(call[1]);
+            expect(payload.name).toBe('Updated Name');
+        });
+
+        it('should initialize with empty label map by default', () => {
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+            expect(ha.labelMap).toBeInstanceOf(Map);
+            expect(ha.labelMap.size).toBe(0);
+        });
+    });
 });

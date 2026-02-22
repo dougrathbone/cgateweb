@@ -195,6 +195,24 @@ class ConfigLoader {
             }
         }
 
+        // Label file: use explicit setting, or auto-detect from common addon paths
+        if (options.cbus_label_file) {
+            config.cbus_label_file = options.cbus_label_file;
+        } else {
+            const autoDetectPaths = ['/config/cgateweb-labels.json', '/share/cgate/labels.json', '/data/labels.json'];
+            for (const p of autoDetectPaths) {
+                if (fs.existsSync(p)) {
+                    config.cbus_label_file = p;
+                    this.logger.info(`Auto-detected label file: ${p}`);
+                    break;
+                }
+            }
+        }
+
+        if (options.web_port) {
+            config.web_port = options.web_port;
+        }
+
         return config;
     }
 

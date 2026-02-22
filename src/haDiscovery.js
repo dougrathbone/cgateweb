@@ -39,16 +39,28 @@ class HaDiscovery {
      * @param {Object} settings - Configuration settings
      * @param {Function} publishFn - Function to publish MQTT messages: (topic, payload, options) => void
      * @param {Function} sendCommandFn - Function to send C-Gate commands: (command) => void
+     * @param {Map<string, string>} [labelMap] - Optional label overrides keyed by "network/app/group"
      */
-    constructor(settings, publishFn, sendCommandFn) {
+    constructor(settings, publishFn, sendCommandFn, labelMap = null) {
         this.settings = settings;
         this._publish = publishFn;
         this._sendCommand = sendCommandFn;
+        this.labelMap = labelMap || new Map();
         
         this.treeBufferParts = [];
         this.treeNetwork = null;
         this.discoveryCount = 0;
+        this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
         this.logger = createLogger({ component: 'HaDiscovery' });
+    }
+
+    /**
+     * Replace the label map (used for hot-reload).
+     * @param {Map<string, string>} newLabelMap
+     */
+    updateLabels(newLabelMap) {
+        this.labelMap = newLabelMap || new Map();
+        this.logger.info(`Label map updated (${this.labelMap.size} custom labels)`);
     }
 
     trigger() {
@@ -152,6 +164,7 @@ class HaDiscovery {
         const pirAppId = this.settings.ha_discovery_pir_app_id;
         const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
+        this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
 
         // C-Gate TREEXML returns two formats depending on version/path:
         //   Structured: unit.Application = [{ ApplicationAddress, Group: [{GroupAddress, Label}] }]
@@ -174,7 +187,8 @@ class HaDiscovery {
         }
 
         const duration = Date.now() - startTime;
-        this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms)`);
+        const { custom, treexml, fallback } = this.labelStats;
+        this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
     }
 
     /**
@@ -270,8 +284,13 @@ class HaDiscovery {
                 return;
             }
 
+            const labelKey = `${networkId}/${appId}/${groupId}`;
+            const customLabel = this.labelMap.get(labelKey);
             const groupLabel = group.Label;
-            const finalLabel = groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
+            const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
+            if (customLabel) this.labelStats.custom++;
+            else if (groupLabel) this.labelStats.treexml++;
+            else this.labelStats.fallback++;
             const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
             const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
@@ -354,7 +373,12 @@ class HaDiscovery {
 
     // Unified discovery creation method to eliminate code duplication
     _createDiscovery(networkId, appId, groupId, groupLabel, config) {
-        const finalLabel = groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
+        const labelKey = `${networkId}/${appId}/${groupId}`;
+        const customLabel = this.labelMap.get(labelKey);
+        const finalLabel = customLabel || groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
+        if (customLabel) this.labelStats.custom++;
+        else if (groupLabel) this.labelStats.treexml++;
+        else this.labelStats.fallback++;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         

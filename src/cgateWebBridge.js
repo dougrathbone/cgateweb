@@ -10,6 +10,8 @@ const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
+const LabelLoader = require('./labelLoader');
+const WebServer = require('./webServer');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const {
@@ -141,6 +143,19 @@ class CgateWebBridge {
             logger: this.logger
         });
 
+        // Label loader for custom device names
+        this.labelLoader = new LabelLoader(this.settings.cbus_label_file || null);
+        this.labelLoader.load();
+
+        // Web server for label editing UI
+        const ingressBasePath = process.env.INGRESS_ENTRY || '';
+        this.webServer = new WebServer({
+            port: this.settings.web_port || 8080,
+            basePath: ingressBasePath,
+            labelLoader: this.labelLoader,
+            getStatus: () => this._getBridgeStatus()
+        });
+
         this._setupEventHandlers();
     }
 
@@ -199,6 +214,23 @@ class CgateWebBridge {
     async start() {
         this.logger.info('Starting cgateweb bridge');
         
+        // Start label file watcher for hot-reload
+        this.labelLoader.on('labels-changed', (newLabels) => {
+            this.logger.info(`Labels reloaded (${newLabels.size} labels), re-triggering HA Discovery`);
+            if (this.haDiscovery) {
+                this.haDiscovery.updateLabels(newLabels);
+                this.haDiscovery.trigger();
+            }
+        });
+        this.labelLoader.watch();
+
+        // Start web server
+        try {
+            await this.webServer.start();
+        } catch (err) {
+            this.logger.warn(`Web server failed to start: ${err.message}`);
+        }
+        
         // Start all connections via connection manager
         await this.connectionManager.start();
         
@@ -222,6 +254,12 @@ class CgateWebBridge {
             clearInterval(this.periodicGetAllInterval);
             this.periodicGetAllInterval = null;
         }
+
+        // Stop label file watcher
+        this.labelLoader.unwatch();
+
+        // Stop web server
+        await this.webServer.close();
 
         // Clear queues
         this.cgateCommandQueue.clear();
@@ -267,12 +305,13 @@ class CgateWebBridge {
             }, this.settings.getallperiod * 1000);
         }
         
-        // Initialize haDiscovery after pool starts
+        // Initialize haDiscovery after pool starts, with label map
         if (!this.haDiscovery) {
             this.haDiscovery = new HaDiscovery(
                 this.settings,
                 (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
-                (command) => this._sendCgateCommand(command)
+                (command) => this._sendCgateCommand(command),
+                this.labelLoader.getLabels()
             );
             this.commandResponseProcessor.haDiscovery = this.haDiscovery;
         }
@@ -368,6 +407,22 @@ class CgateWebBridge {
      */
     error(message, meta = {}) {
         this.logger.error(message, meta);
+    }
+
+    _getBridgeStatus() {
+        return {
+            version: require('../package.json').version,
+            uptime: process.uptime(),
+            connections: {
+                mqtt: this.mqttManager.isConnected ? this.mqttManager.isConnected() : 'unknown',
+                commandPool: this.commandConnectionPool ? 'active' : 'inactive',
+                event: this.eventConnection ? 'active' : 'inactive'
+            },
+            discovery: this.haDiscovery ? {
+                count: this.haDiscovery.discoveryCount,
+                labelStats: this.haDiscovery.labelStats
+            } : null
+        };
     }
 
     // Legacy method compatibility for tests
