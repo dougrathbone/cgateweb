@@ -1,6 +1,9 @@
 cgateweb
 ========
 
+[![Node.js CI](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml)
+[![Build and Deploy Home Assistant Addon](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml)
+
 MQTT interface for C-Bus lighting written in Node.js.
 
 This script acts as a middleware broker that connects to C-Gate over telnet and publishes the events to an MQTT broker.
