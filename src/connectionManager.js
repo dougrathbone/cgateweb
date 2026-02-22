@@ -1,6 +1,5 @@
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
-const { LOG_PREFIX } = require('./constants');
 
 /**
  * Manages all connections for the CgateWebBridge.
@@ -73,6 +72,10 @@ class ConnectionManager extends EventEmitter {
             this.logger.info('Event connection disconnected');
             this.allConnected = false;
         });
+        this.eventConnection.on('error', (err) => {
+            this.logger.warn('Event connection error:', { error: err.message });
+            this.allConnected = false;
+        });
     }
 
     /**
@@ -117,8 +120,8 @@ class ConnectionManager extends EventEmitter {
             !this.allConnected) {
             
             this.allConnected = true;
-            this.logger.info(`${LOG_PREFIX} ALL CONNECTED`);
-            this.logger.info(`${LOG_PREFIX} Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport}). Awaiting messages...`);
+            this.logger.info(`ALL CONNECTED`);
+            this.logger.info(`Connection Successful: MQTT (${this.settings.mqtt}), C-Gate (${this.settings.cbusip}:${this.settings.cbuscommandport},${this.settings.cbuseventport}). Awaiting messages...`);
             
             // Emit event to signal that all connections are ready
             this.emit('allConnected');

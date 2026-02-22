@@ -112,8 +112,11 @@ class CgateConnection extends EventEmitter {
         this.logger.warn(`${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
         this.emit('close', hadError);
         
-        // Schedule reconnection
-        this._scheduleReconnect();
+        // Only self-reconnect if NOT managed by a connection pool.
+        // Pool-managed connections (poolIndex >= 0) are reconnected by the pool.
+        if (this.poolIndex < 0) {
+            this._scheduleReconnect();
+        }
     }
 
     _handleError(err) {
@@ -164,19 +167,19 @@ class CgateConnection extends EventEmitter {
             return; // Already scheduled
         }
 
-        if (this.maxReconnectAttempts > 0 && this.reconnectAttempts >= this.maxReconnectAttempts) {
-            this.logger.error(`Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.type} connection. Stopping reconnection attempts.`);
-            return;
-        }
-
-        // Calculate exponential backoff delay
+        // Exponential backoff, capped at reconnectMaxDelay -- never permanently give up
         const delay = Math.min(
             this.reconnectInitialDelay * Math.pow(2, this.reconnectAttempts),
             this.reconnectMaxDelay
         );
 
         this.reconnectAttempts++;
-        this.logger.info(`Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+        
+        if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+            this.logger.info(`Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+        } else {
+            this.logger.warn(`${this.type} connection exceeded initial retries, continuing with ${delay}ms backoff (attempt ${this.reconnectAttempts})`);
+        }
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;

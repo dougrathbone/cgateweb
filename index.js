@@ -4,39 +4,7 @@ const CgateWebBridge = require('./src/cgateWebBridge');
 const { validateWithWarnings } = require('./src/settingsValidator');
 const ConfigLoader = require('./src/config/ConfigLoader');
 const HAIntegration = require('./src/config/HAIntegration');
-
-// --- Default Settings (can be overridden by ./settings.js) ---
-const defaultSettings = {
-    mqtt: 'localhost:1883',
-    cbusip: 'your-cgate-ip',
-    cbusname: 'CLIPSAL',
-    cbuscommandport: 20023,
-    cbuseventport: 20025,
-    cgateusername: null,
-    cgatepassword: null,
-    retainreads: false,
-    logging: true,
-    messageinterval: 200,
-    getallnetapp: null,
-    getallonstart: false,
-    getallperiod: null,
-    mqttusername: null,
-    mqttpassword: null,
-    reconnectinitialdelay: 1000,
-    reconnectmaxdelay: 60000,
-    connectionPoolSize: 3,
-    healthCheckInterval: 30000,
-    keepAliveInterval: 60000,
-    connectionTimeout: 5000,
-    maxRetries: 3,
-    ha_discovery_enabled: false,
-    ha_discovery_prefix: 'homeassistant',
-    ha_discovery_networks: [],
-    ha_discovery_cover_app_id: '203',
-    ha_discovery_switch_app_id: null,
-    ha_discovery_relay_app_id: null,
-    ha_discovery_pir_app_id: null
-};
+const { defaultSettings } = require('./src/defaultSettings');
 
 // --- Initialize Home Assistant Integration ---
 const haIntegration = new HAIntegration();
@@ -49,14 +17,12 @@ try {
     const loadedConfig = configLoader.load();
     settings = { ...defaultSettings, ...loadedConfig };
     
-    // Log environment info
     const envInfo = configLoader.getEnvironment();
     console.log(`[INFO] Environment: ${envInfo.type}`);
     if (envInfo.details) {
         console.log(`[INFO] ${envInfo.details}`);
     }
     
-    // Add HA-specific information if in addon mode
     if (haConfig.isAddon) {
         console.log(`[INFO] Home Assistant optimizations: ${haConfig.optimizationsApplied.join(', ')}`);
         if (haConfig.ingressConfig) {
@@ -64,12 +30,27 @@ try {
         }
     }
     
-    // Determine source from environment metadata
     const source = loadedConfig._environment ? loadedConfig._environment.type : 'unknown';
     console.log(`[INFO] Configuration loaded from: ${source}`);
 } catch (error) {
     console.error(`[ERROR] Failed to load configuration: ${error.message}`);
     console.error('[ERROR] Using default settings only');
+}
+
+const envOverrides = {
+    MQTT_HOST: 'mqtt',
+    MQTT_USERNAME: 'mqttusername',
+    MQTT_PASSWORD: 'mqttpassword',
+    CGATE_IP: 'cbusip',
+    CGATE_USERNAME: 'cgateusername',
+    CGATE_PASSWORD: 'cgatepassword',
+    CGATE_PROJECT: 'cbusname',
+};
+
+for (const [envKey, settingKey] of Object.entries(envOverrides)) {
+    if (process.env[envKey] !== undefined) {
+        settings[settingKey] = process.env[envKey];
+    }
 }
 
 

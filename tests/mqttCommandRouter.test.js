@@ -1,6 +1,5 @@
 const { EventEmitter } = require('events');
 const MqttCommandRouter = require('../src/mqttCommandRouter');
-const CBusCommand = require('../src/cbusCommand');
 
 describe('MqttCommandRouter', () => {
     let router;
@@ -182,6 +181,67 @@ describe('MqttCommandRouter', () => {
             
             // Should floor at 0
             expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 0\n');
+        });
+    });
+
+    describe('Cover Position Commands', () => {
+        it('should handle position command with percentage', () => {
+            router.routeMessage('cbus/write/254/203/1/position', '50');
+            
+            // 50% of 255 = 128
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 128\n');
+        });
+
+        it('should handle position 0 (fully closed)', () => {
+            router.routeMessage('cbus/write/254/203/1/position', '0');
+            
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 0\n');
+        });
+
+        it('should handle position 100 (fully open)', () => {
+            router.routeMessage('cbus/write/254/203/1/position', '100');
+            
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 255\n');
+        });
+
+        it('should handle partial position', () => {
+            router.routeMessage('cbus/write/254/203/1/position', '75');
+            
+            // 75% of 255 = 191
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 191\n');
+        });
+
+        it('should reject position command without device ID', () => {
+            router.routeMessage('cbus/write/254/203//position', '50');
+            
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
+
+        it('should not send command for non-numeric position value', () => {
+            router.routeMessage('cbus/write/254/203/1/position', 'halfway');
+            
+            // Command is valid but level is null, so no RAMP command is sent
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Cover Stop Commands', () => {
+        it('should handle stop command', () => {
+            router.routeMessage('cbus/write/254/203/1/stop', 'STOP');
+            
+            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n');
+        });
+
+        it('should handle stop command with empty payload', () => {
+            router.routeMessage('cbus/write/254/203/1/stop', '');
+            
+            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n');
+        });
+
+        it('should reject stop command without device ID', () => {
+            router.routeMessage('cbus/write/254/203//stop', 'STOP');
+            
+            expect(queueSpy).not.toHaveBeenCalled();
         });
     });
 });

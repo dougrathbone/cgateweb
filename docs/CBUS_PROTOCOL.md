@@ -73,9 +73,15 @@ Controls lighting devices including on/off switches and dimmers.
 Controls motorized devices like blinds, curtains, and garage doors.
 
 **Commands:**
-- `ON <group>` - Start opening/raising
-- `OFF <group>` - Start closing/lowering
-- `STOP <group>` - Stop movement
+- `ON <group>` - Start opening/raising (fully open)
+- `OFF <group>` - Start closing/lowering (fully closed)
+- `RAMP <group> <level>` - Set position level (0-255, where 0=closed, 255=open)
+- `TERMINATERAMP <group>` - Stop movement at current position
+
+**Events:**
+- `enable on <network>/<app>/<group>` - Cover fully opened
+- `enable off <network>/<app>/<group>` - Cover fully closed
+- `enable ramp <network>/<app>/<group> <level>` - Cover at position level
 
 ### Trigger Application (202)
 Handles general automation triggers and sensors.
@@ -152,7 +158,8 @@ MQTT topics follow this pattern:
 ```
 cbus/write/<network>/<app>/<group>/<command>    // Commands TO C-Bus
 cbus/read/<network>/<app>/<group>/state         // Status FROM C-Bus
-cbus/read/<network>/<app>/<group>/level         // Level FROM C-Bus
+cbus/read/<network>/<app>/<group>/level         // Level FROM C-Bus (0-100%)
+cbus/read/<network>/<app>/<group>/position      // Cover position FROM C-Bus (0-100%)
 ```
 
 ### Command Translation
@@ -162,8 +169,10 @@ MQTT commands are translated to C-Gate commands:
 |------------|--------------|----------------|
 | `cbus/write/254/56/4/switch` | `ON` | `ON //Project/254/56/4` |
 | `cbus/write/254/56/4/switch` | `OFF` | `OFF //Project/254/56/4` |
-| `cbus/write/254/56/4/ramp` | `128` | `RAMP //Project/254/56/4 128` |
-| `cbus/write/254/56/4/ramp` | `75,2s` | `RAMP //Project/254/56/4 192 2s` |
+| `cbus/write/254/56/4/ramp` | `50` | `RAMP //Project/254/56/4 128` |
+| `cbus/write/254/56/4/ramp` | `75,2s` | `RAMP //Project/254/56/4 191 2s` |
+| `cbus/write/254/203/1/position` | `50` | `RAMP //Project/254/203/1 128` |
+| `cbus/write/254/203/1/stop` | `STOP` | `TERMINATERAMP //Project/254/203/1` |
 
 ### Event Translation  
 C-Bus events are published to MQTT:
@@ -171,7 +180,9 @@ C-Bus events are published to MQTT:
 | C-Bus Event | MQTT Topic | MQTT Payload |
 |-------------|------------|--------------|
 | `lighting on 254/56/4` | `cbus/read/254/56/4/state` | `ON` |
-| `lighting ramp 254/56/4 128` | `cbus/read/254/56/4/level` | `128` |
+| `lighting ramp 254/56/4 128` | `cbus/read/254/56/4/level` | `50` |
+| `enable ramp 254/203/1 128` | `cbus/read/254/203/1/position` | `50` |
+| `enable on 254/203/1` | `cbus/read/254/203/1/state` | `ON` |
 
 ## Error Handling
 

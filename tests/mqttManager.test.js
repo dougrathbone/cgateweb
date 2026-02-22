@@ -80,8 +80,7 @@ describe('MqttManager', () => {
             
             urlManager.connect();
             
-            // Current implementation will parse 'mqtt' as host and '//example.com' as port
-            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://mqtt://example.com', expect.any(Object));
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://example.com:1883', expect.any(Object));
         });
 
         it('should handle mqtt URL with mqtts protocol', () => {
@@ -90,8 +89,7 @@ describe('MqttManager', () => {
             
             tlsManager.connect();
             
-            // Current implementation will parse 'mqtts' as host and '//secure.example.com' as port
-            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://mqtts://secure.example.com', expect.any(Object));
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://secure.example.com:8883', expect.any(Object));
         });
 
         it('should disconnect existing client before creating new one', () => {
@@ -112,6 +110,21 @@ describe('MqttManager', () => {
             expect(mockClient.listenerCount('error')).toBe(1);
             expect(mockClient.listenerCount('message')).toBe(1);
         });
+
+        it('should reset _intentionalDisconnect flag so transient closes are not masked', () => {
+            mqttManager.connect();
+            mqttManager.disconnect();
+            expect(mqttManager._intentionalDisconnect).toBe(true);
+
+            mqttManager.connect();
+            expect(mqttManager._intentionalDisconnect).toBe(false);
+
+            const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+            mqttManager.connected = true;
+            mockClient.emit('close');
+
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Library will attempt reconnection'));
+        });
     });
 
     describe('disconnect', () => {
@@ -123,6 +136,30 @@ describe('MqttManager', () => {
         it('should end client connection', () => {
             mqttManager.disconnect();
             
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
+        it('should publish offline status before disconnecting', () => {
+            mqttManager.disconnect();
+            
+            expect(mockClient.publish).toHaveBeenCalledWith(
+                'hello/cgateweb', 'Offline', { retain: true, qos: 1 }
+            );
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
+        it('should not publish offline status when not connected', () => {
+            mqttManager.connected = false;
+            mqttManager.disconnect();
+            
+            expect(mockClient.publish).not.toHaveBeenCalled();
+            expect(mockClient.end).toHaveBeenCalled();
+        });
+
+        it('should handle publish error during disconnect gracefully', () => {
+            mockClient.publish.mockImplementation(() => { throw new Error('Publish failed'); });
+            
+            expect(() => mqttManager.disconnect()).not.toThrow();
             expect(mockClient.end).toHaveBeenCalled();
         });
 
@@ -252,18 +289,29 @@ describe('MqttManager', () => {
         });
 
         describe('close event', () => {
-            it('should handle connection close', () => {
+            it('should handle transient connection close without destroying client', () => {
                 const loggerSpy = jest.spyOn(mqttManager.logger, 'warn');
-                const debugSpy = jest.spyOn(mqttManager.logger, 'debug');
                 const emitSpy = jest.spyOn(mqttManager, 'emit');
                 
                 mqttManager.connected = true;
                 mockClient.emit('close');
                 
                 expect(mqttManager.connected).toBe(false);
-                expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Close event received'), expect.any(Object));
-                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT Client Closed'));
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Library will attempt reconnection'));
                 expect(emitSpy).toHaveBeenCalledWith('close');
+                // Client should NOT be destroyed on transient close
+                expect(mqttManager.client).toBe(mockClient);
+            });
+
+            it('should log intentional disconnect differently', () => {
+                const loggerSpy = jest.spyOn(mqttManager.logger, 'info');
+                
+                mqttManager.connected = true;
+                mqttManager._intentionalDisconnect = true;
+                mockClient.emit('close');
+                
+                expect(mqttManager.connected).toBe(false);
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('intentional disconnect'));
             });
         });
 
@@ -297,7 +345,7 @@ describe('MqttManager', () => {
                 }
             });
 
-            it('should handle other MQTT errors', () => {
+            it('should handle other MQTT errors without destroying client', () => {
                 const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
                 const testError = new Error('Generic MQTT error');
                 
@@ -315,6 +363,8 @@ describe('MqttManager', () => {
                     }),
                     'MQTT connection'
                 );
+                // Client should NOT be destroyed on transient errors
+                expect(mqttManager.client).toBe(mockClient);
             });
         });
 
@@ -345,8 +395,8 @@ describe('MqttManager', () => {
         const testCases = [
             { input: 'localhost:1883', expected: 'mqtt://localhost:1883' },
             { input: 'example.com:1883', expected: 'mqtt://example.com:1883' },
-            { input: 'mqtt://localhost:1883', expected: 'mqtt://mqtt://localhost' },
-            { input: 'mqtts://secure.example.com:8883', expected: 'mqtt://mqtts://secure.example.com' },
+            { input: 'mqtt://localhost:1883', expected: 'mqtt://localhost:1883' },
+            { input: 'mqtts://secure.example.com:8883', expected: 'mqtts://secure.example.com:8883' },
             { input: '192.168.1.100:1883', expected: 'mqtt://192.168.1.100:1883' }
         ];
 
@@ -359,6 +409,33 @@ describe('MqttManager', () => {
                 
                 expect(mqtt.connect).toHaveBeenCalledWith(expected, expect.any(Object));
             });
+        });
+
+        it('should use mqtts:// when mqttUseTls is true', () => {
+            const testSettings = { mqtt: 'broker.example.com:8883', mqttUseTls: true };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://broker.example.com:8883', expect.any(Object));
+        });
+
+        it('should use mqtt:// when mqttUseTls is false', () => {
+            const testSettings = { mqtt: 'localhost:1883', mqttUseTls: false };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://localhost:1883', expect.any(Object));
+        });
+
+        it('should prefer explicit protocol over mqttUseTls flag', () => {
+            const testSettings = { mqtt: 'mqtts://secure.broker.com:8883', mqttUseTls: false };
+            const testManager = new MqttManager(testSettings);
+            
+            testManager.connect();
+            
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtts://secure.broker.com:8883', expect.any(Object));
         });
     });
 

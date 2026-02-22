@@ -5,36 +5,16 @@ const MqttManager = require('./mqttManager');
 const HaDiscovery = require('./haDiscovery');
 const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
-const CBusCommand = require('./cbusCommand');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
 const { createLogger } = require('./logger');
-const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
 const {
-    LOG_PREFIX,
-    WARN_PREFIX,
-    ERROR_PREFIX,
-    MQTT_TOPIC_PREFIX_READ,
-    MQTT_TOPIC_SUFFIX_STATE,
-    MQTT_TOPIC_MANUAL_TRIGGER,
-    MQTT_CMD_TYPE_GETALL,
-    MQTT_CMD_TYPE_GETTREE,
-    MQTT_CMD_TYPE_SWITCH,
-    MQTT_CMD_TYPE_RAMP,
-    MQTT_STATE_ON,
-    MQTT_STATE_OFF,
-    MQTT_COMMAND_INCREASE,
-    MQTT_COMMAND_DECREASE,
-    CGATE_CMD_RAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
-
-    RAMP_STEP,
-
     NEWLINE
 } = require('./constants');
 
@@ -75,14 +55,13 @@ class CgateWebBridge {
      */
     constructor(settings, mqttClientFactory = null, commandSocketFactory = null, eventSocketFactory = null) {
         // Merge with default settings
-        const { defaultSettings } = require('../index.js');
+        const { defaultSettings } = require('./defaultSettings');
         this.settings = { ...defaultSettings, ...settings };
         this.logger = createLogger({ 
             component: 'bridge', 
             level: this.settings.logging ? 'info' : 'warn',
             enabled: true 
         });
-        this.settingsValidator = createValidator({ exitOnError: false });
 
         // Store factory references for test compatibility
         this.mqttClientFactory = mqttClientFactory;
@@ -110,17 +89,20 @@ class CgateWebBridge {
         // Service modules (haDiscovery will be initialized after pool starts)
         this.haDiscovery = null;
         
-        // Message queues
+        // Message queues with configurable size limits
+        const queueOptions = { maxSize: this.settings.maxQueueSize || 1000 };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
             this.settings.messageinterval,
-            'C-Gate Command Queue'
+            'C-Gate Command Queue',
+            queueOptions
         );
         
         this.mqttPublishQueue = new ThrottledQueue(
             (message) => this._publishMqttMessage(message),
             this.settings.messageinterval,
-            'MQTT Publish Queue'
+            'MQTT Publish Queue',
+            queueOptions
         );
 
         // Device state manager for coordinating device state between components
@@ -163,11 +145,6 @@ class CgateWebBridge {
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             logger: this.logger
         });
-
-        // Validate settings and exit if invalid
-        if (!this.settingsValidator.validate(this.settings)) {
-            process.exit(1);
-        }
 
         this._setupEventHandlers();
     }
@@ -233,7 +210,7 @@ class CgateWebBridge {
      * - Resets connection state
      */
     async stop() {
-        this.log(`${LOG_PREFIX} Stopping cgateweb bridge...`);
+        this.log(`Stopping cgateweb bridge...`);
         
         // Clear periodic tasks
         if (this.periodicGetAllInterval) {
@@ -258,11 +235,11 @@ class CgateWebBridge {
 
     _handleAllConnected() {
         // Called when connection manager signals all connections are ready
-        this.log(`${LOG_PREFIX} ALL CONNECTED - Initializing services...`);
+        this.log(`ALL CONNECTED - Initializing services...`);
 
         // Trigger initial get all
         if (this.settings.getallnetapp && this.settings.getallonstart) {
-            this.log(`${LOG_PREFIX} Getting all initial values for ${this.settings.getallnetapp}...`);
+            this.log(`Getting all initial values for ${this.settings.getallnetapp}...`);
             this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
         }
 
@@ -271,17 +248,20 @@ class CgateWebBridge {
             if (this.periodicGetAllInterval) {
                 clearInterval(this.periodicGetAllInterval);
             }
-            this.log(`${LOG_PREFIX} Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
+            this.log(`Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
             this.periodicGetAllInterval = setInterval(() => {
-                this.log(`${LOG_PREFIX} Getting all periodic values for ${this.settings.getallnetapp}...`);
+                this.log(`Getting all periodic values for ${this.settings.getallnetapp}...`);
                 this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
             }, this.settings.getallperiod * 1000);
         }
         
         // Initialize haDiscovery after pool starts
         if (!this.haDiscovery) {
-            this.haDiscovery = new HaDiscovery(this.settings, (command) => this._sendCgateCommand(command));
-            // Update command response processor with haDiscovery reference
+            this.haDiscovery = new HaDiscovery(
+                this.settings,
+                (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
+                (command) => this._sendCgateCommand(command)
+            );
             this.commandResponseProcessor.haDiscovery = this.haDiscovery;
         }
         
@@ -311,11 +291,11 @@ class CgateWebBridge {
 
     _processEventLine(line) {
         if (line.startsWith('#')) {
-            this.log(`${LOG_PREFIX} Ignoring comment from event port:`, line);
+            this.log(`Ignoring comment from event port:`, line);
             return;
         }
 
-        this.log(`${LOG_PREFIX} C-Gate Recv (Evt): ${line}`);
+        this.log(`C-Gate Recv (Evt): ${line}`);
 
         try {
             const event = new CBusEvent(line);
@@ -323,10 +303,10 @@ class CgateWebBridge {
                 this.eventPublisher.publishEvent(event, '(Evt)');
                 this.deviceStateManager.updateLevelFromEvent(event);
             } else {
-                this.warn(`${WARN_PREFIX} Could not parse event line: ${line}`);
+                this.warn(`Could not parse event line: ${line}`);
             }
         } catch (e) {
-            this.error(`${ERROR_PREFIX} Error processing event data line:`, e, `Line: ${line}`);
+            this.error(`Error processing event data line:`, e, `Line: ${line}`);
         }
     }
 

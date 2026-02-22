@@ -41,9 +41,8 @@ const MOCK_TREEXML_RESULT_NET254 = {
 describe('HaDiscovery', () => {
     let haDiscovery;
     let mockSettings;
-    let mockMqttManager;
-    let mockCgateConnection;
-    let mockPublishSpy;
+    let mockPublishFn;
+    let mockSendCommandFn;
 
     beforeEach(() => {
         mockSettings = {
@@ -58,17 +57,10 @@ describe('HaDiscovery', () => {
             getallnetapp: null
         };
 
-        mockMqttManager = {
-            publish: jest.fn()
-        };
+        mockPublishFn = jest.fn();
+        mockSendCommandFn = jest.fn();
 
-        mockCgateConnection = {
-            send: jest.fn()
-        };
-
-        mockPublishSpy = jest.spyOn(mockMqttManager, 'publish');
-
-        haDiscovery = new HaDiscovery(mockSettings, mockMqttManager, mockCgateConnection);
+        haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
         
         // Mock console methods
         jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -83,8 +75,8 @@ describe('HaDiscovery', () => {
     describe('Constructor', () => {
         it('should initialize with correct properties', () => {
             expect(haDiscovery.settings).toBe(mockSettings);
-            expect(haDiscovery.mqttManager).toBe(mockMqttManager);
-            expect(haDiscovery.cgateConnection).toBe(mockCgateConnection);
+            expect(haDiscovery._publish).toBe(mockPublishFn);
+            expect(haDiscovery._sendCommand).toBe(mockSendCommandFn);
             expect(haDiscovery.treeBuffer).toBe('');
             expect(haDiscovery.treeNetwork).toBeNull();
             expect(haDiscovery.discoveryCount).toBe(0);
@@ -95,16 +87,16 @@ describe('HaDiscovery', () => {
         it('should return early if HA discovery is disabled', () => {
             mockSettings.ha_discovery_enabled = false;
             haDiscovery.trigger();
-            expect(mockCgateConnection.send).not.toHaveBeenCalled();
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
         });
 
         it('should send TREEXML commands for configured networks', () => {
             mockSettings.ha_discovery_networks = ['254', '200'];
             haDiscovery.trigger();
             
-            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
-            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 200${NEWLINE}`);
-            expect(mockCgateConnection.send).toHaveBeenCalledTimes(2);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 200${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
 
         it('should use getallnetapp network if networks list is empty', () => {
@@ -112,8 +104,8 @@ describe('HaDiscovery', () => {
             mockSettings.getallnetapp = '254';
             haDiscovery.trigger();
             
-            expect(mockCgateConnection.send).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
-            expect(mockCgateConnection.send).toHaveBeenCalledTimes(1);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
         });
 
         it('should warn if no networks are configured', () => {
@@ -124,7 +116,7 @@ describe('HaDiscovery', () => {
             haDiscovery.trigger();
             
             expect(warnSpy).toHaveBeenCalled();
-            expect(mockCgateConnection.send).not.toHaveBeenCalled();
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
         });
     });
 
@@ -148,14 +140,13 @@ describe('HaDiscovery', () => {
             haDiscovery.treeBuffer = '<xml>test</xml>';
             
             // Mock parseString to return our test data
-            const _parseString = require('xml2js').parseString;
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
                 callback(null, MOCK_TREEXML_RESULT_NET254);
             });
 
             haDiscovery.handleTreeEnd('Tree end');
 
-            expect(mockPublishSpy).toHaveBeenCalled();
+            expect(mockPublishFn).toHaveBeenCalled();
             expect(haDiscovery.treeBuffer).toBe('');
             expect(haDiscovery.treeNetwork).toBeNull();
         });
@@ -164,7 +155,7 @@ describe('HaDiscovery', () => {
     describe('Discovery Publishing', () => {
         beforeEach(() => {
             // Mock parseString for all discovery tests
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
                 callback(null, MOCK_TREEXML_RESULT_NET254);
             });
         });
@@ -173,7 +164,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that light configs were published
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/light/cgateweb_254_56_10/config',
                 expect.stringContaining('"name":"Kitchen Light"'),
                 { retain: true, qos: 0 }
@@ -184,11 +175,61 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that cover configs were published
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/cover/cgateweb_254_203_15/config',
                 expect.stringContaining('"name":"Blind 1"'),
                 { retain: true, qos: 0 }
             );
+        });
+
+        it('should publish cover config with position support', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Find the cover config call
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            
+            // Verify position topics are included
+            expect(payload.position_topic).toBe('cbus/read/254/203/15/position');
+            expect(payload.set_position_topic).toBe('cbus/write/254/203/15/position');
+            expect(payload.stop_topic).toBe('cbus/write/254/203/15/stop');
+            expect(payload.payload_stop).toBe('STOP');
+            expect(payload.position_open).toBe(100);
+            expect(payload.position_closed).toBe(0);
+        });
+
+        it('should publish cover config with correct device class', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that cover configs include shutter device class
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.device_class).toBe('shutter');
+        });
+
+        it('should publish cover config with open/close payloads', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            
+            const payload = JSON.parse(coverCall[1]);
+            
+            // Verify open/close payloads
+            expect(payload.payload_open).toBe('ON');
+            expect(payload.payload_close).toBe('OFF');
+            expect(payload.state_open).toBe('ON');
+            expect(payload.state_closed).toBe('OFF');
         });
 
         it('should publish PIR configs when PIR app ID is configured', () => {
@@ -198,7 +239,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that PIR sensor configs were published
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/binary_sensor/cgateweb_254_203_15/config',
                 expect.stringContaining('"device_class":"motion"'),
                 { retain: true, qos: 0 }
@@ -212,7 +253,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that switch configs were published
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/switch/cgateweb_254_203_15/config',
                 expect.stringContaining('"name":"Blind 1"'),
                 { retain: true, qos: 0 }
@@ -226,7 +267,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that relay configs were published
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/switch/cgateweb_254_203_15/config',
                 expect.stringContaining('"device_class":"outlet"'),
                 { retain: true, qos: 0 }
@@ -254,7 +295,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', mockDataWithoutLabels);
 
             // Should use fallback name
-            expect(mockPublishSpy).toHaveBeenCalledWith(
+            expect(mockPublishFn).toHaveBeenCalledWith(
                 expect.any(String),
                 expect.stringContaining('"name":"CBus Light 254/56/10"'),
                 expect.any(Object)
@@ -262,7 +303,7 @@ describe('HaDiscovery', () => {
         });
 
         it('should handle XML parsing errors gracefully', () => {
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, callback) => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
                 callback(new Error('Invalid XML'), null);
             });
 

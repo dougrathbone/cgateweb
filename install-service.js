@@ -17,8 +17,8 @@ function checkDependencies() {
     // Check Node.js version
     const nodeVersion = process.version;
     const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
-    if (majorVersion < 12) {
-        console.error(`Node.js version ${nodeVersion} is too old. Minimum required: v12.0.0`);
+    if (majorVersion < 18) {
+        console.error(`Node.js version ${nodeVersion} is too old. Minimum required: v18.0.0`);
         process.exit(1);
     }
     console.log(`Node.js version: ${nodeVersion} ✓`);
@@ -49,11 +49,26 @@ function checkDependencies() {
     console.log('Dependencies installed ✓');
 }
 
+function ensureServiceUser() {
+    const username = 'cgateweb';
+    if (runCommand(`id ${username}`)) {
+        console.log(`Service user '${username}' already exists ✓`);
+    } else {
+        console.log(`Creating service user '${username}'...`);
+        if (!runCommand(`useradd --system --no-create-home --shell /usr/sbin/nologin ${username}`)) {
+            console.error(`Failed to create service user '${username}'.`);
+            process.exit(1);
+        }
+        console.log(`Service user '${username}' created ✓`);
+    }
+}
+
 function installService() {
     console.log('--- cgateweb Systemd Service Installer ---');
 
     checkRoot('install-service.js');
     checkDependencies();
+    ensureServiceUser();
 
     // 1. Check if source service file template exists
     if (!fs.existsSync(SOURCE_SERVICE_FILE_TEMPLATE)) {

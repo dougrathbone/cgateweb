@@ -1,10 +1,5 @@
 const packageJson = require('../package.json');
 
-// === Logging ===
-const LOG_PREFIX = '[INFO]';
-const WARN_PREFIX = '[WARN]';
-const ERROR_PREFIX = '[ERROR]';
-
 // === C-Bus System ===
 const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
@@ -15,6 +10,7 @@ const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
 const CGATE_CMD_ON = 'ON';
 const CGATE_CMD_OFF = 'OFF';
 const CGATE_CMD_RAMP = 'RAMP';
+const CGATE_CMD_TERMINATERAMP = 'TERMINATERAMP';  // Stop an in-progress ramp operation
 const CGATE_CMD_GET = 'GET';
 const CGATE_CMD_TREEXML = 'TREEXML';
 const CGATE_CMD_EVENT_ON = 'EVENT ON';
@@ -33,6 +29,7 @@ const MQTT_TOPIC_PREFIX_READ = `${MQTT_TOPIC_PREFIX_CBUS}/read`;
 const MQTT_TOPIC_PREFIX_WRITE = `${MQTT_TOPIC_PREFIX_CBUS}/write`;
 const MQTT_TOPIC_SUFFIX_STATE = 'state';
 const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
+const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
 const MQTT_TOPIC_SUFFIX_TREE = 'tree';
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
@@ -44,6 +41,7 @@ const MQTT_STATE_ON = 'ON';
 const MQTT_STATE_OFF = 'OFF';
 const MQTT_COMMAND_INCREASE = 'INCREASE';
 const MQTT_COMMAND_DECREASE = 'DECREASE';
+const MQTT_COMMAND_STOP = 'STOP';  // Stop cover movement or ramp operation
 const MQTT_ERROR_AUTH = 5;
 
 // MQTT Command Types
@@ -51,6 +49,8 @@ const MQTT_CMD_TYPE_GETALL = 'getall';
 const MQTT_CMD_TYPE_GETTREE = 'gettree';
 const MQTT_CMD_TYPE_SWITCH = 'switch';
 const MQTT_CMD_TYPE_RAMP = 'ramp';
+const MQTT_CMD_TYPE_POSITION = 'position';  // Set cover position (0-100%)
+const MQTT_CMD_TYPE_STOP = 'stop';          // Stop cover movement
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
@@ -85,11 +85,6 @@ const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
 
 // Export all constants - maintain compatibility with destructuring imports
 module.exports = {
-    // Logging
-    LOG_PREFIX,
-    WARN_PREFIX,
-    ERROR_PREFIX,
-    
     // C-Bus System  
     DEFAULT_CBUS_APP_LIGHTING,
     CGATE_LEVEL_MIN,
@@ -100,6 +95,7 @@ module.exports = {
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
+    CGATE_CMD_TERMINATERAMP,
     CGATE_CMD_GET,
     CGATE_CMD_TREEXML,
     CGATE_CMD_EVENT_ON,
@@ -118,6 +114,7 @@ module.exports = {
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
+    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TREE,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
@@ -127,11 +124,14 @@ module.exports = {
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
+    MQTT_COMMAND_STOP,
     MQTT_ERROR_AUTH,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_STOP,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,

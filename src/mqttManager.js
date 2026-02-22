@@ -39,6 +39,7 @@ class MqttManager extends EventEmitter {
         this.settings = settings;
         this.client = null;
         this.connected = false;
+        this._intentionalDisconnect = false;
         this.logger = createLogger({ component: 'MqttManager' });
         this.errorHandler = createErrorHandler('MqttManager');
     }
@@ -58,6 +59,8 @@ class MqttManager extends EventEmitter {
             this.disconnect();
         }
 
+        this._intentionalDisconnect = false;
+
         const mqttUrl = this._buildMqttUrl();
         const connectOptions = this._buildConnectOptions();
 
@@ -74,7 +77,15 @@ class MqttManager extends EventEmitter {
     }
 
     disconnect() {
+        this._intentionalDisconnect = true;
         if (this.client) {
+            if (this.connected) {
+                try {
+                    this.client.publish(MQTT_TOPIC_STATUS, MQTT_PAYLOAD_STATUS_OFFLINE, { retain: true, qos: 1 });
+                } catch (_e) {
+                    // Best effort - don't block shutdown if publish fails
+                }
+            }
             this.client.removeAllListeners();
             this.client.end();
             this.client = null;
@@ -118,11 +129,19 @@ class MqttManager extends EventEmitter {
     }
 
     _buildMqttUrl() {
-        // Parse MQTT connection string (format: "host:port" or "host")  
-        const mqttParts = this.settings.mqtt.split(':');
+        const raw = this.settings.mqtt || 'localhost:1883';
+        
+        // If URL already has a protocol, use it directly
+        if (/^mqtts?:\/\//.test(raw)) {
+            return raw;
+        }
+        
+        // Parse "host:port" format and add appropriate protocol
+        const mqttParts = raw.split(':');
         const mqttHost = mqttParts[0] || 'localhost';
         const mqttPort = mqttParts[1] || '1883';
-        return `mqtt://${mqttHost}:${mqttPort}`;
+        const protocol = this.settings.mqttUseTls ? 'mqtts' : 'mqtt';
+        return `${protocol}://${mqttHost}:${mqttPort}`;
     }
 
     _buildConnectOptions() {
@@ -137,13 +156,30 @@ class MqttManager extends EventEmitter {
             }
         };
 
-        // Add authentication if provided
         if (this.settings.mqttusername && typeof this.settings.mqttusername === 'string') {
             options.username = this.settings.mqttusername;
             
             if (this.settings.mqttpassword && typeof this.settings.mqttpassword === 'string') {
                 options.password = this.settings.mqttpassword;
             }
+        }
+
+        // TLS options for mqtts:// connections
+        if (this.settings.mqttCaFile || this.settings.mqttCertFile || this.settings.mqttKeyFile) {
+            const fs = require('fs');
+            if (this.settings.mqttCaFile) {
+                options.ca = fs.readFileSync(this.settings.mqttCaFile);
+            }
+            if (this.settings.mqttCertFile) {
+                options.cert = fs.readFileSync(this.settings.mqttCertFile);
+            }
+            if (this.settings.mqttKeyFile) {
+                options.key = fs.readFileSync(this.settings.mqttKeyFile);
+            }
+        }
+
+        if (this.settings.mqttRejectUnauthorized === false) {
+            options.rejectUnauthorized = false;
         }
 
         return options;
@@ -170,39 +206,30 @@ class MqttManager extends EventEmitter {
 
     _handleClose() {
         this.connected = false;
-        this.logger.debug('MQTT Close event received', { arguments });
-        this.logger.warn(`MQTT Client Closed. Reconnection handled by library.`);
         
-        if (this.client) {
-            this.client.removeAllListeners(); 
-            this.client = null;
+        if (this._intentionalDisconnect) {
+            this.logger.info('MQTT Client closed (intentional disconnect).');
+        } else {
+            this.logger.warn('MQTT Client closed. Library will attempt reconnection.');
         }
         
         this.emit('close');
     }
 
     _handleError(err) {
-        this.connected = false; // Assume disconnected on error
+        this.connected = false;
         
-        // Handle specific authentication error as fatal
         if (err.code === MQTT_ERROR_AUTH) {
             this.errorHandler.handle(err, {
                 brokerUrl: this.settings.mqtt,
                 hasUsername: !!this.settings.mqttusername
             }, 'MQTT authentication', true); // Fatal error
         } else {
-            // Handle generic connection errors with context
             this.errorHandler.handle(err, {
                 brokerUrl: this.settings.mqtt,
                 connected: this.connected,
                 errorCode: err.code
             }, 'MQTT connection');
-        }
-        
-        // Clean up client
-        if (this.client) {
-            this.client.removeAllListeners();
-            this.client = null;
         }
         
         this.emit('error', err);

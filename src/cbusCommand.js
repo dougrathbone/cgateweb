@@ -5,6 +5,8 @@ const {
     MQTT_CMD_TYPE_GETTREE, 
     MQTT_CMD_TYPE_SWITCH, 
     MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_STOP,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -79,7 +81,15 @@ class CBusCommand {
             this._commandType = match[4] !== undefined ? match[4] : null;
 
             // Validate command type
-            const validCommandTypes = [MQTT_CMD_TYPE_GETALL, MQTT_CMD_TYPE_GETTREE, MQTT_CMD_TYPE_SWITCH, MQTT_CMD_TYPE_RAMP, 'setvalue'];
+            const validCommandTypes = [
+                MQTT_CMD_TYPE_GETALL, 
+                MQTT_CMD_TYPE_GETTREE, 
+                MQTT_CMD_TYPE_SWITCH, 
+                MQTT_CMD_TYPE_RAMP,
+                MQTT_CMD_TYPE_POSITION,  // Cover position (0-100%)
+                MQTT_CMD_TYPE_STOP,       // Stop cover movement
+                'setvalue'
+            ];
             if (!validCommandTypes.includes(this._commandType)) {
                 this._logger.warn(`Invalid MQTT command type: ${this._commandType}`);
                 this._isValid = false;
@@ -87,10 +97,9 @@ class CBusCommand {
                 return;
             }
 
-            // Parse payload based on command type
-            this._parsePayload();
-            
+            // Topic parsed successfully - payload validation may override
             this._isValid = true;
+            this._parsePayload();
             this._parsed = true;
         } catch (error) {
             this._logger.error(`Error parsing MQTT command topic: ${this._topic}`, { error });
@@ -106,6 +115,12 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_RAMP:
                 this._parseRampPayload();
+                break;
+            case MQTT_CMD_TYPE_POSITION:
+                this._parsePositionPayload();
+                break;
+            case MQTT_CMD_TYPE_STOP:
+                // Stop command doesn't need payload - it just stops movement
                 break;
             case MQTT_CMD_TYPE_GETALL:
             case MQTT_CMD_TYPE_GETTREE:
@@ -163,10 +178,42 @@ class CBusCommand {
         // C-Bus uses 8-bit values: 0 = off, 255 = full brightness
         this._level = Math.round((clampedLevel / 100) * CGATE_LEVEL_MAX);
 
-        // Parse ramp time if provided
+        // Validate ramp time against strict pattern to prevent command injection.
+        // C-Gate accepts time values like "4s", "2m", "500ms", or bare numbers.
         if (timePart) {
-            this._rampTime = timePart;
+            if (/^\d+(\.\d+)?(ms|s|m|h)?$/.test(timePart)) {
+                this._rampTime = timePart;
+            } else {
+                this._logger.warn(`Invalid ramp time format rejected: ${timePart}`);
+                this._isValid = false;
+            }
         }
+    }
+
+    /**
+     * Parses position payload for cover control.
+     * Position is specified as a percentage (0-100) where:
+     * - 0 = fully closed
+     * - 100 = fully open
+     * 
+     * For C-Bus Enable Control, this maps to level values (0-255)
+     * @private
+     */
+    _parsePositionPayload() {
+        // Parse position percentage
+        const positionValue = parseFloat(this._payload);
+        if (isNaN(positionValue)) {
+            // Invalid position value - level stays null
+            // Command topic is still valid, just can't determine position
+            return;
+        }
+
+        // Clamp position to 0-100 range
+        const clampedPosition = Math.max(0, Math.min(100, positionValue));
+        
+        // Convert position percentage (0-100) to C-Gate level (0-255)
+        // 0% (closed) = level 0, 100% (open) = level 255
+        this._level = Math.round((clampedPosition / 100) * CGATE_LEVEL_MAX);
     }
 
     isValid() {

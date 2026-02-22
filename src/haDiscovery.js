@@ -6,10 +6,14 @@ const {
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
+    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_STOP,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_COMMAND_STOP,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
@@ -31,10 +35,15 @@ const {
 } = require('./constants');
 
 class HaDiscovery {
-    constructor(settings, mqttManager, cgateConnection) {
+    /**
+     * @param {Object} settings - Configuration settings
+     * @param {Function} publishFn - Function to publish MQTT messages: (topic, payload, options) => void
+     * @param {Function} sendCommandFn - Function to send C-Gate commands: (command) => void
+     */
+    constructor(settings, publishFn, sendCommandFn) {
         this.settings = settings;
-        this.mqttManager = mqttManager;
-        this.cgateConnection = cgateConnection;
+        this._publish = publishFn;
+        this._sendCommand = sendCommandFn;
         
         this.treeBuffer = '';
         this.treeNetwork = null;
@@ -70,7 +79,7 @@ class HaDiscovery {
         networksToDiscover.forEach(networkId => {
             this.logger.info(`Requesting TreeXML for network ${networkId}...`);
             this.treeNetwork = networkId;
-            this.cgateConnection.send(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
+            this._sendCommand(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
         });
     }
 
@@ -109,7 +118,7 @@ class HaDiscovery {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 
                 // Publish standard tree topic
-                this.mqttManager.publish(
+                this._publish(
                     `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
                     JSON.stringify(result),
                     { retain: true, qos: 0 }
@@ -219,17 +228,19 @@ class HaDiscovery {
                 }
             };
 
-            this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+            this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
             this.discoveryCount++;
         });
     }
 
     _processEnableControlGroups(networkId, appAddress, groups) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
-        const coverAppId = this.settings.ha_discovery_cover_app_id;
-        const switchAppId = this.settings.ha_discovery_switch_app_id;
-        const relayAppId = this.settings.ha_discovery_relay_app_id;
-        const pirAppId = this.settings.ha_discovery_pir_app_id;
+        
+        // Determine the discovery type based on application address
+        const discoveryType = this._getDiscoveryTypeForApp(appAddress);
+        if (!discoveryType) {
+            return;
+        }
 
         groupArray.forEach(group => {
             const groupId = group.GroupAddress;
@@ -238,30 +249,30 @@ class HaDiscovery {
                 return;
             }
 
-            const groupLabel = group.Label;
-            let discovered = false;
-
-            // Check for Cover (highest priority)
-            if (coverAppId && appAddress === coverAppId) {
-                this._createCoverDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for Switch
-            else if (!discovered && switchAppId && appAddress === switchAppId) {
-                this._createSwitchDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for Relay
-            else if (!discovered && relayAppId && appAddress === relayAppId) {
-                this._createRelayDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
-            // Check for PIR
-            else if (!discovered && pirAppId && appAddress === pirAppId) {
-                this._createPirDiscovery(networkId, appAddress, groupId, groupLabel);
-                discovered = true;
-            }
+            this._createDiscovery(networkId, appAddress, groupId, group.Label, this._getDiscoveryConfig(discoveryType));
         });
+    }
+
+    /**
+     * Determines the discovery type for a given application address.
+     * @param {string} appAddress - The application address
+     * @returns {string|null} The discovery type ('cover', 'switch', 'relay', 'pir') or null if not configured
+     * @private
+     */
+    _getDiscoveryTypeForApp(appAddress) {
+        if (this.settings.ha_discovery_cover_app_id && appAddress === this.settings.ha_discovery_cover_app_id) {
+            return 'cover';
+        }
+        if (this.settings.ha_discovery_switch_app_id && appAddress === this.settings.ha_discovery_switch_app_id) {
+            return 'switch';
+        }
+        if (this.settings.ha_discovery_relay_app_id && appAddress === this.settings.ha_discovery_relay_app_id) {
+            return 'relay';
+        }
+        if (this.settings.ha_discovery_pir_app_id && appAddress === this.settings.ha_discovery_pir_app_id) {
+            return 'pir';
+        }
+        return null;
     }
 
     // Unified discovery creation method to eliminate code duplication
@@ -276,6 +287,15 @@ class HaDiscovery {
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
             ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
+            // Add position topics for covers
+            ...(config.positionSupport && {
+                position_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+                set_position_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_POSITION}`,
+                stop_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_STOP}`,
+                payload_stop: MQTT_COMMAND_STOP,
+                position_open: 100,
+                position_closed: 0
+            }),
             qos: 0,
             retain: true,
             ...(config.deviceClass && { device_class: config.deviceClass }),
@@ -293,7 +313,7 @@ class HaDiscovery {
             }
         };
 
-        this.mqttManager.publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
         this.discoveryCount++;
     }
 
@@ -305,6 +325,8 @@ class HaDiscovery {
                 defaultType: 'Cover',
                 model: HA_MODEL_COVER,
                 deviceClass: HA_DEVICE_CLASS_SHUTTER,
+                // Enable position support for covers (0-100%)
+                positionSupport: true,
                 payloads: {
                     payload_open: MQTT_STATE_ON,
                     payload_close: MQTT_STATE_OFF,
@@ -350,25 +372,6 @@ class HaDiscovery {
         };
         return configs[type];
     }
-
-    _createCoverDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('cover'));
-    }
-
-    _createSwitchDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('switch'));
-    }
-
-    _createRelayDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('relay'));
-    }
-
-    _createPirDiscovery(networkId, appId, groupId, groupLabel) {
-        this._createDiscovery(networkId, appId, groupId, groupLabel, this._getDiscoveryConfig('pir'));
-    }
-
-
-    // Logging methods that can be overridden
 }
 
 module.exports = HaDiscovery;

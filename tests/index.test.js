@@ -141,6 +141,110 @@ describe('index.js', () => {
         });
     });
 
+    describe('Environment variable overrides', () => {
+        const envVars = ['MQTT_HOST', 'MQTT_USERNAME', 'MQTT_PASSWORD', 'CGATE_IP', 'CGATE_USERNAME', 'CGATE_PASSWORD', 'CGATE_PROJECT'];
+        let savedEnv;
+
+        beforeEach(() => {
+            savedEnv = {};
+            envVars.forEach(v => {
+                savedEnv[v] = process.env[v];
+                delete process.env[v];
+            });
+        });
+
+        afterEach(() => {
+            envVars.forEach(v => {
+                if (savedEnv[v] !== undefined) {
+                    process.env[v] = savedEnv[v];
+                } else {
+                    delete process.env[v];
+                }
+            });
+        });
+
+        it('should override mqtt setting from MQTT_HOST env var', async () => {
+            process.env.MQTT_HOST = 'envbroker:1883';
+            
+            let localMockBridge, LocalMockBridge;
+            jest.isolateModules(() => {
+                LocalMockBridge = require('../src/cgateWebBridge');
+                localMockBridge = { start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue() };
+                LocalMockBridge.mockImplementation(() => localMockBridge);
+                require.main = { filename: require.resolve('../index.js') };
+                const indexModule = require('../index.js');
+                indexModule.main();
+            });
+            
+            await new Promise(r => setTimeout(r, 10));
+            expect(LocalMockBridge).toHaveBeenCalledWith(
+                expect.objectContaining({ mqtt: 'envbroker:1883' })
+            );
+        });
+
+        it('should override cbusip setting from CGATE_IP env var', async () => {
+            process.env.CGATE_IP = '10.0.0.50';
+            
+            let LocalMockBridge;
+            jest.isolateModules(() => {
+                LocalMockBridge = require('../src/cgateWebBridge');
+                LocalMockBridge.mockImplementation(() => ({
+                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
+                }));
+                require.main = { filename: require.resolve('../index.js') };
+                const indexModule = require('../index.js');
+                indexModule.main();
+            });
+            
+            await new Promise(r => setTimeout(r, 10));
+            expect(LocalMockBridge).toHaveBeenCalledWith(
+                expect.objectContaining({ cbusip: '10.0.0.50' })
+            );
+        });
+
+        it('should override MQTT credentials from env vars', async () => {
+            process.env.MQTT_USERNAME = 'envuser';
+            process.env.MQTT_PASSWORD = 'envpass';
+            
+            let LocalMockBridge;
+            jest.isolateModules(() => {
+                LocalMockBridge = require('../src/cgateWebBridge');
+                LocalMockBridge.mockImplementation(() => ({
+                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
+                }));
+                require.main = { filename: require.resolve('../index.js') };
+                const indexModule = require('../index.js');
+                indexModule.main();
+            });
+            
+            await new Promise(r => setTimeout(r, 10));
+            expect(LocalMockBridge).toHaveBeenCalledWith(
+                expect.objectContaining({ mqttusername: 'envuser', mqttpassword: 'envpass' })
+            );
+        });
+
+        it('should override C-Gate credentials from env vars', async () => {
+            process.env.CGATE_USERNAME = 'cgateuser';
+            process.env.CGATE_PASSWORD = 'cgatepass';
+            
+            let LocalMockBridge;
+            jest.isolateModules(() => {
+                LocalMockBridge = require('../src/cgateWebBridge');
+                LocalMockBridge.mockImplementation(() => ({
+                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
+                }));
+                require.main = { filename: require.resolve('../index.js') };
+                const indexModule = require('../index.js');
+                indexModule.main();
+            });
+            
+            await new Promise(r => setTimeout(r, 10));
+            expect(LocalMockBridge).toHaveBeenCalledWith(
+                expect.objectContaining({ cgateusername: 'cgateuser', cgatepassword: 'cgatepass' })
+            );
+        });
+    });
+
     describe('Signal handling', () => {
         let processOnSpy;
 

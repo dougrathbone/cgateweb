@@ -124,25 +124,31 @@ describe('CBusCommand', () => {
         expect(command.getPayload()).toBe('');
     });
     
-     it('should handle null message gracefully', () => {
+     it('should handle null message gracefully for switch', () => {
         const topic = 'cbus/write/254/56/7/switch';
+        const message = null;
+        const command = new CBusCommand(topic, message);
+
+        expect(command.isValid()).toBe(false);
+        expect(command.getPayload()).toBe('');
+    });
+
+    it('should handle null message gracefully for commands that ignore payload', () => {
+        const topic = 'cbus/write/254/56//getall';
         const message = null;
         const command = new CBusCommand(topic, message);
 
         expect(command.isValid()).toBe(true);
         expect(command.getPayload()).toBe('');
-        expect(command.getLevel()).toBeNull(); // Cannot determine level from null message
-        expect(command.getLevel()).toBeNull();
     });
 
-    it('should handle undefined message gracefully', () => {
+    it('should handle undefined message gracefully for ramp', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = undefined;
         const command = new CBusCommand(topic, message);
 
-        expect(command.isValid()).toBe(true);
+        expect(command.isValid()).toBe(false);
         expect(command.getPayload()).toBe('');
-        expect(command.getLevel()).toBeNull();
         expect(command.getLevel()).toBeNull();
         expect(command.getRampTime()).toBeNull();
     });
@@ -317,6 +323,155 @@ describe('CBusCommand', () => {
             expect(command.getCommandType()).toBe('ramp');
             expect(command.getLevel()).toBe(Math.round(25 * 255 / 100));
             expect(command.getRampTime()).toBe('2s');
+        });
+    });
+
+    // === Ramp Time Validation (Command Injection Prevention) ===
+    describe('Ramp time validation', () => {
+        it('should accept valid ramp time with seconds', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('4s');
+        });
+
+        it('should accept valid ramp time with minutes', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,2m');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('2m');
+        });
+
+        it('should accept valid ramp time with hours', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,1h');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('1h');
+        });
+
+        it('should accept valid ramp time with milliseconds', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,500ms');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('500ms');
+        });
+
+        it('should accept bare numeric ramp time', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('4');
+        });
+
+        it('should accept decimal ramp time', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,1.5s');
+            expect(command.isValid()).toBe(true);
+            expect(command.getRampTime()).toBe('1.5s');
+        });
+
+        it('should reject ramp time with newline (command injection)', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s\nON //HOME/254/56/99');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with carriage return', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s\rOFF //HOME/254/56/1');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with spaces (potential injection)', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s DELETE //HOME');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with semicolons', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,4s;ON //HOME/254/56/1');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+
+        it('should reject ramp time with letters only', () => {
+            const command = new CBusCommand('cbus/write/254/56/8/ramp', '50,abc');
+            expect(command.isValid()).toBe(false);
+            expect(command.getRampTime()).toBeNull();
+        });
+    });
+
+    // === Cover Position Commands ===
+    describe('Cover position commands', () => {
+        it('should parse a valid "position" command with percentage', () => {
+            const topic = 'cbus/write/254/203/1/position';
+            const message = Buffer.from('50'); // 50% position
+            const command = new CBusCommand(topic, message);
+
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('203');
+            expect(command.getGroup()).toBe('1');
+            expect(command.getCommandType()).toBe('position');
+            expect(command.getLevel()).toBe(Math.round(50 * 255 / 100)); // 128
+        });
+
+        it('should parse position 0 (fully closed)', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '0');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(0);
+        });
+
+        it('should parse position 100 (fully open)', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '100');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(255);
+        });
+
+        it('should clamp position > 100', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '150');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(255);
+        });
+
+        it('should clamp position < 0', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '-20');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(0);
+        });
+
+        it('should return null level for non-numeric position', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', 'halfway');
+            // Topic is valid, but level parsing fails
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBeNull();
+        });
+
+        it('should handle decimal positions', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/position', '33.5');
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(Math.round(33.5 * 255 / 100)); // 85
+        });
+    });
+
+    // === Cover Stop Commands ===
+    describe('Cover stop commands', () => {
+        it('should parse a valid "stop" command', () => {
+            const topic = 'cbus/write/254/203/1/stop';
+            const message = Buffer.from('STOP');
+            const command = new CBusCommand(topic, message);
+
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('203');
+            expect(command.getGroup()).toBe('1');
+            expect(command.getCommandType()).toBe('stop');
+        });
+
+        it('should parse stop command with empty payload', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/stop', '');
+            expect(command.isValid()).toBe(true);
+            expect(command.getCommandType()).toBe('stop');
+        });
+
+        it('should parse stop command with null payload', () => {
+            const command = new CBusCommand('cbus/write/254/203/1/stop', null);
+            expect(command.isValid()).toBe(true);
+            expect(command.getCommandType()).toBe('stop');
         });
     });
 

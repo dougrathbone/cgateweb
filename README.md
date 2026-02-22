@@ -83,6 +83,12 @@ These instructions assume a Linux system with Node.js, npm, and systemd.
 
  - cbus/write/#1/#2/#3/ramp  -  Publish a % to ramp to that %. Optionally add a comma then a time (e.g. 50,4s or 100,2m). Also, INCREASE/DECREASE ramp by 5% up or down and ON/OFF turns on/off.
 
+### Control covers/blinds:
+
+ - cbus/write/#1/#2/#3/position  -  Publish a position 0-100 (0=closed, 100=fully open)
+
+ - cbus/write/#1/#2/#3/stop  -  Publish STOP to stop the cover at its current position
+
 ### This requests an update from all lights:
 
  - cbus/write/#1/#2//getall - current values get published on the cbus/read topics
@@ -104,7 +110,10 @@ When enabled, `cgateweb` queries the C-Gate network structure (`TREEXML`) and pu
 Supported Device Types:
 
 *   **Lights:** C-Bus Lighting Application groups (typically App ID 56) are discovered as Home Assistant `light` entities, supporting on/off and brightness control.
-*   **Covers:** Devices using the configured `ha_discovery_cover_app_id` (default: `203`) are discovered as `cover` entities (device class `shutter`), supporting open/close.
+*   **Covers:** Devices using the configured `ha_discovery_cover_app_id` (default: `203`) are discovered as `cover` entities (device class `shutter`), supporting:
+    - **Position control:** Set position 0-100% (0=closed, 100=fully open)
+    - **Stop:** Stop the cover at its current position
+    - **Open/Close:** Basic open/close commands
 *   **Switches:** Devices using the configured `ha_discovery_switch_app_id` (default: `null`) are discovered as `switch` entities.
 *   **Relays:** Devices using the configured `ha_discovery_relay_app_id` (default: `null`) are discovered as `switch` entities with device class `outlet`.
 *   **PIR Motion Sensors:** Devices using the configured `ha_discovery_pir_app_id` (default: `null`) are discovered as `binary_sensor` entities with device class `motion`.
