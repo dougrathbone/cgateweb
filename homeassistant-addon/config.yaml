@@ -23,6 +23,9 @@ ports_description:
 
 homeassistant_api: true
 
+services:
+  - mqtt:want
+
 map:
   - "config:rw"
   - "share:ro"
@@ -41,15 +44,10 @@ options:
   cgate_install_source: "download"
   cgate_download_url: ""
 
-  # MQTT settings
-  mqtt_host: "core-mosquitto"
-  mqtt_port: 1883
-  mqtt_username: ""
-  mqtt_password: ""
-
   # C-Bus monitoring settings
-  getall_networks: []
-  getall_on_start: false
+  getall_networks:
+    - 254
+  getall_on_start: true
   getall_period: 3600
 
   # MQTT settings
@@ -62,7 +60,8 @@ options:
   # Home Assistant Discovery
   ha_discovery_enabled: true
   ha_discovery_prefix: "homeassistant"
-  ha_discovery_networks: []
+  ha_discovery_networks:
+    - 254
   ha_discovery_cover_app_id: 203
   ha_discovery_switch_app_id: null
 
@@ -80,9 +79,9 @@ schema:
   cgate_install_source: "list(download|upload)"
   cgate_download_url: "url?"
 
-  # MQTT settings
-  mqtt_host: "str"
-  mqtt_port: "int(1,65535)"
+  # MQTT settings (auto-detected from Mosquitto add-on)
+  mqtt_host: "str?"
+  mqtt_port: "int(1,65535)?"
   mqtt_username: "str?"
   mqtt_password: "password?"
 

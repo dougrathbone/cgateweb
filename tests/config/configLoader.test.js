@@ -643,6 +643,32 @@ describe('ConfigLoader', () => {
             expect(settings.mqtt).toBe('my-broker.local:1883');
         });
 
+        test('should apply mqtt broker when settings.mqtt is undefined', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: 'core-mosquitto', port: 1883, username: 'u', password: 'p', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = {};
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqtt).toBe('core-mosquitto:1883');
+            expect(settings.mqttusername).toBe('u');
+            expect(settings.mqttpassword).toBe('p');
+        });
+
+        test('should apply mqtt broker when settings.mqtt is empty string', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: 'core-mosquitto', port: 1883, username: 'u', password: 'p', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: '' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqtt).toBe('core-mosquitto:1883');
+        });
+
         test('should return settings unchanged when no SUPERVISOR_TOKEN', async () => {
             delete process.env.SUPERVISOR_TOKEN;
             const loader = new ConfigLoader();

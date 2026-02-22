@@ -42,7 +42,7 @@ describe('DeviceStateManager', () => {
             expect(stateManager.settings).toBe(mockSettings);
             expect(stateManager.logger).toBe(mockLogger);
             expect(stateManager.getEventEmitter()).toBeDefined();
-            expect(stateManager.activeOperations).toBeInstanceOf(Set);
+            expect(stateManager.activeOperations).toBeInstanceOf(Map);
         });
 
         it('should create default logger if none provided', () => {
@@ -317,6 +317,23 @@ describe('DeviceStateManager', () => {
             expect(mockLogger.debug).toHaveBeenCalledWith(
                 'Cancelled relative level operation for 254/56/4'
             );
+        });
+
+        it('should remove the event listener so callback does not fire after cancel', () => {
+            const callback = jest.fn();
+            const address = '254/56/4';
+
+            stateManager.setupRelativeLevelOperation(address, callback);
+            const listenersBefore = stateManager.getEventEmitter().listenerCount(MQTT_TOPIC_SUFFIX_LEVEL);
+            expect(listenersBefore).toBe(1);
+
+            stateManager.cancelRelativeLevelOperation(address);
+
+            const listenersAfter = stateManager.getEventEmitter().listenerCount(MQTT_TOPIC_SUFFIX_LEVEL);
+            expect(listenersAfter).toBe(0);
+
+            stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, address, 150);
+            expect(callback).not.toHaveBeenCalled();
         });
 
         it('should handle cancelling non-existent operation gracefully', () => {

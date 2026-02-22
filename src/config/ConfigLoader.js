@@ -255,12 +255,11 @@ class ConfigLoader {
             settings.mqttpassword = mqttConfig.password;
             this.logger.info('Applied auto-detected MQTT password');
         }
-        if (settings.mqtt === '127.0.0.1:1883' || settings.mqtt === 'core-mosquitto:1883') {
+        const defaultMqttValues = ['127.0.0.1:1883', 'core-mosquitto:1883', undefined, null, ''];
+        if (defaultMqttValues.includes(settings.mqtt)) {
             const detectedMqtt = `${mqttConfig.host}:${mqttConfig.port}`;
-            if (detectedMqtt !== settings.mqtt) {
-                settings.mqtt = detectedMqtt;
-                this.logger.info(`Applied auto-detected MQTT broker: ${detectedMqtt}`);
-            }
+            settings.mqtt = detectedMqtt;
+            this.logger.info(`Applied auto-detected MQTT broker: ${detectedMqtt}`);
         }
 
         return settings;

@@ -52,9 +52,19 @@ for (const [envKey, settingKey] of Object.entries(envOverrides)) {
 
 
 // Application startup
-function main() {
+async function main() {
     console.log('[INFO] Starting cgateweb...');
     console.log(`[INFO] Version: ${require('./package.json').version}`);
+    
+    // Auto-detect MQTT credentials from Supervisor API when running as an addon
+    if (process.env.SUPERVISOR_TOKEN) {
+        try {
+            const configLoader = new ConfigLoader();
+            await configLoader.applyMqttAutoDetection(settings);
+        } catch (error) {
+            console.error('[WARN] MQTT auto-detection failed:', error.message);
+        }
+    }
     
     validateWithWarnings(settings);
     

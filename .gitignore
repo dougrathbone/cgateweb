@@ -2,3 +2,4 @@ node_modules
 settings.js.bak
 .claude/
 .cursor/mcp.json
+build/

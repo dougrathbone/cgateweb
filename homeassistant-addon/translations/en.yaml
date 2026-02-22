@@ -21,27 +21,31 @@ configuration:
   mqtt_host:
     name: MQTT Broker Host
     description: >-
-      IP address or hostname of your MQTT broker. If using the Mosquitto
-      add-on, use core-mosquitto or 127.0.0.1 with host networking.
+      Auto-detected from the Mosquitto add-on. Only set this if you are
+      using an external MQTT broker instead of the HA Mosquitto add-on.
   mqtt_port:
     name: MQTT Broker Port
     description: >-
-      Port number for the MQTT broker. The default MQTT port is 1883.
+      Auto-detected from the Mosquitto add-on. Only set this if you are
+      using an external MQTT broker (default port is 1883).
   mqtt_username:
     name: MQTT Username
     description: >-
-      Username for MQTT broker authentication. Leave empty if your broker
-      allows anonymous connections.
+      Auto-detected from the Mosquitto add-on. Only set this if you are
+      using an external MQTT broker or need to override the credentials.
   mqtt_password:
     name: MQTT Password
     description: >-
-      Password for MQTT broker authentication. Leave empty if your broker
-      allows anonymous connections.
+      Auto-detected from the Mosquitto add-on. Only set this if you are
+      using an external MQTT broker or need to override the credentials.
   getall_networks:
     name: C-Bus Networks to Monitor
     description: >-
-      List of C-Bus network IDs to poll for device states (e.g., [254]).
-      These networks will be queried for lighting application (app 56) status.
+      List of C-Bus network IDs to poll for device states. The default network
+      is 254, which is the standard C-Bus network number for most installations.
+      To find your network IDs, open the C-Gate Toolkit application, expand your
+      project, and look at the network numbers listed under it. You can also use
+      Clipsal C-Bus Toolkit (CBAT) under Project > Network List.
   getall_on_start:
     name: Poll on Startup
     description: >-
@@ -80,8 +84,9 @@ configuration:
   ha_discovery_networks:
     name: Discovery Networks
     description: >-
-      C-Bus network IDs to scan for device discovery. If empty, falls back
-      to the networks listed in "C-Bus Networks to Monitor".
+      C-Bus network IDs to scan for device discovery. Defaults to 254, the
+      standard C-Bus network. If empty, falls back to the networks listed in
+      "C-Bus Networks to Monitor". Most installations only have one network.
   ha_discovery_cover_app_id:
     name: Cover Application ID
     description: >-

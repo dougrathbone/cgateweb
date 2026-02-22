@@ -49,12 +49,27 @@ describe('Addon Configuration Integration', () => {
             }
         });
 
-        test('every schema entry should have a corresponding option', () => {
+        test('every required schema entry should have a corresponding option', () => {
             const options = Object.keys(configYaml.options);
+            const schema = configYaml.schema;
+
+            for (const [key, type] of Object.entries(schema)) {
+                const typeStr = Array.isArray(type) ? JSON.stringify(type) : String(type);
+                if (!typeStr.endsWith('?') && !typeStr.endsWith('?"]')) {
+                    expect(options).toContain(key);
+                }
+            }
+        });
+
+        test('every optional schema entry should still have a translation', () => {
+            const translations = require('yaml').parse(
+                fs.readFileSync(path.join(__dirname, '../../homeassistant-addon/translations/en.yaml'), 'utf8')
+            );
+            const translated = Object.keys(translations.configuration);
             const schema = Object.keys(configYaml.schema);
 
             for (const sch of schema) {
-                expect(options).toContain(sch);
+                expect(translated).toContain(sch);
             }
         });
 
@@ -73,7 +88,6 @@ describe('Addon Configuration Integration', () => {
         test('port defaults should match cgateweb defaults', () => {
             expect(configYaml.options.cgate_port).toBe(20023);
             expect(configYaml.options.cgate_event_port).toBe(20025);
-            expect(configYaml.options.mqtt_port).toBe(1883);
         });
     });
 
@@ -95,12 +109,12 @@ describe('Addon Configuration Integration', () => {
             }
         });
 
-        test('every translation should correspond to a config option', () => {
-            const options = Object.keys(configYaml.options);
+        test('every translation should correspond to a schema entry', () => {
+            const schema = Object.keys(configYaml.schema);
             const translated = Object.keys(translations.configuration);
 
             for (const key of translated) {
-                expect(options).toContain(key);
+                expect(schema).toContain(key);
             }
         });
 

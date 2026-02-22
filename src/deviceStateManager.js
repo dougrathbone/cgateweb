@@ -50,7 +50,8 @@ class DeviceStateManager {
         this.internalEventEmitter = new EventEmitter();
         
         // Track active relative level operations to prevent conflicts
-        this.activeOperations = new Set();
+        // Maps address -> { handler, timeoutHandle } for proper cleanup on cancel
+        this.activeOperations = new Map();
     }
 
     /**
@@ -114,27 +115,29 @@ class DeviceStateManager {
             return null;
         }
 
-        this.activeOperations.add(address);
         const operationId = `${address}_${Date.now()}`;
+
+        const cleanup = () => {
+            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
+            clearTimeout(timeoutHandle);
+            this.activeOperations.delete(address);
+        };
 
         // Use .on() instead of .once() so non-matching address events don't consume the listener
         const levelHandler = (responseAddress, currentLevel) => {
             if (responseAddress === address) {
-                this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-                this.activeOperations.delete(address);
-                clearTimeout(timeoutHandle);
-                
+                cleanup();
                 this.logger.debug(`Received level response for ${address}: ${currentLevel}`);
                 callback(currentLevel);
             }
         };
 
         const timeoutHandle = setTimeout(() => {
-            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-            this.activeOperations.delete(address);
+            cleanup();
             this.logger.warn(`Timeout waiting for level response from ${address}`);
         }, timeout);
 
+        this.activeOperations.set(address, { handler: levelHandler, timeoutHandle });
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
         
         return operationId;
@@ -146,7 +149,10 @@ class DeviceStateManager {
      * @param {string} address - Device address to cancel operation for
      */
     cancelRelativeLevelOperation(address) {
-        if (this.activeOperations.has(address)) {
+        const operation = this.activeOperations.get(address);
+        if (operation) {
+            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, operation.handler);
+            clearTimeout(operation.timeoutHandle);
             this.activeOperations.delete(address);
             this.logger.debug(`Cancelled relative level operation for ${address}`);
         }
@@ -176,8 +182,12 @@ class DeviceStateManager {
      */
     clearAllOperations() {
         const count = this.activeOperations.size;
-        this.activeOperations.clear();
         if (count > 0) {
+            for (const [, operation] of this.activeOperations) {
+                this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, operation.handler);
+                clearTimeout(operation.timeoutHandle);
+            }
+            this.activeOperations.clear();
             this.logger.info(`Cleared ${count} active relative level operations`);
         }
     }

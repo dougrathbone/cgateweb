@@ -54,19 +54,21 @@ If you choose `upload` as the install source:
 
 ### MQTT Settings
 
+MQTT connection details are **automatically detected** from the Mosquitto add-on. You do not need to configure these unless you are using an external MQTT broker.
+
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `mqtt_host` | string | `core-mosquitto` | MQTT broker hostname/IP. Defaults to the HA Mosquitto add-on. |
-| `mqtt_port` | integer | `1883` | MQTT broker port |
-| `mqtt_username` | string | (empty) | MQTT username (optional) |
-| `mqtt_password` | password | (empty) | MQTT password (optional) |
+| `mqtt_host` | string | (auto) | MQTT broker hostname/IP. Auto-detected from Mosquitto add-on. |
+| `mqtt_port` | integer | (auto) | MQTT broker port. Auto-detected from Mosquitto add-on. |
+| `mqtt_username` | string | (auto) | MQTT username. Auto-detected from Mosquitto add-on. |
+| `mqtt_password` | password | (auto) | MQTT password. Auto-detected from Mosquitto add-on. |
 
 ### C-Bus Monitoring
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `getall_networks` | list | `[]` | List of C-Bus network IDs to monitor (e.g., `[254]`) |
-| `getall_on_start` | boolean | `false` | Request all device states on startup |
+| `getall_networks` | list | `[254]` | List of C-Bus network IDs to monitor |
+| `getall_on_start` | boolean | `true` | Request all device states on startup |
 | `getall_period` | integer | `3600` | How often to request all states (seconds) |
 | `retain_reads` | boolean | `false` | Set MQTT retain flag for state messages |
 | `message_interval` | integer | `200` | Delay between C-Gate commands (milliseconds) |
@@ -83,13 +85,66 @@ If you choose `upload` as the install source:
 |--------|------|---------|-------------|
 | `ha_discovery_enabled` | boolean | `true` | Enable automatic device discovery |
 | `ha_discovery_prefix` | string | `homeassistant` | MQTT discovery topic prefix |
-| `ha_discovery_networks` | list | `[]` | Networks to scan for discovery (uses `getall_networks` if empty) |
+| `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
 | `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters) |
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional) |
+
+## Finding Your C-Bus Network ID
+
+Several settings require your C-Bus **network ID** -- a number between 1 and 255 that identifies a physical C-Bus network. Most residential installations have a single network numbered **254** (the factory default), which is why this add-on defaults to `[254]`.
+
+You only need to change this if your installer configured a non-standard network number, or if your system has multiple C-Bus networks.
+
+### How to find it
+
+**Option 1: C-Gate Toolkit (recommended)**
+
+1. Open the C-Gate Toolkit application and connect to your C-Gate server
+2. Expand your project in the left-hand tree
+3. The network numbers are listed directly under the project node (e.g., "Network 254")
+
+**Option 2: C-Bus Toolkit (CBAT / Clipsal Toolkit)**
+
+1. Open your C-Bus Toolkit project file
+2. Go to **Project** > **Network List**
+3. The "Network Number" column shows your network IDs
+
+**Option 3: C-Gate command line**
+
+Connect to C-Gate on port 20023 (telnet or netcat) and run:
+
+```
+tree //YOUR_PROJECT
+```
+
+This lists all networks under the project. Look for lines like `//HOME/254` -- the number after the last slash is your network ID.
+
+### Multiple networks
+
+If your installation has more than one C-Bus network (e.g., a main lighting network and a separate network for HVAC), list all network IDs you want to monitor:
+
+```yaml
+getall_networks:
+  - 254
+  - 1
+ha_discovery_networks:
+  - 254
+  - 1
+```
 
 ## Example Configuration
 
 ### Remote mode (external C-Gate server)
+
+Minimal configuration -- MQTT is auto-detected from the Mosquitto add-on:
+
+```yaml
+cgate_mode: "remote"
+cgate_host: "192.168.1.100"
+cgate_project: "HOME"
+```
+
+With all options shown:
 
 ```yaml
 cgate_mode: "remote"
@@ -98,10 +153,11 @@ cgate_port: 20023
 cgate_event_port: 20025
 cgate_project: "HOME"
 
-mqtt_host: "core-mosquitto"
-mqtt_port: 1883
-mqtt_username: "homeassistant"
-mqtt_password: "your_mqtt_password"
+# MQTT (only needed for external brokers, auto-detected for Mosquitto add-on)
+# mqtt_host: "my-broker.local"
+# mqtt_port: 1883
+# mqtt_username: "user"
+# mqtt_password: "pass"
 
 getall_networks: [254]
 getall_on_start: true
@@ -120,11 +176,6 @@ log_level: "info"
 cgate_mode: "managed"
 cgate_install_source: "download"
 cgate_project: "HOME"
-
-mqtt_host: "core-mosquitto"
-mqtt_port: 1883
-mqtt_username: "homeassistant"
-mqtt_password: "your_mqtt_password"
 
 getall_networks: [254]
 getall_on_start: true
@@ -181,7 +232,7 @@ This add-on uses `host_network: true` to allow direct access to:
 
 ### No devices discovered
 1. Verify `ha_discovery_enabled` is `true`
-2. Check `ha_discovery_networks` includes your C-Bus network IDs
+2. Check `ha_discovery_networks` includes your C-Bus network IDs (default is `[254]` -- see "Finding Your C-Bus Network ID" above if your network uses a different number)
 3. Ensure C-Gate project is loaded and devices are configured
 4. Check MQTT discovery topic prefix matches Home Assistant configuration
 
