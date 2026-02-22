@@ -93,7 +93,7 @@ cgateweb/                    # Main repository
 - [x] Create HACS distribution workflow (GitHub Actions)
 - [x] Documentation and installation guides (README updates)
 - [x] Automated build and deployment process
-- [ ] Create HACS-compatible repository (`dougrathbone/cgateweb-hacs`)
+- [ ] Create HACS-compatible repository (`dougrathbone/cgateweb-homeassistant`)
 - [ ] Testing across different HA installations
 - [ ] Community feedback integration
 

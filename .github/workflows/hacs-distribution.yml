@@ -3,22 +3,34 @@ name: Build and Deploy Home Assistant Addon
 on:
   push:
     tags:
-      - 'v*'  # Trigger on version tags (e.g., v1.0.0, v1.2.3)
-  workflow_dispatch:  # Allow manual triggering
+      - 'v*'
+  workflow_dispatch:
 
 env:
   DISTRIBUTION_REPO: 'dougrathbone/cgateweb-homeassistant'
 
 jobs:
-  build-and-deploy:
+  test:
     runs-on: ubuntu-latest
-    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    - run: npm ci
+    - run: npm test
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+
     steps:
     - name: Checkout source repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        
+
     - name: Get version from tag
       id: version
       run: |
@@ -29,252 +41,142 @@ jobs:
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Version: $VERSION"
-        
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Run tests
-      run: npm test
-      
-    - name: Build addon structure
+
+    - name: Build distribution structure
       run: |
-        mkdir -p distribution
-        
-        # Copy addon files
-        cp -r homeassistant-addon/* distribution/
-        
-        # Copy source code (excluding dev files)
-        mkdir -p distribution/src
-        cp -r src/* distribution/src/
-        
-        # Copy essential files
-        cp package.json distribution/
-        cp package-lock.json distribution/
-        cp README.md distribution/
-        cp LICENSE.txt distribution/
-        
-        # Create repository.json for addon repository
-        cat > distribution/repository.json << 'EOF'
-        {
-          "name": "C-Gate Web Bridge - Home Assistant Add-on",
-          "url": "https://github.com/dougrathbone/cgateweb-homeassistant",
-          "maintainer": "Doug Rathbone"
-        }
-        EOF
-        
-        # Create .addons.yml for addon repository
-        cat > distribution/.addons.yml << 'EOF'
-        channel: stable
-        addons:
-          cgateweb:
-            repository: dougrathbone/cgateweb-addon
-            target: cgateweb
-            image: dougrathbone/cgateweb-addon
-        EOF
-        
+        # HA addon repos require: repository.yaml at root, each addon in a subfolder
+        mkdir -p distribution/cgateweb
+
+        # Copy addon metadata files into the addon subfolder
+        cp homeassistant-addon/config.yaml distribution/cgateweb/
+        cp homeassistant-addon/Dockerfile distribution/cgateweb/
+        cp homeassistant-addon/build.yaml distribution/cgateweb/
+        cp homeassistant-addon/run.sh distribution/cgateweb/
+        cp homeassistant-addon/DOCS.md distribution/cgateweb/
+        cp homeassistant-addon/CHANGELOG.md distribution/cgateweb/
+        cp homeassistant-addon/README.md distribution/cgateweb/
+        cp homeassistant-addon/icon.png distribution/cgateweb/
+        cp homeassistant-addon/logo.png distribution/cgateweb/
+
+        # Copy translations
+        cp -r homeassistant-addon/translations distribution/cgateweb/
+
+        # Copy rootfs (s6-overlay services)
+        cp -r homeassistant-addon/rootfs distribution/cgateweb/
+
+        # Copy application source
+        cp -r src distribution/cgateweb/
+        cp index.js distribution/cgateweb/
+        cp package.json distribution/cgateweb/
+        cp package-lock.json distribution/cgateweb/
+
         # Update version in config.yaml
-        sed -i "s/version: .*/version: \"${{ steps.version.outputs.version }}\"/" distribution/config.yaml
-        
-        # Create distribution-specific README
-        cat > distribution/README.md << 'EOF'
-        # C-Gate Web Bridge - Home Assistant Add-on
-        
-        **🚨 This repository is automatically generated for Home Assistant add-on distribution only.**
-        
-        ## For Development, Issues, and Contributions
-        
-        **Please use the main repository:**
-        
-        ### 🔧 Development & Issues
-        - **Main Repository**: [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)
-        - **Report Issues**: [Create an Issue](https://github.com/dougrathbone/cgateweb/issues/new)
-        - **Feature Requests**: [Request Features](https://github.com/dougrathbone/cgateweb/issues/new)
-        - **Submit PRs**: [Pull Requests](https://github.com/dougrathbone/cgateweb/pulls)
-        - **Documentation**: [Main Docs](https://github.com/dougrathbone/cgateweb#readme)
-        
-        ### 📦 Home Assistant Add-on Installation
-        
-        1. **Add Repository**:
-           - Go to Home Assistant → Add-on Store → ⋮ → Repositories
-           - Add: `https://github.com/dougrathbone/cgateweb-homeassistant`
-        
-        2. **Install Add-on**:
-           - Find "C-Gate Web Bridge" in the add-on store
-           - Install the add-on
-           - Configure in Settings → Add-ons → C-Gate Web Bridge
-        
-        ## About C-Gate Web Bridge
-        
-        Bridge between Clipsal C-Bus automation systems and MQTT/Home Assistant.
-        
-        ### Features
-        - **Bidirectional Control**: Monitor and control C-Bus lighting via MQTT
-        - **Home Assistant Integration**: Automatic discovery of C-Bus devices
-        - **Multiple Installation Options**: Standalone or Home Assistant addon
-        - **Comprehensive Device Support**: Lights, covers, switches, relays, PIR sensors
-        - **Real-time Monitoring**: Live status updates and command execution
-        
-        ---
-        
-        **⚠️ Remember: All development happens in [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)**
-        EOF
-        
-        # Create CONTRIBUTING.md that redirects to main repo
-        cat > distribution/CONTRIBUTING.md << 'EOF'
-        # Contributing to C-Gate Web Bridge
-        
-        **This repository is for HACS distribution only.**
-        
-        ## 🚨 Please contribute to the main repository:
-        
+        sed -i "s/version: .*/version: \"${{ steps.version.outputs.version }}\"/" distribution/cgateweb/config.yaml
+
+        # Create repository.yaml at the distribution root
+        cat > distribution/repository.yaml << 'REPOEOF'
+        name: C-Gate Web Bridge Add-on Repository
+        url: https://github.com/dougrathbone/cgateweb-homeassistant
+        maintainer: Doug Rathbone <doug@dougrathbone.com>
+        REPOEOF
+
+        # Create distribution-level README
+        cat > distribution/README.md << 'READMEEOF'
+        # C-Gate Web Bridge - Home Assistant Add-on Repository
+
+        This repository is automatically generated for Home Assistant add-on distribution.
+
+        ## Installation
+
+        1. Go to **Home Assistant** -> **Settings** -> **Add-ons** -> **Add-on Store**
+        2. Click the menu (three dots) -> **Repositories**
+        3. Add: `https://github.com/dougrathbone/cgateweb-homeassistant`
+        4. Find **C-Gate Web Bridge** in the store and install
+
+        ## Development & Issues
+
+        All development, issues, and contributions happen in the main repository:
+
         **[dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)**
-        
-        ### How to Contribute:
-        
-        1. **Fork the main repository**: [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)
-        2. **Create your feature branch**: `git checkout -b feature/amazing-feature`
-        3. **Make your changes** in the main repository
-        4. **Run tests**: `npm test`
-        5. **Submit a Pull Request** to the main repository
-        
-        ### Reporting Issues:
-        
-        - **Bug Reports**: [Create an Issue](https://github.com/dougrathbone/cgateweb/issues/new)
-        - **Feature Requests**: [Request Features](https://github.com/dougrathbone/cgateweb/issues/new)
-        
-        ### Development Setup:
-        
-        See the [main repository documentation](https://github.com/dougrathbone/cgateweb#development) for development setup instructions.
-        
-        ---
-        
-        This distribution repository is automatically updated when releases are tagged in the main repository.
-        EOF
-        
+
+        - [Report a Bug](https://github.com/dougrathbone/cgateweb/issues/new)
+        - [Request a Feature](https://github.com/dougrathbone/cgateweb/issues/new)
+        - [Documentation](https://github.com/dougrathbone/cgateweb#readme)
+        READMEEOF
+
     - name: Checkout or initialize distribution repository
       run: |
-        echo "🔍 Attempting to checkout distribution repository: ${{ env.DISTRIBUTION_REPO }}"
-        
-        # Try to checkout the existing repository
         if git clone https://${{ secrets.HACS_DEPLOY_TOKEN }}@github.com/${{ env.DISTRIBUTION_REPO }}.git hacs-repo 2>/dev/null; then
-          echo "✅ Distribution repository exists, checked out successfully"
           cd hacs-repo
-          
-          # Ensure we're on the main branch (GitHub's default)
           if git show-ref --verify --quiet refs/heads/main; then
             git checkout main
-            echo "✅ Switched to main branch"
           elif git show-ref --verify --quiet refs/heads/master; then
             git checkout master
-            # Rename master to main for consistency
             git branch -m master main
-            echo "✅ Renamed master branch to main"
           else
             git checkout -b main
-            echo "✅ Created main branch"
           fi
         else
-          echo "⚠️  Distribution repository does not exist or is empty"
-          echo "📝 Creating local repository structure for first-time setup..."
-          
           mkdir hacs-repo
           cd hacs-repo
-          
-          # Initialize new repository
           git init --initial-branch=main
           git remote add origin https://${{ secrets.HACS_DEPLOY_TOKEN }}@github.com/${{ env.DISTRIBUTION_REPO }}.git
-          
-          echo "✅ Initialized local repository with main branch"
         fi
-        
-        # Configure git
-        git config user.name 'HACS Distribution Bot'
+
+        git config user.name 'cgateweb-bot'
         git config user.email 'actions@github.com'
-        
-        echo "✅ Git configuration complete"
-        
-    - name: Update distribution repository
+
+    - name: Deploy to distribution repository
       run: |
         cd hacs-repo
-        
+
         # Clear existing content (except .git)
         find . -mindepth 1 -name '.git' -prune -o -type f -exec rm {} + 2>/dev/null || true
         find . -mindepth 1 -name '.git' -prune -o -type d -exec rm -rf {} + 2>/dev/null || true
-        
+
         # Copy new distribution files
         cp -r ../distribution/* .
-        
-        # Add all files
+
         git add .
-        
-        # Check if there are changes
+
         if git diff --staged --quiet; then
           echo "No changes to deploy"
           exit 0
         fi
-        
-        # Commit and push
+
         git commit -m "Release v${{ steps.version.outputs.version }}
 
-        Automated release from main repository
-        Source: ${{ github.repository }}@${{ github.sha }}
-        "
-        
-        echo "📤 Pushing to distribution repository..."
-        
-        # Push to main branch, creating it if it doesn't exist on remote
-        if git push -u origin main; then
-          echo "✅ Successfully pushed to distribution repository"
-        else
-          echo "❌ Failed to push to distribution repository"
-          echo "🔍 Checking remote repository status..."
-          git remote -v
-          echo "📋 Current branch:"
-          git branch -a
-          echo "📊 Repository status:"
-          git status
+        Source: ${{ github.repository }}@${{ github.sha }}"
+
+        if ! git push -u origin main; then
+          echo "Failed to push to distribution repository"
           exit 1
         fi
-        
+
     - name: Create GitHub Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         repository: ${{ env.DISTRIBUTION_REPO }}
         token: ${{ secrets.HACS_DEPLOY_TOKEN }}
         tag_name: v${{ steps.version.outputs.version }}
-        name: Release v${{ steps.version.outputs.version }}
+        name: v${{ steps.version.outputs.version }}
         body: |
           ## C-Gate Web Bridge v${{ steps.version.outputs.version }}
-          
-          **🏠 Home Assistant Add-on Release**
-          
-          This is an automated release of the C-Gate Web Bridge Home Assistant add-on.
-          
-          ### 📦 Installation
-          
-          1. **Add Repository**: In Home Assistant, go to Add-on Store → ⋮ → Repositories
-          2. **Add URL**: `https://github.com/dougrathbone/cgateweb-homeassistant`  
-          3. **Install**: Find "C-Gate Web Bridge" and install
-          4. **Configure**: Set your C-Gate and MQTT settings
-          
-          ### 🔗 Main Repository
-          
-          For documentation, issues, and contributions:
-          **[dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)**
-          
-          ### 📋 Changes
-          
-          See the [main repository releases](https://github.com/dougrathbone/cgateweb/releases) for detailed changelog.
-          
+
+          Home Assistant add-on release.
+
+          ### Installation
+
+          1. Add repository: `https://github.com/dougrathbone/cgateweb-homeassistant`
+          2. Install "C-Gate Web Bridge" from the add-on store
+          3. Configure C-Gate and MQTT settings
+
+          ### Changes
+
+          See [main repository releases](https://github.com/dougrathbone/cgateweb/releases).
+
           ---
-          
-          **Source**: [${{ github.repository }}](${{ github.server_url }}/${{ github.repository }}) @ [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+          Source: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         draft: false
         prerelease: false
