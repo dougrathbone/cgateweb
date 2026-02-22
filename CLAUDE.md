@@ -69,6 +69,10 @@ Supports automatic discovery of C-Bus devices:
 - **Switches/Relays/PIR**: Configurable app IDs as switch/binary_sensor entities
 - Uses MQTT Discovery protocol with configurable prefix (default: `homeassistant`)
 
+### Home Assistant Add-on Translations
+
+The add-on configuration UI is translated into 17 languages via YAML files in `homeassistant-addon/translations/`. Each file contains translated `name` and `description` fields for all configuration options while keeping YAML keys and technical terms (C-Gate, C-Bus, MQTT, etc.) in English. Supported languages: en, de, es, fr, it, nl, pt, ru, zh, ja, ko, pl, sv, no, da, cs, uk. New translations should be added by copying `en.yaml` and translating the user-facing strings.
+
 ## Testing Standards
 
 - Uses Jest testing framework

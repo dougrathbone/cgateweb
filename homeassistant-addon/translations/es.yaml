@@ -1,0 +1,135 @@
+configuration:
+  cgate_host:
+    name: Host de C-Gate
+    description: >-
+      Dirección IP o nombre de host del servidor C-Gate. Establecer en
+      127.0.0.1 cuando se usa el modo gestionado, o la dirección del servidor
+      remoto cuando se usa el modo remoto.
+  cgate_port:
+    name: Puerto de comandos de C-Gate
+    description: >-
+      Puerto TCP para conexiones de comandos de C-Gate. El puerto de comandos
+      predeterminado de C-Gate es 20023.
+  cgate_event_port:
+    name: Puerto de eventos de C-Gate
+    description: >-
+      Puerto TCP para conexiones de eventos de C-Gate. El puerto de eventos
+      predeterminado de C-Gate es 20025. Este puerto recibe actualizaciones
+      en tiempo real de los dispositivos C-Bus.
+  cgate_project:
+    name: Nombre del proyecto C-Gate
+    description: >-
+      El nombre de su proyecto C-Bus tal como está configurado en C-Gate
+      (por ejemplo, HOME).
+  mqtt_host:
+    name: Host del broker MQTT
+    description: >-
+      Detectado automáticamente desde el add-on Mosquitto. Solo configúrelo
+      si está usando un broker MQTT externo en lugar del add-on Mosquitto
+      de HA.
+  mqtt_port:
+    name: Puerto del broker MQTT
+    description: >-
+      Detectado automáticamente desde el add-on Mosquitto. Solo configúrelo
+      si está usando un broker MQTT externo (el puerto predeterminado es 1883).
+  mqtt_username:
+    name: Nombre de usuario MQTT
+    description: >-
+      Detectado automáticamente desde el add-on Mosquitto. Solo configúrelo
+      si está usando un broker MQTT externo o necesita anular las
+      credenciales.
+  mqtt_password:
+    name: Contraseña MQTT
+    description: >-
+      Detectado automáticamente desde el add-on Mosquitto. Solo configúrelo
+      si está usando un broker MQTT externo o necesita anular las
+      credenciales.
+  getall_networks:
+    name: Redes C-Bus a monitorizar
+    description: >-
+      Lista de IDs de red C-Bus para consultar estados de dispositivos. La
+      red predeterminada es 254, que es el número de red C-Bus estándar para
+      la mayoría de las instalaciones. Para encontrar sus IDs de red, abra la
+      aplicación C-Gate Toolkit, expanda su proyecto y observe los números de
+      red listados debajo. También puede usar Clipsal C-Bus Toolkit (CBAT)
+      en Proyecto > Lista de redes.
+  getall_on_start:
+    name: Consultar al iniciar
+    description: >-
+      Solicitar todos los estados de dispositivos cuando se inicia el add-on.
+      Útil para sincronizar Home Assistant con el estado actual de todos los
+      dispositivos C-Bus.
+  getall_period:
+    name: Intervalo de consulta (segundos)
+    description: >-
+      Con qué frecuencia solicitar todos los estados de dispositivos, en
+      segundos. Valores más bajos proporcionan estados más actualizados
+      pero aumentan el tráfico de red hacia C-Gate.
+  retain_reads:
+    name: Retener mensajes de estado MQTT
+    description: >-
+      Establecer la bandera de retención MQTT en los mensajes de estado.
+      Cuando está habilitado, los nuevos suscriptores MQTT reciben
+      inmediatamente el último estado conocido de cada dispositivo.
+  message_interval:
+    name: Intervalo de comandos (ms)
+    description: >-
+      Retardo mínimo entre comandos enviados a C-Gate, en milisegundos.
+      Evita sobrecargar C-Gate con comandos rápidos. Predeterminado 200ms.
+  log_level:
+    name: Nivel de registro
+    description: >-
+      Nivel de detalle del registro. Use debug para resolución de problemas,
+      info para operación normal, warn solo para advertencias o error solo
+      para errores.
+  ha_discovery_enabled:
+    name: Habilitar Home Assistant Discovery
+    description: >-
+      Registrar automáticamente dispositivos C-Bus en Home Assistant usando
+      MQTT Discovery. Los dispositivos aparecen como entidades sin
+      configuración manual.
+  ha_discovery_prefix:
+    name: Prefijo del tema Discovery
+    description: >-
+      Prefijo del tema MQTT para mensajes de Home Assistant Discovery. Debe
+      coincidir con el prefijo de MQTT Discovery de su Home Assistant
+      (predeterminado: homeassistant).
+  ha_discovery_networks:
+    name: Redes de Discovery
+    description: >-
+      IDs de red C-Bus para escanear en busca de dispositivos. El valor
+      predeterminado es 254, la red C-Bus estándar. Si está vacío, se
+      recurre a las redes listadas en "Redes C-Bus a monitorizar". La
+      mayoría de las instalaciones solo tienen una red.
+  ha_discovery_cover_app_id:
+    name: ID de aplicación para cubiertas
+    description: >-
+      ID de aplicación C-Bus para tratar como cubiertas (persianas,
+      contraventanas, puertas de garaje). El valor común es 203 (Enable
+      Control). Dejar vacío para desactivar el descubrimiento de cubiertas.
+  ha_discovery_switch_app_id:
+    name: ID de aplicación para interruptores
+    description: >-
+      ID de aplicación C-Bus para tratar como interruptores. Dejar vacío
+      para desactivar el descubrimiento de interruptores.
+  cgate_mode:
+    name: Modo de C-Gate
+    description: >-
+      Cómo se proporciona C-Gate. "remote" se conecta a un servidor C-Gate
+      que se ejecuta en otro lugar de su red. "managed" descarga y ejecuta
+      C-Gate localmente dentro de este add-on (requiere Java y una interfaz
+      serial C-Bus).
+  cgate_install_source:
+    name: Fuente de instalación de C-Gate
+    description: >-
+      Solo se usa cuando el modo de C-Gate es "managed". "download" descarga
+      automáticamente C-Gate desde la URL oficial de Clipsal en el primer
+      inicio. "upload" busca un archivo ZIP de C-Gate que usted coloque en
+      /share/cgate/.
+  cgate_download_url:
+    name: URL de descarga de C-Gate
+    description: >-
+      Solo se usa cuando el modo de C-Gate es "managed" y la fuente de
+      instalación es "download". Anule la URL predeterminada si la ubicación
+      oficial de descarga de Clipsal cambia. Dejar vacío para usar la URL
+      predeterminada.

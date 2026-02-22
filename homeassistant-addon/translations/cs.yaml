@@ -1,0 +1,124 @@
+configuration:
+  cgate_host:
+    name: Hostitel C-Gate
+    description: >-
+      IP adresa nebo název hostitele serveru C-Gate. Nastavte na 127.0.0.1
+      při použití spravovaného režimu, nebo adresu vzdáleného serveru při
+      použití vzdáleného režimu.
+  cgate_port:
+    name: Příkazový port C-Gate
+    description: >-
+      TCP port pro příkazová připojení C-Gate. Výchozí příkazový port
+      C-Gate je 20023.
+  cgate_event_port:
+    name: Port událostí C-Gate
+    description: >-
+      TCP port pro připojení událostí C-Gate. Výchozí port událostí C-Gate
+      je 20025. Tento port přijímá aktualizace v reálném čase ze zařízení
+      C-Bus.
+  cgate_project:
+    name: Název projektu C-Gate
+    description: >-
+      Název vašeho projektu C-Bus nakonfigurovaný v C-Gate (např. HOME).
+  mqtt_host:
+    name: Hostitel MQTT brokera
+    description: >-
+      Automaticky detekován z doplňku Mosquitto. Nastavte pouze pokud
+      používáte externího MQTT brokera místo doplňku HA Mosquitto.
+  mqtt_port:
+    name: Port MQTT brokera
+    description: >-
+      Automaticky detekován z doplňku Mosquitto. Nastavte pouze pokud
+      používáte externího MQTT brokera (výchozí port je 1883).
+  mqtt_username:
+    name: MQTT uživatelské jméno
+    description: >-
+      Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pokud
+      používáte externího MQTT brokera nebo potřebujete přepsat přihlašovací
+      údaje.
+  mqtt_password:
+    name: MQTT heslo
+    description: >-
+      Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pokud
+      používáte externího MQTT brokera nebo potřebujete přepsat přihlašovací
+      údaje.
+  getall_networks:
+    name: Sítě C-Bus ke sledování
+    description: >-
+      Seznam ID sítí C-Bus pro dotazování stavů zařízení. Výchozí síť je
+      254, což je standardní číslo sítě C-Bus ve většině instalací. Pro
+      nalezení vašich ID sítí otevřete aplikaci C-Gate Toolkit, rozbalte
+      svůj projekt a podívejte se na čísla sítí uvedená pod ním. Můžete
+      také použít Clipsal C-Bus Toolkit (CBAT) v nabídce Projekt > Seznam
+      sítí.
+  getall_on_start:
+    name: Dotazování při spuštění
+    description: >-
+      Načíst všechny stavy zařízení při spuštění doplňku. Užitečné pro
+      synchronizaci Home Assistant s aktuálním stavem všech zařízení C-Bus.
+  getall_period:
+    name: Interval dotazování (sekundy)
+    description: >-
+      Jak často načítat všechny stavy zařízení, v sekundách. Nižší hodnoty
+      poskytují aktuálnější stav, ale zvyšují síťový provoz směrem k C-Gate.
+  retain_reads:
+    name: Zachovat stavové zprávy MQTT
+    description: >-
+      Nastavit příznak MQTT retain na stavových zprávách. Při aktivaci noví
+      MQTT odběratelé okamžitě obdrží poslední známý stav každého zařízení.
+  message_interval:
+    name: Interval příkazů (ms)
+    description: >-
+      Minimální prodleva mezi příkazy odeslanými do C-Gate, v milisekundách.
+      Zabraňuje zahlcení C-Gate rychlými příkazy. Výchozí 200ms.
+  log_level:
+    name: Úroveň logování
+    description: >-
+      Podrobnost logování. Použijte debug pro řešení problémů, info pro
+      normální provoz, warn pouze pro varování nebo error pouze pro chyby.
+  ha_discovery_enabled:
+    name: Povolit Home Assistant Discovery
+    description: >-
+      Automaticky registrovat zařízení C-Bus v Home Assistant pomocí
+      MQTT Discovery. Zařízení se zobrazí jako entity bez ruční konfigurace.
+  ha_discovery_prefix:
+    name: Prefix tématu Discovery
+    description: >-
+      Prefix MQTT tématu pro zprávy Home Assistant Discovery. Tento musí
+      odpovídat vašemu prefixu MQTT Discovery v Home Assistant (výchozí:
+      homeassistant).
+  ha_discovery_networks:
+    name: Sítě Discovery
+    description: >-
+      ID sítí C-Bus ke skenování pro objevování zařízení. Výchozí je 254,
+      standardní síť C-Bus. Pokud je prázdné, použijí se sítě uvedené v
+      „Sítě C-Bus ke sledování". Většina instalací má pouze jednu síť.
+  ha_discovery_cover_app_id:
+    name: ID aplikace pro kryty
+    description: >-
+      ID aplikace C-Bus zpracovávané jako kryty (žaluzie, rolety, garážová
+      vrata). Běžná hodnota je 203 (Enable Control). Ponechte prázdné pro
+      vypnutí objevování krytů.
+  ha_discovery_switch_app_id:
+    name: ID aplikace pro spínače
+    description: >-
+      ID aplikace C-Bus zpracovávané jako spínače. Ponechte prázdné pro
+      vypnutí objevování spínačů.
+  cgate_mode:
+    name: Režim C-Gate
+    description: >-
+      Jak je C-Gate poskytován. „remote" se připojí k serveru C-Gate
+      běžícímu jinde ve vaší síti. „managed" stáhne a spustí C-Gate lokálně
+      v tomto doplňku (vyžaduje Java a sériové rozhraní C-Bus).
+  cgate_install_source:
+    name: Zdroj instalace C-Gate
+    description: >-
+      Používá se pouze když je režim C-Gate „managed". „download" automaticky
+      stáhne C-Gate z oficiální Clipsal URL při prvním spuštění. „upload"
+      hledá soubor ZIP C-Gate, který jste umístili do /share/cgate/.
+  cgate_download_url:
+    name: URL pro stažení C-Gate
+    description: >-
+      Používá se pouze když je režim C-Gate „managed" a zdroj instalace je
+      „download". Přepište výchozí URL, pokud se změní oficiální umístění
+      stahování Clipsal. Ponechte prázdné pro použití výchozí URL.

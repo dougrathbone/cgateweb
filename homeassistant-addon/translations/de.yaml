@@ -1,0 +1,134 @@
+configuration:
+  cgate_host:
+    name: C-Gate Host
+    description: >-
+      IP-Adresse oder Hostname des C-Gate Servers. Auf 127.0.0.1 setzen bei
+      Verwendung des verwalteten Modus, oder die Adresse des entfernten Servers
+      bei Verwendung des Remote-Modus.
+  cgate_port:
+    name: C-Gate Befehlsport
+    description: >-
+      TCP-Port für C-Gate Befehlsverbindungen. Der Standard-Befehlsport von
+      C-Gate ist 20023.
+  cgate_event_port:
+    name: C-Gate Ereignisport
+    description: >-
+      TCP-Port für C-Gate Ereignisverbindungen. Der Standard-Ereignisport von
+      C-Gate ist 20025. Dieser Port empfängt Echtzeit-Updates von C-Bus Geräten.
+  cgate_project:
+    name: C-Gate Projektname
+    description: >-
+      Der Name Ihres C-Bus Projekts wie in C-Gate konfiguriert (z.B. HOME).
+  mqtt_host:
+    name: MQTT Broker Host
+    description: >-
+      Wird automatisch vom Mosquitto Add-on erkannt. Nur setzen, wenn Sie
+      einen externen MQTT Broker anstelle des HA Mosquitto Add-ons verwenden.
+  mqtt_port:
+    name: MQTT Broker Port
+    description: >-
+      Wird automatisch vom Mosquitto Add-on erkannt. Nur setzen, wenn Sie
+      einen externen MQTT Broker verwenden (Standardport ist 1883).
+  mqtt_username:
+    name: MQTT Benutzername
+    description: >-
+      Wird automatisch vom Mosquitto Add-on erkannt. Nur setzen, wenn Sie
+      einen externen MQTT Broker verwenden oder die Anmeldedaten überschreiben
+      müssen.
+  mqtt_password:
+    name: MQTT Passwort
+    description: >-
+      Wird automatisch vom Mosquitto Add-on erkannt. Nur setzen, wenn Sie
+      einen externen MQTT Broker verwenden oder die Anmeldedaten überschreiben
+      müssen.
+  getall_networks:
+    name: Zu überwachende C-Bus Netzwerke
+    description: >-
+      Liste der C-Bus Netzwerk-IDs, die auf Gerätezustände abgefragt werden
+      sollen. Das Standardnetzwerk ist 254, die übliche C-Bus Netzwerknummer
+      für die meisten Installationen. Um Ihre Netzwerk-IDs zu finden, öffnen
+      Sie die C-Gate Toolkit Anwendung, erweitern Sie Ihr Projekt und sehen
+      Sie sich die darunter aufgeführten Netzwerknummern an. Sie können auch
+      Clipsal C-Bus Toolkit (CBAT) unter Projekt > Netzwerkliste verwenden.
+  getall_on_start:
+    name: Abfrage beim Start
+    description: >-
+      Alle Gerätezustände beim Start des Add-ons abfragen. Nützlich zur
+      Synchronisierung von Home Assistant mit dem aktuellen Zustand aller
+      C-Bus Geräte.
+  getall_period:
+    name: Abfrageintervall (Sekunden)
+    description: >-
+      Wie oft alle Gerätezustände abgefragt werden sollen, in Sekunden.
+      Niedrigere Werte liefern aktuellere Zustände, erhöhen aber den
+      Netzwerkverkehr zu C-Gate.
+  retain_reads:
+    name: MQTT Zustandsnachrichten beibehalten
+    description: >-
+      Das MQTT Retain-Flag auf Zustandsnachrichten setzen. Wenn aktiviert,
+      erhalten neue MQTT Abonnenten sofort den letzten bekannten Zustand
+      jedes Geräts.
+  message_interval:
+    name: Befehlsintervall (ms)
+    description: >-
+      Mindestverzögerung zwischen an C-Gate gesendeten Befehlen, in
+      Millisekunden. Verhindert eine Überlastung von C-Gate durch schnelle
+      Befehle. Standard 200ms.
+  log_level:
+    name: Protokollierungsstufe
+    description: >-
+      Ausführlichkeit der Protokollierung. Verwenden Sie debug zur
+      Fehlerbehebung, info für den Normalbetrieb, warn nur für Warnungen
+      oder error nur für Fehler.
+  ha_discovery_enabled:
+    name: Home Assistant Discovery aktivieren
+    description: >-
+      C-Bus Geräte automatisch bei Home Assistant über MQTT Discovery
+      registrieren. Geräte erscheinen als Entitäten ohne manuelle
+      Konfiguration.
+  ha_discovery_prefix:
+    name: Discovery Topic-Präfix
+    description: >-
+      MQTT Topic-Präfix für Home Assistant Discovery Nachrichten. Dieser
+      muss mit Ihrem Home Assistant MQTT Discovery Präfix übereinstimmen
+      (Standard: homeassistant).
+  ha_discovery_networks:
+    name: Discovery Netzwerke
+    description: >-
+      C-Bus Netzwerk-IDs, die für die Geräteerkennung gescannt werden
+      sollen. Standard ist 254, das übliche C-Bus Netzwerk. Wenn leer,
+      wird auf die unter „Zu überwachende C-Bus Netzwerke" aufgeführten
+      Netzwerke zurückgegriffen. Die meisten Installationen haben nur ein
+      Netzwerk.
+  ha_discovery_cover_app_id:
+    name: Abdeckungs-Anwendungs-ID
+    description: >-
+      C-Bus Anwendungs-ID, die als Abdeckungen (Jalousien, Rollläden,
+      Garagentore) behandelt werden soll. Üblicher Wert ist 203 (Enable
+      Control). Leer lassen, um die Abdeckungserkennung zu deaktivieren.
+  ha_discovery_switch_app_id:
+    name: Schalter-Anwendungs-ID
+    description: >-
+      C-Bus Anwendungs-ID, die als Schalter behandelt werden soll. Leer
+      lassen, um die Schaltererkennung zu deaktivieren.
+  cgate_mode:
+    name: C-Gate Modus
+    description: >-
+      Wie C-Gate bereitgestellt wird. „remote" verbindet sich mit einem
+      C-Gate Server, der anderswo in Ihrem Netzwerk läuft. „managed" lädt
+      C-Gate herunter und führt es lokal in diesem Add-on aus (erfordert
+      Java und eine serielle C-Bus Schnittstelle).
+  cgate_install_source:
+    name: C-Gate Installationsquelle
+    description: >-
+      Wird nur verwendet, wenn der C-Gate Modus „managed" ist. „download"
+      lädt C-Gate beim ersten Start automatisch von der offiziellen Clipsal
+      URL herunter. „upload" sucht nach einer C-Gate ZIP-Datei, die Sie in
+      /share/cgate/ ablegen.
+  cgate_download_url:
+    name: C-Gate Download URL
+    description: >-
+      Wird nur verwendet, wenn der C-Gate Modus „managed" und die
+      Installationsquelle „download" ist. Überschreiben Sie die Standard-URL,
+      wenn sich der offizielle Clipsal Download-Standort ändert. Leer lassen,
+      um die Standard-URL zu verwenden.

@@ -1,0 +1,129 @@
+configuration:
+  cgate_host:
+    name: C-Gate vært
+    description: >-
+      IP-adresse eller værtsnavn for C-Gate serveren. Sæt til 127.0.0.1 ved
+      brug af administreret tilstand, eller den eksterne servers adresse ved
+      brug af fjerntilstand.
+  cgate_port:
+    name: C-Gate kommandoport
+    description: >-
+      TCP-port til C-Gate kommandoforbindelser. Standardporten for C-Gate
+      kommandoer er 20023.
+  cgate_event_port:
+    name: C-Gate hændelsesport
+    description: >-
+      TCP-port til C-Gate hændelsesforbindelser. Standardporten for C-Gate
+      hændelser er 20025. Denne port modtager opdateringer i realtid fra
+      C-Bus enheder.
+  cgate_project:
+    name: C-Gate projektnavn
+    description: >-
+      Navnet på dit C-Bus projekt som konfigureret i C-Gate (f.eks. HOME).
+  mqtt_host:
+    name: MQTT Broker vært
+    description: >-
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstil kun dette,
+      hvis du bruger en ekstern MQTT broker i stedet for HA Mosquitto
+      tilføjelsen.
+  mqtt_port:
+    name: MQTT Broker port
+    description: >-
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstil kun dette,
+      hvis du bruger en ekstern MQTT broker (standardport er 1883).
+  mqtt_username:
+    name: MQTT brugernavn
+    description: >-
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstil kun dette,
+      hvis du bruger en ekstern MQTT broker eller skal tilsidesætte
+      loginoplysningerne.
+  mqtt_password:
+    name: MQTT adgangskode
+    description: >-
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstil kun dette,
+      hvis du bruger en ekstern MQTT broker eller skal tilsidesætte
+      loginoplysningerne.
+  getall_networks:
+    name: C-Bus netværk at overvåge
+    description: >-
+      Liste over C-Bus netværks-ID'er til at forespørge enhedstilstande.
+      Standardnetværket er 254, som er det normale C-Bus netværksnummer for
+      de fleste installationer. For at finde dine netværks-ID'er skal du åbne
+      C-Gate Toolkit applikationen, udvide dit projekt og se på
+      netværksnumrene angivet under det. Du kan også bruge Clipsal C-Bus
+      Toolkit (CBAT) under Projekt > Netværksliste.
+  getall_on_start:
+    name: Forespørg ved opstart
+    description: >-
+      Hent alle enhedstilstande, når tilføjelsen starter. Nyttigt til at
+      synkronisere Home Assistant med den aktuelle tilstand for alle C-Bus
+      enheder.
+  getall_period:
+    name: Forespørgselsinterval (sekunder)
+    description: >-
+      Hvor ofte alle enhedstilstande skal hentes, i sekunder. Lavere værdier
+      giver mere opdaterede tilstande, men øger netværkstrafikken til C-Gate.
+  retain_reads:
+    name: Bevar MQTT statusbeskeder
+    description: >-
+      Sæt MQTT retain-flaget på statusbeskeder. Når aktiveret, modtager nye
+      MQTT abonnenter straks den sidst kendte tilstand for hver enhed.
+  message_interval:
+    name: Kommandointerval (ms)
+    description: >-
+      Minimumsforsinkelse mellem kommandoer sendt til C-Gate, i
+      millisekunder. Forhindrer overbelastning af C-Gate med hurtige
+      kommandoer. Standard 200ms.
+  log_level:
+    name: Logniveau
+    description: >-
+      Logningsdetalje. Brug debug til fejlfinding, info til normal drift,
+      warn kun for advarsler eller error kun for fejl.
+  ha_discovery_enabled:
+    name: Aktivér Home Assistant Discovery
+    description: >-
+      Registrer automatisk C-Bus enheder i Home Assistant ved hjælp af
+      MQTT Discovery. Enheder vises som entiteter uden manuel konfiguration.
+  ha_discovery_prefix:
+    name: Discovery emnepræfiks
+    description: >-
+      MQTT emnepræfiks for Home Assistant Discovery beskeder. Dette skal
+      matche dit Home Assistant MQTT Discovery præfiks (standard:
+      homeassistant).
+  ha_discovery_networks:
+    name: Discovery netværk
+    description: >-
+      C-Bus netværks-ID'er der skal scannes for enhedsopdagelse. Standard er
+      254, det normale C-Bus netværk. Hvis tomt, bruges netværkene angivet
+      under "C-Bus netværk at overvåge". De fleste installationer har kun ét
+      netværk.
+  ha_discovery_cover_app_id:
+    name: Applikations-ID for afdækninger
+    description: >-
+      C-Bus applikations-ID der skal behandles som afdækninger (persienner,
+      rullegardiner, garageporte). Almindelig værdi er 203 (Enable Control).
+      Lad stå tomt for at deaktivere opdagelse af afdækninger.
+  ha_discovery_switch_app_id:
+    name: Applikations-ID for kontakter
+    description: >-
+      C-Bus applikations-ID der skal behandles som kontakter. Lad stå tomt
+      for at deaktivere opdagelse af kontakter.
+  cgate_mode:
+    name: C-Gate tilstand
+    description: >-
+      Hvordan C-Gate leveres. "remote" forbinder til en C-Gate server der
+      kører et andet sted på dit netværk. "managed" downloader og kører
+      C-Gate lokalt i denne tilføjelse (kræver Java og et serielt C-Bus
+      interface).
+  cgate_install_source:
+    name: C-Gate installationskilde
+    description: >-
+      Bruges kun når C-Gate tilstand er "managed". "download" downloader
+      automatisk C-Gate fra den officielle Clipsal URL ved første opstart.
+      "upload" leder efter en C-Gate zip-fil du har placeret i /share/cgate/.
+  cgate_download_url:
+    name: C-Gate download URL
+    description: >-
+      Bruges kun når C-Gate tilstand er "managed" og installationskilde er
+      "download". Tilsidesæt standard-URL'en, hvis den officielle Clipsal
+      downloadplacering ændres. Lad stå tomt for at bruge standard-URL'en.

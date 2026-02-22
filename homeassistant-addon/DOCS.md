@@ -254,6 +254,17 @@ This add-on uses `host_network: true` to allow direct access to:
 3. Increase `getall_period` to reduce periodic state requests
 4. Check network latency between add-on and C-Gate server
 
+## Language Support
+
+The add-on configuration UI is available in 17 languages. Home Assistant automatically displays option names and descriptions in your configured language:
+
+- English, German (Deutsch), Spanish (Español), French (Français), Italian (Italiano)
+- Dutch (Nederlands), Portuguese (Português), Russian (Русский), Ukrainian (Українська)
+- Chinese Simplified (简体中文), Japanese (日本語), Korean (한국어)
+- Polish (Polski), Swedish (Svenska), Norwegian (Norsk), Danish (Dansk), Czech (Čeština)
+
+Translation files are located in `translations/` within the add-on directory. To contribute a new translation, copy `translations/en.yaml` to a new file named with the appropriate language code (e.g., `fi.yaml` for Finnish) and translate the `name` and `description` fields.
+
 ## Support
 
 For issues, feature requests, and contributions:

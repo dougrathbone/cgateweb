@@ -1,0 +1,134 @@
+configuration:
+  cgate_host:
+    name: C-Gate ホスト
+    description: >-
+      C-Gate サーバーの IP アドレスまたはホスト名。マネージドモードでは
+      127.0.0.1 に設定し、リモートモードではリモートサーバーのアドレスを
+      設定してください。
+  cgate_port:
+    name: C-Gate コマンドポート
+    description: >-
+      C-Gate コマンド接続用の TCP ポート。C-Gate のデフォルトコマンド
+      ポートは 20023 です。
+  cgate_event_port:
+    name: C-Gate イベントポート
+    description: >-
+      C-Gate イベント接続用の TCP ポート。C-Gate のデフォルトイベント
+      ポートは 20025 です。このポートは C-Bus デバイスからのリアルタイム
+      更新を受信します。
+  cgate_project:
+    name: C-Gate プロジェクト名
+    description: >-
+      C-Gate で設定された C-Bus プロジェクトの名前（例：HOME）。
+  mqtt_host:
+    name: MQTT ブローカーホスト
+    description: >-
+      Mosquitto アドオンから自動検出されます。Home Assistant の
+      Mosquitto アドオンではなく外部 MQTT ブローカーを使用する場合のみ
+      設定してください。
+  mqtt_port:
+    name: MQTT ブローカーポート
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを
+      使用する場合のみ設定してください（デフォルトポートは 1883）。
+  mqtt_username:
+    name: MQTT ユーザー名
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを
+      使用する場合、または資格情報を上書きする必要がある場合のみ
+      設定してください。
+  mqtt_password:
+    name: MQTT パスワード
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを
+      使用する場合、または資格情報を上書きする必要がある場合のみ
+      設定してください。
+  getall_networks:
+    name: 監視する C-Bus ネットワーク
+    description: >-
+      デバイスの状態をポーリングする C-Bus ネットワーク ID のリスト。
+      デフォルトネットワークは 254 で、ほとんどの環境で標準的な C-Bus
+      ネットワーク番号です。ネットワーク ID を確認するには、C-Gate
+      Toolkit アプリケーションを開き、プロジェクトを展開して、その下に
+      表示されるネットワーク番号を確認してください。Clipsal C-Bus
+      Toolkit (CBAT) のプロジェクト > ネットワークリストでも確認できます。
+  getall_on_start:
+    name: 起動時にポーリング
+    description: >-
+      アドオンの起動時にすべてのデバイスの状態を要求します。
+      Home Assistant をすべての C-Bus デバイスの現在の状態と同期する
+      のに便利です。
+  getall_period:
+    name: ポーリング間隔（秒）
+    description: >-
+      すべてのデバイスの状態を要求する頻度（秒単位）。値を小さくすると
+      最新の状態を取得できますが、C-Gate へのネットワークトラフィックが
+      増加します。
+  retain_reads:
+    name: MQTT 状態メッセージを保持
+    description: >-
+      状態メッセージに MQTT 保持フラグを設定します。有効にすると、新しい
+      MQTT サブスクライバーは各デバイスの最後の既知の状態をすぐに
+      受信します。
+  message_interval:
+    name: コマンド間隔（ミリ秒）
+    description: >-
+      C-Gate に送信するコマンド間の最小遅延（ミリ秒単位）。高速な
+      コマンドで C-Gate が過負荷になるのを防ぎます。デフォルトは
+      200ms です。
+  log_level:
+    name: ログレベル
+    description: >-
+      ログの詳細度。トラブルシューティングには debug、通常運用には info、
+      警告のみは warn、エラーのみは error を使用してください。
+  ha_discovery_enabled:
+    name: Home Assistant Discovery を有効化
+    description: >-
+      MQTT Discovery を使用して C-Bus デバイスを Home Assistant に
+      自動登録します。手動設定なしでデバイスがエンティティとして
+      表示されます。
+  ha_discovery_prefix:
+    name: Discovery トピックプレフィックス
+    description: >-
+      Home Assistant Discovery メッセージの MQTT トピックプレフィックス。
+      Home Assistant の MQTT Discovery プレフィックスと一致させる必要が
+      あります（デフォルト：homeassistant）。
+  ha_discovery_networks:
+    name: Discovery ネットワーク
+    description: >-
+      デバイス検出のためにスキャンする C-Bus ネットワーク ID。デフォルト
+      は 254（標準的な C-Bus ネットワーク）です。空の場合、「監視する
+      C-Bus ネットワーク」に設定されたネットワークにフォールバックします。
+      ほとんどの環境ではネットワークは 1 つだけです。
+  ha_discovery_cover_app_id:
+    name: カバーアプリケーション ID
+    description: >-
+      カバー（ブラインド、シャッター、ガレージドア）として扱う C-Bus
+      アプリケーション ID。一般的な値は 203（Enable Control）です。
+      カバーの検出を無効にするには空のままにしてください。
+  ha_discovery_switch_app_id:
+    name: スイッチアプリケーション ID
+    description: >-
+      スイッチとして扱う C-Bus アプリケーション ID。スイッチの検出を
+      無効にするには空のままにしてください。
+  cgate_mode:
+    name: C-Gate モード
+    description: >-
+      C-Gate の提供方法。"remote" はネットワーク上の別の場所で動作して
+      いる C-Gate サーバーに接続します。"managed" はこのアドオン内で
+      C-Gate をローカルにダウンロードして実行します（Java と C-Bus
+      シリアルインターフェースが必要です）。
+  cgate_install_source:
+    name: C-Gate インストールソース
+    description: >-
+      C-Gate モードが "managed" の場合のみ使用されます。"download" は
+      初回起動時に公式 Clipsal URL から C-Gate を自動ダウンロードします。
+      "upload" は /share/cgate/ に配置した C-Gate zip ファイルを
+      使用します。
+  cgate_download_url:
+    name: C-Gate ダウンロード URL
+    description: >-
+      C-Gate モードが "managed" でインストールソースが "download" の
+      場合のみ使用されます。公式 Clipsal ダウンロード先が変更された場合に
+      デフォルト URL を上書きできます。デフォルト URL を使用するには
+      空のままにしてください。

@@ -1,0 +1,120 @@
+configuration:
+  cgate_host:
+    name: C-Gate 호스트
+    description: >-
+      C-Gate 서버의 IP 주소 또는 호스트명. 관리 모드에서는 127.0.0.1로
+      설정하고, 원격 모드에서는 원격 서버 주소를 설정하세요.
+  cgate_port:
+    name: C-Gate 명령 포트
+    description: >-
+      C-Gate 명령 연결을 위한 TCP 포트. C-Gate 기본 명령 포트는
+      20023입니다.
+  cgate_event_port:
+    name: C-Gate 이벤트 포트
+    description: >-
+      C-Gate 이벤트 연결을 위한 TCP 포트. C-Gate 기본 이벤트 포트는
+      20025입니다. 이 포트는 C-Bus 장치의 실시간 업데이트를 수신합니다.
+  cgate_project:
+    name: C-Gate 프로젝트 이름
+    description: >-
+      C-Gate에서 구성된 C-Bus 프로젝트 이름 (예: HOME).
+  mqtt_host:
+    name: MQTT 브로커 호스트
+    description: >-
+      Mosquitto 애드온에서 자동 감지됩니다. Home Assistant Mosquitto
+      애드온 대신 외부 MQTT 브로커를 사용하는 경우에만 설정하세요.
+  mqtt_port:
+    name: MQTT 브로커 포트
+    description: >-
+      Mosquitto 애드온에서 자동 감지됩니다. 외부 MQTT 브로커를 사용하는
+      경우에만 설정하세요 (기본 포트는 1883).
+  mqtt_username:
+    name: MQTT 사용자 이름
+    description: >-
+      Mosquitto 애드온에서 자동 감지됩니다. 외부 MQTT 브로커를 사용하거나
+      자격 증명을 재정의해야 하는 경우에만 설정하세요.
+  mqtt_password:
+    name: MQTT 비밀번호
+    description: >-
+      Mosquitto 애드온에서 자동 감지됩니다. 외부 MQTT 브로커를 사용하거나
+      자격 증명을 재정의해야 하는 경우에만 설정하세요.
+  getall_networks:
+    name: 모니터링할 C-Bus 네트워크
+    description: >-
+      장치 상태를 폴링할 C-Bus 네트워크 ID 목록. 기본 네트워크는 254로,
+      대부분의 설치에서 표준 C-Bus 네트워크 번호입니다. 네트워크 ID를
+      찾으려면 C-Gate Toolkit 애플리케이션을 열고 프로젝트를 확장한 후
+      그 아래에 나열된 네트워크 번호를 확인하세요. Clipsal C-Bus
+      Toolkit (CBAT)의 프로젝트 > 네트워크 목록에서도 확인할 수 있습니다.
+  getall_on_start:
+    name: 시작 시 폴링
+    description: >-
+      애드온 시작 시 모든 장치 상태를 요청합니다. Home Assistant를 모든
+      C-Bus 장치의 현재 상태와 동기화하는 데 유용합니다.
+  getall_period:
+    name: 폴링 간격 (초)
+    description: >-
+      모든 장치 상태를 요청하는 빈도 (초 단위). 값이 낮을수록 최신
+      상태를 제공하지만 C-Gate로의 네트워크 트래픽이 증가합니다.
+  retain_reads:
+    name: MQTT 상태 메시지 보존
+    description: >-
+      상태 메시지에 MQTT 보존 플래그를 설정합니다. 활성화하면 새로운
+      MQTT 구독자가 각 장치의 마지막으로 알려진 상태를 즉시 수신합니다.
+  message_interval:
+    name: 명령 간격 (밀리초)
+    description: >-
+      C-Gate로 전송되는 명령 간의 최소 지연 시간 (밀리초 단위). 빠른
+      명령으로 C-Gate가 과부하되는 것을 방지합니다. 기본값은 200ms입니다.
+  log_level:
+    name: 로그 수준
+    description: >-
+      로그 상세도. 문제 해결에는 debug, 정상 운영에는 info, 경고만
+      표시하려면 warn, 오류만 표시하려면 error를 사용하세요.
+  ha_discovery_enabled:
+    name: Home Assistant Discovery 활성화
+    description: >-
+      MQTT Discovery를 사용하여 C-Bus 장치를 Home Assistant에 자동으로
+      등록합니다. 수동 구성 없이 장치가 엔티티로 표시됩니다.
+  ha_discovery_prefix:
+    name: Discovery 토픽 접두사
+    description: >-
+      Home Assistant Discovery 메시지의 MQTT 토픽 접두사. Home Assistant의
+      MQTT Discovery 접두사와 일치해야 합니다 (기본값: homeassistant).
+  ha_discovery_networks:
+    name: Discovery 네트워크
+    description: >-
+      장치 검색을 위해 스캔할 C-Bus 네트워크 ID. 기본값은 254로, 표준
+      C-Bus 네트워크입니다. 비어 있으면 "모니터링할 C-Bus 네트워크"에
+      나열된 네트워크로 대체됩니다. 대부분의 설치에는 네트워크가 하나만
+      있습니다.
+  ha_discovery_cover_app_id:
+    name: 커버 애플리케이션 ID
+    description: >-
+      커버 (블라인드, 셔터, 차고문)로 처리할 C-Bus 애플리케이션 ID.
+      일반적인 값은 203 (Enable Control)입니다. 커버 검색을 비활성화하려면
+      비워 두세요.
+  ha_discovery_switch_app_id:
+    name: 스위치 애플리케이션 ID
+    description: >-
+      스위치로 처리할 C-Bus 애플리케이션 ID. 스위치 검색을 비활성화하려면
+      비워 두세요.
+  cgate_mode:
+    name: C-Gate 모드
+    description: >-
+      C-Gate 제공 방식. "remote"는 네트워크의 다른 곳에서 실행 중인
+      C-Gate 서버에 연결합니다. "managed"는 이 애드온 내에서 C-Gate를
+      로컬로 다운로드하여 실행합니다 (Java 및 C-Bus 시리얼 인터페이스가
+      필요합니다).
+  cgate_install_source:
+    name: C-Gate 설치 소스
+    description: >-
+      C-Gate 모드가 "managed"인 경우에만 사용됩니다. "download"는 첫
+      시작 시 공식 Clipsal URL에서 C-Gate를 자동으로 다운로드합니다.
+      "upload"는 /share/cgate/에 배치한 C-Gate zip 파일을 사용합니다.
+  cgate_download_url:
+    name: C-Gate 다운로드 URL
+    description: >-
+      C-Gate 모드가 "managed"이고 설치 소스가 "download"인 경우에만
+      사용됩니다. 공식 Clipsal 다운로드 위치가 변경된 경우 기본 URL을
+      재정의할 수 있습니다. 기본 URL을 사용하려면 비워 두세요.

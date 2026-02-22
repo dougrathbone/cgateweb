@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Event port configuration (`cgate_event_port`, default 20025)
 - Architecture-specific build configuration (`build.yaml`)
 - Addon icon and logo for Home Assistant UI
-- English translations for all configuration options
+- Configuration UI translations for 17 languages: English, German, Spanish, French, Italian, Dutch, Portuguese, Russian, Chinese (Simplified), Japanese, Korean, Polish, Swedish, Norwegian, Danish, Czech, and Ukrainian
 - s6-overlay process supervision for managed C-Gate mode
 
 ### Changed

@@ -1,0 +1,138 @@
+configuration:
+  cgate_host:
+    name: Host C-Gate
+    description: >-
+      Indirizzo IP o nome host del server C-Gate. Impostare su 127.0.0.1
+      quando si utilizza la modalità gestita, o l'indirizzo del server remoto
+      quando si utilizza la modalità remota.
+  cgate_port:
+    name: Porta comandi C-Gate
+    description: >-
+      Porta TCP per le connessioni dei comandi C-Gate. La porta comandi
+      predefinita di C-Gate è 20023.
+  cgate_event_port:
+    name: Porta eventi C-Gate
+    description: >-
+      Porta TCP per le connessioni degli eventi C-Gate. La porta eventi
+      predefinita di C-Gate è 20025. Questa porta riceve aggiornamenti in
+      tempo reale dai dispositivi C-Bus.
+  cgate_project:
+    name: Nome del progetto C-Gate
+    description: >-
+      Il nome del progetto C-Bus come configurato in C-Gate (ad esempio,
+      HOME).
+  mqtt_host:
+    name: Host del broker MQTT
+    description: >-
+      Rilevato automaticamente dal componente aggiuntivo Mosquitto.
+      Impostare solo se si utilizza un broker MQTT esterno al posto del
+      componente aggiuntivo Mosquitto di HA.
+  mqtt_port:
+    name: Porta del broker MQTT
+    description: >-
+      Rilevato automaticamente dal componente aggiuntivo Mosquitto.
+      Impostare solo se si utilizza un broker MQTT esterno (la porta
+      predefinita è 1883).
+  mqtt_username:
+    name: Nome utente MQTT
+    description: >-
+      Rilevato automaticamente dal componente aggiuntivo Mosquitto.
+      Impostare solo se si utilizza un broker MQTT esterno o se è
+      necessario sovrascrivere le credenziali.
+  mqtt_password:
+    name: Password MQTT
+    description: >-
+      Rilevato automaticamente dal componente aggiuntivo Mosquitto.
+      Impostare solo se si utilizza un broker MQTT esterno o se è
+      necessario sovrascrivere le credenziali.
+  getall_networks:
+    name: Reti C-Bus da monitorare
+    description: >-
+      Elenco degli ID di rete C-Bus da interrogare per gli stati dei
+      dispositivi. La rete predefinita è 254, che è il numero di rete C-Bus
+      standard per la maggior parte delle installazioni. Per trovare i
+      propri ID di rete, aprire l'applicazione C-Gate Toolkit, espandere il
+      progetto e osservare i numeri di rete elencati sotto di esso. È anche
+      possibile utilizzare Clipsal C-Bus Toolkit (CBAT) in Progetto > Elenco
+      reti.
+  getall_on_start:
+    name: Interroga all'avvio
+    description: >-
+      Richiedere tutti gli stati dei dispositivi all'avvio del componente
+      aggiuntivo. Utile per sincronizzare Home Assistant con lo stato
+      attuale di tutti i dispositivi C-Bus.
+  getall_period:
+    name: Intervallo di interrogazione (secondi)
+    description: >-
+      Con quale frequenza richiedere tutti gli stati dei dispositivi, in
+      secondi. Valori più bassi forniscono stati più aggiornati ma
+      aumentano il traffico di rete verso C-Gate.
+  retain_reads:
+    name: Conserva messaggi di stato MQTT
+    description: >-
+      Impostare il flag di conservazione MQTT sui messaggi di stato. Quando
+      abilitato, i nuovi sottoscrittori MQTT ricevono immediatamente
+      l'ultimo stato conosciuto di ogni dispositivo.
+  message_interval:
+    name: Intervallo comandi (ms)
+    description: >-
+      Ritardo minimo tra i comandi inviati a C-Gate, in millisecondi.
+      Impedisce di sovraccaricare C-Gate con comandi rapidi. Predefinito
+      200ms.
+  log_level:
+    name: Livello di registrazione
+    description: >-
+      Livello di dettaglio della registrazione. Usare debug per la
+      risoluzione dei problemi, info per il funzionamento normale, warn
+      solo per gli avvisi o error solo per gli errori.
+  ha_discovery_enabled:
+    name: Abilita Home Assistant Discovery
+    description: >-
+      Registrare automaticamente i dispositivi C-Bus in Home Assistant
+      tramite MQTT Discovery. I dispositivi appaiono come entità senza
+      configurazione manuale.
+  ha_discovery_prefix:
+    name: Prefisso del tema Discovery
+    description: >-
+      Prefisso del tema MQTT per i messaggi di Home Assistant Discovery.
+      Deve corrispondere al prefisso MQTT Discovery del proprio
+      Home Assistant (predefinito: homeassistant).
+  ha_discovery_networks:
+    name: Reti Discovery
+    description: >-
+      ID di rete C-Bus da scansionare per il rilevamento dei dispositivi.
+      Il valore predefinito è 254, la rete C-Bus standard. Se vuoto, vengono
+      utilizzate le reti elencate in "Reti C-Bus da monitorare". La maggior
+      parte delle installazioni ha una sola rete.
+  ha_discovery_cover_app_id:
+    name: ID applicazione per coperture
+    description: >-
+      ID applicazione C-Bus da trattare come coperture (tapparelle,
+      persiane, porte del garage). Il valore comune è 203 (Enable Control).
+      Lasciare vuoto per disabilitare il rilevamento delle coperture.
+  ha_discovery_switch_app_id:
+    name: ID applicazione per interruttori
+    description: >-
+      ID applicazione C-Bus da trattare come interruttori. Lasciare vuoto
+      per disabilitare il rilevamento degli interruttori.
+  cgate_mode:
+    name: Modalità C-Gate
+    description: >-
+      Come viene fornito C-Gate. "remote" si connette a un server C-Gate in
+      esecuzione altrove nella rete. "managed" scarica ed esegue C-Gate
+      localmente all'interno di questo componente aggiuntivo (richiede Java
+      e un'interfaccia seriale C-Bus).
+  cgate_install_source:
+    name: Fonte di installazione C-Gate
+    description: >-
+      Utilizzato solo quando la modalità C-Gate è "managed". "download"
+      scarica automaticamente C-Gate dall'URL ufficiale di Clipsal al primo
+      avvio. "upload" cerca un file ZIP di C-Gate posizionato in
+      /share/cgate/.
+  cgate_download_url:
+    name: URL di download di C-Gate
+    description: >-
+      Utilizzato solo quando la modalità C-Gate è "managed" e la fonte di
+      installazione è "download". Sovrascrivere l'URL predefinito se la
+      posizione ufficiale di download di Clipsal cambia. Lasciare vuoto per
+      utilizzare l'URL predefinito.

@@ -1,0 +1,137 @@
+configuration:
+  cgate_host:
+    name: Hôte C-Gate
+    description: >-
+      Adresse IP ou nom d'hôte du serveur C-Gate. Définir sur 127.0.0.1
+      en mode géré, ou l'adresse du serveur distant en mode distant.
+  cgate_port:
+    name: Port de commande C-Gate
+    description: >-
+      Port TCP pour les connexions de commande C-Gate. Le port de commande
+      par défaut de C-Gate est 20023.
+  cgate_event_port:
+    name: Port d'événements C-Gate
+    description: >-
+      Port TCP pour les connexions d'événements C-Gate. Le port d'événements
+      par défaut de C-Gate est 20025. Ce port reçoit les mises à jour en
+      temps réel des appareils C-Bus.
+  cgate_project:
+    name: Nom du projet C-Gate
+    description: >-
+      Le nom de votre projet C-Bus tel que configuré dans C-Gate
+      (par exemple, HOME).
+  mqtt_host:
+    name: Hôte du broker MQTT
+    description: >-
+      Détecté automatiquement depuis le module Mosquitto. Ne définissez
+      cette valeur que si vous utilisez un broker MQTT externe au lieu du
+      module Mosquitto de HA.
+  mqtt_port:
+    name: Port du broker MQTT
+    description: >-
+      Détecté automatiquement depuis le module Mosquitto. Ne définissez
+      cette valeur que si vous utilisez un broker MQTT externe (le port par
+      défaut est 1883).
+  mqtt_username:
+    name: Nom d'utilisateur MQTT
+    description: >-
+      Détecté automatiquement depuis le module Mosquitto. Ne définissez
+      cette valeur que si vous utilisez un broker MQTT externe ou si vous
+      devez remplacer les identifiants.
+  mqtt_password:
+    name: Mot de passe MQTT
+    description: >-
+      Détecté automatiquement depuis le module Mosquitto. Ne définissez
+      cette valeur que si vous utilisez un broker MQTT externe ou si vous
+      devez remplacer les identifiants.
+  getall_networks:
+    name: Réseaux C-Bus à surveiller
+    description: >-
+      Liste des identifiants de réseau C-Bus à interroger pour les états
+      des appareils. Le réseau par défaut est 254, qui est le numéro de
+      réseau C-Bus standard pour la plupart des installations. Pour trouver
+      vos identifiants de réseau, ouvrez l'application C-Gate Toolkit,
+      développez votre projet et consultez les numéros de réseau listés
+      en dessous. Vous pouvez aussi utiliser Clipsal C-Bus Toolkit (CBAT)
+      sous Projet > Liste des réseaux.
+  getall_on_start:
+    name: Interroger au démarrage
+    description: >-
+      Demander tous les états des appareils au démarrage du module. Utile
+      pour synchroniser Home Assistant avec l'état actuel de tous les
+      appareils C-Bus.
+  getall_period:
+    name: Intervalle d'interrogation (secondes)
+    description: >-
+      Fréquence d'interrogation de tous les états des appareils, en secondes.
+      Des valeurs plus basses fournissent des états plus récents mais
+      augmentent le trafic réseau vers C-Gate.
+  retain_reads:
+    name: Conserver les messages d'état MQTT
+    description: >-
+      Activer le drapeau de rétention MQTT sur les messages d'état. Lorsque
+      cette option est activée, les nouveaux abonnés MQTT reçoivent
+      immédiatement le dernier état connu de chaque appareil.
+  message_interval:
+    name: Intervalle de commande (ms)
+    description: >-
+      Délai minimum entre les commandes envoyées à C-Gate, en millisecondes.
+      Empêche la surcharge de C-Gate par des commandes rapides. Par défaut
+      200ms.
+  log_level:
+    name: Niveau de journalisation
+    description: >-
+      Niveau de détail de la journalisation. Utilisez debug pour le
+      dépannage, info pour le fonctionnement normal, warn pour les
+      avertissements uniquement ou error pour les erreurs uniquement.
+  ha_discovery_enabled:
+    name: Activer Home Assistant Discovery
+    description: >-
+      Enregistrer automatiquement les appareils C-Bus auprès de
+      Home Assistant via MQTT Discovery. Les appareils apparaissent comme
+      des entités sans configuration manuelle.
+  ha_discovery_prefix:
+    name: Préfixe du sujet Discovery
+    description: >-
+      Préfixe du sujet MQTT pour les messages Home Assistant Discovery.
+      Il doit correspondre au préfixe MQTT Discovery de votre
+      Home Assistant (par défaut : homeassistant).
+  ha_discovery_networks:
+    name: Réseaux Discovery
+    description: >-
+      Identifiants de réseau C-Bus à scanner pour la découverte des
+      appareils. La valeur par défaut est 254, le réseau C-Bus standard.
+      Si vide, les réseaux listés dans « Réseaux C-Bus à surveiller »
+      sont utilisés. La plupart des installations n'ont qu'un seul réseau.
+  ha_discovery_cover_app_id:
+    name: ID d'application pour les volets
+    description: >-
+      ID d'application C-Bus à traiter comme des volets (stores, volets
+      roulants, portes de garage). La valeur courante est 203 (Enable
+      Control). Laisser vide pour désactiver la découverte des volets.
+  ha_discovery_switch_app_id:
+    name: ID d'application pour les interrupteurs
+    description: >-
+      ID d'application C-Bus à traiter comme des interrupteurs. Laisser
+      vide pour désactiver la découverte des interrupteurs.
+  cgate_mode:
+    name: Mode C-Gate
+    description: >-
+      Comment C-Gate est fourni. « remote » se connecte à un serveur C-Gate
+      fonctionnant ailleurs sur votre réseau. « managed » télécharge et
+      exécute C-Gate localement dans ce module (nécessite Java et une
+      interface série C-Bus).
+  cgate_install_source:
+    name: Source d'installation de C-Gate
+    description: >-
+      Utilisé uniquement lorsque le mode C-Gate est « managed ».
+      « download » télécharge automatiquement C-Gate depuis l'URL officielle
+      de Clipsal au premier démarrage. « upload » recherche un fichier ZIP
+      C-Gate que vous placez dans /share/cgate/.
+  cgate_download_url:
+    name: URL de téléchargement de C-Gate
+    description: >-
+      Utilisé uniquement lorsque le mode C-Gate est « managed » et la source
+      d'installation est « download ». Remplacez l'URL par défaut si
+      l'emplacement officiel de téléchargement Clipsal change. Laisser vide
+      pour utiliser l'URL par défaut.

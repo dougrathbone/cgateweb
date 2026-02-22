@@ -1,0 +1,114 @@
+configuration:
+  cgate_host:
+    name: C-Gate 主机
+    description: >-
+      C-Gate 服务器的 IP 地址或主机名。使用托管模式时设置为 127.0.0.1，
+      使用远程模式时设置为远程服务器地址。
+  cgate_port:
+    name: C-Gate 命令端口
+    description: >-
+      C-Gate 命令连接的 TCP 端口。C-Gate 默认命令端口为 20023。
+  cgate_event_port:
+    name: C-Gate 事件端口
+    description: >-
+      C-Gate 事件连接的 TCP 端口。C-Gate 默认事件端口为 20025。
+      此端口接收来自 C-Bus 设备的实时更新。
+  cgate_project:
+    name: C-Gate 项目名称
+    description: >-
+      在 C-Gate 中配置的 C-Bus 项目名称（例如 HOME）。
+  mqtt_host:
+    name: MQTT 代理主机
+    description: >-
+      从 Mosquitto 附加组件自动检测。仅在使用外部 MQTT 代理而非
+      Home Assistant Mosquitto 附加组件时设置此项。
+  mqtt_port:
+    name: MQTT 代理端口
+    description: >-
+      从 Mosquitto 附加组件自动检测。仅在使用外部 MQTT 代理时设置此项
+      （默认端口为 1883）。
+  mqtt_username:
+    name: MQTT 用户名
+    description: >-
+      从 Mosquitto 附加组件自动检测。仅在使用外部 MQTT 代理或需要
+      覆盖凭据时设置此项。
+  mqtt_password:
+    name: MQTT 密码
+    description: >-
+      从 Mosquitto 附加组件自动检测。仅在使用外部 MQTT 代理或需要
+      覆盖凭据时设置此项。
+  getall_networks:
+    name: 监控的 C-Bus 网络
+    description: >-
+      要轮询设备状态的 C-Bus 网络 ID 列表。默认网络为 254，这是大多数
+      安装中的标准 C-Bus 网络编号。要查找您的网络 ID，请打开 C-Gate
+      Toolkit 应用程序，展开您的项目，查看其下列出的网络编号。您也可以
+      使用 Clipsal C-Bus Toolkit (CBAT) 在项目 > 网络列表中查看。
+  getall_on_start:
+    name: 启动时轮询
+    description: >-
+      在附加组件启动时请求所有设备状态。用于将 Home Assistant 与所有
+      C-Bus 设备的当前状态同步。
+  getall_period:
+    name: 轮询间隔（秒）
+    description: >-
+      请求所有设备状态的频率，以秒为单位。较低的值可提供更新的状态，
+      但会增加到 C-Gate 的网络流量。
+  retain_reads:
+    name: 保留 MQTT 状态消息
+    description: >-
+      在状态消息上设置 MQTT 保留标志。启用后，新的 MQTT 订阅者将
+      立即收到每个设备的最后已知状态。
+  message_interval:
+    name: 命令间隔（毫秒）
+    description: >-
+      发送到 C-Gate 的命令之间的最小延迟，以毫秒为单位。防止快速命令
+      使 C-Gate 过载。默认 200ms。
+  log_level:
+    name: 日志级别
+    description: >-
+      日志详细程度。使用 debug 进行故障排除，info 用于正常运行，
+      warn 仅显示警告，error 仅显示错误。
+  ha_discovery_enabled:
+    name: 启用 Home Assistant Discovery
+    description: >-
+      使用 MQTT Discovery 自动向 Home Assistant 注册 C-Bus 设备。
+      设备将作为实体出现，无需手动配置。
+  ha_discovery_prefix:
+    name: Discovery 主题前缀
+    description: >-
+      Home Assistant Discovery 消息的 MQTT 主题前缀。此值必须与您的
+      Home Assistant MQTT Discovery 前缀匹配（默认：homeassistant）。
+  ha_discovery_networks:
+    name: Discovery 网络
+    description: >-
+      要扫描进行设备发现的 C-Bus 网络 ID。默认为 254，即标准 C-Bus
+      网络。如果为空，则回退到"监控的 C-Bus 网络"中列出的网络。
+      大多数安装只有一个网络。
+  ha_discovery_cover_app_id:
+    name: 窗帘应用程序 ID
+    description: >-
+      作为窗帘（百叶窗、卷帘、车库门）处理的 C-Bus 应用程序 ID。
+      常用值为 203（Enable Control）。留空以禁用窗帘发现。
+  ha_discovery_switch_app_id:
+    name: 开关应用程序 ID
+    description: >-
+      作为开关处理的 C-Bus 应用程序 ID。留空以禁用开关发现。
+  cgate_mode:
+    name: C-Gate 模式
+    description: >-
+      C-Gate 的提供方式。"remote" 连接到网络上其他位置运行的 C-Gate
+      服务器。"managed" 在此附加组件内本地下载并运行 C-Gate（需要
+      Java 和 C-Bus 串行接口）。
+  cgate_install_source:
+    name: C-Gate 安装来源
+    description: >-
+      仅在 C-Gate 模式为 "managed" 时使用。"download" 在首次启动时
+      自动从官方 Clipsal URL 下载 C-Gate。"upload" 查找您放置在
+      /share/cgate/ 中的 C-Gate zip 文件。
+  cgate_download_url:
+    name: C-Gate 下载 URL
+    description: >-
+      仅在 C-Gate 模式为 "managed" 且安装来源为 "download" 时使用。
+      如果官方 Clipsal 下载位置发生更改，可覆盖默认 URL。留空以使用
+      默认 URL。

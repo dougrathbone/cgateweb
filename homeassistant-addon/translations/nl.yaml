@@ -1,0 +1,134 @@
+configuration:
+  cgate_host:
+    name: C-Gate Host
+    description: >-
+      IP-adres of hostnaam van de C-Gate server. Stel in op 127.0.0.1 bij
+      gebruik van de beheerde modus, of het adres van de externe server bij
+      gebruik van de externe modus.
+  cgate_port:
+    name: C-Gate Commandopoort
+    description: >-
+      TCP-poort voor C-Gate commandoverbindingen. De standaard C-Gate
+      commandopoort is 20023.
+  cgate_event_port:
+    name: C-Gate Gebeurtenispoort
+    description: >-
+      TCP-poort voor C-Gate gebeurtenisverbindingen. De standaard C-Gate
+      gebeurtenispoort is 20025. Deze poort ontvangt realtime updates van
+      C-Bus apparaten.
+  cgate_project:
+    name: C-Gate Projectnaam
+    description: >-
+      De naam van uw C-Bus project zoals geconfigureerd in C-Gate
+      (bijv. HOME).
+  mqtt_host:
+    name: MQTT Broker Host
+    description: >-
+      Automatisch gedetecteerd via de Mosquitto add-on. Stel dit alleen in
+      als u een externe MQTT broker gebruikt in plaats van de HA Mosquitto
+      add-on.
+  mqtt_port:
+    name: MQTT Broker Poort
+    description: >-
+      Automatisch gedetecteerd via de Mosquitto add-on. Stel dit alleen in
+      als u een externe MQTT broker gebruikt (standaardpoort is 1883).
+  mqtt_username:
+    name: MQTT Gebruikersnaam
+    description: >-
+      Automatisch gedetecteerd via de Mosquitto add-on. Stel dit alleen in
+      als u een externe MQTT broker gebruikt of de inloggegevens wilt
+      overschrijven.
+  mqtt_password:
+    name: MQTT Wachtwoord
+    description: >-
+      Automatisch gedetecteerd via de Mosquitto add-on. Stel dit alleen in
+      als u een externe MQTT broker gebruikt of de inloggegevens wilt
+      overschrijven.
+  getall_networks:
+    name: Te monitoren C-Bus netwerken
+    description: >-
+      Lijst van C-Bus netwerk-ID's om apparaatstatussen op te vragen. Het
+      standaardnetwerk is 254, het standaard C-Bus netwerknummer voor de
+      meeste installaties. Om uw netwerk-ID's te vinden, opent u de C-Gate
+      Toolkit applicatie, vouwt u uw project uit en bekijkt u de
+      netwerknummers eronder. U kunt ook Clipsal C-Bus Toolkit (CBAT)
+      gebruiken via Project > Network List.
+  getall_on_start:
+    name: Opvragen bij opstarten
+    description: >-
+      Vraag alle apparaatstatussen op wanneer de add-on start. Handig om
+      Home Assistant te synchroniseren met de huidige status van alle C-Bus
+      apparaten.
+  getall_period:
+    name: Opvraaginterval (seconden)
+    description: >-
+      Hoe vaak alle apparaatstatussen worden opgevraagd, in seconden. Lagere
+      waarden geven actuelere statussen maar verhogen het netwerkverkeer
+      naar C-Gate.
+  retain_reads:
+    name: MQTT Statusberichten bewaren
+    description: >-
+      Stel de MQTT retain-vlag in op statusberichten. Wanneer ingeschakeld,
+      ontvangen nieuwe MQTT abonnees direct de laatst bekende status van
+      elk apparaat.
+  message_interval:
+    name: Commando-interval (ms)
+    description: >-
+      Minimale vertraging tussen commando's die naar C-Gate worden
+      verzonden, in milliseconden. Voorkomt dat C-Gate wordt overspoeld
+      met snelle commando's. Standaard 200ms.
+  log_level:
+    name: Logniveau
+    description: >-
+      Logboekuitgebreidheid. Gebruik debug voor probleemoplossing, info voor
+      normaal gebruik, warn voor alleen waarschuwingen, of error voor alleen
+      fouten.
+  ha_discovery_enabled:
+    name: Home Assistant Discovery inschakelen
+    description: >-
+      Registreer C-Bus apparaten automatisch bij Home Assistant met behulp
+      van MQTT Discovery. Apparaten verschijnen als entiteiten zonder
+      handmatige configuratie.
+  ha_discovery_prefix:
+    name: Discovery Topicprefix
+    description: >-
+      MQTT topicprefix voor Home Assistant Discovery berichten. Dit moet
+      overeenkomen met uw Home Assistant MQTT Discovery prefix (standaard:
+      homeassistant).
+  ha_discovery_networks:
+    name: Discovery Netwerken
+    description: >-
+      C-Bus netwerk-ID's om te scannen voor apparaatdetectie. Standaard
+      254, het standaard C-Bus netwerk. Indien leeg, wordt teruggevallen
+      op de netwerken in "Te monitoren C-Bus netwerken". De meeste
+      installaties hebben slechts één netwerk.
+  ha_discovery_cover_app_id:
+    name: Cover Applicatie-ID
+    description: >-
+      C-Bus applicatie-ID om als covers te behandelen (rolluiken, jaloezieën,
+      garagedeuren). Veelgebruikte waarde is 203 (Enable Control). Laat leeg
+      om cover-detectie uit te schakelen.
+  ha_discovery_switch_app_id:
+    name: Schakelaar Applicatie-ID
+    description: >-
+      C-Bus applicatie-ID om als schakelaars te behandelen. Laat leeg om
+      schakelaar-detectie uit te schakelen.
+  cgate_mode:
+    name: C-Gate Modus
+    description: >-
+      Hoe C-Gate wordt aangeboden. "remote" maakt verbinding met een C-Gate
+      server die elders op uw netwerk draait. "managed" downloadt en draait
+      C-Gate lokaal binnen deze add-on (vereist Java en een C-Bus seriële
+      interface).
+  cgate_install_source:
+    name: C-Gate Installatiebron
+    description: >-
+      Alleen gebruikt wanneer C-Gate Modus "managed" is. "download" downloadt
+      automatisch C-Gate van de officiële Clipsal URL bij de eerste start.
+      "upload" zoekt naar een C-Gate zipbestand dat u in /share/cgate/ plaatst.
+  cgate_download_url:
+    name: C-Gate Download URL
+    description: >-
+      Alleen gebruikt wanneer C-Gate Modus "managed" is en Installatiebron
+      "download" is. Overschrijf de standaard-URL als de officiële Clipsal
+      downloadlocatie wijzigt. Laat leeg om de standaard-URL te gebruiken.
