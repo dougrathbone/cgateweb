@@ -111,7 +111,10 @@ async function main() {
 
 // Only run if this script is executed directly
 if (require.main === module || (require.main && require.main.filename === __filename)) {
-    main();
+    main().catch(error => {
+        console.error('[FATAL] Unhandled error during startup:', error);
+        process.exit(1);
+    });
 }
 
 // Export classes for tests
