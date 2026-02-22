@@ -121,7 +121,7 @@ class ConfigLoader {
         if (config.cgate_mode === 'managed') {
             config.cbusip = '127.0.0.1';
         } else {
-            config.cbusip = options.cgate_host || 'your-cgate-ip';
+            config.cbusip = options.cgate_host || '';
         }
         config.cbuscommandport = options.cgate_port || 20023;
         config.cbuseventport = options.cgate_event_port || 20025;
@@ -236,6 +236,37 @@ class ConfigLoader {
     }
 
     /**
+     * Apply auto-detected MQTT config to the loaded settings.
+     * Only fills in host/credentials when not explicitly configured.
+     * @param {Object} settings - The settings object to augment
+     * @returns {Object} settings with MQTT fields populated (mutated in place)
+     */
+    async applyMqttAutoDetection(settings) {
+        const mqttConfig = await this.detectMqttConfig();
+        if (!mqttConfig) {
+            return settings;
+        }
+
+        if (!settings.mqttusername && mqttConfig.username) {
+            settings.mqttusername = mqttConfig.username;
+            this.logger.info('Applied auto-detected MQTT username');
+        }
+        if (!settings.mqttpassword && mqttConfig.password) {
+            settings.mqttpassword = mqttConfig.password;
+            this.logger.info('Applied auto-detected MQTT password');
+        }
+        if (settings.mqtt === '127.0.0.1:1883' || settings.mqtt === 'core-mosquitto:1883') {
+            const detectedMqtt = `${mqttConfig.host}:${mqttConfig.port}`;
+            if (detectedMqtt !== settings.mqtt) {
+                settings.mqtt = detectedMqtt;
+                this.logger.info(`Applied auto-detected MQTT broker: ${detectedMqtt}`);
+            }
+        }
+
+        return settings;
+    }
+
+    /**
      * Attempt to auto-detect MQTT credentials from HA Supervisor API.
      * Returns null if not available or if detection fails.
      */
@@ -291,7 +322,8 @@ class ConfigLoader {
         const errors = [];
         const warnings = [];
 
-        if (!configToValidate.cbusip) {
+        const placeholderValues = ['your-cgate-ip', 'your.cgate.ip', 'x.x.x.x'];
+        if (!configToValidate.cbusip || placeholderValues.includes(configToValidate.cbusip)) {
             errors.push('C-Gate IP address (cbusip) is required');
         }
 

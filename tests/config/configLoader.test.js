@@ -247,6 +247,35 @@ describe('ConfigLoader', () => {
             expect(config.logging).toBe(true);
         });
 
+        test('should set cbusip to empty string when cgate_host is empty in remote mode', () => {
+            const optionsWithEmptyHost = {
+                cgate_mode: 'remote',
+                cgate_host: '',
+                mqtt_host: '127.0.0.1'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsWithEmptyHost));
+
+            const config = configLoader.load();
+
+            expect(config.cbusip).toBe('');
+        });
+
+        test('should set cbusip to empty string when cgate_host is missing in remote mode', () => {
+            const optionsNoHost = {
+                cgate_mode: 'remote',
+                mqtt_host: '127.0.0.1'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsNoHost));
+
+            const config = configLoader.load();
+
+            expect(config.cbusip).toBe('');
+        });
+
         test('should use core-mosquitto as default MQTT host for addon', () => {
             const optionsNoMqtt = {
                 cgate_host: '192.168.1.100'
@@ -379,6 +408,19 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(invalidConfig)).toThrow('Configuration validation failed');
+        });
+
+        test('should reject placeholder cbusip values', () => {
+            const placeholders = ['your-cgate-ip', 'your.cgate.ip', 'x.x.x.x'];
+
+            for (const placeholder of placeholders) {
+                const config = {
+                    cbusip: placeholder,
+                    mqtt: '127.0.0.1:1883'
+                };
+
+                expect(() => configLoader.validate(config)).toThrow('C-Gate IP address (cbusip) is required');
+            }
         });
 
         test('should validate command port range', () => {
@@ -521,6 +563,96 @@ describe('ConfigLoader', () => {
             expect(result).toBeNull();
 
             delete process.env.SUPERVISOR_TOKEN;
+        });
+    });
+
+    describe('applyMqttAutoDetection', () => {
+        function createLoaderWithMockApi(apiResponse) {
+            const mockReq = { on: jest.fn(), setTimeout: jest.fn() };
+            const mockHttp = {
+                get: jest.fn((url, options, callback) => {
+                    const res = {
+                        statusCode: 200,
+                        on: jest.fn((event, handler) => {
+                            if (event === 'data') handler(JSON.stringify(apiResponse));
+                            if (event === 'end') handler();
+                        })
+                    };
+                    callback(res);
+                    return mockReq;
+                })
+            };
+            return new ConfigLoader({ httpGet: mockHttp });
+        }
+
+        beforeEach(() => {
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+        });
+
+        afterEach(() => {
+            delete process.env.SUPERVISOR_TOKEN;
+        });
+
+        test('should fill in missing username and password', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: 'core-mosquitto', port: 1883, username: 'mqtt_user', password: 'mqtt_pass', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: 'core-mosquitto:1883' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqttusername).toBe('mqtt_user');
+            expect(settings.mqttpassword).toBe('mqtt_pass');
+        });
+
+        test('should not overwrite explicitly configured credentials', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: 'core-mosquitto', port: 1883, username: 'auto_user', password: 'auto_pass', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: 'core-mosquitto:1883', mqttusername: 'manual_user', mqttpassword: 'manual_pass' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqttusername).toBe('manual_user');
+            expect(settings.mqttpassword).toBe('manual_pass');
+        });
+
+        test('should update mqtt host when set to default', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: '10.0.0.5', port: 1884, username: 'u', password: 'p', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: 'core-mosquitto:1883' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqtt).toBe('10.0.0.5:1884');
+        });
+
+        test('should not change mqtt host when explicitly configured', async () => {
+            const loader = createLoaderWithMockApi({
+                data: { host: 'core-mosquitto', port: 1883, username: 'u', password: 'p', ssl: false }
+            });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: 'my-broker.local:1883' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(settings.mqtt).toBe('my-broker.local:1883');
+        });
+
+        test('should return settings unchanged when no SUPERVISOR_TOKEN', async () => {
+            delete process.env.SUPERVISOR_TOKEN;
+            const loader = new ConfigLoader();
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const settings = { mqtt: '127.0.0.1:1883' };
+            const result = await loader.applyMqttAutoDetection(settings);
+
+            expect(result).toBe(settings);
+            expect(settings.mqttusername).toBeUndefined();
         });
     });
 
