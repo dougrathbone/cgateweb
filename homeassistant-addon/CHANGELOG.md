@@ -7,24 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-02-22
+
 ### Added
+- **C-Bus label management**: Three-tier label resolution (custom JSON > C-Gate TREEXML > fallback)
+- **Clipsal project file import**: Upload `.cbz`/`.xml` project files to extract device labels
+- **Web-based label editor**: Real-time label editing UI accessible via HA Ingress (panel: "C-Bus Labels")
+- **Type overrides**: Configure groups as `light`, `cover`, or `switch` to control HA entity type
+- **Entity ID hints**: Preserve existing entity IDs during migration from manual YAML configuration
+- **Group exclusion**: Exclude specific groups from HA MQTT Discovery
+- **Hot-reload labels**: File watcher detects `labels.json` changes and republishes discovery
+- **Migration tooling**: CLI tool (`tools/cgate-label-manager.js`) for C-Gate label inventory and management
 - C-Gate mode configuration: `remote` (connect to external C-Gate) or `managed` (run C-Gate locally)
-- C-Gate managed mode with download from Clipsal or user-uploaded zip via `/share/cgate/`
 - MQTT auto-detection from Home Assistant Supervisor API
-- Event port configuration (`cgate_event_port`, default 20025)
-- Architecture-specific build configuration (`build.yaml`)
-- Addon icon and logo for Home Assistant UI
-- Configuration UI translations for 17 languages: English, German, Spanish, French, Italian, Dutch, Portuguese, Russian, Chinese (Simplified), Japanese, Korean, Polish, Swedish, Norwegian, Danish, Czech, and Ukrainian
+- Configuration UI translations for 17 languages
 - s6-overlay process supervision for managed C-Gate mode
 
 ### Changed
-- Simplified `run.sh` to delegate config handling to ConfigLoader
-- Default MQTT host changed to `core-mosquitto` for HA addon environment
-- Replaced unused `cgate_control_port` with `cgate_event_port`
-- Added `/share` mount for C-Gate zip upload support
+- HA Discovery now sets entity-level `name` to `null` to prevent doubled friendly names
+- Stale retained MQTT discovery messages are automatically cleared when type overrides change entity type
+- Discovery supplements from `labels.json` when TREEXML returns incomplete data
 
-### Removed
-- Redundant settings.js generation from `run.sh` (ConfigLoader reads options.json directly)
+### Fixed
+- Labels-changed listener leak on restart (now properly removed in `stop()`)
+- Label file watcher now starts after haDiscovery initialization
+- Label import preserves existing `type_overrides`, `entity_ids`, and `exclude` sections
 
 ## [1.1.0] - 2026-02-22
 

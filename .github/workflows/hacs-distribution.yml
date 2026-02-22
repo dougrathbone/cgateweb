@@ -67,6 +67,7 @@ jobs:
 
         # Copy application source
         cp -r src distribution/cgateweb/
+        cp -r public distribution/cgateweb/
         cp index.js distribution/cgateweb/
         cp package.json distribution/cgateweb/
         cp package-lock.json distribution/cgateweb/

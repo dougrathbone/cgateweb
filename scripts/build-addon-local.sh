@@ -37,6 +37,7 @@ cp -r "$REPO_ROOT/homeassistant-addon/rootfs"       "$OUTPUT_DIR/"
 
 echo "Copying application source..."
 cp -r "$REPO_ROOT/src"            "$OUTPUT_DIR/"
+cp -r "$REPO_ROOT/public"         "$OUTPUT_DIR/"
 cp    "$REPO_ROOT/index.js"       "$OUTPUT_DIR/"
 cp    "$REPO_ROOT/package.json"   "$OUTPUT_DIR/"
 cp    "$REPO_ROOT/package-lock.json" "$OUTPUT_DIR/"

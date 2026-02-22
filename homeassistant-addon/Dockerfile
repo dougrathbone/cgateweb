@@ -19,6 +19,7 @@ COPY package*.json ./
 RUN npm ci --only=production
 
 COPY src/ ./src/
+COPY public/ ./public/
 COPY index.js ./
 
 RUN mkdir -p /data /share/cgate
