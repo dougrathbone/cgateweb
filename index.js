@@ -12,8 +12,8 @@ const haConfig = haIntegration.initialize();
 
 // --- Load Settings using ConfigLoader ---
 let settings = { ...defaultSettings };
+const configLoader = new ConfigLoader();
 try {
-    const configLoader = new ConfigLoader();
     const loadedConfig = configLoader.load();
     settings = { ...defaultSettings, ...loadedConfig };
     
@@ -31,7 +31,8 @@ try {
     console.log(`[INFO] Configuration loaded from: ${source}`);
 } catch (error) {
     console.error(`[ERROR] Failed to load configuration: ${error.message}`);
-    if (process.env.SUPERVISOR_TOKEN) {
+    const envInfo = configLoader.getEnvironment();
+    if (process.env.SUPERVISOR_TOKEN || (envInfo && envInfo.isAddon)) {
         console.error('[ERROR] Please check the addon configuration and restart.');
         process.exit(1);
     }
@@ -61,9 +62,9 @@ async function main() {
     console.log(`[INFO] Version: ${require('./package.json').version}`);
     
     // Auto-detect MQTT credentials from Supervisor API when running as an addon
-    if (process.env.SUPERVISOR_TOKEN) {
+    const envInfo = configLoader.getEnvironment();
+    if (process.env.SUPERVISOR_TOKEN || (envInfo && envInfo.isAddon)) {
         try {
-            const configLoader = new ConfigLoader();
             await configLoader.applyMqttAutoDetection(settings);
         } catch (error) {
             console.error('[WARN] MQTT auto-detection failed:', error.message);
