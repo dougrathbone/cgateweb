@@ -274,6 +274,60 @@ describe('HaDiscovery', () => {
             );
         });
 
+        it('should handle numeric ApplicationAddress from XML parsing', () => {
+            const numericAppIdData = {
+                Network: {
+                    Interface: {
+                        Network: {
+                            NetworkNumber: '254',
+                            Unit: [{
+                                UnitAddress: '100',
+                                Application: [
+                                    {
+                                        ApplicationAddress: 56,
+                                        Group: [
+                                            { GroupAddress: '10', Label: 'Kitchen Light' }
+                                        ]
+                                    },
+                                    {
+                                        ApplicationAddress: 203,
+                                        Group: [
+                                            { GroupAddress: '15', Label: 'Blind 1' }
+                                        ]
+                                    }
+                                ]
+                            }]
+                        }
+                    }
+                }
+            };
+
+            haDiscovery._publishDiscoveryFromTree('254', numericAppIdData);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/light/cgateweb_254_56_10/config',
+                expect.stringContaining('"name":"Kitchen Light"'),
+                { retain: true, qos: 0 }
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/cover/cgateweb_254_203_15/config',
+                expect.stringContaining('"name":"Blind 1"'),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should handle numeric settings app IDs matching string ApplicationAddress', () => {
+            mockSettings.ha_discovery_cover_app_id = 203;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/cover/cgateweb_254_203_15/config',
+                expect.stringContaining('"name":"Blind 1"'),
+                { retain: true, qos: 0 }
+            );
+        });
+
         it('should handle missing group labels gracefully', () => {
             const mockDataWithoutLabels = {
                 Network: {

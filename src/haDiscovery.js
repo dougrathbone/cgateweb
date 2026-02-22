@@ -150,7 +150,7 @@ class HaDiscovery {
         const switchAppId = this.settings.ha_discovery_switch_app_id;
         const relayAppId = this.settings.ha_discovery_relay_app_id;
         const pirAppId = this.settings.ha_discovery_pir_app_id;
-        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId].filter(Boolean);
+        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
 
         // C-Gate TREEXML returns two formats depending on version/path:
@@ -166,7 +166,7 @@ class HaDiscovery {
 
         for (const [appId, groupMap] of groupsByApp) {
             const groups = Array.from(groupMap.values());
-            if (appId === lightingAppId) {
+            if (String(appId) === String(lightingAppId)) {
                 this._processLightingGroups(networkId, appId, groups);
             } else {
                 this._processEnableControlGroups(networkId, appId, groups);
@@ -189,7 +189,7 @@ class HaDiscovery {
         if (typeof unit.Application === 'object') {
             const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
             apps.forEach(app => {
-                const appId = app.ApplicationAddress;
+                const appId = app.ApplicationAddress != null ? String(app.ApplicationAddress) : undefined;
                 if (!appId || !targetApps.includes(appId) || !app.Group) return;
                 const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
                 if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
@@ -336,16 +336,17 @@ class HaDiscovery {
      * @private
      */
     _getDiscoveryTypeForApp(appAddress) {
-        if (this.settings.ha_discovery_cover_app_id && appAddress === this.settings.ha_discovery_cover_app_id) {
+        const appStr = String(appAddress);
+        if (this.settings.ha_discovery_cover_app_id && appStr === String(this.settings.ha_discovery_cover_app_id)) {
             return 'cover';
         }
-        if (this.settings.ha_discovery_switch_app_id && appAddress === this.settings.ha_discovery_switch_app_id) {
+        if (this.settings.ha_discovery_switch_app_id && appStr === String(this.settings.ha_discovery_switch_app_id)) {
             return 'switch';
         }
-        if (this.settings.ha_discovery_relay_app_id && appAddress === this.settings.ha_discovery_relay_app_id) {
+        if (this.settings.ha_discovery_relay_app_id && appStr === String(this.settings.ha_discovery_relay_app_id)) {
             return 'relay';
         }
-        if (this.settings.ha_discovery_pir_app_id && appAddress === this.settings.ha_discovery_pir_app_id) {
+        if (this.settings.ha_discovery_pir_app_id && appStr === String(this.settings.ha_discovery_pir_app_id)) {
             return 'pir';
         }
         return null;
