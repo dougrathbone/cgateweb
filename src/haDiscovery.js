@@ -45,7 +45,7 @@ class HaDiscovery {
         this._publish = publishFn;
         this._sendCommand = sendCommandFn;
         
-        this.treeBuffer = '';
+        this.treeBufferParts = [];
         this.treeNetwork = null;
         this.discoveryCount = 0;
         this.logger = createLogger({ component: 'HaDiscovery' });
@@ -85,20 +85,20 @@ class HaDiscovery {
 
     handleTreeStart(_statusData) {
         this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}`);
-        this.treeBuffer = '';
+        this.treeBufferParts = [];
     }
 
     handleTreeData(statusData) {
-        this.treeBuffer += statusData + NEWLINE;
+        this.treeBufferParts.push(statusData);
     }
 
     handleTreeEnd(_statusData) {
-        this.logger.info(`Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${this.treeBuffer.length} bytes. Parsing...`);
+        const treeXmlData = this.treeBufferParts.join(NEWLINE) + (this.treeBufferParts.length > 0 ? NEWLINE : '');
+        this.logger.info(`Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${treeXmlData.length} bytes. Parsing...`);
         const networkForTree = this.treeNetwork;
-        const treeXmlData = this.treeBuffer;
         
         // Clear buffer and network context immediately
-        this.treeBuffer = ''; 
+        this.treeBufferParts = []; 
         this.treeNetwork = null; 
 
         if (!networkForTree || !treeXmlData) {

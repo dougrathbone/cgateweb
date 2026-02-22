@@ -77,7 +77,7 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.settings).toBe(mockSettings);
             expect(haDiscovery._publish).toBe(mockPublishFn);
             expect(haDiscovery._sendCommand).toBe(mockSendCommandFn);
-            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeBufferParts).toEqual([]);
             expect(haDiscovery.treeNetwork).toBeNull();
             expect(haDiscovery.discoveryCount).toBe(0);
         });
@@ -125,19 +125,35 @@ describe('HaDiscovery', () => {
             haDiscovery.treeNetwork = '254';
             haDiscovery.handleTreeStart('Tree start for network 254');
             
-            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeBufferParts).toEqual([]);
         });
 
-        it('should accumulate tree data', () => {
+        it('should accumulate tree data in array', () => {
             haDiscovery.handleTreeData('line1');
             haDiscovery.handleTreeData('line2');
             
-            expect(haDiscovery.treeBuffer).toBe(`line1${NEWLINE}line2${NEWLINE}`);
+            expect(haDiscovery.treeBufferParts).toEqual(['line1', 'line2']);
+        });
+
+        it('should join buffer parts with newlines on tree end', () => {
+            haDiscovery.treeNetwork = '254';
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<xml>');
+            haDiscovery.handleTreeData('test');
+            haDiscovery.handleTreeData('</xml>');
+
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                expect(xml).toBe(`<xml>${NEWLINE}test${NEWLINE}</xml>${NEWLINE}`);
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+
+            haDiscovery.handleTreeEnd('Tree end');
+            expect(mockPublishFn).toHaveBeenCalled();
         });
 
         it('should process tree end and publish discovery', () => {
             haDiscovery.treeNetwork = '254';
-            haDiscovery.treeBuffer = '<xml>test</xml>';
+            haDiscovery.treeBufferParts = ['<xml>test</xml>'];
             
             // Mock parseString to return our test data
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
@@ -147,7 +163,7 @@ describe('HaDiscovery', () => {
             haDiscovery.handleTreeEnd('Tree end');
 
             expect(mockPublishFn).toHaveBeenCalled();
-            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeBufferParts).toEqual([]);
             expect(haDiscovery.treeNetwork).toBeNull();
         });
     });
@@ -439,7 +455,7 @@ describe('HaDiscovery', () => {
             const errorSpy = jest.spyOn(console, 'error');
             
             haDiscovery.treeNetwork = '254';
-            haDiscovery.treeBuffer = 'invalid xml';
+            haDiscovery.treeBufferParts = ['invalid xml'];
             haDiscovery.handleTreeEnd('Tree end');
 
             expect(errorSpy).toHaveBeenCalled();
@@ -456,11 +472,11 @@ describe('HaDiscovery', () => {
             haDiscovery.treeNetwork = '254';
             
             haDiscovery.handleTreeStart('start');
-            expect(haDiscovery.treeBuffer).toBe('');
+            expect(haDiscovery.treeBufferParts).toEqual([]);
             
             haDiscovery.handleTreeData('data1');
             haDiscovery.handleTreeData('data2');
-            expect(haDiscovery.treeBuffer).toBe(`data1${NEWLINE}data2${NEWLINE}`);
+            expect(haDiscovery.treeBufferParts).toEqual(['data1', 'data2']);
         });
     });
 });
