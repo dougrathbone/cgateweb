@@ -117,6 +117,9 @@ class DeviceStateManager {
 
         const operationId = `${address}_${Date.now()}`;
 
+        let levelHandler;
+        let timeoutHandle;
+
         const cleanup = () => {
             this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
             clearTimeout(timeoutHandle);
@@ -124,7 +127,7 @@ class DeviceStateManager {
         };
 
         // Use .on() instead of .once() so non-matching address events don't consume the listener
-        const levelHandler = (responseAddress, currentLevel) => {
+        levelHandler = (responseAddress, currentLevel) => {
             if (responseAddress === address) {
                 cleanup();
                 this.logger.debug(`Received level response for ${address}: ${currentLevel}`);
@@ -132,7 +135,7 @@ class DeviceStateManager {
             }
         };
 
-        const timeoutHandle = setTimeout(() => {
+        timeoutHandle = setTimeout(() => {
             cleanup();
             this.logger.warn(`Timeout waiting for level response from ${address}`);
         }, timeout);
