@@ -31,6 +31,10 @@ try {
     console.log(`[INFO] Configuration loaded from: ${source}`);
 } catch (error) {
     console.error(`[ERROR] Failed to load configuration: ${error.message}`);
+    if (process.env.SUPERVISOR_TOKEN) {
+        console.error('[ERROR] Please check the addon configuration and restart.');
+        process.exit(1);
+    }
     console.error('[ERROR] Using default settings only');
 }
 

@@ -247,7 +247,7 @@ describe('ConfigLoader', () => {
             expect(config.logging).toBe(true);
         });
 
-        test('should set cbusip to empty string when cgate_host is empty in remote mode', () => {
+        test('should throw clear error when cgate_host is empty in remote mode', () => {
             const optionsWithEmptyHost = {
                 cgate_mode: 'remote',
                 cgate_host: '',
@@ -257,12 +257,11 @@ describe('ConfigLoader', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue(JSON.stringify(optionsWithEmptyHost));
 
-            const config = configLoader.load();
-
-            expect(config.cbusip).toBe('');
+            expect(() => configLoader.load()).toThrow('C-Gate host address is required when running in remote mode');
+            expect(() => configLoader.load(true)).toThrow('cgate_host');
         });
 
-        test('should set cbusip to empty string when cgate_host is missing in remote mode', () => {
+        test('should throw clear error when cgate_host is missing in remote mode', () => {
             const optionsNoHost = {
                 cgate_mode: 'remote',
                 mqtt_host: '127.0.0.1'
@@ -271,9 +270,8 @@ describe('ConfigLoader', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue(JSON.stringify(optionsNoHost));
 
-            const config = configLoader.load();
-
-            expect(config.cbusip).toBe('');
+            expect(() => configLoader.load()).toThrow('C-Gate host address is required when running in remote mode');
+            expect(() => configLoader.load(true)).toThrow('cgate_host');
         });
 
         test('should use core-mosquitto as default MQTT host for addon', () => {

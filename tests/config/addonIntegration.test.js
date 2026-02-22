@@ -155,7 +155,7 @@ describe('Addon Configuration Integration', () => {
     });
 
     describe('ConfigLoader addon options mapping', () => {
-        test('should correctly map all config.yaml defaults to cgateweb settings', () => {
+        test('should reject config.yaml defaults with empty cgate_host in remote mode', () => {
             const ConfigLoader = require('../../src/config/ConfigLoader');
 
             const optionsJson = JSON.stringify(configYaml.options);
@@ -175,9 +175,36 @@ describe('Addon Configuration Integration', () => {
                 };
 
                 const loader = new ConfigLoader({ environmentDetector: mockDetector });
+                expect(() => loader.load()).toThrow('C-Gate host address is required when running in remote mode');
+            } finally {
+                fs.unlinkSync(tmpPath);
+            }
+        });
+
+        test('should correctly map all config.yaml defaults to cgateweb settings when cgate_host is provided', () => {
+            const ConfigLoader = require('../../src/config/ConfigLoader');
+
+            const optionsWithHost = { ...configYaml.options, cgate_host: '192.168.1.100' };
+            const optionsJson = JSON.stringify(optionsWithHost);
+            const tmpPath = path.join(__dirname, '../../.tmp-test-options.json');
+
+            fs.writeFileSync(tmpPath, optionsJson);
+
+            try {
+                const mockDetector = {
+                    detect: () => ({
+                        type: 'addon',
+                        isAddon: true,
+                        optionsPath: tmpPath
+                    }),
+                    getEnvironmentInfo: () => ({ type: 'addon', isAddon: true }),
+                    reset: () => {}
+                };
+
+                const loader = new ConfigLoader({ environmentDetector: mockDetector });
                 const config = loader.load();
 
-                expect(config.cbusip).toBe(configYaml.options.cgate_host || '');
+                expect(config.cbusip).toBe('192.168.1.100');
                 expect(config.cbuscommandport).toBe(configYaml.options.cgate_port);
                 expect(config.cbuseventport).toBe(configYaml.options.cgate_event_port);
                 expect(config.cbusname).toBe(configYaml.options.cgate_project);
