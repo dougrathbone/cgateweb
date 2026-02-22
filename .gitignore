@@ -4,5 +4,7 @@ settings.js.bak
 .cursor/mcp.json
 build/
 labels.json
+tools/migration-labels.json
+tools/renames.json
 tools/cbus-labels-backup-*.json
 toolkit-certs/

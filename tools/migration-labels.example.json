@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "source": "example migration labels",
+  "generated": "2026-01-01T00:00:00.000Z",
+  "labels": {
+    "254/56/0": "Living Room Downlights",
+    "254/56/1": "Kitchen Pendant",
+    "254/56/2": "Master Bedroom Lights",
+    "254/56/3": "Bathroom Exhaust Fan",
+    "254/56/4": "Garage Lights",
+    "254/56/10": "Front Door Blind",
+    "254/56/11": "Kitchen Blind"
+  },
+  "type_overrides": {
+    "254/56/3": "switch",
+    "254/56/10": "cover",
+    "254/56/11": "cover"
+  },
+  "entity_ids": {
+    "254/56/0": "LivingRoomDownlights",
+    "254/56/1": "KitchenPendant",
+    "254/56/2": "MasterBedroomLights",
+    "254/56/3": "BathroomExhaustFan",
+    "254/56/4": "GarageLights",
+    "254/56/10": "FrontDoorBlind",
+    "254/56/11": "KitchenBlind"
+  },
+  "exclude": [
+    "254/56/255"
+  ]
+}

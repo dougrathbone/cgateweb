@@ -1,0 +1,16 @@
+{
+  "project": "MYPROJECT",
+  "network": "254",
+  "application": "56",
+  "description": "Example: rename installer shorthand labels to friendly Room + Fixture names",
+  "renames": {
+    "0": "Living Room Downlights",
+    "1": "Kitchen Pendant",
+    "2": "Master Bedroom Lights",
+    "3": "Bathroom Exhaust Fan",
+    "4": "Garage Lights",
+    "10": "Front Door Blind",
+    "11": "Kitchen Blind"
+  },
+  "delete": ["50"]
+}
