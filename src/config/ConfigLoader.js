@@ -155,14 +155,14 @@ class ConfigLoader {
         // C-Bus monitoring settings
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
             config.getallnetapp = `${options.getall_networks[0]}/56`;
-            
-            if (options.getall_on_start) {
-                config.getallonstart = true;
-            }
-            
-            if (options.getall_period) {
-                config.getallperiod = options.getall_period;
-            }
+        }
+
+        if (options.getall_on_start) {
+            config.getallonstart = true;
+        }
+
+        if (options.getall_period) {
+            config.getallperiod = options.getall_period;
         }
 
         if (options.retain_reads) {

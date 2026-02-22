@@ -126,7 +126,9 @@ describe('ConfigLoader', () => {
         test('should handle empty getall_networks array', () => {
             const optionsWithEmptyNetworks = {
                 ...mockAddonOptions,
-                getall_networks: []
+                getall_networks: [],
+                getall_on_start: true,
+                getall_period: 3600
             };
 
             fs.existsSync.mockReturnValue(true);
@@ -135,7 +137,8 @@ describe('ConfigLoader', () => {
             const config = configLoader.load();
 
             expect(config.getallnetapp).toBeUndefined();
-            expect(config.getallonstart).toBeUndefined();
+            expect(config.getallonstart).toBe(true);
+            expect(config.getallperiod).toBe(3600);
         });
 
         test('should force cbusip to 127.0.0.1 in managed mode', () => {
