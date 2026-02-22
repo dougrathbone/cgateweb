@@ -141,6 +141,51 @@ describe('ConfigLoader', () => {
             expect(config.getallperiod).toBe(3600);
         });
 
+        test('should fall back ha_discovery_networks to getall_networks when empty', () => {
+            const optionsWithEmptyDiscoveryNetworks = {
+                ...mockAddonOptions,
+                ha_discovery_networks: [],
+                getall_networks: [254, 255]
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsWithEmptyDiscoveryNetworks));
+
+            const config = configLoader.load();
+
+            expect(config.ha_discovery_networks).toEqual([254, 255]);
+        });
+
+        test('should fall back ha_discovery_networks to getall_networks when undefined', () => {
+            const optionsWithoutDiscoveryNetworks = {
+                ...mockAddonOptions,
+                getall_networks: [254]
+            };
+            delete optionsWithoutDiscoveryNetworks.ha_discovery_networks;
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsWithoutDiscoveryNetworks));
+
+            const config = configLoader.load();
+
+            expect(config.ha_discovery_networks).toEqual([254]);
+        });
+
+        test('should not set ha_discovery_networks when both it and getall_networks are empty', () => {
+            const optionsWithNoNetworks = {
+                ...mockAddonOptions,
+                ha_discovery_networks: [],
+                getall_networks: []
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsWithNoNetworks));
+
+            const config = configLoader.load();
+
+            expect(config.ha_discovery_networks).toBeUndefined();
+        });
+
         test('should force cbusip to 127.0.0.1 in managed mode', () => {
             const managedOptions = {
                 ...mockAddonOptions,

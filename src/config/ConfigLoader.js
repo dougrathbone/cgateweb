@@ -180,8 +180,10 @@ class ConfigLoader {
             config.ha_discovery_enabled = true;
             config.ha_discovery_prefix = options.ha_discovery_prefix || 'homeassistant';
             
-            if (options.ha_discovery_networks && Array.isArray(options.ha_discovery_networks)) {
+            if (options.ha_discovery_networks && Array.isArray(options.ha_discovery_networks) && options.ha_discovery_networks.length > 0) {
                 config.ha_discovery_networks = options.ha_discovery_networks;
+            } else if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
+                config.ha_discovery_networks = [...options.getall_networks];
             }
             
             if (options.ha_discovery_cover_app_id) {
