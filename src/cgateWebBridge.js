@@ -125,9 +125,7 @@ class CgateWebBridge {
         this.commandLineProcessors = new Map();
         this.eventLineProcessor = new LineProcessor();
         this.periodicGetAllInterval = null;
-
-        // Internal state tracking (delegated to connection manager)
-        // this.allConnected = false; // Now managed by ConnectionManager
+        this._lastInitTime = 0;
 
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
@@ -239,7 +237,12 @@ class CgateWebBridge {
     }
 
     _handleAllConnected() {
-        // Called when connection manager signals all connections are ready
+        const now = Date.now();
+        if (now - this._lastInitTime < 10000) {
+            this.log(`ALL CONNECTED (duplicate within 10s, skipping re-initialization)`);
+            return;
+        }
+        this._lastInitTime = now;
         this.log(`ALL CONNECTED - Initializing services...`);
 
         // Trigger initial get all

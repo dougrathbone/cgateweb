@@ -358,12 +358,27 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleAllConnected()', () => {
+            beforeEach(() => {
+                bridge._lastInitTime = 0;
+            });
+
             it('should initialize services when all connections are ready', () => {
                 const logSpy = jest.spyOn(bridge, 'log');
                 
                 bridge._handleAllConnected();
 
                 expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ALL CONNECTED - Initializing services'));
+            });
+
+            it('should skip duplicate initialization within 10 seconds', () => {
+                const logSpy = jest.spyOn(bridge, 'log');
+                
+                bridge._handleAllConnected();
+                logSpy.mockClear();
+                bridge._handleAllConnected();
+
+                expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('duplicate within 10s'));
+                expect(logSpy).not.toHaveBeenCalledWith(expect.stringContaining('Initializing services'));
             });
 
             it('should trigger initial getall when configured', () => {
