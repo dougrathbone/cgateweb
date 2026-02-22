@@ -1,0 +1,15 @@
+---
+description: Standards for changelogs and release notes
+globs: "**/CHANGELOG.md"
+alwaysApply: false
+---
+
+# Release Notes Standards
+
+When writing or updating CHANGELOG.md or any release notes:
+
+- **Never use "Unreleased" sections** in a versioned release. Every entry must be under a concrete version heading (e.g., `## [1.2.0] - 2026-02-22`).
+- **Never use placeholder text** like "TBD", "Coming soon", "To be determined", or "TODO" in release entries.
+- **Never include empty sections** (e.g., `### Added` with no bullet points beneath it).
+- When bumping a version, move any accumulated unreleased notes into the new version heading immediately — do not leave an `[Unreleased]` section alongside the new version.
+- Every version entry must have a date in `YYYY-MM-DD` format.
