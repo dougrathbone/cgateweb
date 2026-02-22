@@ -140,7 +140,6 @@ class HaDiscovery {
              return;
         }
 
-        // Ensure units is an array, even if only one unit exists or none
         let units = networkData.Unit || [];
         if (!Array.isArray(units)) {
             units = [units];
@@ -151,36 +150,76 @@ class HaDiscovery {
         const switchAppId = this.settings.ha_discovery_switch_app_id;
         const relayAppId = this.settings.ha_discovery_relay_app_id;
         const pirAppId = this.settings.ha_discovery_pir_app_id;
+        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId].filter(Boolean);
         this.discoveryCount = 0;
 
-        // Process each unit for discovery
-        units.forEach(unit => {
-            if (!unit || !unit.Application) return;
+        // C-Gate TREEXML returns two formats depending on version/path:
+        //   Structured: unit.Application = [{ ApplicationAddress, Group: [{GroupAddress, Label}] }]
+        //   Flat:       unit.Application = "56, 255", unit.Groups = "103,104,105"
+        // groupsByApp maps appId -> Map<groupId, groupObject>
+        const groupsByApp = new Map();
 
-            const applications = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
-            
-            applications.forEach(app => {
-                const appAddress = app.ApplicationAddress;
-                
-                // Process Lighting Application (56)
-                if (appAddress === lightingAppId && app.Group) {
-                    this._processLightingGroups(networkId, appAddress, app.Group);
-                }
-                
-                // Process Enable Control Applications (other app IDs)
-                else if (app.Group && (
-                    (coverAppId && appAddress === coverAppId) ||
-                    (switchAppId && appAddress === switchAppId) ||
-                    (relayAppId && appAddress === relayAppId) ||
-                    (pirAppId && appAddress === pirAppId)
-                )) {
-                    this._processEnableControlGroups(networkId, appAddress, app.Group);
-                }
-            });
+        units.forEach(unit => {
+            if (!unit) return;
+            this._collectUnitGroups(unit, groupsByApp, targetApps);
         });
+
+        for (const [appId, groupMap] of groupsByApp) {
+            const groups = Array.from(groupMap.values());
+            if (appId === lightingAppId) {
+                this._processLightingGroups(networkId, appId, groups);
+            } else {
+                this._processEnableControlGroups(networkId, appId, groups);
+            }
+        }
 
         const duration = Date.now() - startTime;
         this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms)`);
+    }
+
+    /**
+     * Collect groups from a unit into groupsByApp, handling both structured and flat formats.
+     * Structured format preserves per-app group mapping and labels.
+     * Flat format assigns all groups to every matching target app.
+     */
+    _collectUnitGroups(unit, groupsByApp, targetApps) {
+        if (!unit.Application) return;
+
+        // Structured format: Application is an object or array of objects with Group sub-arrays
+        if (typeof unit.Application === 'object') {
+            const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
+            apps.forEach(app => {
+                const appId = app.ApplicationAddress;
+                if (!appId || !targetApps.includes(appId) || !app.Group) return;
+                const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
+                if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
+                const groupMap = groupsByApp.get(appId);
+                groups.forEach(g => {
+                    if (g.GroupAddress != null && !groupMap.has(String(g.GroupAddress))) {
+                        groupMap.set(String(g.GroupAddress), g);
+                    }
+                });
+            });
+            return;
+        }
+
+        // Flat format: Application is a comma-separated string, Groups is a comma-separated string
+        const unitAppIds = String(unit.Application).split(',').map(s => s.trim()).filter(Boolean);
+        const groupIds = (unit.Groups && typeof unit.Groups === 'string')
+            ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+        if (groupIds.length === 0) return;
+
+        const matchingApps = targetApps.filter(t => unitAppIds.includes(t));
+        matchingApps.forEach(appId => {
+            if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
+            const groupMap = groupsByApp.get(appId);
+            groupIds.forEach(gid => {
+                if (!groupMap.has(gid)) {
+                    groupMap.set(gid, { GroupAddress: gid });
+                }
+            });
+        });
     }
 
     /**
@@ -195,13 +234,17 @@ class HaDiscovery {
         const viaInterface = treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
         if (viaInterface && String(viaInterface.NetworkNumber) === idStr) return viaInterface;
 
-        // Path 2: single <Network> wrapper without Interface layer
+        // Path 2: single <Network> wrapper with matching NetworkNumber
         if (treeData.Network && String(treeData.Network.NetworkNumber) === idStr) return treeData.Network;
 
         // Path 3: top-level has NetworkNumber directly (flat parse)
         if (String(treeData.NetworkNumber) === idStr) return treeData;
 
-        // Path 4: wrapped in a container element -- walk one level
+        // Path 4: <Network> with Unit children but no NetworkNumber attribute.
+        // C-Gate's TREEXML for a specific network omits NetworkNumber.
+        if (treeData.Network && treeData.Network.Unit) return treeData.Network;
+
+        // Path 5: wrapped in a container element -- walk one level
         for (const key of Object.keys(treeData)) {
             const child = treeData[key];
             if (child && typeof child === 'object') {
@@ -210,6 +253,7 @@ class HaDiscovery {
                 if (child.Interface && child.Interface.Network && String(child.Interface.Network.NetworkNumber) === idStr) {
                     return child.Interface.Network;
                 }
+                if (child.Unit) return child;
             }
         }
 

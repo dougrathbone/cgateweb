@@ -302,6 +302,81 @@ describe('HaDiscovery', () => {
             );
         });
 
+        it('should handle flat C-Gate TREEXML format (Application as string, Groups as string)', () => {
+            const flatTreeData = {
+                Network: {
+                    Unit: [
+                        {
+                            Type: 'RELDN12',
+                            Address: '25',
+                            PartName: 'RELAY1',
+                            Application: '56, 255',
+                            Groups: '79,80,81'
+                        },
+                        {
+                            Type: 'DIMDN8',
+                            Address: '37',
+                            PartName: 'DIM1',
+                            Application: '56, 255',
+                            Groups: '4,15'
+                        }
+                    ]
+                }
+            };
+
+            haDiscovery._publishDiscoveryFromTree('254', flatTreeData);
+
+            // Should discover 5 unique lighting groups
+            const lightCalls = mockPublishFn.mock.calls.filter(
+                call => call[0].includes('/light/')
+            );
+            expect(lightCalls.length).toBe(5);
+
+            // Verify one of the group discovery configs
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/light/cgateweb_254_56_79/config',
+                expect.stringContaining('"unique_id":"cgateweb_254_56_79"'),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should handle flat format Network without NetworkNumber attribute', () => {
+            const flatTreeData = {
+                Network: {
+                    Unit: [{
+                        Application: '56, 255',
+                        Groups: '10,11'
+                    }]
+                }
+            };
+
+            haDiscovery._publishDiscoveryFromTree('254', flatTreeData);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/light/cgateweb_254_56_10/config',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should skip units with empty Groups in flat format', () => {
+            const flatTreeData = {
+                Network: {
+                    Unit: [
+                        { Application: '56, 255', Groups: '' },
+                        { Application: '56, 255', Groups: '42' }
+                    ]
+                }
+            };
+
+            haDiscovery._publishDiscoveryFromTree('254', flatTreeData);
+
+            const lightCalls = mockPublishFn.mock.calls.filter(
+                call => call[0].includes('/light/')
+            );
+            expect(lightCalls.length).toBe(1);
+        });
+
         it('should handle XML parsing errors gracefully', () => {
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
                 callback(new Error('Invalid XML'), null);
