@@ -94,17 +94,24 @@ class CgateConnectionPool extends EventEmitter {
             connectionPromises.push(this._createConnection(i));
         }
         
-        // Wait for at least some connections to establish
+        // Wait for initial connection attempts to settle
         const results = await Promise.allSettled(connectionPromises);
         const successfulConnections = results.filter(r => r.status === 'fulfilled').length;
         
         if (successfulConnections === 0) {
-            throw new Error('Failed to establish any connections in the pool');
+            this.logger.warn('No connections established during startup -- will keep retrying in the background');
+            // Schedule background reconnection for each failed connection
+            for (let i = 0; i < this.poolSize; i++) {
+                if (results[i].status === 'rejected' && this.connections[i]) {
+                    this.connections[i].retryCount = 0;
+                    this._scheduleReconnection(this.connections[i], i);
+                }
+            }
+        } else {
+            this.logger.info(`Connection pool started: ${successfulConnections}/${this.poolSize} connections healthy`);
         }
         
-        this.logger.info(`Connection pool started: ${successfulConnections}/${this.poolSize} connections healthy`);
-        
-        // Start health monitoring
+        // Always start health monitoring regardless of initial connection state
         this._startHealthMonitoring();
         this._startKeepAlive();
         
@@ -286,24 +293,29 @@ class CgateConnectionPool extends EventEmitter {
         
         connection.retryCount = (connection.retryCount || 0) + 1;
         
-        if (connection.retryCount > this.maxRetries) {
-            this.logger.error(`Pool connection ${index} exceeded max retries (${this.maxRetries}), stopping reconnection attempts`);
-            return;
-        }
+        // Exponential backoff capped at 60s -- never permanently give up
+        const delay = Math.min(1000 * Math.pow(2, connection.retryCount - 1), 60000);
         
-        const delay = Math.min(1000 * Math.pow(2, connection.retryCount - 1), 30000);
-        this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${connection.retryCount}/${this.maxRetries})`);
+        if (connection.retryCount <= this.maxRetries) {
+            this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${connection.retryCount}/${this.maxRetries})`);
+        } else {
+            this.logger.warn(`Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${connection.retryCount})`);
+        }
         
         setTimeout(async () => {
             if (this.isShuttingDown) return;
             
             try {
                 const newConnection = await this._createConnection(index);
-                newConnection.retryCount = 0; // Reset retry count on successful connection
+                newConnection.retryCount = 0;
                 this.logger.info(`Pool connection ${index} successfully reconnected`);
             } catch (error) {
-                this.logger.error(`Pool connection ${index} reconnection failed:`, { error });
-                // Will trigger another reconnection attempt via the close event
+                this.logger.error(`Pool connection ${index} reconnection failed:`, { error: error.message });
+                // Explicitly schedule next attempt since _createConnection failure
+                // may not trigger a close event on the new connection
+                if (this.connections[index]) {
+                    this._scheduleReconnection(this.connections[index], index);
+                }
             }
         }, delay);
     }
