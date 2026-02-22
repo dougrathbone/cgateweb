@@ -11,7 +11,7 @@ const haIntegration = new HAIntegration();
 const haConfig = haIntegration.initialize();
 
 // --- Load Settings using ConfigLoader ---
-let settings = defaultSettings;
+let settings = { ...defaultSettings };
 try {
     const configLoader = new ConfigLoader();
     const loadedConfig = configLoader.load();
