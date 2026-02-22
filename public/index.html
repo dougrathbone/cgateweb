@@ -451,7 +451,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     const allCount = Object.keys(all).length;
     const dirtyCount = Object.keys(dirtyLabels).length;
     document.getElementById('statTotal').textContent = allCount;
-    document.getElementById('statCustom').textContent = allCount;
+    document.getElementById('statCustom').textContent = Object.keys(labels).length;
     document.getElementById('statDirty').textContent = dirtyCount;
     document.getElementById('saveBtn').disabled = dirtyCount === 0;
   }
