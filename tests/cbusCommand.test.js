@@ -241,6 +241,16 @@ describe('CBusCommand', () => {
         expect(command.getRampTime()).toBeNull();
     });
 
+    // === Shared Logger ===
+
+    it('should share a single logger instance across all CBusCommand instances', () => {
+        const cmd1 = new CBusCommand('cbus/write/254/56/1/switch', 'ON');
+        const cmd2 = new CBusCommand('cbus/write/254/56/2/ramp', '50');
+        const cmd3 = new CBusCommand('cbus/write/254/56/3/switch', 'OFF');
+        expect(cmd1._logger).toBe(cmd2._logger);
+        expect(cmd2._logger).toBe(cmd3._logger);
+    });
+
     // === Tests for new-style getter methods (will remain after simplification) ===
     describe('New-style getter methods', () => {
         it('should provide correct values via getNetwork()', () => {

@@ -170,6 +170,16 @@ describe('CBusEvent', () => {
           expect(event._levelRaw).toBeNull(); // Level part should not be parsed from #sourceunit
       });
 
+    // === Shared Logger ===
+
+    it('should share a single logger instance across all CBusEvent instances', () => {
+        const event1 = new CBusEvent("lighting on 254/56/1");
+        const event2 = new CBusEvent("lighting off 254/56/2");
+        const event3 = new CBusEvent("lighting ramp 254/56/3 128");
+        expect(event1._logger).toBe(event2._logger);
+        expect(event2._logger).toBe(event3._logger);
+    });
+
     // === Tests for new-style getter methods (will remain after simplification) ===
     describe('New-style getter methods', () => {
         it('should provide correct values via getDeviceType()', () => {

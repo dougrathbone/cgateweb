@@ -1,6 +1,8 @@
 const { createLogger } = require('./logger');
 const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS } = require('./constants');
 
+const logger = createLogger({ component: 'CBusEvent' });
+
 /**
  * Represents a C-Bus event received from the C-Gate server.
  * 
@@ -39,7 +41,7 @@ class CBusEvent {
         this._application = null;
         this._group = null;
         this._isValid = false;
-        this._logger = createLogger({ component: 'CBusEvent' });
+        this._logger = logger;
 
         if (this._rawEvent) {
             this._parse();

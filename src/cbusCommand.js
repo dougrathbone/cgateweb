@@ -15,6 +15,8 @@ const {
     CGATE_LEVEL_MAX
 } = require('./constants');
 
+const logger = createLogger({ component: 'CBusCommand' });
+
 /**
  * Represents an MQTT command that will be translated to a C-Gate command.
  * 
@@ -53,7 +55,7 @@ class CBusCommand {
         this._commandType = null;
         this._level = null;
         this._rampTime = null;
-        this._logger = createLogger({ component: 'CBusCommand' });
+        this._logger = logger;
 
         if (this._topic) {
             this._parse();
