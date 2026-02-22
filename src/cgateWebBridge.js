@@ -214,17 +214,6 @@ class CgateWebBridge {
     async start() {
         this.logger.info('Starting cgateweb bridge');
         
-        // Start label file watcher for hot-reload
-        this._onLabelsChanged = (labelData) => {
-            this.logger.info(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
-            if (this.haDiscovery) {
-                this.haDiscovery.updateLabels(labelData);
-                this.haDiscovery.trigger();
-            }
-        };
-        this.labelLoader.on('labels-changed', this._onLabelsChanged);
-        this.labelLoader.watch();
-
         // Start web server
         try {
             await this.webServer.start();
@@ -319,6 +308,15 @@ class CgateWebBridge {
                 this.labelLoader.getLabelData()
             );
             this.commandResponseProcessor.haDiscovery = this.haDiscovery;
+
+            // Start label file watcher after haDiscovery exists so updates are never dropped
+            this._onLabelsChanged = (labelData) => {
+                this.logger.info(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
+                this.haDiscovery.updateLabels(labelData);
+                this.haDiscovery.trigger();
+            };
+            this.labelLoader.on('labels-changed', this._onLabelsChanged);
+            this.labelLoader.watch();
         }
         
         // Trigger HA Discovery
