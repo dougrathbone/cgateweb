@@ -112,8 +112,11 @@ class CgateConnection extends EventEmitter {
         this.logger.warn(`${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
         this.emit('close', hadError);
         
-        // Schedule reconnection
-        this._scheduleReconnect();
+        // Only self-reconnect if NOT managed by a connection pool.
+        // Pool-managed connections (poolIndex >= 0) are reconnected by the pool.
+        if (this.poolIndex < 0) {
+            this._scheduleReconnect();
+        }
     }
 
     _handleError(err) {

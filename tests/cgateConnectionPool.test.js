@@ -38,8 +38,7 @@ describe('CgateConnectionPool', () => {
             connected: false,
             isDestroyed: false,
             poolIndex: -1,
-            lastActivity: Date.now(),
-            retryCount: 0
+            lastActivity: Date.now()
         }));
 
         pool = new CgateConnectionPool('command', '192.168.1.100', 20023, mockSettings);
@@ -95,6 +94,143 @@ describe('CgateConnectionPool', () => {
                 isStarted: false,
                 isShuttingDown: false
             });
+        });
+    });
+
+    describe('Exponential backoff', () => {
+        it('should track retry counts at the pool level, not on connection objects', () => {
+            expect(pool.retryCounts).toEqual([0, 0, 0]);
+        });
+
+        it('should increment pool-level retry count on each reconnection schedule', () => {
+            pool.isStarted = true;
+            const conn = { poolIndex: 0 };
+            pool.connections[0] = conn;
+
+            pool._scheduleReconnection(conn, 0);
+            expect(pool.retryCounts[0]).toBe(1);
+
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn, 0);
+            expect(pool.retryCounts[0]).toBe(2);
+
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn, 0);
+            expect(pool.retryCounts[0]).toBe(3);
+        });
+
+        it('should compute exponentially increasing delays from pool-level retry counts', () => {
+            pool.isStarted = true;
+            const conn = { poolIndex: 0 };
+            pool.connections[0] = conn;
+            const spy = jest.spyOn(global, 'setTimeout');
+
+            // retryCount 0 -> 1: delay = 1000 * 2^0 = 1000ms
+            pool._scheduleReconnection(conn, 0);
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 1000);
+
+            // retryCount 1 -> 2: delay = 1000 * 2^1 = 2000ms
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn, 0);
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 2000);
+
+            // retryCount 2 -> 3: delay = 1000 * 2^2 = 4000ms
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn, 0);
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 4000);
+
+            // retryCount 3 -> 4: delay = 1000 * 2^3 = 8000ms
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn, 0);
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 8000);
+
+            spy.mockRestore();
+        });
+
+        it('should cap backoff delay at 60 seconds', () => {
+            pool.isStarted = true;
+            pool.retryCounts[0] = 10;
+
+            const conn = { poolIndex: 0 };
+            pool.connections[0] = conn;
+
+            const spy = jest.spyOn(global, 'setTimeout');
+            pool._scheduleReconnection(conn, 0);
+
+            // 1000 * 2^10 = 1024000, capped to 60000
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 60000);
+            expect(pool.retryCounts[0]).toBe(11);
+
+            spy.mockRestore();
+        });
+
+        it('should reset retry counts when pool is stopped', async () => {
+            pool.isStarted = true;
+            pool.retryCounts[0] = 5;
+            pool.retryCounts[1] = 3;
+            pool.retryCounts[2] = 7;
+
+            await pool.stop();
+
+            expect(pool.retryCounts).toEqual([0, 0, 0]);
+        });
+
+        it('should use independent retry counts per connection index', () => {
+            pool.isStarted = true;
+
+            const conn0 = { poolIndex: 0 };
+            const conn1 = { poolIndex: 1 };
+            pool.connections[0] = conn0;
+            pool.connections[1] = conn1;
+
+            pool._scheduleReconnection(conn0, 0);
+            pool.pendingReconnects.delete(0);
+            pool._scheduleReconnection(conn0, 0);
+            pool._scheduleReconnection(conn1, 1);
+
+            expect(pool.retryCounts[0]).toBe(2);
+            expect(pool.retryCounts[1]).toBe(1);
+            expect(pool.retryCounts[2]).toBe(0);
+        });
+
+        it('should not schedule reconnection when pool is shutting down', () => {
+            pool.isStarted = true;
+            pool.isShuttingDown = true;
+
+            const conn = { poolIndex: 0 };
+            pool.connections[0] = conn;
+
+            const spy = jest.spyOn(global, 'setTimeout');
+            pool._scheduleReconnection(conn, 0);
+
+            expect(pool.retryCounts[0]).toBe(0);
+            expect(spy).not.toHaveBeenCalledWith(expect.any(Function), expect.any(Number));
+
+            spy.mockRestore();
+        });
+
+        it('should reset retry count on successful reconnection', async () => {
+            pool.isStarted = true;
+            pool.retryCounts[0] = 5;
+
+            const failedConn = { poolIndex: 0 };
+            pool.connections[0] = failedConn;
+
+            const mockNewConn = { poolIndex: 0 };
+            jest.spyOn(pool, '_createConnection').mockResolvedValue(mockNewConn);
+
+            pool._scheduleReconnection(failedConn, 0);
+            expect(pool.retryCounts[0]).toBe(6);
+
+            // Advance past the backoff delay: min(1000 * 2^5, 60000) = 32000ms
+            jest.advanceTimersByTime(32000);
+            // Flush the async promise resolution
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(pool.retryCounts[0]).toBe(0);
+
+            pool._createConnection.mockRestore();
         });
     });
 });

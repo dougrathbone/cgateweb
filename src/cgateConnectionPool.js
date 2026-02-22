@@ -60,6 +60,8 @@ class CgateConnectionPool extends EventEmitter {
         this.connections = [];
         this.healthyConnections = new Set();
         this.connectionIndex = 0; // Round-robin index
+        this.retryCounts = new Array(this.poolSize).fill(0);
+        this.pendingReconnects = new Set(); // Tracks indices with scheduled reconnection
         this.isStarted = false;
         this.isShuttingDown = false;
         
@@ -103,7 +105,7 @@ class CgateConnectionPool extends EventEmitter {
             // Schedule background reconnection for each failed connection
             for (let i = 0; i < this.poolSize; i++) {
                 if (results[i].status === 'rejected' && this.connections[i]) {
-                    this.connections[i].retryCount = 0;
+                    this.retryCounts[i] = 0;
                     this._scheduleReconnection(this.connections[i], i);
                 }
             }
@@ -159,6 +161,8 @@ class CgateConnectionPool extends EventEmitter {
         
         this.connections = [];
         this.healthyConnections.clear();
+        this.pendingReconnects.clear();
+        this.retryCounts.fill(0);
         this.isStarted = false;
         this.isShuttingDown = false;
         
@@ -223,7 +227,6 @@ class CgateConnectionPool extends EventEmitter {
             
             connection.poolIndex = index;
             connection.lastActivity = Date.now();
-            connection.retryCount = 0;
             
             // Connection event handlers
             connection.on('connect', () => {
@@ -291,31 +294,34 @@ class CgateConnectionPool extends EventEmitter {
     _scheduleReconnection(connection, index) {
         if (this.isShuttingDown) return;
         
-        connection.retryCount = (connection.retryCount || 0) + 1;
+        // Prevent multiple reconnection timers for the same index
+        if (this.pendingReconnects.has(index)) return;
+        this.pendingReconnects.add(index);
+        
+        this.retryCounts[index] = (this.retryCounts[index] || 0) + 1;
         
         // Exponential backoff capped at 60s -- never permanently give up
-        const delay = Math.min(1000 * Math.pow(2, connection.retryCount - 1), 60000);
+        const retryCount = this.retryCounts[index];
+        const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 60000);
         
-        if (connection.retryCount <= this.maxRetries) {
-            this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${connection.retryCount}/${this.maxRetries})`);
+        if (retryCount <= this.maxRetries) {
+            this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`);
         } else {
-            this.logger.warn(`Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${connection.retryCount})`);
+            this.logger.warn(`Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${retryCount})`);
         }
         
         setTimeout(async () => {
+            this.pendingReconnects.delete(index);
             if (this.isShuttingDown) return;
             
             try {
-                const newConnection = await this._createConnection(index);
-                newConnection.retryCount = 0;
+                await this._createConnection(index);
+                this.retryCounts[index] = 0;
                 this.logger.info(`Pool connection ${index} successfully reconnected`);
             } catch (error) {
                 this.logger.error(`Pool connection ${index} reconnection failed:`, { error: error.message });
-                // Explicitly schedule next attempt since _createConnection failure
-                // may not trigger a close event on the new connection
-                if (this.connections[index]) {
-                    this._scheduleReconnection(this.connections[index], index);
-                }
+                // The close event from the failed connection will trigger the
+                // next reconnection attempt via the close handler.
             }
         }, delay);
     }
