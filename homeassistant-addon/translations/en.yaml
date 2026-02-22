@@ -1,0 +1,112 @@
+configuration:
+  cgate_host:
+    name: C-Gate Host
+    description: >-
+      IP address or hostname of the C-Gate server. Set to 127.0.0.1 when using
+      managed mode, or the remote server address when using remote mode.
+  cgate_port:
+    name: C-Gate Command Port
+    description: >-
+      TCP port for C-Gate command connections. The default C-Gate command port
+      is 20023.
+  cgate_event_port:
+    name: C-Gate Event Port
+    description: >-
+      TCP port for C-Gate event connections. The default C-Gate event port
+      is 20025. This port receives real-time updates from C-Bus devices.
+  cgate_project:
+    name: C-Gate Project Name
+    description: >-
+      The name of your C-Bus project as configured in C-Gate (e.g., HOME).
+  mqtt_host:
+    name: MQTT Broker Host
+    description: >-
+      IP address or hostname of your MQTT broker. If using the Mosquitto
+      add-on, use core-mosquitto or 127.0.0.1 with host networking.
+  mqtt_port:
+    name: MQTT Broker Port
+    description: >-
+      Port number for the MQTT broker. The default MQTT port is 1883.
+  mqtt_username:
+    name: MQTT Username
+    description: >-
+      Username for MQTT broker authentication. Leave empty if your broker
+      allows anonymous connections.
+  mqtt_password:
+    name: MQTT Password
+    description: >-
+      Password for MQTT broker authentication. Leave empty if your broker
+      allows anonymous connections.
+  getall_networks:
+    name: C-Bus Networks to Monitor
+    description: >-
+      List of C-Bus network IDs to poll for device states (e.g., [254]).
+      These networks will be queried for lighting application (app 56) status.
+  getall_on_start:
+    name: Poll on Startup
+    description: >-
+      Request all device states when the add-on starts. Useful for
+      synchronizing Home Assistant with the current state of all C-Bus devices.
+  getall_period:
+    name: Poll Interval (seconds)
+    description: >-
+      How often to request all device states, in seconds. Lower values
+      provide fresher state but increase network traffic to C-Gate.
+  retain_reads:
+    name: Retain MQTT State Messages
+    description: >-
+      Set the MQTT retain flag on state messages. When enabled, new MQTT
+      subscribers immediately receive the last known state of each device.
+  message_interval:
+    name: Command Interval (ms)
+    description: >-
+      Minimum delay between commands sent to C-Gate, in milliseconds.
+      Prevents overwhelming C-Gate with rapid commands. Default 200ms.
+  log_level:
+    name: Log Level
+    description: >-
+      Logging verbosity. Use debug for troubleshooting, info for normal
+      operation, warn for warnings only, or error for errors only.
+  ha_discovery_enabled:
+    name: Enable Home Assistant Discovery
+    description: >-
+      Automatically register C-Bus devices with Home Assistant using
+      MQTT Discovery. Devices appear as entities without manual configuration.
+  ha_discovery_prefix:
+    name: Discovery Topic Prefix
+    description: >-
+      MQTT topic prefix for Home Assistant Discovery messages. This must
+      match your Home Assistant MQTT discovery prefix (default: homeassistant).
+  ha_discovery_networks:
+    name: Discovery Networks
+    description: >-
+      C-Bus network IDs to scan for device discovery. If empty, falls back
+      to the networks listed in "C-Bus Networks to Monitor".
+  ha_discovery_cover_app_id:
+    name: Cover Application ID
+    description: >-
+      C-Bus application ID to treat as covers (blinds, shutters, garage doors).
+      Common value is 203 (Enable Control). Leave empty to disable cover discovery.
+  ha_discovery_switch_app_id:
+    name: Switch Application ID
+    description: >-
+      C-Bus application ID to treat as switches. Leave empty to disable
+      switch discovery.
+  cgate_mode:
+    name: C-Gate Mode
+    description: >-
+      How C-Gate is provided. "remote" connects to a C-Gate server running
+      elsewhere on your network. "managed" downloads and runs C-Gate locally
+      inside this add-on (requires Java and a C-Bus serial interface).
+  cgate_install_source:
+    name: C-Gate Install Source
+    description: >-
+      Only used when C-Gate Mode is "managed". "download" automatically
+      downloads C-Gate from the official Clipsal URL on first start.
+      "upload" looks for a C-Gate zip file you place in /share/cgate/.
+  cgate_download_url:
+    name: C-Gate Download URL
+    description: >-
+      Only used when C-Gate Mode is "managed" and Install Source is "download".
+      Override the default URL if the official Clipsal download location changes.
+      Leave empty to use the default URL.
