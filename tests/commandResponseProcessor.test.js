@@ -29,6 +29,7 @@ describe('CommandResponseProcessor', () => {
 
         mockLogger = {
             info: jest.fn(),
+            debug: jest.fn(),
             warn: jest.fn(),
             error: jest.fn()
         };
@@ -146,10 +147,20 @@ describe('CommandResponseProcessor', () => {
             expect(result).toEqual({ responseCode: '200', statusData: 'OK' });
         });
 
-        it('should log skipped invalid lines', () => {
+        it('should log skipped non-response lines at debug level', () => {
             processor._parseCommandResponseLine('invalid-line');
-            expect(mockLogger.info).toHaveBeenCalledWith(
-                expect.stringContaining('Skipping invalid command response line: invalid-line')
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Skipping non-response line: invalid-line')
+            );
+        });
+
+        it('should skip C-Gate v3.6.0 timestamp-prefixed notifications at debug level', () => {
+            const result = processor._parseCommandResponseLine(
+                '20251031-171409.874 803 cmd7 - Host:/127.0.0.1 opened command interface from port: 60052'
+            );
+            expect(result).toBeNull();
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('Skipping non-response line:')
             );
         });
     });
@@ -197,10 +208,26 @@ describe('CommandResponseProcessor', () => {
             expect(errorSpy).toHaveBeenCalledWith('500', 'Internal error');
         });
 
-        it('should log unhandled response codes', () => {
+        it('should log C-Gate 200 OK at debug level', () => {
+            processor._processCommandResponse('200', 'OK');
+            
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('C-Gate info 200: OK')
+            );
+        });
+
+        it('should log C-Gate 201 Service ready at debug level', () => {
+            processor._processCommandResponse('201', 'Service ready: Schneider Electric C-Gate Version: v3.6.0');
+            
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                expect.stringContaining('C-Gate info 201: Service ready')
+            );
+        });
+
+        it('should log other unhandled response codes at debug level', () => {
             processor._processCommandResponse('100', 'Info response');
             
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('Unhandled C-Gate response 100: Info response')
             );
         });
