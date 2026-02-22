@@ -110,6 +110,21 @@ describe('MqttManager', () => {
             expect(mockClient.listenerCount('error')).toBe(1);
             expect(mockClient.listenerCount('message')).toBe(1);
         });
+
+        it('should reset _intentionalDisconnect flag so transient closes are not masked', () => {
+            mqttManager.connect();
+            mqttManager.disconnect();
+            expect(mqttManager._intentionalDisconnect).toBe(true);
+
+            mqttManager.connect();
+            expect(mqttManager._intentionalDisconnect).toBe(false);
+
+            const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+            mqttManager.connected = true;
+            mockClient.emit('close');
+
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Library will attempt reconnection'));
+        });
     });
 
     describe('disconnect', () => {

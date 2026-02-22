@@ -59,6 +59,8 @@ class MqttManager extends EventEmitter {
             this.disconnect();
         }
 
+        this._intentionalDisconnect = false;
+
         const mqttUrl = this._buildMqttUrl();
         const connectOptions = this._buildConnectOptions();
 
