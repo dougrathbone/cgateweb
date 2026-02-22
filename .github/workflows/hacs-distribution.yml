@@ -74,36 +74,17 @@ jobs:
         # Update version in config.yaml
         sed -i "s/version: .*/version: \"${{ steps.version.outputs.version }}\"/" distribution/cgateweb/config.yaml
 
+        # Copy repository-level branding and documentation
+        cp homeassistant-addon/logo.png distribution/
+        cp homeassistant-addon/icon.png distribution/
+        cp homeassistant-addon/repository-README.md distribution/README.md
+
         # Create repository.yaml at the distribution root
         cat > distribution/repository.yaml << 'REPOEOF'
         name: C-Gate Web Bridge Add-on Repository
         url: https://github.com/dougrathbone/cgateweb-homeassistant
         maintainer: Doug Rathbone <doug@dougrathbone.com>
         REPOEOF
-
-        # Create distribution-level README
-        cat > distribution/README.md << 'READMEEOF'
-        # C-Gate Web Bridge - Home Assistant Add-on Repository
-
-        This repository is automatically generated for Home Assistant add-on distribution.
-
-        ## Installation
-
-        1. Go to **Home Assistant** -> **Settings** -> **Add-ons** -> **Add-on Store**
-        2. Click the menu (three dots) -> **Repositories**
-        3. Add: `https://github.com/dougrathbone/cgateweb-homeassistant`
-        4. Find **C-Gate Web Bridge** in the store and install
-
-        ## Development & Issues
-
-        All development, issues, and contributions happen in the main repository:
-
-        **[dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)**
-
-        - [Report a Bug](https://github.com/dougrathbone/cgateweb/issues/new)
-        - [Request a Feature](https://github.com/dougrathbone/cgateweb/issues/new)
-        - [Documentation](https://github.com/dougrathbone/cgateweb#readme)
-        READMEEOF
 
     - name: Checkout or initialize distribution repository
       run: |
