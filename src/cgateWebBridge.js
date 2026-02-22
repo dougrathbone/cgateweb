@@ -161,6 +161,16 @@ class CgateWebBridge {
             this.commandConnection = firstConnection;
         });
 
+        // Reset line processor when a pool connection is replaced (reconnect)
+        // to avoid stale partial-line buffers from the old connection
+        this.commandConnectionPool.on('connectionAdded', ({ index }) => {
+            const existing = this.commandLineProcessors.get(index);
+            if (existing) {
+                existing.close();
+                this.commandLineProcessors.delete(index);
+            }
+        });
+
         // MQTT message routing
         this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
 
@@ -284,10 +294,11 @@ class CgateWebBridge {
 
 
     _handleCommandData(data, connection) {
-        let processor = this.commandLineProcessors.get(connection);
+        const key = connection.poolIndex !== undefined ? connection.poolIndex : connection;
+        let processor = this.commandLineProcessors.get(key);
         if (!processor) {
             processor = new LineProcessor();
-            this.commandLineProcessors.set(connection, processor);
+            this.commandLineProcessors.set(key, processor);
         }
         processor.processData(data, (line) => {
             this.commandResponseProcessor.processLine(line);
