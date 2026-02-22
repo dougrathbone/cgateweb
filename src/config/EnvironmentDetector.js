@@ -8,7 +8,7 @@ const { Logger } = require('../logger');
  */
 class EnvironmentDetector {
     constructor() {
-        this.logger = new Logger('EnvironmentDetector');
+        this.logger = new Logger({ component: 'EnvironmentDetector' });
         this._detectedEnvironment = null;
         this._environmentInfo = null;
     }
