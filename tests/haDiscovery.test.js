@@ -725,4 +725,92 @@ describe('HaDiscovery', () => {
             expect(excludedCover).toBeUndefined();
         });
     });
+
+    describe('Label Supplementation', () => {
+        beforeEach(() => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+        });
+
+        it('should create discovery entities for labeled groups not found in TREEXML', () => {
+            const labelData = {
+                labels: new Map([
+                    ['254/56/10', 'Kitchen Lights'],
+                    ['254/56/200', 'Extra Group Not In Tree'],
+                    ['254/56/201', 'Another Extra Group']
+                ]),
+                typeOverrides: new Map(),
+                entityIds: new Map([['254/56/200', 'extra_group']]),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const extraCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_200/config'
+            );
+            expect(extraCall).toBeDefined();
+            const payload = JSON.parse(extraCall[1]);
+            expect(payload.name).toBe('Extra Group Not In Tree');
+            expect(payload.object_id).toBe('extra_group');
+
+            const anotherCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_201/config'
+            );
+            expect(anotherCall).toBeDefined();
+            expect(JSON.parse(anotherCall[1]).name).toBe('Another Extra Group');
+        });
+
+        it('should not duplicate groups already found in TREEXML', () => {
+            const labelData = {
+                labels: new Map([['254/56/10', 'Kitchen Override']]),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const calls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(calls).toHaveLength(1);
+        });
+
+        it('should not supplement excluded groups', () => {
+            const labelData = {
+                labels: new Map([['254/56/200', 'Should Be Excluded']]),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/56/200'])
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const excludedCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_200/config'
+            );
+            expect(excludedCall).toBeUndefined();
+        });
+
+        it('should apply type overrides to supplemented groups', () => {
+            const labelData = {
+                labels: new Map([['254/56/200', 'Extra Blind']]),
+                typeOverrides: new Map([['254/56/200', 'cover']]),
+                entityIds: new Map([['254/56/200', 'extra_blind']]),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_200/config'
+            );
+            expect(coverCall).toBeDefined();
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.name).toBe('Extra Blind');
+            expect(payload.object_id).toBe('extra_blind');
+        });
+    });
 });

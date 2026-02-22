@@ -214,6 +214,11 @@ class HaDiscovery {
             }
         }
 
+        // Supplement with labeled groups not found in TREEXML.
+        // C-Gate's flat TREEXML format omits groups not assigned to specific units,
+        // but labels.json may define groups that are valid and controllable.
+        this._supplementFromLabels(networkId, lightingAppId, groupsByApp);
+
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
         this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
@@ -262,6 +267,34 @@ class HaDiscovery {
                 }
             });
         });
+    }
+
+    /**
+     * Create discovery entities for labeled groups not already found in TREEXML.
+     * The flat TREEXML format may omit groups not assigned to specific units,
+     * but they are still valid and controllable on the C-Bus network.
+     */
+    _supplementFromLabels(networkId, lightingAppId, groupsByApp) {
+        if (!this.labelMap || this.labelMap.size === 0) return;
+
+        const prefix = `${networkId}/${lightingAppId}/`;
+        const existingGroups = groupsByApp.get(String(lightingAppId));
+        const existingIds = existingGroups ? new Set(existingGroups.keys()) : new Set();
+        let supplementCount = 0;
+
+        for (const [labelKey] of this.labelMap) {
+            if (!labelKey.startsWith(prefix)) continue;
+            const groupId = labelKey.substring(prefix.length);
+            if (existingIds.has(groupId)) continue;
+            if (this.exclude.has(labelKey)) continue;
+
+            this._processLightingGroups(networkId, lightingAppId, [{ GroupAddress: groupId }]);
+            supplementCount++;
+        }
+
+        if (supplementCount > 0) {
+            this.logger.info(`Supplemented ${supplementCount} additional groups from label data for network ${networkId}`);
+        }
     }
 
     /**

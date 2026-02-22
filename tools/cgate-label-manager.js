@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 /**
- * CLI tool to manage C-Bus group labels directly via C-Gate.
+ * CLI tool to manage C-Bus group labels via C-Gate.
  *
- * Connects to C-Gate's command port over TCP and executes DBGET/DBSET/DBDELETE
- * commands to export, rename, and verify group labels in the tag database.
+ * Connects to C-Gate's command port over TCP to discover groups and export their
+ * state. Since many C-Gate installs have no tag database, this tool primarily uses
+ * the TREE command for discovery and produces a backup/inventory of all groups.
  *
  * Usage:
  *   node tools/cgate-label-manager.js --export [options]
@@ -14,7 +15,7 @@
  * Options:
  *   --host, -h <ip>          C-Gate IP address (default: from settings.js)
  *   --port, -p <port>        C-Gate command port (default: 20023)
- *   --project <name>         C-Bus project name (default: from settings.js)
+ *   --project <name>         C-Bus project name (default: from settings.js or auto-detect)
  *   --network, -n <id>       Network address (default: 254)
  *   --app, -a <id>           Application address (default: 56)
  *   --output, -o <path>      Output file for --export (default: auto-timestamped)
@@ -29,7 +30,7 @@ const path = require('path');
 
 const COMMAND_DELAY_MS = 100;
 const CONNECT_TIMEOUT_MS = 10000;
-const RESPONSE_TIMEOUT_MS = 5000;
+const RESPONSE_TIMEOUT_MS = 10000;
 
 function loadSettingsDefaults() {
     try {
@@ -39,11 +40,11 @@ function loadSettingsDefaults() {
             return {
                 host: settings.cbusip || '127.0.0.1',
                 port: settings.cbuscommandport || 20023,
-                project: settings.cbusname || 'CLIPSAL'
+                project: settings.cbusname || null
             };
         }
     } catch (_) { /* ignore */ }
-    return { host: '127.0.0.1', port: 20023, project: 'CLIPSAL' };
+    return { host: '127.0.0.1', port: 20023, project: null };
 }
 
 function parseArgs(argv) {
@@ -125,14 +126,14 @@ Usage:
   node tools/cgate-label-manager.js --verify <renames.json> [options]
 
 Modes:
-  --export              Read all group labels from C-Gate and save to a backup JSON file
+  --export              Discover all C-Bus groups via TREE and save inventory to JSON
   --apply <file>        Apply renames from a JSON map file via DBSET commands
-  --verify <file>       Read labels and compare against the rename map, report mismatches
+  --verify <file>       Read labels via DBGET and compare against the rename map
 
 Options:
   --host, -h <ip>       C-Gate IP (default: from settings.js or 127.0.0.1)
   --port, -p <port>     C-Gate command port (default: 20023)
-  --project <name>      C-Bus project name (default: from settings.js)
+  --project <name>      C-Bus project name (default: auto-detect from TREE)
   --network, -n <id>    Network address (default: 254)
   --app, -a <id>        Application address (default: 56)
   --output, -o <path>   Output file for --export (default: cbus-labels-backup-<date>.json)
@@ -140,11 +141,15 @@ Options:
   --delay <ms>          Delay between C-Gate commands in ms (default: 100)
   --help                Show this help
 
+Notes:
+  If C-Gate has no tag database loaded, --apply and --verify will not work.
+  The --export mode uses TREE which always works regardless of tag database.
+
 Examples:
-  node tools/cgate-label-manager.js --export --host 192.168.0.2 --project 5COGAN
+  node tools/cgate-label-manager.js --export --host 192.168.0.22
+  node tools/cgate-label-manager.js --export --host 192.168.0.22 --network 254
   node tools/cgate-label-manager.js --apply renames.json --dry-run
-  node tools/cgate-label-manager.js --apply renames.json --host 192.168.0.2 --project 5COGAN
-  node tools/cgate-label-manager.js --verify renames.json --host 192.168.0.2 --project 5COGAN
+  node tools/cgate-label-manager.js --apply renames.json --host 192.168.0.22
 `.trim());
 }
 
@@ -154,9 +159,8 @@ class CgateClient {
         this.port = port;
         this.socket = null;
         this.buffer = '';
-        this.responseResolve = null;
-        this.responseReject = null;
-        this.responseTimeout = null;
+        this.lineQueue = [];
+        this.lineWaiters = [];
         this.connected = false;
     }
 
@@ -176,27 +180,34 @@ class CgateClient {
 
             this.socket.on('data', (data) => {
                 this.buffer += data.toString();
-                this._processBuffer(resolve);
+                this._drainBuffer();
             });
 
             this.socket.on('error', (err) => {
                 clearTimeout(timeout);
                 if (!this.connected) {
                     reject(new Error(`Connection failed: ${err.message}`));
-                } else if (this.responseReject) {
-                    this.responseReject(err);
-                    this.responseResolve = null;
-                    this.responseReject = null;
                 }
             });
 
             this.socket.on('close', () => {
                 this.connected = false;
+                while (this.lineWaiters.length > 0) {
+                    this.lineWaiters.shift().reject(new Error('Connection closed'));
+                }
             });
+
+            this._waitForLine().then(line => {
+                if (line.startsWith('201 ')) {
+                    resolve(line);
+                } else {
+                    reject(new Error(`Unexpected banner: ${line}`));
+                }
+            }).catch(reject);
         });
     }
 
-    _processBuffer(connectResolve) {
+    _drainBuffer() {
         const lines = this.buffer.split('\n');
         this.buffer = lines.pop() || '';
 
@@ -204,43 +215,56 @@ class CgateClient {
             const line = rawLine.replace(/\r$/, '');
             if (!line) continue;
 
-            // C-Gate service ready line (e.g., "201 Service ready: C-Gate...")
-            if (line.startsWith('201 ') && connectResolve) {
-                const resolve = connectResolve;
-                connectResolve = null;
-                resolve(line);
-                continue;
-            }
-
-            if (this.responseResolve) {
-                const resolve = this.responseResolve;
-                this.responseResolve = null;
-                this.responseReject = null;
-                if (this.responseTimeout) {
-                    clearTimeout(this.responseTimeout);
-                    this.responseTimeout = null;
-                }
-                resolve(line);
+            if (this.lineWaiters.length > 0) {
+                this.lineWaiters.shift().resolve(line);
+            } else {
+                this.lineQueue.push(line);
             }
         }
     }
 
-    sendCommand(cmd) {
+    _waitForLine() {
+        if (this.lineQueue.length > 0) {
+            return Promise.resolve(this.lineQueue.shift());
+        }
         return new Promise((resolve, reject) => {
-            if (!this.connected || !this.socket) {
-                return reject(new Error('Not connected'));
-            }
-
-            this.responseResolve = resolve;
-            this.responseReject = reject;
-            this.responseTimeout = setTimeout(() => {
-                this.responseResolve = null;
-                this.responseReject = null;
-                reject(new Error(`Timeout waiting for response to: ${cmd}`));
+            const timer = setTimeout(() => {
+                const idx = this.lineWaiters.findIndex(w => w.timer === timer);
+                if (idx !== -1) this.lineWaiters.splice(idx, 1);
+                reject(new Error('Timeout waiting for response'));
             }, RESPONSE_TIMEOUT_MS);
-
-            this.socket.write(cmd + '\n');
+            this.lineWaiters.push({ resolve, reject, timer });
         });
+    }
+
+    /**
+     * Send a command and collect the full response.
+     * C-Gate uses continuation lines like "3xx-..." and terminates with "3xx " or error codes.
+     * Returns an array of response lines.
+     */
+    async sendCommand(cmd) {
+        if (!this.connected || !this.socket) {
+            throw new Error('Not connected');
+        }
+        this.socket.write(cmd + '\n');
+
+        const lines = [];
+        while (true) {
+            const line = await this._waitForLine();
+            lines.push(line);
+
+            const code = line.substring(0, 3);
+            const separator = line[3];
+
+            if (/^\d{3}$/.test(code)) {
+                if (separator === '-') {
+                    continue;
+                }
+                break;
+            }
+            break;
+        }
+        return lines;
     }
 
     disconnect() {
@@ -250,6 +274,10 @@ class CgateClient {
             this.socket = null;
         }
         this.connected = false;
+        while (this.lineWaiters.length > 0) {
+            const w = this.lineWaiters.shift();
+            clearTimeout(w.timer);
+        }
     }
 }
 
@@ -275,70 +303,63 @@ function cgateObjectPath(project, network, app, group) {
     return `//${project}/${network}/${app}/${group}`;
 }
 
-async function doExport(client, args) {
-    const { project, network, app } = args;
-
-    console.log(`\nExporting labels from //${project}/${network}/${app} ...\n`);
-
-    // First, discover all groups via TREEXML
-    const treeResponse = await client.sendCommand(`TREEXML //${project}/${network}/${app}`);
+/**
+ * Parse TREE output to extract groups for a specific application.
+ * TREE lines look like:
+ *   320-  //CLIPSAL/254/56/4 ($4) level=0 state=ok units=37
+ * Returns { project, groups: [{address, level, state, units}] }
+ */
+function parseTreeGroups(lines, networkId, appId) {
+    let detectedProject = null;
     const groups = [];
+    const groupRegex = /^320-\s+\/\/(\w+)\/(\d+)\/(\d+)\/(\d+)\s+\(\$[\da-f]+\)\s+level=(\d+)\s+state=(\w+)\s+units=([\d,]*)/i;
 
-    if (treeResponse.startsWith('347-')) {
-        // Multi-line TREEXML response — collect all the XML
-        let xml = treeResponse.substring(4) + '\n';
-        // Keep reading lines until we get the 347 terminator
-        while (true) {
-            const line = await client.sendCommand('');  // read next buffered line
-            if (line.startsWith('347 ')) {
-                break;
-            }
-            xml += line.startsWith('347-') ? line.substring(4) + '\n' : line + '\n';
-        }
-        // Parse group addresses from XML
-        const groupRegex = /<Group>.*?<Address>(\d+)<\/Address>.*?<TagName>([^<]*)<\/TagName>.*?<\/Group>/gs;
-        let match;
-        while ((match = groupRegex.exec(xml)) !== null) {
-            groups.push({ address: match[1], label: match[2].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') });
-        }
-        // Also try with TagName before Address
-        const groupRegex2 = /<Group>.*?<TagName>([^<]*)<\/TagName>.*?<Address>(\d+)<\/Address>.*?<\/Group>/gs;
-        while ((match = groupRegex2.exec(xml)) !== null) {
-            const addr = match[2];
-            if (!groups.find(g => g.address === addr)) {
-                groups.push({ address: addr, label: match[1].replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') });
+    for (const line of lines) {
+        const m = groupRegex.exec(line);
+        if (m) {
+            const [, proj, net, app, addr, level, state, units] = m;
+            if (!detectedProject) detectedProject = proj;
+            if (net === String(networkId) && app === String(appId)) {
+                groups.push({
+                    address: addr,
+                    level: parseInt(level, 10),
+                    state,
+                    units: units ? units.split(',').filter(Boolean) : []
+                });
             }
         }
     }
 
-    if (groups.length === 0) {
-        // Fallback: try DBGET on a range of known addresses
-        console.log('TREEXML did not return parseable groups. Falling back to DBGET scan...');
-        for (let addr = 0; addr <= 255; addr++) {
-            const objPath = cgateObjectPath(project, network, app, addr);
-            try {
-                const resp = await client.sendCommand(`DBGET ${objPath} TagName`);
-                if (resp.startsWith('300 ')) {
-                    const tagMatch = resp.match(/TagName="([^"]*)"/);
-                    if (tagMatch && tagMatch[1] !== '<Unused>') {
-                        groups.push({ address: String(addr), label: tagMatch[1] });
-                    }
-                }
-            } catch (_) { /* skip timeouts for non-existent groups */ }
-            if (addr % 50 === 0 && addr > 0) {
-                process.stdout.write(`  scanned ${addr}/255 addresses...\r`);
-            }
-            await sleep(args.delay / 2);
-        }
-        console.log('');
+    return { project: detectedProject, groups };
+}
+
+async function doExport(client, args) {
+    const { network, app } = args;
+
+    console.log(`\nQuerying TREE for network ${network} ...\n`);
+
+    const treeLines = await client.sendCommand(`TREE ${network}`);
+
+    const { project: detectedProject, groups } = parseTreeGroups(treeLines, network, app);
+
+    if (detectedProject && !args.project) {
+        args.project = detectedProject;
+        console.log(`Auto-detected project name: ${detectedProject}`);
     }
+
+    const project = args.project || detectedProject || 'UNKNOWN';
 
     groups.sort((a, b) => parseInt(a.address) - parseInt(b.address));
 
-    console.log(`Found ${groups.length} groups:\n`);
-    const maxAddr = Math.max(...groups.map(g => g.address.length));
-    for (const g of groups) {
-        console.log(`  ${g.address.padStart(maxAddr)} : ${g.label}`);
+    console.log(`Found ${groups.length} groups on //${project}/${network}/${app}:\n`);
+
+    if (groups.length > 0) {
+        const maxAddr = Math.max(...groups.map(g => g.address.length));
+        for (const g of groups) {
+            const levelStr = `level=${String(g.level).padStart(3)}`;
+            const unitsStr = g.units.length > 0 ? `units=${g.units.join(',')}` : '';
+            console.log(`  ${g.address.padStart(maxAddr)}  ${levelStr}  ${g.state}  ${unitsStr}`);
+        }
     }
 
     const outputFile = args.output || `cbus-labels-backup-${new Date().toISOString().split('T')[0]}.json`;
@@ -347,6 +368,7 @@ async function doExport(client, args) {
         project,
         network,
         application: app,
+        note: 'No tag database on this C-Gate instance. Labels are managed via labels.json.',
         groups
     };
     fs.writeFileSync(outputFile, JSON.stringify(outputData, null, 2) + '\n', 'utf8');
@@ -356,11 +378,14 @@ async function doExport(client, args) {
 
 async function doApply(client, args) {
     const renameMap = loadRenameMap(args.renameFile);
-    const { project, network, app } = {
-        project: renameMap.project || args.project,
-        network: renameMap.network || args.network,
-        app: renameMap.application || args.app
-    };
+    const project = renameMap.project || args.project;
+    const network = renameMap.network || args.network;
+    const app = renameMap.application || args.app;
+
+    if (!project) {
+        console.error('Error: No project name specified. Use --project or set it in the rename map.');
+        process.exit(1);
+    }
 
     const renames = Object.entries(renameMap.renames);
     const deletes = renameMap.delete || [];
@@ -373,7 +398,7 @@ async function doApply(client, args) {
 
     for (const [addr, newLabel] of renames) {
         const objPath = cgateObjectPath(project, network, app, addr);
-        const cmd = `DBSET ${objPath} TagName "${newLabel}"`;
+        const cmd = `DBSET ${objPath} TagName="${newLabel}"`;
 
         if (args.dryRun) {
             console.log(`  [DRY RUN] ${cmd}`);
@@ -383,11 +408,12 @@ async function doApply(client, args) {
 
         try {
             const resp = await client.sendCommand(cmd);
-            if (resp.startsWith('200 ')) {
+            const firstLine = resp[0] || '';
+            if (firstLine.startsWith('200 ')) {
                 console.log(`  OK  ${addr.padStart(3)} -> "${newLabel}"`);
                 success++;
             } else {
-                console.log(`  ERR ${addr.padStart(3)} -> "${newLabel}" : ${resp}`);
+                console.log(`  ERR ${addr.padStart(3)} -> "${newLabel}" : ${firstLine}`);
                 failed++;
             }
         } catch (err) {
@@ -399,7 +425,7 @@ async function doApply(client, args) {
 
     for (const addr of deletes) {
         const objPath = cgateObjectPath(project, network, app, addr);
-        const cmd = `DBSET ${objPath} TagName "<Unused>"`;
+        const cmd = `DBSET ${objPath} TagName="<Unused>"`;
 
         if (args.dryRun) {
             console.log(`  [DRY RUN] ${cmd}`);
@@ -409,11 +435,12 @@ async function doApply(client, args) {
 
         try {
             const resp = await client.sendCommand(cmd);
-            if (resp.startsWith('200 ')) {
+            const firstLine = resp[0] || '';
+            if (firstLine.startsWith('200 ')) {
                 console.log(`  OK  ${String(addr).padStart(3)} -> <Unused> (deleted)`);
                 success++;
             } else {
-                console.log(`  ERR ${String(addr).padStart(3)} -> delete : ${resp}`);
+                console.log(`  ERR ${String(addr).padStart(3)} -> delete : ${firstLine}`);
                 failed++;
             }
         } catch (err) {
@@ -435,11 +462,14 @@ async function doApply(client, args) {
 
 async function doVerify(client, args) {
     const renameMap = loadRenameMap(args.renameFile);
-    const { project, network, app } = {
-        project: renameMap.project || args.project,
-        network: renameMap.network || args.network,
-        app: renameMap.application || args.app
-    };
+    const project = renameMap.project || args.project;
+    const network = renameMap.network || args.network;
+    const app = renameMap.application || args.app;
+
+    if (!project) {
+        console.error('Error: No project name specified. Use --project or set it in the rename map.');
+        process.exit(1);
+    }
 
     const renames = Object.entries(renameMap.renames);
     console.log(`\nVerifying ${renames.length} labels on //${project}/${network}/${app} ...\n`);
@@ -452,8 +482,9 @@ async function doVerify(client, args) {
         const objPath = cgateObjectPath(project, network, app, addr);
         try {
             const resp = await client.sendCommand(`DBGET ${objPath} TagName`);
-            if (resp.startsWith('300 ')) {
-                const tagMatch = resp.match(/TagName="([^"]*)"/);
+            const firstLine = resp[0] || '';
+            if (firstLine.startsWith('300 ')) {
+                const tagMatch = firstLine.match(/TagName="([^"]*)"/);
                 const actual = tagMatch ? tagMatch[1] : '(parse error)';
                 if (actual === expected) {
                     matched++;
@@ -462,7 +493,7 @@ async function doVerify(client, args) {
                     mismatched++;
                 }
             } else {
-                console.log(`  ERROR    ${addr.padStart(3)}: ${resp}`);
+                console.log(`  ERROR    ${addr.padStart(3)}: ${firstLine}`);
                 errors++;
             }
         } catch (err) {
@@ -496,19 +527,12 @@ async function main() {
         process.exit(1);
     }
 
-    if (args.dryRun && args.mode !== 'apply') {
-        console.error('Error: --dry-run can only be used with --apply.\n');
-        process.exit(1);
-    }
-
-    if (args.dryRun) {
+    if (args.dryRun && args.mode === 'apply') {
         console.log('=== DRY RUN MODE - No changes will be made ===\n');
         const renameMap = loadRenameMap(args.renameFile);
-        const { project, network, app } = {
-            project: renameMap.project || args.project,
-            network: renameMap.network || args.network,
-            app: renameMap.application || args.app
-        };
+        const project = renameMap.project || args.project || 'PROJECT';
+        const network = renameMap.network || args.network;
+        const app = renameMap.application || args.app;
 
         const renames = Object.entries(renameMap.renames);
         const deletes = renameMap.delete || [];
@@ -518,11 +542,11 @@ async function main() {
 
         for (const [addr, newLabel] of renames) {
             const objPath = cgateObjectPath(project, network, app, addr);
-            console.log(`DBSET ${objPath} TagName "${newLabel}"`);
+            console.log(`DBSET ${objPath} TagName="${newLabel}"`);
         }
         for (const addr of deletes) {
             const objPath = cgateObjectPath(project, network, app, addr);
-            console.log(`DBSET ${objPath} TagName "<Unused>"`);
+            console.log(`DBSET ${objPath} TagName="<Unused>"`);
         }
 
         console.log(`\n=== ${renames.length + deletes.length} commands would be executed ===`);
