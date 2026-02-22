@@ -72,6 +72,10 @@ class ConnectionManager extends EventEmitter {
             this.logger.info('Event connection disconnected');
             this.allConnected = false;
         });
+        this.eventConnection.on('error', (err) => {
+            this.logger.warn('Event connection error:', { error: err.message });
+            this.allConnected = false;
+        });
     }
 
     /**

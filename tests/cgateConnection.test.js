@@ -285,25 +285,25 @@ describe('CgateConnection', () => {
             expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('1000ms'));
         });
 
-        it('should stop reconnection after max attempts', () => {
+        it('should continue reconnection with warning after max attempts exceeded', () => {
             connection.maxReconnectAttempts = 2;
             connection.reconnectAttempts = 2;
-            const loggerSpy = jest.spyOn(connection.logger, 'error');
+            const loggerSpy = jest.spyOn(connection.logger, 'warn');
             
             connection._scheduleReconnect();
             
-            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Max reconnection attempts'));
-            expect(connection.reconnectTimeout).toBeNull();
+            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('exceeded initial retries'));
+            expect(connection.reconnectTimeout).not.toBeNull();
         });
 
         it('should continue reconnection when maxReconnectAttempts is 0', () => {
-            connection.maxReconnectAttempts = 0; // Infinite attempts  
+            connection.maxReconnectAttempts = 0;
             connection.reconnectAttempts = 100;
-            const loggerSpy = jest.spyOn(connection.logger, 'info');
+            const loggerSpy = jest.spyOn(connection.logger, 'warn');
             
             connection._scheduleReconnect();
             
-            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Scheduling'));
+            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('exceeded initial retries'));
             expect(connection.reconnectTimeout).not.toBeNull();
         });
 
