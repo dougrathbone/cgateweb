@@ -262,6 +262,75 @@ describe('MqttCommandRouter', () => {
 
             jest.useRealTimers();
         });
+
+        it('should only produce one RAMP when multiple INCREASE commands arrive before level response', () => {
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            // Three GET queries queued (one per INCREASE), but only one listener active
+            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+
+            queueSpy.mockClear();
+
+            // Level response arrives — should produce exactly one RAMP
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+
+            const rampCalls = queueSpy.mock.calls.filter(c => c[0].startsWith('RAMP'));
+            expect(rampCalls).toHaveLength(1);
+            expect(rampCalls[0][0]).toBe('RAMP //TestProject/254/56/1 126\n');
+        });
+
+        it('should use the latest command when INCREASE then DECREASE arrive before level response', () => {
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            router.routeMessage('cbus/write/254/56/1/ramp', 'DECREASE');
+
+            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+
+            queueSpy.mockClear();
+
+            // Level response arrives — should use DECREASE (the latest command)
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+
+            const rampCalls = queueSpy.mock.calls.filter(c => c[0].startsWith('RAMP'));
+            expect(rampCalls).toHaveLength(1);
+            expect(rampCalls[0][0]).toBe('RAMP //TestProject/254/56/1 74\n');
+        });
+
+        it('should allow independent operations for different addresses concurrently', () => {
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            router.routeMessage('cbus/write/254/56/2/ramp', 'DECREASE');
+
+            // Two different addresses — two listeners
+            expect(mockInternalEmitter.listenerCount('level')).toBe(2);
+
+            queueSpy.mockClear();
+
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            mockInternalEmitter.emit('level', '254/56/2', 200);
+
+            const rampCalls = queueSpy.mock.calls.filter(c => c[0].startsWith('RAMP'));
+            expect(rampCalls).toHaveLength(2);
+            expect(rampCalls[0][0]).toBe('RAMP //TestProject/254/56/1 126\n');
+            expect(rampCalls[1][0]).toBe('RAMP //TestProject/254/56/2 174\n');
+        });
+
+        it('should clean up superseded operation timeout without firing', () => {
+            jest.useFakeTimers();
+
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            // Resolve the active (second) operation
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+
+            // Advance past timeout — the superseded timeout should not fire or error
+            jest.advanceTimersByTime(6000);
+            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+
+            jest.useRealTimers();
+        });
     });
 
     describe('Cover Position Commands', () => {

@@ -58,6 +58,9 @@ class MqttCommandRouter extends EventEmitter {
         this.internalEventEmitter = options.internalEventEmitter;
         this.cgateCommandQueue = options.cgateCommandQueue;
         
+        // Track pending relative level operations to prevent duplicate handlers per address
+        this._pendingRelativeLevels = new Map();
+        
         this.logger = createLogger({ 
             component: 'MqttCommandRouter',
             level: 'info'
@@ -259,10 +262,13 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleRelativeLevel(cbusPath, levelAddress, step, limit, actionName) {
-        // Use .on() instead of .once() so non-matching address events don't consume the listener
+        // Cancel any existing pending operation for this address to prevent duplicate handlers
+        this._cancelPendingRelativeLevel(levelAddress);
+
         const levelHandler = (address, currentLevel) => {
             if (address === levelAddress) {
                 this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
+                this._pendingRelativeLevels.delete(levelAddress);
                 clearTimeout(timeoutHandle);
                 const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
                 this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
@@ -274,14 +280,32 @@ class MqttCommandRouter extends EventEmitter {
 
         const timeoutHandle = setTimeout(() => {
             this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
+            this._pendingRelativeLevels.delete(levelAddress);
             this.logger.warn(`Timeout waiting for level response from ${levelAddress} during ${actionName}`);
         }, 5000);
 
+        this._pendingRelativeLevels.set(levelAddress, { handler: levelHandler, timeoutHandle });
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
 
         // Query current level first
         const queryCommand = `${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`;
         this._queueCommand(queryCommand);
+    }
+
+    /**
+     * Cancels a pending relative level operation for the given address.
+     * Removes the event listener and clears the timeout.
+     * @param {string} levelAddress - Address to cancel
+     * @private
+     */
+    _cancelPendingRelativeLevel(levelAddress) {
+        const pending = this._pendingRelativeLevels.get(levelAddress);
+        if (pending) {
+            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, pending.handler);
+            clearTimeout(pending.timeoutHandle);
+            this._pendingRelativeLevels.delete(levelAddress);
+            this.logger.debug(`Superseded pending relative level operation for ${levelAddress}`);
+        }
     }
 
     /**
