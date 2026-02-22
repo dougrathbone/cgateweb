@@ -10,7 +10,6 @@ const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const { createLogger } = require('./logger');
-const { createValidator } = require('./settingsValidator');
 const { LineProcessor } = require('./lineProcessor');
 const {
     MQTT_TOPIC_SUFFIX_LEVEL,
@@ -67,7 +66,6 @@ class CgateWebBridge {
             level: this.settings.logging ? 'info' : 'warn',
             enabled: true 
         });
-        this.settingsValidator = createValidator({ exitOnError: false });
 
         // Store factory references for test compatibility
         this.mqttClientFactory = mqttClientFactory;
@@ -149,11 +147,6 @@ class CgateWebBridge {
             onObjectStatus: (event) => this._emitLevelFromEvent(event),
             logger: this.logger
         });
-
-        // Validate settings and exit if invalid
-        if (!this.settingsValidator.validate(this.settings)) {
-            process.exit(1);
-        }
 
         this._setupEventHandlers();
     }

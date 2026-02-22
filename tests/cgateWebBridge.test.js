@@ -62,7 +62,6 @@ describe('CgateWebBridge', () => {
     let mockSettings;
     let mockCmdSocketFactory, mockEvtSocketFactory;
     let _lastMockCmdSocket, _lastMockEvtSocket;
-    let exitSpy;
 
     beforeEach(() => {
         // Reset connection pool mock
@@ -146,10 +145,7 @@ describe('CgateWebBridge', () => {
             mockEvtSocketFactory
         );
         
-        // Mock process.exit needed for constructor validation test
-        exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
-            throw new Error(`process.exit called with code ${code}`);
-        });
+        
     });
 
     afterEach(async () => {
@@ -172,7 +168,7 @@ describe('CgateWebBridge', () => {
         jest.clearAllTimers();
         mockConsoleWarn.mockClear();
         mockConsoleError.mockClear();
-        if(exitSpy) exitSpy.mockRestore();
+        
     });
 
     describe('Constructor & Initial State', () => {
@@ -255,40 +251,22 @@ describe('CgateWebBridge', () => {
         });
     });
 
-    describe('_validateSettings', () => {
-        let errorSpy;
-        let warnSpy;
-
-        beforeEach(() => {
-            errorSpy = jest.spyOn(bridge, 'error');
-            warnSpy = jest.spyOn(bridge, 'warn');
-        });
-
-        afterEach(() => {
-            errorSpy.mockRestore();
-            warnSpy.mockRestore();
-        });
-
+    describe('Settings Validation', () => {
         it('should validate settings successfully with valid default settings', () => {
-            const bridgeWithDefaults = new CgateWebBridge({ ...defaultSettings, logging: false });
-            expect(bridgeWithDefaults.settingsValidator.validate(bridgeWithDefaults.settings)).toBe(true);
+            const { validate } = require('../src/settingsValidator');
+            expect(validate({ ...defaultSettings, logging: false })).toBe(true);
         });
 
         it('should validate settings successfully with valid user-provided settings', () => {
-            expect(bridge.settingsValidator.validate(bridge.settings)).toBe(true);
+            const { validate } = require('../src/settingsValidator');
+            expect(validate(bridge.settings)).toBe(true);
         });
 
         it('should handle invalid settings through validator', () => {
+            const { createValidator } = require('../src/settingsValidator');
+            const validator = createValidator({ exitOnError: false });
             const invalidSettings = { ...bridge.settings, mqtt: null };
-            expect(bridge.settingsValidator.validate(invalidSettings)).toBe(false);
-        });
-
-        it('constructor should exit if validation fails', () => {
-            const invalidSettings = { ...defaultSettings, mqtt: null }; 
-            expect(() => {
-                new CgateWebBridge(invalidSettings);
-            }).toThrow('process.exit called with code 1');
-            expect(exitSpy).toHaveBeenCalledWith(1);
+            expect(validator.validate(invalidSettings)).toBe(false);
         });
     });
 
