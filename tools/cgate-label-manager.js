@@ -146,10 +146,10 @@ Notes:
   The --export mode uses TREE which always works regardless of tag database.
 
 Examples:
-  node tools/cgate-label-manager.js --export --host 192.168.0.22
-  node tools/cgate-label-manager.js --export --host 192.168.0.22 --network 254
+  node tools/cgate-label-manager.js --export --host 192.168.1.100
+  node tools/cgate-label-manager.js --export --host 192.168.1.100 --network 254
   node tools/cgate-label-manager.js --apply renames.json --dry-run
-  node tools/cgate-label-manager.js --apply renames.json --host 192.168.0.22
+  node tools/cgate-label-manager.js --apply renames.json --host 192.168.1.100
 `.trim());
 }
 
