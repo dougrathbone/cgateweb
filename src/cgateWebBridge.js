@@ -89,19 +89,12 @@ class CgateWebBridge {
         // Service modules (haDiscovery will be initialized after pool starts)
         this.haDiscovery = null;
         
-        // Message queues with configurable size limits
+        // C-Gate command queue with throttling to avoid overwhelming serial protocol
         const queueOptions = { maxSize: this.settings.maxQueueSize || 1000 };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
             this.settings.messageinterval,
             'C-Gate Command Queue',
-            queueOptions
-        );
-        
-        this.mqttPublishQueue = new ThrottledQueue(
-            (message) => this._publishMqttMessage(message),
-            this.settings.messageinterval,
-            'MQTT Publish Queue',
             queueOptions
         );
 
@@ -130,10 +123,12 @@ class CgateWebBridge {
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
 
-        // Event publisher for MQTT messages
+        // Event publisher for MQTT messages -- publishes directly without throttling.
+        // MQTT QoS 0 publishes are near-instant TCP buffer writes; the mqtt library
+        // handles its own buffering and flow control.
         this.eventPublisher = new EventPublisher({
             settings: this.settings,
-            mqttPublishQueue: this.mqttPublishQueue,
+            publishFn: (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
             mqttOptions: this._mqttOptions,
             logger: this.logger
         });
@@ -230,7 +225,6 @@ class CgateWebBridge {
 
         // Clear queues
         this.cgateCommandQueue.clear();
-        this.mqttPublishQueue.clear();
 
         // Clean up line processors
         for (const processor of this.commandLineProcessors.values()) {
@@ -344,10 +338,6 @@ class CgateWebBridge {
         } catch (error) {
             this.logger.error('Failed to send C-Gate command:', { command, error });
         }
-    }
-
-    _publishMqttMessage(message) {
-        this.mqttManager.publish(message.topic, message.payload, message.options);
     }
 
     /**

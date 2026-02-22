@@ -154,7 +154,6 @@ describe('CgateWebBridge', () => {
             try {
                 // Clear queues first to stop async operations
                 bridge.cgateCommandQueue?.clear?.();
-                bridge.mqttPublishQueue?.clear?.();
                 bridge.eventConnection?.disconnect?.();
                 await bridge.commandConnectionPool?.stop?.();
             } catch {
@@ -178,7 +177,6 @@ describe('CgateWebBridge', () => {
             expect(bridgeWithDefaults.settings.cbusip).toBe(defaultSettings.cbusip);
             expect(bridgeWithDefaults.settings.messageinterval).toBe(defaultSettings.messageinterval);
             expect(bridgeWithDefaults.settings.retainreads).toBe(defaultSettings.retainreads);
-            expect(bridgeWithDefaults.mqttPublishQueue).toBeDefined();
             expect(bridgeWithDefaults.cgateCommandQueue).toBeDefined();
         });
 
@@ -221,11 +219,9 @@ describe('CgateWebBridge', () => {
             expect(bridge.haDiscovery).toBeNull();
         });
 
-        it('should initialize queues', () => {
+        it('should initialize command queue', () => {
             expect(bridge.cgateCommandQueue).toBeDefined();
             expect(bridge.cgateCommandQueue.constructor.name).toBe('ThrottledQueue');
-            expect(bridge.mqttPublishQueue).toBeDefined();
-            expect(bridge.mqttPublishQueue.constructor.name).toBe('ThrottledQueue');
         });
 
 
@@ -315,7 +311,6 @@ describe('CgateWebBridge', () => {
                 const cmdPoolStopSpy = jest.spyOn(bridge.commandConnectionPool, 'stop');
                 const evtDisconnectSpy = jest.spyOn(bridge.eventConnection, 'disconnect');
                 const clearQueuesSpy = jest.spyOn(bridge.cgateCommandQueue, 'clear');
-                const clearMqttQueueSpy = jest.spyOn(bridge.mqttPublishQueue, 'clear');
 
                 await bridge.stop();
 
@@ -323,7 +318,6 @@ describe('CgateWebBridge', () => {
                 expect(bridge.periodicGetAllInterval).toBeNull();
                 expect(bridge.connectionManager.isAllConnected).toBe(false);
                 expect(clearQueuesSpy).toHaveBeenCalled();
-                expect(clearMqttQueueSpy).toHaveBeenCalled();
                 expect(mqttDisconnectSpy).toHaveBeenCalled();
                 expect(cmdPoolStopSpy).toHaveBeenCalled();
                 expect(evtDisconnectSpy).toHaveBeenCalled();
@@ -332,7 +326,6 @@ describe('CgateWebBridge', () => {
                 cmdPoolStopSpy.mockRestore();
                 evtDisconnectSpy.mockRestore();
                 clearQueuesSpy.mockRestore();
-                clearMqttQueueSpy.mockRestore();
             });
 
             it('should handle stop when no periodic interval is set', () => {
@@ -485,7 +478,7 @@ describe('CgateWebBridge', () => {
         let publishSpy;
 
         beforeEach(() => {
-            publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+            publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
         });
 
         afterEach(() => {
@@ -493,13 +486,6 @@ describe('CgateWebBridge', () => {
         });
 
         describe('_handleCommandData()', () => {
-            beforeEach(() => {
-                publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
-            });
-
-            afterEach(() => {
-                publishSpy.mockRestore();
-            });
 
             it('should create per-connection line processor on first data keyed by poolIndex', () => {
                 const testData = Buffer.from('200-This is a test response\n201-Another line\n');
@@ -600,7 +586,7 @@ describe('CgateWebBridge', () => {
         let publishSpy;
 
         beforeEach(() => {
-            publishSpy = jest.spyOn(bridge.mqttPublishQueue, 'add');
+            publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
         });
 
         afterEach(() => {
@@ -660,7 +646,8 @@ describe('CgateWebBridge', () => {
             it('should initialize EventPublisher with correct options', () => {
                 expect(bridge.eventPublisher).toBeDefined();
                 expect(bridge.eventPublisher.settings).toBe(bridge.settings);
-                expect(bridge.eventPublisher.mqttPublishQueue).toBe(bridge.mqttPublishQueue);
+                expect(bridge.eventPublisher.publishFn).toBeDefined();
+                expect(typeof bridge.eventPublisher.publishFn).toBe('function');
                 expect(bridge.eventPublisher.mqttOptions).toEqual(bridge._mqttOptions);
             });
         });
@@ -699,18 +686,26 @@ describe('CgateWebBridge', () => {
             });
         });
 
-        describe('_publishMqttMessage()', () => {
-            it('should publish messages via MQTT manager', () => {
+        describe('EventPublisher direct publish', () => {
+            it('should publish directly to MQTT manager without throttle queue', () => {
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
-                const message = {
-                    topic: 'test/topic',
-                    payload: 'test payload',
-                    options: { qos: 1 }
+                const mockEvent = {
+                    isValid: () => true,
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => '1',
+                    getAction: () => 'on',
+                    getLevel: () => null
                 };
-                
-                bridge._publishMqttMessage(message);
-                
-                expect(publishSpy).toHaveBeenCalledWith('test/topic', 'test payload', { qos: 1 });
+
+                bridge.eventPublisher.publishEvent(mockEvent);
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/state', 'ON', expect.any(Object)
+                );
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/level', '100', expect.any(Object)
+                );
                 publishSpy.mockRestore();
             });
         });

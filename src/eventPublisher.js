@@ -17,7 +17,7 @@ const {
  * - Converting C-Bus events to MQTT messages
  * - Handling special logic for PIR sensors vs lighting devices
  * - Managing MQTT topic construction and payload formatting
- * - Queueing messages for publishing
+ * - Publishing messages directly to MQTT (no throttle queue)
  */
 class EventPublisher {
     /**
@@ -25,13 +25,13 @@ class EventPublisher {
      * 
      * @param {Object} options - Configuration options
      * @param {Object} options.settings - Bridge settings containing PIR sensor config
-     * @param {Object} options.mqttPublishQueue - Queue for MQTT publishing
+     * @param {Function} options.publishFn - Direct MQTT publish function: (topic, payload, options) => void
      * @param {Object} options.mqttOptions - MQTT publishing options (retain, qos, etc.)
      * @param {Object} [options.logger] - Optional logger instance
      */
     constructor(options) {
         this.settings = options.settings;
-        this.mqttPublishQueue = options.mqttPublishQueue;
+        this.publishFn = options.publishFn;
         this.mqttOptions = options.mqttOptions;
         
         this.logger = options.logger || createLogger({ 
@@ -44,14 +44,8 @@ class EventPublisher {
     /**
      * Publishes a C-Bus event to MQTT topics for Home Assistant and other consumers.
      * 
-     * Converts C-Bus events into MQTT messages:
-     * - C-Bus "lighting on 254/56/4" → MQTT "cbus/read/254/56/4/state" with "ON"
-     * - C-Bus "lighting ramp 254/56/4 128" → MQTT "cbus/read/254/56/4/level" with "50"
-     * - C-Bus "enable ramp 254/203/1 128" → MQTT "cbus/read/254/203/1/position" with "50"
-     * 
-     * Special handling for:
-     * - PIR sensors (motion detectors) that only publish state
-     * - Covers that publish position in addition to state
+     * Publishes directly to MQTT without throttling -- QoS 0 publishes are
+     * near-instant TCP buffer writes handled asynchronously by the mqtt library.
      * 
      * @param {CBusEvent} event - Parsed C-Bus event to publish
      * @param {string} [source=''] - Source identifier for logging (e.g., '(Evt)', '(Cmd)')
@@ -96,29 +90,28 @@ class EventPublisher {
        
         this.logger.info(`C-Bus Status ${source}: ${event.getNetwork()}/${event.getApplication()}/${event.getGroup()} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
 
-        // Publish state message
-        this.mqttPublishQueue.add({ 
-            topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, 
-            payload: state, 
-            options: this.mqttOptions 
-        });
+        // Publish state message directly (no throttle)
+        this.publishFn(
+            `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, 
+            state, 
+            this.mqttOptions
+        );
         
         // Publish level/position message for non-PIR sensors
         if (!isPirSensor) {
-            // Publish level for lighting devices
-            this.mqttPublishQueue.add({ 
-                topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, 
-                payload: levelPercent.toString(), 
-                options: this.mqttOptions 
-            });
+            this.publishFn(
+                `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, 
+                levelPercent.toString(), 
+                this.mqttOptions
+            );
             
             // Also publish position for covers (same value, different topic for HA cover entity)
             if (isCover) {
-                this.mqttPublishQueue.add({ 
-                    topic: `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`, 
-                    payload: levelPercent.toString(), 
-                    options: this.mqttOptions 
-                });
+                this.publishFn(
+                    `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`, 
+                    levelPercent.toString(), 
+                    this.mqttOptions
+                );
             }
         }
     }
