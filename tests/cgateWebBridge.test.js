@@ -212,7 +212,8 @@ describe('CgateWebBridge', () => {
 
 
         it('should initialize line processors', () => {
-            expect(bridge.commandLineProcessor.getBuffer()).toBe('');
+            expect(bridge.commandLineProcessors).toBeInstanceOf(Map);
+            expect(bridge.commandLineProcessors.size).toBe(0);
             expect(bridge.eventLineProcessor.getBuffer()).toBe('');
         });
 
@@ -485,21 +486,31 @@ describe('CgateWebBridge', () => {
                 publishSpy.mockRestore();
             });
 
-            it('should process command data through line processor', () => {
+            it('should create per-connection line processor on first data', () => {
                 const testData = Buffer.from('200-This is a test response\n201-Another line\n');
-                const processSpy = jest.spyOn(bridge.commandLineProcessor, 'processData');
+                const mockConnection = { id: 'test-conn-1' };
                 
-                bridge._handleCommandData(testData);
+                expect(bridge.commandLineProcessors.size).toBe(0);
+                bridge._handleCommandData(testData, mockConnection);
                 
-                expect(processSpy).toHaveBeenCalledWith(testData, expect.any(Function));
-                processSpy.mockRestore();
+                expect(bridge.commandLineProcessors.size).toBe(1);
+                expect(bridge.commandLineProcessors.has(mockConnection)).toBe(true);
+            });
+
+            it('should reuse existing line processor for same connection', () => {
+                const mockConnection = { id: 'test-conn-2' };
+                bridge._handleCommandData(Buffer.from('200-line1\n'), mockConnection);
+                bridge._handleCommandData(Buffer.from('201-line2\n'), mockConnection);
+                
+                expect(bridge.commandLineProcessors.size).toBe(1);
             });
 
             it('should delegate to CommandResponseProcessor for single line', () => {
                 const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
                 const testData = Buffer.from('300-//PROJECT/254/56/1: level=128\n');
+                const mockConn = { id: 'single-line' };
                 
-                bridge._handleCommandData(testData);
+                bridge._handleCommandData(testData, mockConn);
                 
                 expect(processSpy).toHaveBeenCalledWith('300-//PROJECT/254/56/1: level=128');
                 processSpy.mockRestore();
@@ -508,8 +519,9 @@ describe('CgateWebBridge', () => {
             it('should delegate to CommandResponseProcessor for multiple lines', () => {
                 const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
                 const testData = Buffer.from('300-//PROJECT/254/56/1: level=128\n343-Begin tree\n344-End tree\n');
+                const mockConn = { id: 'multi-line' };
                 
-                bridge._handleCommandData(testData);
+                bridge._handleCommandData(testData, mockConn);
                 
                 expect(processSpy).toHaveBeenCalledTimes(3);
                 expect(processSpy).toHaveBeenCalledWith('300-//PROJECT/254/56/1: level=128');
@@ -525,8 +537,9 @@ describe('CgateWebBridge', () => {
             it('should delegate command processing to CommandResponseProcessor', () => {
                 const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
                 const testData = Buffer.from('300-//TestProject/254/56/1: level=128\n');
+                const mockConn = { id: 'integration' };
                 
-                bridge._handleCommandData(testData);
+                bridge._handleCommandData(testData, mockConn);
                 
                 expect(processSpy).toHaveBeenCalledWith('300-//TestProject/254/56/1: level=128');
                 processSpy.mockRestore();

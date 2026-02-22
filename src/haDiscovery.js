@@ -113,7 +113,7 @@ class HaDiscovery {
         parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
             const duration = Date.now() - startTime;
             if (err) {
-                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms):`, { error: err });
+                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms): ${err.message || err}`);
             } else {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 

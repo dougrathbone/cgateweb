@@ -119,8 +119,10 @@ class CgateWebBridge {
             cgateCommandQueue: this.cgateCommandQueue
         });
 
-        // Internal state
-        this.commandLineProcessor = new LineProcessor();
+        // Per-connection line processors to prevent data interleaving across pool connections.
+        // Each TCP connection gets its own processor so partial reads on one connection
+        // don't corrupt lines being assembled on another.
+        this.commandLineProcessors = new Map();
         this.eventLineProcessor = new LineProcessor();
         this.periodicGetAllInterval = null;
 
@@ -164,8 +166,8 @@ class CgateWebBridge {
         // MQTT message routing
         this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
 
-        // Data processing handlers
-        this.commandConnectionPool.on('data', (data) => this._handleCommandData(data));
+        // Data processing handlers - pass connection for per-connection line processing
+        this.commandConnectionPool.on('data', (data, connection) => this._handleCommandData(data, connection));
         this.eventConnection.on('data', (data) => this._handleEventData(data));
 
         // MQTT command router event handlers
@@ -223,7 +225,10 @@ class CgateWebBridge {
         this.mqttPublishQueue.clear();
 
         // Clean up line processors
-        this.commandLineProcessor.close();
+        for (const processor of this.commandLineProcessors.values()) {
+            processor.close();
+        }
+        this.commandLineProcessors.clear();
         this.eventLineProcessor.close();
 
         // Shut down device state manager
@@ -275,8 +280,13 @@ class CgateWebBridge {
 
 
 
-    _handleCommandData(data) {
-        this.commandLineProcessor.processData(data, (line) => {
+    _handleCommandData(data, connection) {
+        let processor = this.commandLineProcessors.get(connection);
+        if (!processor) {
+            processor = new LineProcessor();
+            this.commandLineProcessors.set(connection, processor);
+        }
+        processor.processData(data, (line) => {
             this.commandResponseProcessor.processLine(line);
         });
     }
