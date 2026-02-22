@@ -77,6 +77,32 @@ describe('WebServer', () => {
             expect(res.body.labels).toEqual({ '254/56/10': 'Kitchen', '254/56/11': 'Living Room' });
             expect(res.body.count).toBe(2);
         });
+
+        it('should return type_overrides, entity_ids, and exclude when present', async () => {
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                source: 'test',
+                labels: { '254/56/10': 'Kitchen' },
+                type_overrides: { '254/56/10': 'cover' },
+                entity_ids: { '254/56/10': 'kitchenblind' },
+                exclude: ['254/56/99']
+            }));
+            labelLoader.load();
+
+            const res = await request('GET', '/api/labels');
+            expect(res.status).toBe(200);
+            expect(res.body.type_overrides).toEqual({ '254/56/10': 'cover' });
+            expect(res.body.entity_ids).toEqual({ '254/56/10': 'kitchenblind' });
+            expect(res.body.exclude).toEqual(['254/56/99']);
+        });
+
+        it('should omit type_overrides, entity_ids, exclude when not present', async () => {
+            const res = await request('GET', '/api/labels');
+            expect(res.status).toBe(200);
+            expect(res.body.type_overrides).toBeUndefined();
+            expect(res.body.entity_ids).toBeUndefined();
+            expect(res.body.exclude).toBeUndefined();
+        });
     });
 
     describe('PUT /api/labels', () => {
@@ -99,6 +125,35 @@ describe('WebServer', () => {
         it('should reject missing labels key', async () => {
             const res = await request('PUT', '/api/labels', JSON.stringify({ foo: 'bar' }));
             expect(res.status).toBe(400);
+        });
+
+        it('should save type_overrides, entity_ids, and exclude', async () => {
+            const res = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Kitchen Blind', '254/56/6': 'Pond Pump' },
+                type_overrides: { '254/56/10': 'cover', '254/56/6': 'switch' },
+                entity_ids: { '254/56/10': 'kitchenblind', '254/56/6': 'pondpump' },
+                exclude: ['254/56/255']
+            }));
+
+            expect(res.status).toBe(200);
+            expect(res.body.saved).toBe(true);
+
+            const saved = JSON.parse(fs.readFileSync(labelFile, 'utf8'));
+            expect(saved.type_overrides).toEqual({ '254/56/10': 'cover', '254/56/6': 'switch' });
+            expect(saved.entity_ids).toEqual({ '254/56/10': 'kitchenblind', '254/56/6': 'pondpump' });
+            expect(saved.exclude).toEqual(['254/56/255']);
+        });
+
+        it('should not write empty type_overrides/entity_ids/exclude sections', async () => {
+            const res = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Kitchen' }
+            }));
+
+            expect(res.status).toBe(200);
+            const saved = JSON.parse(fs.readFileSync(labelFile, 'utf8'));
+            expect(saved.type_overrides).toBeUndefined();
+            expect(saved.entity_ids).toBeUndefined();
+            expect(saved.exclude).toBeUndefined();
         });
     });
 

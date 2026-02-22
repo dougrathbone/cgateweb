@@ -51,7 +51,7 @@ body {
   padding: 0;
 }
 .app {
-  max-width: 960px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 16px;
 }
@@ -155,6 +155,14 @@ header h1 {
   font-size: 0.9rem;
 }
 .search-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
 
 table {
   width: 100%;
@@ -175,9 +183,12 @@ thead th {
   white-space: nowrap;
 }
 thead th:hover { color: var(--text); }
+thead th.no-sort { cursor: default; }
+thead th.no-sort:hover { color: var(--text-muted); }
 tbody tr { border-bottom: 1px solid var(--border); }
 tbody tr:nth-child(even) { background: var(--surface-alt); }
 tbody tr:hover { background: rgba(34, 139, 230, 0.04); }
+tbody tr.excluded { opacity: 0.5; }
 td { padding: 6px 10px; vertical-align: middle; }
 td.addr { font-family: monospace; font-size: 0.85rem; white-space: nowrap; }
 td.label-cell { position: relative; }
@@ -189,7 +200,7 @@ td.label-cell { position: relative; }
   display: block;
 }
 .label-display:hover { background: rgba(34, 139, 230, 0.08); }
-.label-input {
+.label-input, .eid-input {
   width: 100%;
   padding: 2px 4px;
   border: 1px solid var(--primary);
@@ -199,6 +210,18 @@ td.label-cell { position: relative; }
   font-size: inherit;
   font-family: inherit;
 }
+.eid-display {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-height: 1.5em;
+  display: block;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.eid-display:hover { background: rgba(34, 139, 230, 0.08); }
+.eid-display.has-value { color: var(--text); }
 td.source-cell {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -212,7 +235,28 @@ td.source-cell {
 }
 .badge-custom { background: var(--success-bg); color: var(--success); }
 .badge-fallback { background: var(--warning-bg); color: var(--warning); }
+.badge-cover { background: #e7f5ff; color: #1971c2; }
+.badge-switch { background: #fff3bf; color: #e67700; }
+.badge-light { background: var(--surface-alt); color: var(--text-muted); }
 td.actions-cell { white-space: nowrap; }
+
+.type-select {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.type-select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+.exclude-cb {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--danger);
+}
 
 button {
   padding: 6px 12px;
@@ -258,16 +302,17 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   gap: 8px;
   margin-top: 12px;
   align-items: center;
+  flex-wrap: wrap;
 }
-.add-row input {
+.add-row input, .add-row select {
   padding: 6px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   font-size: 0.85rem;
-  font-family: monospace;
 }
+.add-row input[type="text"]:first-of-type { font-family: monospace; }
 .empty-state {
   padding: 32px;
   text-align: center;
@@ -277,6 +322,11 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
 .chevron { transition: transform 0.15s; display: inline-block; }
 .chevron.open { transform: rotate(90deg); }
+
+@media (prefers-color-scheme: dark) {
+  .badge-cover { background: #1b2838; color: #74c0fc; }
+  .badge-switch { background: #2e2a1b; color: #ffa94d; }
+}
 </style>
 </head>
 <body>
@@ -291,6 +341,8 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   <div class="status-bar" id="statusBar">
     <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
     <div class="status-item">Custom: <span class="status-value" id="statCustom">-</span></div>
+    <div class="status-item">Overrides: <span class="status-value" id="statOverrides">-</span></div>
+    <div class="status-item">Excluded: <span class="status-value" id="statExcluded">-</span></div>
     <div class="status-item">Unsaved: <span class="status-value" id="statDirty">0</span></div>
   </div>
 
@@ -319,12 +371,24 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     </div>
     <div class="section-body" id="labelsBody">
       <div class="toolbar">
-        <input type="text" class="search-input" id="searchInput" placeholder="Search by address or label...">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by address, label, or entity ID...">
+        <select class="filter-select" id="typeFilter">
+          <option value="">All types</option>
+          <option value="light">Lights</option>
+          <option value="cover">Covers</option>
+          <option value="switch">Switches</option>
+          <option value="excluded">Excluded</option>
+        </select>
       </div>
       <div id="tableContainer"></div>
       <div class="add-row">
         <input type="text" id="addAddress" placeholder="network/app/group" style="width:160px">
         <input type="text" id="addLabel" placeholder="Label name" style="flex:1">
+        <select id="addType">
+          <option value="">light (default)</option>
+          <option value="cover">cover</option>
+          <option value="switch">switch</option>
+        </select>
         <button id="addBtn">Add</button>
       </div>
     </div>
@@ -337,13 +401,18 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 (function() {
   const API_BASE = getApiBase();
   let labels = {};
+  let typeOverrides = {};
+  let entityIds = {};
+  let excludeList = [];
   let dirtyLabels = {};
+  let dirtyTypes = {};
+  let dirtyEntityIds = {};
+  let dirtyExcludes = {};
   let sortCol = 'address';
   let sortDir = 1;
   let pendingImport = null;
 
   function getApiBase() {
-    // Detect HA ingress base path from current URL
     const match = window.location.pathname.match(/^(\/api\/hassio_ingress\/[^/]+)/);
     return match ? match[1] : '';
   }
@@ -356,11 +425,24 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     return res.json();
   }
 
+  function isDirty() {
+    return Object.keys(dirtyLabels).length > 0 ||
+           Object.keys(dirtyTypes).length > 0 ||
+           Object.keys(dirtyEntityIds).length > 0 ||
+           Object.keys(dirtyExcludes).length > 0;
+  }
+
   async function loadLabels() {
     try {
       const data = await api('/api/labels');
       labels = data.labels || {};
+      typeOverrides = data.type_overrides || {};
+      entityIds = data.entity_ids || {};
+      excludeList = data.exclude || [];
       dirtyLabels = {};
+      dirtyTypes = {};
+      dirtyEntityIds = {};
+      dirtyExcludes = {};
       render();
     } catch (e) {
       showToast('Failed to load labels: ' + e.message, true);
@@ -368,20 +450,47 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   }
 
   async function saveLabels() {
-    const merged = { ...labels, ...dirtyLabels };
-    // Remove null entries (deleted)
-    for (const k of Object.keys(merged)) {
-      if (merged[k] === null) delete merged[k];
+    const mergedLabels = { ...labels, ...dirtyLabels };
+    for (const k of Object.keys(mergedLabels)) {
+      if (mergedLabels[k] === null) delete mergedLabels[k];
     }
+
+    const mergedTypes = { ...typeOverrides, ...dirtyTypes };
+    for (const k of Object.keys(mergedTypes)) {
+      if (mergedTypes[k] === null || mergedTypes[k] === '' || mergedTypes[k] === 'light') delete mergedTypes[k];
+    }
+
+    const mergedEids = { ...entityIds, ...dirtyEntityIds };
+    for (const k of Object.keys(mergedEids)) {
+      if (mergedEids[k] === null || mergedEids[k] === '') delete mergedEids[k];
+    }
+
+    let mergedExcludes = [...excludeList];
+    for (const [k, v] of Object.entries(dirtyExcludes)) {
+      if (v && !mergedExcludes.includes(k)) mergedExcludes.push(k);
+      if (!v) mergedExcludes = mergedExcludes.filter(x => x !== k);
+    }
+
     try {
+      const payload = { labels: mergedLabels };
+      if (Object.keys(mergedTypes).length > 0) payload.type_overrides = mergedTypes;
+      if (Object.keys(mergedEids).length > 0) payload.entity_ids = mergedEids;
+      if (mergedExcludes.length > 0) payload.exclude = mergedExcludes;
+
       const data = await api('/api/labels', {
         method: 'PUT',
-        body: JSON.stringify({ labels: merged })
+        body: JSON.stringify(payload)
       });
-      labels = data.labels || merged;
+      labels = data.labels || mergedLabels;
+      typeOverrides = mergedTypes;
+      entityIds = mergedEids;
+      excludeList = mergedExcludes;
       dirtyLabels = {};
+      dirtyTypes = {};
+      dirtyEntityIds = {};
+      dirtyExcludes = {};
       render();
-      showToast('Labels saved (' + data.count + ' labels). HA Discovery will update shortly.');
+      showToast('Saved (' + data.count + ' labels). HA Discovery will update shortly.');
     } catch (e) {
       showToast('Failed to save: ' + e.message, true);
     }
@@ -396,23 +505,49 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     return all;
   }
 
+  function getType(addr) {
+    if (addr in dirtyTypes) return dirtyTypes[addr] || 'light';
+    return typeOverrides[addr] || 'light';
+  }
+
+  function getEntityId(addr) {
+    if (addr in dirtyEntityIds) return dirtyEntityIds[addr] || '';
+    return entityIds[addr] || '';
+  }
+
+  function isExcluded(addr) {
+    if (addr in dirtyExcludes) return dirtyExcludes[addr];
+    return excludeList.includes(addr);
+  }
+
   function render() {
     const all = getAllLabels();
     const keys = Object.keys(all);
     const search = document.getElementById('searchInput').value.toLowerCase();
+    const typeFilter = document.getElementById('typeFilter').value;
 
-    const filtered = keys.filter(k => {
+    const filtered = keys.filter(function(k) {
+      if (typeFilter === 'excluded') return isExcluded(k);
+      if (typeFilter && getType(k) !== typeFilter) return false;
       if (!search) return true;
-      return k.toLowerCase().includes(search) || (all[k] || '').toLowerCase().includes(search);
+      return k.toLowerCase().includes(search) ||
+             (all[k] || '').toLowerCase().includes(search) ||
+             getEntityId(k).toLowerCase().includes(search);
     });
 
-    filtered.sort((a, b) => {
-      let va, vb;
+    filtered.sort(function(a, b) {
+      var va, vb;
       if (sortCol === 'address') {
-        const pa = a.split('/').map(Number);
-        const pb = b.split('/').map(Number);
+        var pa = a.split('/').map(Number);
+        var pb = b.split('/').map(Number);
         va = pa[0] * 100000 + pa[1] * 1000 + pa[2];
         vb = pb[0] * 100000 + pb[1] * 1000 + pb[2];
+      } else if (sortCol === 'type') {
+        va = getType(a);
+        vb = getType(b);
+      } else if (sortCol === 'entity_id') {
+        va = getEntityId(a).toLowerCase();
+        vb = getEntityId(b).toLowerCase();
       } else {
         va = (all[a] || '').toLowerCase();
         vb = (all[b] || '').toLowerCase();
@@ -422,18 +557,31 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
       return 0;
     });
 
-    const container = document.getElementById('tableContainer');
+    var container = document.getElementById('tableContainer');
     if (filtered.length === 0) {
       container.innerHTML = '<div class="empty-state"><p>No labels found</p><p>Import a Clipsal project file or add labels manually below.</p></div>';
     } else {
-      const rows = filtered.map(k => {
-        const isDirty = k in dirtyLabels;
-        const isCustom = true;
-        const val = all[k];
-        return '<tr>' +
+      var rows = filtered.map(function(k) {
+        var val = all[k];
+        var type = getType(k);
+        var eid = getEntityId(k);
+        var excl = isExcluded(k);
+        var rowDirty = (k in dirtyLabels) || (k in dirtyTypes) || (k in dirtyEntityIds) || (k in dirtyExcludes);
+
+        var typeBadge = type === 'cover' ? 'badge-cover' : type === 'switch' ? 'badge-switch' : 'badge-light';
+        var trClass = excl ? ' class="excluded"' : '';
+
+        return '<tr' + trClass + '>' +
           '<td class="addr">' + esc(k) + '</td>' +
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
-          '<td class="source-cell">' + (isDirty ? '<span class="badge badge-custom">unsaved</span>' : '<span class="badge badge-custom">custom</span>') + '</td>' +
+          '<td><select class="type-select" data-type-key="' + esc(k) + '">' +
+            '<option value="light"' + (type === 'light' ? ' selected' : '') + '>light</option>' +
+            '<option value="cover"' + (type === 'cover' ? ' selected' : '') + '>cover</option>' +
+            '<option value="switch"' + (type === 'switch' ? ' selected' : '') + '>switch</option>' +
+          '</select></td>' +
+          '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
+          '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
+          '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +
           '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
           '</tr>';
       }).join('');
@@ -442,18 +590,24 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
         '<table><thead><tr>' +
         '<th data-sort="address">Address' + sortArrow('address') + '</th>' +
         '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
-        '<th>Source</th>' +
-        '<th></th>' +
+        '<th data-sort="type">Type' + sortArrow('type') + '</th>' +
+        '<th data-sort="entity_id">Entity ID' + sortArrow('entity_id') + '</th>' +
+        '<th class="no-sort">Excl</th>' +
+        '<th class="no-sort"></th>' +
+        '<th class="no-sort"></th>' +
         '</tr></thead><tbody>' + rows + '</tbody></table>';
     }
 
-    // Stats
-    const allCount = Object.keys(all).length;
-    const dirtyCount = Object.keys(dirtyLabels).length;
+    var allCount = Object.keys(all).length;
+    var overrideCount = Object.keys(typeOverrides).length + Object.keys(dirtyTypes).filter(function(k) { return dirtyTypes[k] && dirtyTypes[k] !== 'light'; }).length;
+    var excludedCount = keys.filter(function(k) { return isExcluded(k); }).length;
+
     document.getElementById('statTotal').textContent = allCount;
     document.getElementById('statCustom').textContent = Object.keys(labels).length;
-    document.getElementById('statDirty').textContent = dirtyCount;
-    document.getElementById('saveBtn').disabled = dirtyCount === 0;
+    document.getElementById('statOverrides').textContent = overrideCount;
+    document.getElementById('statExcluded').textContent = excludedCount;
+    document.getElementById('statDirty').textContent = isDirty() ? 'yes' : '0';
+    document.getElementById('saveBtn').disabled = !isDirty();
   }
 
   function sortArrow(col) {
@@ -467,28 +621,29 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   }
 
   function showToast(msg, isError) {
-    const t = document.getElementById('toast');
+    var t = document.getElementById('toast');
     t.textContent = msg;
     t.className = 'toast visible' + (isError ? ' error' : '');
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.className = 'toast'; }, 3000);
+    t._timer = setTimeout(function() { t.className = 'toast'; }, 3000);
   }
 
-  // --- Inline editing ---
+  // --- Table interactions ---
   document.getElementById('tableContainer').addEventListener('click', function(e) {
-    const display = e.target.closest('.label-display');
+    // Inline label editing
+    var display = e.target.closest('.label-display');
     if (display) {
-      const key = display.dataset.key;
-      const current = getAllLabels()[key] || '';
-      const input = document.createElement('input');
+      var key = display.dataset.key;
+      var current = getAllLabels()[key] || '';
+      var input = document.createElement('input');
       input.className = 'label-input';
       input.value = current;
       display.replaceWith(input);
       input.focus();
       input.select();
 
-      function commit() {
-        const newVal = input.value.trim();
+      function commitLabel() {
+        var newVal = input.value.trim();
         if (newVal !== (labels[key] || '')) {
           dirtyLabels[key] = newVal;
         } else {
@@ -496,65 +651,137 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
         }
         render();
       }
-      input.addEventListener('blur', commit);
+      input.addEventListener('blur', commitLabel);
       input.addEventListener('keydown', function(ev) {
-        if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+        if (ev.key === 'Enter') { ev.preventDefault(); commitLabel(); }
         if (ev.key === 'Escape') { delete dirtyLabels[key]; render(); }
       });
       return;
     }
 
-    const delBtn = e.target.closest('[data-delete]');
-    if (delBtn) {
-      const key = delBtn.dataset.delete;
-      if (key in labels) {
-        dirtyLabels[key] = null;
-      } else {
-        delete dirtyLabels[key];
+    // Inline entity ID editing
+    var eidDisplay = e.target.closest('.eid-display');
+    if (eidDisplay) {
+      var eidKey = eidDisplay.dataset.eidKey;
+      var currentEid = getEntityId(eidKey);
+      var eidInput = document.createElement('input');
+      eidInput.className = 'eid-input';
+      eidInput.value = currentEid;
+      eidInput.placeholder = 'auto';
+      eidInput.style.fontFamily = 'monospace';
+      eidInput.style.fontSize = '0.85rem';
+      eidDisplay.replaceWith(eidInput);
+      eidInput.focus();
+      eidInput.select();
+
+      function commitEid() {
+        var newVal = eidInput.value.trim();
+        if (newVal !== (entityIds[eidKey] || '')) {
+          dirtyEntityIds[eidKey] = newVal || null;
+        } else {
+          delete dirtyEntityIds[eidKey];
+        }
+        render();
       }
-      render();
+      eidInput.addEventListener('blur', commitEid);
+      eidInput.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitEid(); }
+        if (ev.key === 'Escape') { delete dirtyEntityIds[eidKey]; render(); }
+      });
+      return;
     }
 
-    const sortTh = e.target.closest('[data-sort]');
+    // Delete button
+    var delBtn = e.target.closest('[data-delete]');
+    if (delBtn) {
+      var delKey = delBtn.dataset.delete;
+      if (delKey in labels) {
+        dirtyLabels[delKey] = null;
+      } else {
+        delete dirtyLabels[delKey];
+      }
+      delete dirtyTypes[delKey];
+      delete dirtyEntityIds[delKey];
+      delete dirtyExcludes[delKey];
+      render();
+      return;
+    }
+
+    // Sort headers
+    var sortTh = e.target.closest('[data-sort]');
     if (sortTh) {
-      const col = sortTh.dataset.sort;
+      var col = sortTh.dataset.sort;
       if (sortCol === col) sortDir *= -1;
       else { sortCol = col; sortDir = 1; }
       render();
     }
   });
 
-  // --- Search ---
+  // Type select changes
+  document.getElementById('tableContainer').addEventListener('change', function(e) {
+    var typeSelect = e.target.closest('.type-select');
+    if (typeSelect) {
+      var key = typeSelect.dataset.typeKey;
+      var newType = typeSelect.value;
+      var origType = typeOverrides[key] || 'light';
+      if (newType !== origType) {
+        dirtyTypes[key] = newType === 'light' ? null : newType;
+      } else {
+        delete dirtyTypes[key];
+      }
+      render();
+      return;
+    }
+
+    var exclCb = e.target.closest('.exclude-cb');
+    if (exclCb) {
+      var exclKey = exclCb.dataset.exclKey;
+      var checked = exclCb.checked;
+      var origExcl = excludeList.includes(exclKey);
+      if (checked !== origExcl) {
+        dirtyExcludes[exclKey] = checked;
+      } else {
+        delete dirtyExcludes[exclKey];
+      }
+      render();
+    }
+  });
+
+  // --- Search & filter ---
   document.getElementById('searchInput').addEventListener('input', render);
+  document.getElementById('typeFilter').addEventListener('change', render);
 
   // --- Save ---
   document.getElementById('saveBtn').addEventListener('click', saveLabels);
 
   // --- Add row ---
   document.getElementById('addBtn').addEventListener('click', function() {
-    const addr = document.getElementById('addAddress').value.trim();
-    const label = document.getElementById('addLabel').value.trim();
+    var addr = document.getElementById('addAddress').value.trim();
+    var label = document.getElementById('addLabel').value.trim();
+    var type = document.getElementById('addType').value;
     if (!addr || !label) return showToast('Both address and label are required', true);
     if (!/^\d+\/\d+\/\d+$/.test(addr)) return showToast('Address must be in format: network/app/group (e.g. 254/56/10)', true);
     dirtyLabels[addr] = label;
+    if (type) dirtyTypes[addr] = type;
     document.getElementById('addAddress').value = '';
     document.getElementById('addLabel').value = '';
+    document.getElementById('addType').value = '';
     render();
   });
 
   // --- Section toggle ---
   document.querySelectorAll('.section-header').forEach(function(hdr) {
     hdr.addEventListener('click', function() {
-      const body = hdr.nextElementSibling;
-      const chevron = hdr.querySelector('.chevron');
+      var body = hdr.nextElementSibling;
+      var chevron = hdr.querySelector('.chevron');
       body.classList.toggle('collapsed');
       chevron.classList.toggle('open');
     });
   });
 
   // --- File import ---
-  const dropZone = document.getElementById('dropZone');
-  const fileInput = document.getElementById('fileInput');
+  var dropZone = document.getElementById('dropZone');
+  var fileInput = document.getElementById('fileInput');
 
   dropZone.addEventListener('click', function() { fileInput.click(); });
   dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -571,7 +798,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
   function handleFile(file) {
     pendingImport = file;
-    const preview = document.getElementById('importPreview');
+    var preview = document.getElementById('importPreview');
     preview.style.display = 'block';
     preview.textContent = 'Selected: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)\nClick "Import Labels" to process...';
     document.getElementById('importOptions').style.display = 'flex';
@@ -579,16 +806,16 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
   document.getElementById('confirmImport').addEventListener('click', async function() {
     if (!pendingImport) return;
-    const merge = document.getElementById('mergeCheck').checked;
-    const formData = new FormData();
+    var merge = document.getElementById('mergeCheck').checked;
+    var formData = new FormData();
     formData.append('file', pendingImport);
 
     try {
-      const res = await fetch(API_BASE + '/api/labels/import?merge=' + merge, {
+      var res = await fetch(API_BASE + '/api/labels/import?merge=' + merge, {
         method: 'POST',
         body: formData
       });
-      const data = await res.json();
+      var data = await res.json();
       if (data.error) throw new Error(data.error);
 
       showToast('Imported ' + data.imported + ' labels (' + data.total + ' total). HA Discovery will update shortly.');
@@ -611,7 +838,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
-      if (Object.keys(dirtyLabels).length > 0) saveLabels();
+      if (isDirty()) saveLabels();
     }
   });
 

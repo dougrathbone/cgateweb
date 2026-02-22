@@ -5,3 +5,4 @@ settings.js.bak
 build/
 labels.json
 tools/cbus-labels-backup-*.json
+toolkit-certs/
