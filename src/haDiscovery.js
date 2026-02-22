@@ -180,6 +180,15 @@ class HaDiscovery {
              return;
         }
 
+        // Snapshot label data references so a concurrent updateLabels() call
+        // cannot swap them out mid-operation, preventing inconsistent reads.
+        const labelSnapshot = {
+            labelMap: this.labelMap,
+            typeOverrides: this.typeOverrides,
+            entityIds: this.entityIds,
+            exclude: this.exclude
+        };
+
         let units = networkData.Unit || [];
         if (!Array.isArray(units)) {
             units = [units];
@@ -208,16 +217,16 @@ class HaDiscovery {
         for (const [appId, groupMap] of groupsByApp) {
             const groups = Array.from(groupMap.values());
             if (String(appId) === String(lightingAppId)) {
-                this._processLightingGroups(networkId, appId, groups);
+                this._processLightingGroups(networkId, appId, groups, labelSnapshot);
             } else {
-                this._processEnableControlGroups(networkId, appId, groups);
+                this._processEnableControlGroups(networkId, appId, groups, labelSnapshot);
             }
         }
 
         // Supplement with labeled groups not found in TREEXML.
         // C-Gate's flat TREEXML format omits groups not assigned to specific units,
         // but labels.json may define groups that are valid and controllable.
-        this._supplementFromLabels(networkId, lightingAppId, groupsByApp);
+        this._supplementFromLabels(networkId, lightingAppId, groupsByApp, labelSnapshot);
 
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
@@ -274,21 +283,22 @@ class HaDiscovery {
      * The flat TREEXML format may omit groups not assigned to specific units,
      * but they are still valid and controllable on the C-Bus network.
      */
-    _supplementFromLabels(networkId, lightingAppId, groupsByApp) {
-        if (!this.labelMap || this.labelMap.size === 0) return;
+    _supplementFromLabels(networkId, lightingAppId, groupsByApp, labelSnapshot) {
+        const { labelMap, exclude } = labelSnapshot;
+        if (!labelMap || labelMap.size === 0) return;
 
         const prefix = `${networkId}/${lightingAppId}/`;
         const existingGroups = groupsByApp.get(String(lightingAppId));
         const existingIds = existingGroups ? new Set(existingGroups.keys()) : new Set();
         let supplementCount = 0;
 
-        for (const [labelKey] of this.labelMap) {
+        for (const [labelKey] of labelMap) {
             if (!labelKey.startsWith(prefix)) continue;
             const groupId = labelKey.substring(prefix.length);
             if (existingIds.has(groupId)) continue;
-            if (this.exclude.has(labelKey)) continue;
+            if (exclude.has(labelKey)) continue;
 
-            this._processLightingGroups(networkId, lightingAppId, [{ GroupAddress: groupId }]);
+            this._processLightingGroups(networkId, lightingAppId, [{ GroupAddress: groupId }], labelSnapshot);
             supplementCount++;
         }
 
@@ -335,7 +345,8 @@ class HaDiscovery {
         return null;
     }
 
-    _processLightingGroups(networkId, appId, groups) {
+    _processLightingGroups(networkId, appId, groups, labelSnapshot) {
+        const { labelMap, typeOverrides, entityIds, exclude } = labelSnapshot;
         const groupArray = Array.isArray(groups) ? groups : [groups];
         
         groupArray.forEach(group => {
@@ -347,17 +358,17 @@ class HaDiscovery {
 
             const labelKey = `${networkId}/${appId}/${groupId}`;
 
-            if (this.exclude.has(labelKey)) {
+            if (exclude.has(labelKey)) {
                 this.logger.debug(`Excluding group ${labelKey} from discovery`);
                 return;
             }
 
-            const typeOverride = this.typeOverrides.get(labelKey);
+            const typeOverride = typeOverrides.get(labelKey);
             if (typeOverride && typeOverride !== 'light') {
                 const config = this._getDiscoveryConfig(typeOverride);
                 if (config) {
                     this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
-                    this._createDiscovery(networkId, appId, groupId, group.Label, config);
+                    this._createDiscovery(networkId, appId, groupId, group.Label, config, labelSnapshot);
                     // Remove any stale retained light config for this group
                     const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
                     const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
@@ -367,14 +378,14 @@ class HaDiscovery {
                 this.logger.warn(`Unknown type override "${typeOverride}" for ${labelKey}, falling back to light`);
             }
 
-            const customLabel = this.labelMap.get(labelKey);
+            const customLabel = labelMap.get(labelKey);
             const groupLabel = group.Label;
             const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
             if (customLabel) this.labelStats.custom++;
             else if (groupLabel) this.labelStats.treexml++;
             else this.labelStats.fallback++;
             const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-            const entityId = this.entityIds.get(labelKey);
+            const entityId = entityIds.get(labelKey);
             const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
             const payload = { 
@@ -412,7 +423,7 @@ class HaDiscovery {
         });
     }
 
-    _processEnableControlGroups(networkId, appAddress, groups) {
+    _processEnableControlGroups(networkId, appAddress, groups, labelSnapshot) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
         
         // Determine the discovery type based on application address
@@ -428,7 +439,7 @@ class HaDiscovery {
                 return;
             }
 
-            this._createDiscovery(networkId, appAddress, groupId, group.Label, this._getDiscoveryConfig(discoveryType));
+            this._createDiscovery(networkId, appAddress, groupId, group.Label, this._getDiscoveryConfig(discoveryType), labelSnapshot);
         });
     }
 
@@ -455,21 +466,22 @@ class HaDiscovery {
         return null;
     }
 
-    _createDiscovery(networkId, appId, groupId, groupLabel, config) {
+    _createDiscovery(networkId, appId, groupId, groupLabel, config, labelSnapshot) {
+        const { labelMap, entityIds, exclude } = labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 
-        if (this.exclude.has(labelKey)) {
+        if (exclude.has(labelKey)) {
             this.logger.debug(`Excluding group ${labelKey} from discovery`);
             return;
         }
 
-        const customLabel = this.labelMap.get(labelKey);
+        const customLabel = labelMap.get(labelKey);
         const finalLabel = customLabel || groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
         if (customLabel) this.labelStats.custom++;
         else if (groupLabel) this.labelStats.treexml++;
         else this.labelStats.fallback++;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const entityId = this.entityIds.get(labelKey);
+        const entityId = entityIds.get(labelKey);
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         
         const payload = { 
