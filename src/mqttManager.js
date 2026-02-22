@@ -220,9 +220,41 @@ class MqttManager extends EventEmitter {
         this.connected = false;
         
         if (err.code === MQTT_ERROR_AUTH) {
+            const brokerUrl = this.settings.mqtt || '(not configured)';
+            const hasUsername = !!this.settings.mqttusername;
+            const isAddon = !!process.env.SUPERVISOR_TOKEN;
+
+            this.logger.error('');
+            this.logger.error('==========================================================');
+            this.logger.error('  MQTT AUTHENTICATION FAILED');
+            this.logger.error('==========================================================');
+            this.logger.error(`  Broker: ${brokerUrl}`);
+            this.logger.error(`  Username provided: ${hasUsername ? 'yes' : 'NO'}`);
+            this.logger.error('');
+            if (!hasUsername) {
+                this.logger.error('  No MQTT credentials were configured.');
+                if (isAddon) {
+                    this.logger.error('  To fix this in Home Assistant:');
+                    this.logger.error('    1. Go to Settings > Add-ons > C-Gate Web Bridge > Configuration');
+                    this.logger.error('    2. Set mqtt_username and mqtt_password');
+                    this.logger.error('    3. Use the same credentials as your Mosquitto broker addon');
+                    this.logger.error('    4. Restart the C-Gate Web Bridge addon');
+                } else {
+                    this.logger.error('  To fix this:');
+                    this.logger.error('    1. Edit your settings.js file');
+                    this.logger.error('    2. Set exports.mqttusername and exports.mqttpassword');
+                    this.logger.error('    3. Restart cgateweb');
+                }
+            } else {
+                this.logger.error('  Credentials were provided but the broker rejected them.');
+                this.logger.error('  Check that the username and password are correct.');
+            }
+            this.logger.error('==========================================================');
+            this.logger.error('');
+
             this.errorHandler.handle(err, {
-                brokerUrl: this.settings.mqtt,
-                hasUsername: !!this.settings.mqttusername
+                brokerUrl,
+                hasUsername
             }, 'MQTT authentication', true); // Fatal error
         } else {
             this.errorHandler.handle(err, {
