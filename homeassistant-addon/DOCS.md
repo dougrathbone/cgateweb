@@ -1,10 +1,15 @@
 # Home Assistant Add-on: C-Gate Web Bridge
 
-Bridge between Clipsal C-Bus systems and MQTT/Home Assistant, providing seamless integration of C-Bus lighting, covers, and switches with Home Assistant.
+Bridge between Clipsal C-Bus automation systems and MQTT/Home Assistant, providing seamless integration of C-Bus lighting, covers, and switches with Home Assistant.
 
 ## About
 
 This add-on packages the cgateweb Node.js application as a Home Assistant add-on, allowing you to connect your Clipsal C-Bus automation system to Home Assistant via MQTT. The bridge automatically discovers C-Bus devices and creates corresponding Home Assistant entities.
+
+The add-on supports two modes:
+
+- **Remote mode** (default): Connects to a C-Gate server running elsewhere on your network.
+- **Managed mode**: Downloads, installs, and runs C-Gate locally inside this add-on.
 
 ## Installation
 
@@ -15,20 +20,43 @@ This add-on packages the cgateweb Node.js application as a Home Assistant add-on
 
 ## Configuration
 
-### C-Gate Settings
+### C-Gate Mode
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `cgate_host` | string | `127.0.0.1` | IP address of the C-Gate server |
-| `cgate_port` | integer | `20023` | C-Gate telnet port |
-| `cgate_control_port` | integer | `20024` | C-Gate control port |
+| `cgate_mode` | list | `remote` | `remote` connects to an external C-Gate server. `managed` runs C-Gate locally inside the add-on. |
+
+### C-Gate Connection Settings
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cgate_host` | string | `your-cgate-ip` | IP address of the C-Gate server (ignored in managed mode) |
+| `cgate_port` | integer | `20023` | C-Gate command port |
+| `cgate_event_port` | integer | `20025` | C-Gate event port for real-time device updates |
 | `cgate_project` | string | `HOME` | C-Gate project name |
+
+### C-Gate Managed Mode Settings
+
+These settings only apply when `cgate_mode` is set to `managed`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cgate_install_source` | list | `download` | `download` fetches C-Gate from the official Clipsal URL. `upload` uses a zip file you place in `/share/cgate/`. |
+| `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
+
+#### Uploading C-Gate manually
+
+If you choose `upload` as the install source:
+
+1. Download the C-Gate Linux package from the [Clipsal downloads page](https://updates.clipsal.com/ClipsalSoftwareDownload/mainsite/cis/technical/downloads/index.html)
+2. Place the `.zip` file in the `/share/cgate/` directory on your Home Assistant instance (accessible via the Samba, SSH, or File Editor add-ons)
+3. Restart the add-on -- it will detect and install from the zip file
 
 ### MQTT Settings
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `mqtt_host` | string | `127.0.0.1` | MQTT broker hostname/IP |
+| `mqtt_host` | string | `core-mosquitto` | MQTT broker hostname/IP. Defaults to the HA Mosquitto add-on. |
 | `mqtt_port` | integer | `1883` | MQTT broker port |
 | `mqtt_username` | string | (empty) | MQTT username (optional) |
 | `mqtt_password` | password | (empty) | MQTT password (optional) |
@@ -37,7 +65,7 @@ This add-on packages the cgateweb Node.js application as a Home Assistant add-on
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `getall_networks` | list | `[]` | List of C-Bus network IDs to monitor (e.g., `[254, 255]`) |
+| `getall_networks` | list | `[]` | List of C-Bus network IDs to monitor (e.g., `[254]`) |
 | `getall_on_start` | boolean | `false` | Request all device states on startup |
 | `getall_period` | integer | `3600` | How often to request all states (seconds) |
 | `retain_reads` | boolean | `false` | Set MQTT retain flag for state messages |
@@ -61,13 +89,16 @@ This add-on packages the cgateweb Node.js application as a Home Assistant add-on
 
 ## Example Configuration
 
+### Remote mode (external C-Gate server)
+
 ```yaml
+cgate_mode: "remote"
 cgate_host: "192.168.1.100"
 cgate_port: 20023
-cgate_control_port: 20024
+cgate_event_port: 20025
 cgate_project: "HOME"
 
-mqtt_host: "192.168.1.50"
+mqtt_host: "core-mosquitto"
 mqtt_port: 1883
 mqtt_username: "homeassistant"
 mqtt_password: "your_mqtt_password"
@@ -79,6 +110,27 @@ getall_period: 3600
 ha_discovery_enabled: true
 ha_discovery_networks: [254]
 ha_discovery_cover_app_id: 203
+
+log_level: "info"
+```
+
+### Managed mode (C-Gate runs inside the add-on)
+
+```yaml
+cgate_mode: "managed"
+cgate_install_source: "download"
+cgate_project: "HOME"
+
+mqtt_host: "core-mosquitto"
+mqtt_port: 1883
+mqtt_username: "homeassistant"
+mqtt_password: "your_mqtt_password"
+
+getall_networks: [254]
+getall_on_start: true
+
+ha_discovery_enabled: true
+ha_discovery_networks: [254]
 
 log_level: "info"
 ```
@@ -115,14 +167,14 @@ When `ha_discovery_enabled` is true, the add-on automatically:
 ## Networking
 
 This add-on uses `host_network: true` to allow direct access to:
-- C-Gate server (typically on port 20023/20024)
+- C-Gate server (ports 20023 and 20025)
 - MQTT broker
 - Any other network services your C-Bus system requires
 
 ## Troubleshooting
 
 ### Add-on won't start
-1. Check that C-Gate server is running and accessible
+1. Check that C-Gate server is running and accessible (remote mode)
 2. Verify MQTT broker is reachable
 3. Check add-on logs for specific error messages
 4. Ensure network configuration allows connections to required ports
@@ -138,6 +190,12 @@ This add-on uses `host_network: true` to allow direct access to:
 2. Check C-Gate connection is stable
 3. Ensure device addresses match C-Bus configuration
 4. Verify `getall_networks` includes the relevant networks
+
+### Managed mode: C-Gate won't install
+1. Check add-on logs for download errors
+2. Verify internet connectivity from the add-on
+3. Try `upload` mode and place the zip file in `/share/cgate/` manually
+4. Ensure the C-Gate zip file is a valid Linux package
 
 ### Performance issues
 1. Increase `message_interval` to reduce C-Gate command frequency

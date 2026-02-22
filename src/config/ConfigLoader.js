@@ -8,10 +8,11 @@ const EnvironmentDetector = require('./EnvironmentDetector');
  * Home Assistant addon options (/data/options.json)
  */
 class ConfigLoader {
-    constructor() {
+    constructor(options = {}) {
         this.logger = new Logger('ConfigLoader');
-        this.environmentDetector = new EnvironmentDetector();
+        this.environmentDetector = options.environmentDetector || new EnvironmentDetector();
         this._cachedConfig = null;
+        this._httpGet = options.httpGet || null;
     }
 
     /**
@@ -58,10 +59,8 @@ class ConfigLoader {
             throw new Error(`Failed to parse addon options: ${error.message}`);
         }
 
-        // Convert Home Assistant addon options to cgateweb settings format
         const config = this._convertAddonOptionsToSettings(addonOptions);
         
-        // Add environment metadata
         config._environment = {
             type: 'addon',
             optionsPath,
@@ -85,16 +84,13 @@ class ConfigLoader {
         }
 
         try {
-            // Clear require cache to allow hot reload
             delete require.cache[require.resolve(settingsPath)];
             
             const settings = require(settingsPath);
             this.logger.debug('Loaded settings from:', settingsPath);
             
-            // Convert settings.js exports to standardized format
             const config = this._convertSettingsToStandardFormat(settings);
             
-            // Add environment metadata
             config._environment = {
                 type: 'standalone',
                 settingsPath,
@@ -118,20 +114,28 @@ class ConfigLoader {
     _convertAddonOptionsToSettings(options) {
         const config = {};
 
+        // C-Gate mode
+        config.cgate_mode = options.cgate_mode || 'remote';
+
         // C-Gate connection settings
-        config.cbusip = options.cgate_host || '127.0.0.1';
-        config.cbusport = options.cgate_port || 20023;
-        config.cbuscontrolport = options.cgate_control_port || 20024;
+        if (config.cgate_mode === 'managed') {
+            config.cbusip = '127.0.0.1';
+        } else {
+            config.cbusip = options.cgate_host || 'your-cgate-ip';
+        }
+        config.cbuscommandport = options.cgate_port || 20023;
+        config.cbuseventport = options.cgate_event_port || 20025;
         config.cbusname = options.cgate_project || 'HOME';
 
-        // MQTT settings
-        if (options.mqtt_host && options.mqtt_port) {
-            config.mqtt = `${options.mqtt_host}:${options.mqtt_port}`;
-        } else {
-            config.mqtt = `${options.mqtt_host || '127.0.0.1'}:${options.mqtt_port || 1883}`;
+        // C-Gate managed mode settings
+        if (config.cgate_mode === 'managed') {
+            config.cgate_install_source = options.cgate_install_source || 'download';
+            config.cgate_download_url = options.cgate_download_url || '';
         }
 
-        // MQTT credentials
+        // MQTT settings
+        config.mqtt = `${options.mqtt_host || 'core-mosquitto'}:${options.mqtt_port || 1883}`;
+
         if (options.mqtt_username) {
             config.mqttusername = options.mqtt_username;
         }
@@ -141,7 +145,6 @@ class ConfigLoader {
 
         // C-Bus monitoring settings
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
-            // Use first network for getallnetapp format (network/app)
             config.getallnetapp = `${options.getall_networks[0]}/56`;
             
             if (options.getall_on_start) {
@@ -153,14 +156,12 @@ class ConfigLoader {
             }
         }
 
-        // MQTT settings
         if (options.retain_reads) {
             config.retainreads = true;
         }
 
         config.messageinterval = options.message_interval || 200;
 
-        // Logging
         config.logging = options.log_level === 'debug';
 
         // Home Assistant Discovery settings
@@ -189,10 +190,8 @@ class ConfigLoader {
      * @private
      */
     _convertSettingsToStandardFormat(settings) {
-        // Settings.js is already in the correct format, just ensure consistency
         const config = { ...settings };
         
-        // Ensure boolean values are properly typed
         if (typeof config.getallonstart === 'string') {
             config.getallonstart = config.getallonstart.toLowerCase() === 'true';
         }
@@ -219,8 +218,8 @@ class ConfigLoader {
     _getDefaultConfig() {
         return {
             cbusip: '127.0.0.1',
-            cbusport: 20023,
-            cbuscontrolport: 20024,
+            cbuscommandport: 20023,
+            cbuseventport: 20025,
             cbusname: 'HOME',
             mqtt: '127.0.0.1:1883',
             messageinterval: 200,
@@ -235,6 +234,54 @@ class ConfigLoader {
     }
 
     /**
+     * Attempt to auto-detect MQTT credentials from HA Supervisor API.
+     * Returns null if not available or if detection fails.
+     */
+    async detectMqttConfig() {
+        const supervisorToken = process.env.SUPERVISOR_TOKEN;
+        if (!supervisorToken) {
+            return null;
+        }
+
+        try {
+            const http = this._httpGet || require('http');
+            const data = await new Promise((resolve, reject) => {
+                const req = http.get('http://supervisor/services/mqtt', {
+                    headers: { 'Authorization': `Bearer ${supervisorToken}` }
+                }, (res) => {
+                    let body = '';
+                    res.on('data', chunk => { body += chunk; });
+                    res.on('end', () => {
+                        if (res.statusCode === 200) {
+                            resolve(JSON.parse(body));
+                        } else {
+                            reject(new Error(`Supervisor API returned ${res.statusCode}`));
+                        }
+                    });
+                });
+                req.on('error', reject);
+                req.setTimeout(5000, () => { req.destroy(); reject(new Error('Timeout')); });
+            });
+
+            if (data && data.data) {
+                const mqtt = data.data;
+                this.logger.info('Auto-detected MQTT configuration from Supervisor API');
+                return {
+                    host: mqtt.host || 'core-mosquitto',
+                    port: mqtt.port || 1883,
+                    username: mqtt.username || null,
+                    password: mqtt.password || null,
+                    ssl: mqtt.ssl || false
+                };
+            }
+        } catch (error) {
+            this.logger.debug('MQTT auto-detection unavailable:', error.message);
+        }
+
+        return null;
+    }
+
+    /**
      * Validate configuration
      */
     validate(config = null) {
@@ -242,7 +289,6 @@ class ConfigLoader {
         const errors = [];
         const warnings = [];
 
-        // Required settings
         if (!configToValidate.cbusip) {
             errors.push('C-Gate IP address (cbusip) is required');
         }
@@ -255,20 +301,31 @@ class ConfigLoader {
             warnings.push('C-Gate project name (cbusname) not specified, using default');
         }
 
-        // Validate numeric values
-        if (configToValidate.cbusport && (typeof configToValidate.cbusport === 'number') && (configToValidate.cbusport < 1 || configToValidate.cbusport > 65535)) {
-            errors.push('C-Gate port must be between 1 and 65535');
+        if (configToValidate.cbuscommandport && (typeof configToValidate.cbuscommandport === 'number') && (configToValidate.cbuscommandport < 1 || configToValidate.cbuscommandport > 65535)) {
+            errors.push('C-Gate command port must be between 1 and 65535');
         }
 
-        if (configToValidate.cbuscontrolport && (typeof configToValidate.cbuscontrolport === 'number') && (configToValidate.cbuscontrolport < 1 || configToValidate.cbuscontrolport > 65535)) {
-            errors.push('C-Gate control port must be between 1 and 65535');
+        if (configToValidate.cbuseventport && (typeof configToValidate.cbuseventport === 'number') && (configToValidate.cbuseventport < 1 || configToValidate.cbuseventport > 65535)) {
+            errors.push('C-Gate event port must be between 1 and 65535');
         }
 
         if (configToValidate.messageinterval && (configToValidate.messageinterval < 10 || configToValidate.messageinterval > 10000)) {
             warnings.push('Message interval should be between 10 and 10000 milliseconds');
         }
 
-        // Log validation results
+        // Validate C-Gate mode settings
+        if (configToValidate.cgate_mode === 'managed') {
+            if (configToValidate.cgate_install_source === 'upload') {
+                const sharePath = '/share/cgate';
+                if (fs.existsSync(sharePath)) {
+                    const files = fs.readdirSync(sharePath).filter(f => f.endsWith('.zip'));
+                    if (files.length === 0) {
+                        warnings.push('C-Gate mode is "managed" with "upload" source, but no .zip files found in /share/cgate/');
+                    }
+                }
+            }
+        }
+
         if (errors.length > 0) {
             this.logger.error('Configuration validation failed:', errors);
             throw new Error(`Configuration validation failed: ${errors.join(', ')}`);

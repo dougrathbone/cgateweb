@@ -3,7 +3,6 @@ const path = require('path');
 const ConfigLoader = require('../../src/config/ConfigLoader');
 const EnvironmentDetector = require('../../src/config/EnvironmentDetector');
 
-// Mock dependencies
 jest.mock('fs');
 jest.mock('../../src/config/EnvironmentDetector');
 
@@ -14,7 +13,6 @@ describe('ConfigLoader', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         
-        // Create mock environment detector
         mockEnvironmentDetector = {
             detect: jest.fn(),
             getEnvironmentInfo: jest.fn(),
@@ -28,9 +26,10 @@ describe('ConfigLoader', () => {
 
     describe('load() - Home Assistant Addon Configuration', () => {
         const mockAddonOptions = {
+            cgate_mode: 'remote',
             cgate_host: '192.168.1.100',
             cgate_port: 20023,
-            cgate_control_port: 20024,
+            cgate_event_port: 20025,
             cgate_project: 'MyHome',
             mqtt_host: '192.168.1.50',
             mqtt_port: 1883,
@@ -66,9 +65,10 @@ describe('ConfigLoader', () => {
 
             const config = configLoader.load();
 
+            expect(config.cgate_mode).toBe('remote');
             expect(config.cbusip).toBe('192.168.1.100');
-            expect(config.cbusport).toBe(20023);
-            expect(config.cbuscontrolport).toBe(20024);
+            expect(config.cbuscommandport).toBe(20023);
+            expect(config.cbuseventport).toBe(20025);
             expect(config.cbusname).toBe('MyHome');
             expect(config.mqtt).toBe('192.168.1.50:1883');
             expect(config.mqttusername).toBe('testuser');
@@ -78,7 +78,7 @@ describe('ConfigLoader', () => {
             expect(config.getallperiod).toBe(3600);
             expect(config.retainreads).toBe(true);
             expect(config.messageinterval).toBe(150);
-            expect(config.logging).toBe(true); // debug level should enable logging
+            expect(config.logging).toBe(true);
             expect(config.ha_discovery_enabled).toBe(true);
             expect(config.ha_discovery_prefix).toBe('homeassistant');
             expect(config.ha_discovery_networks).toEqual([254]);
@@ -99,11 +99,13 @@ describe('ConfigLoader', () => {
             const config = configLoader.load();
 
             expect(config.cbusip).toBe('127.0.0.1');
-            expect(config.cbusport).toBe(20023); // default
-            expect(config.cbusname).toBe('HOME'); // default
-            expect(config.mqtt).toBe('127.0.0.1:1883'); // default port
-            expect(config.messageinterval).toBe(200); // default
-            expect(config.logging).toBe(false); // default
+            expect(config.cbuscommandport).toBe(20023);
+            expect(config.cbuseventport).toBe(20025);
+            expect(config.cbusname).toBe('HOME');
+            expect(config.mqtt).toBe('127.0.0.1:1883');
+            expect(config.messageinterval).toBe(200);
+            expect(config.logging).toBe(false);
+            expect(config.cgate_mode).toBe('remote');
         });
 
         test('should throw error when options file is missing', () => {
@@ -133,13 +135,78 @@ describe('ConfigLoader', () => {
             expect(config.getallnetapp).toBeUndefined();
             expect(config.getallonstart).toBeUndefined();
         });
+
+        test('should force cbusip to 127.0.0.1 in managed mode', () => {
+            const managedOptions = {
+                ...mockAddonOptions,
+                cgate_mode: 'managed',
+                cgate_host: '192.168.1.100'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(managedOptions));
+
+            const config = configLoader.load();
+
+            expect(config.cgate_mode).toBe('managed');
+            expect(config.cbusip).toBe('127.0.0.1');
+            expect(config.cgate_install_source).toBe('download');
+        });
+
+        test('should include managed mode settings when mode is managed', () => {
+            const managedOptions = {
+                ...mockAddonOptions,
+                cgate_mode: 'managed',
+                cgate_install_source: 'upload',
+                cgate_download_url: 'https://example.com/cgate.zip'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(managedOptions));
+
+            const config = configLoader.load();
+
+            expect(config.cgate_mode).toBe('managed');
+            expect(config.cgate_install_source).toBe('upload');
+            expect(config.cgate_download_url).toBe('https://example.com/cgate.zip');
+        });
+
+        test('should not include managed mode settings when mode is remote', () => {
+            const remoteOptions = {
+                ...mockAddonOptions,
+                cgate_mode: 'remote'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(remoteOptions));
+
+            const config = configLoader.load();
+
+            expect(config.cgate_mode).toBe('remote');
+            expect(config.cgate_install_source).toBeUndefined();
+            expect(config.cgate_download_url).toBeUndefined();
+        });
+
+        test('should use core-mosquitto as default MQTT host for addon', () => {
+            const optionsNoMqtt = {
+                cgate_host: '192.168.1.100'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(optionsNoMqtt));
+
+            const config = configLoader.load();
+
+            expect(config.mqtt).toBe('core-mosquitto:1883');
+        });
     });
 
     describe('load() - Standalone Configuration', () => {
         const mockSettingsPath = path.join(process.cwd(), 'settings.js');
         const mockSettings = {
             cbusip: '10.0.0.1',
-            cbusport: 20025,
+            cbuscommandport: 20023,
+            cbuseventport: 20025,
             cbusname: 'TestProject',
             mqtt: '10.0.0.2:1884',
             mqttusername: 'user',
@@ -165,18 +232,17 @@ describe('ConfigLoader', () => {
         test('should load standalone configuration from settings.js', () => {
             fs.existsSync.mockReturnValue(true);
             
-            // Mock require.resolve and require cache
             const mockResolve = jest.fn().mockReturnValue(mockSettingsPath);
             require.resolve = mockResolve;
             require.cache = { [mockSettingsPath]: { exports: mockSettings } };
             
-            // Mock require function
             jest.doMock(mockSettingsPath, () => mockSettings, { virtual: true });
 
             const config = configLoader.load();
 
             expect(config.cbusip).toBe('10.0.0.1');
-            expect(config.cbusport).toBe(20025);
+            expect(config.cbuscommandport).toBe(20023);
+            expect(config.cbuseventport).toBe(20025);
             expect(config.cbusname).toBe('TestProject');
             expect(config.mqtt).toBe('10.0.0.2:1884');
             expect(config.mqttusername).toBe('user');
@@ -216,7 +282,8 @@ describe('ConfigLoader', () => {
             const config = configLoader.load();
 
             expect(config.cbusip).toBe('127.0.0.1');
-            expect(config.cbusport).toBe(20023);
+            expect(config.cbuscommandport).toBe(20023);
+            expect(config.cbuseventport).toBe(20025);
             expect(config.cbusname).toBe('HOME');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
@@ -227,8 +294,6 @@ describe('ConfigLoader', () => {
         test('should handle module load errors gracefully', () => {
             fs.existsSync.mockReturnValue(true);
             
-            // This test verifies that the configLoader doesn't crash when require fails
-            // The exact fallback behavior is implementation-specific
             expect(() => configLoader.load()).not.toThrow();
             
             const config = configLoader.getConfig();
@@ -256,35 +321,35 @@ describe('ConfigLoader', () => {
             expect(() => configLoader.validate(invalidConfig)).toThrow('Configuration validation failed');
         });
 
-        test('should validate port ranges', () => {
-            const configWithInvalidPorts = {
-                cgate_host: '127.0.0.1',
-                cgate_port: 70000, // Invalid port
-                mqtt_host: '127.0.0.1'
+        test('should validate command port range', () => {
+            const configWithInvalidPort = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cbuscommandport: 70000
             };
 
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(configWithInvalidPorts));
+            expect(() => configLoader.validate(configWithInvalidPort)).toThrow('C-Gate command port must be between 1 and 65535');
+        });
 
-            configLoader.load();
+        test('should validate event port range', () => {
+            const configWithInvalidPort = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cbuseventport: 70000
+            };
 
-            expect(() => configLoader.validate()).toThrow('C-Gate port must be between 1 and 65535');
+            expect(() => configLoader.validate(configWithInvalidPort)).toThrow('C-Gate event port must be between 1 and 65535');
         });
 
         test('should pass validation for valid configuration', () => {
             const validConfig = {
-                cgate_host: '127.0.0.1',
-                cgate_port: 20023,
-                mqtt_host: '127.0.0.1',
-                mqtt_port: 1883
+                cbusip: '127.0.0.1',
+                cbuscommandport: 20023,
+                cbuseventport: 20025,
+                mqtt: '127.0.0.1:1883'
             };
 
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(validConfig));
-
-            configLoader.load();
-
-            expect(() => configLoader.validate()).not.toThrow();
+            expect(() => configLoader.validate(validConfig)).not.toThrow();
         });
 
         test('should validate external config object', () => {
@@ -294,6 +359,108 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(externalConfig)).not.toThrow();
+        });
+
+        test('should warn about missing upload zip in managed mode', () => {
+            fs.existsSync.mockImplementation((p) => p === '/share/cgate');
+            fs.readdirSync.mockReturnValue([]);
+
+            const managedConfig = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cgate_mode: 'managed',
+                cgate_install_source: 'upload'
+            };
+
+            expect(() => configLoader.validate(managedConfig)).not.toThrow();
+        });
+    });
+
+    describe('detectMqttConfig', () => {
+        test('should return null when no SUPERVISOR_TOKEN is set', async () => {
+            delete process.env.SUPERVISOR_TOKEN;
+            const result = await configLoader.detectMqttConfig();
+            expect(result).toBeNull();
+        });
+
+        test('should return MQTT config from Supervisor API', async () => {
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+
+            const mockResponse = {
+                on: jest.fn(),
+                statusCode: 200
+            };
+            
+            const mockReq = {
+                on: jest.fn(),
+                setTimeout: jest.fn()
+            };
+
+            const mockHttp = {
+                get: jest.fn((url, options, callback) => {
+                    const res = {
+                        statusCode: 200,
+                        on: jest.fn((event, handler) => {
+                            if (event === 'data') {
+                                handler(JSON.stringify({
+                                    data: {
+                                        host: 'core-mosquitto',
+                                        port: 1883,
+                                        username: 'mqtt_user',
+                                        password: 'mqtt_pass',
+                                        ssl: false
+                                    }
+                                }));
+                            }
+                            if (event === 'end') {
+                                handler();
+                            }
+                        })
+                    };
+                    callback(res);
+                    return mockReq;
+                })
+            };
+
+            const loader = new ConfigLoader({ httpGet: mockHttp });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const result = await loader.detectMqttConfig();
+
+            expect(result).toEqual({
+                host: 'core-mosquitto',
+                port: 1883,
+                username: 'mqtt_user',
+                password: 'mqtt_pass',
+                ssl: false
+            });
+
+            delete process.env.SUPERVISOR_TOKEN;
+        });
+
+        test('should return null on API error', async () => {
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+
+            const mockReq = {
+                on: jest.fn((event, handler) => {
+                    if (event === 'error') {
+                        handler(new Error('Connection refused'));
+                    }
+                }),
+                setTimeout: jest.fn()
+            };
+
+            const mockHttp = {
+                get: jest.fn(() => mockReq)
+            };
+
+            const loader = new ConfigLoader({ httpGet: mockHttp });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const result = await loader.detectMqttConfig();
+            expect(result).toBeNull();
+
+            delete process.env.SUPERVISOR_TOKEN;
         });
     });
 
@@ -313,16 +480,16 @@ describe('ConfigLoader', () => {
             const config1 = configLoader.load();
             const config2 = configLoader.load();
 
-            expect(config1).toBe(config2); // Same object reference
-            expect(fs.readFileSync).toHaveBeenCalledTimes(1); // Only read once
+            expect(config1).toBe(config2);
+            expect(fs.readFileSync).toHaveBeenCalledTimes(1);
         });
 
         test('should reload configuration when forced', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue(JSON.stringify({ cgate_host: '127.0.0.1', mqtt_host: '127.0.0.1' }));
 
-            configLoader.load(); // First load
-            configLoader.load(true); // Force reload
+            configLoader.load();
+            configLoader.load(true);
 
             expect(fs.readFileSync).toHaveBeenCalledTimes(2);
         });
@@ -331,8 +498,8 @@ describe('ConfigLoader', () => {
             fs.existsSync.mockReturnValue(true);
             fs.readFileSync.mockReturnValue(JSON.stringify({ cgate_host: '127.0.0.1', mqtt_host: '127.0.0.1' }));
 
-            configLoader.load(); // First load
-            configLoader.reload(); // Reload
+            configLoader.load();
+            configLoader.reload();
 
             expect(mockEnvironmentDetector.reset).toHaveBeenCalled();
             expect(fs.readFileSync).toHaveBeenCalledTimes(2);
@@ -385,8 +552,8 @@ describe('ConfigLoader', () => {
             const config = configLoader.load();
 
             expect(config.cbusip).toBe('127.0.0.1');
-            expect(config.cbusport).toBe(20023);
-            expect(config.cbuscontrolport).toBe(20024);
+            expect(config.cbuscommandport).toBe(20023);
+            expect(config.cbuseventport).toBe(20025);
             expect(config.cbusname).toBe('HOME');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
