@@ -358,6 +358,10 @@ class HaDiscovery {
                 if (config) {
                     this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
                     this._createDiscovery(networkId, appId, groupId, group.Label, config);
+                    // Remove any stale retained light config for this group
+                    const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+                    const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+                    this._publish(staleTopic, '', { retain: true, qos: 0 });
                     return;
                 }
                 this.logger.warn(`Unknown type override "${typeOverride}" for ${labelKey}, falling back to light`);

@@ -622,10 +622,12 @@ describe('HaDiscovery', () => {
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Should be published as cover, not light
+            // The old light topic should be cleared with an empty payload (stale cleanup)
             const lightCall = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
             );
-            expect(lightCall).toBeUndefined();
+            expect(lightCall).toBeDefined();
+            expect(lightCall[1]).toBe('');
 
             const coverCall = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
