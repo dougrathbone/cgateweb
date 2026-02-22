@@ -19,9 +19,6 @@ try {
     
     const envInfo = configLoader.getEnvironment();
     console.log(`[INFO] Environment: ${envInfo.type}`);
-    if (envInfo.details) {
-        console.log(`[INFO] ${envInfo.details}`);
-    }
     
     if (haConfig.isAddon) {
         console.log(`[INFO] Home Assistant optimizations: ${haConfig.optimizationsApplied.join(', ')}`);
