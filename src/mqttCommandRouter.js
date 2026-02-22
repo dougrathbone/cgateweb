@@ -263,6 +263,7 @@ class MqttCommandRouter extends EventEmitter {
         const levelHandler = (address, currentLevel) => {
             if (address === levelAddress) {
                 this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
+                clearTimeout(timeoutHandle);
                 const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
                 this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
                 
@@ -270,6 +271,12 @@ class MqttCommandRouter extends EventEmitter {
                 this._queueCommand(cgateCommand);
             }
         };
+
+        const timeoutHandle = setTimeout(() => {
+            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
+            this.logger.warn(`Timeout waiting for level response from ${levelAddress} during ${actionName}`);
+        }, 5000);
+
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
 
         // Query current level first

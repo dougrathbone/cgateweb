@@ -212,6 +212,56 @@ describe('MqttCommandRouter', () => {
             mockInternalEmitter.emit('level', '254/56/1', 150);
             expect(queueSpy).not.toHaveBeenCalled();
         });
+
+        it('should clean up listener after timeout if no matching response arrives', () => {
+            jest.useFakeTimers();
+
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+
+            jest.advanceTimersByTime(5000);
+
+            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+
+            queueSpy.mockClear();
+
+            // Events after timeout should not trigger ramp commands
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            expect(queueSpy).not.toHaveBeenCalled();
+
+            jest.useRealTimers();
+        });
+
+        it('should clear timeout when matching response arrives before timeout', () => {
+            jest.useFakeTimers();
+
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 126\n');
+
+            // Advancing past timeout should not cause errors or warnings
+            jest.advanceTimersByTime(5000);
+            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+
+            jest.useRealTimers();
+        });
+
+        it('should not remove listener for non-matching events before timeout', () => {
+            jest.useFakeTimers();
+
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            // Non-matching events should leave listener intact
+            mockInternalEmitter.emit('level', '254/56/2', 80);
+            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+
+            // Matching event should clean up
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+
+            jest.useRealTimers();
+        });
     });
 
     describe('Cover Position Commands', () => {
