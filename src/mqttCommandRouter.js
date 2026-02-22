@@ -259,16 +259,18 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleRelativeLevel(cbusPath, levelAddress, step, limit, actionName) {
-        // Set up one-time listener for level response
-        this.internalEventEmitter.once(MQTT_TOPIC_SUFFIX_LEVEL, (address, currentLevel) => {
+        // Use .on() instead of .once() so non-matching address events don't consume the listener
+        const levelHandler = (address, currentLevel) => {
             if (address === levelAddress) {
+                this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
                 const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
                 this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
                 
                 const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`;
                 this._queueCommand(cgateCommand);
             }
-        });
+        };
+        this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
 
         // Query current level first
         const queryCommand = `${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`;

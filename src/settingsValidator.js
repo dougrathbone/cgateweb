@@ -188,7 +188,7 @@ class SettingsValidator {
         }
 
         // Check for common misconfigurations
-        if (settings.cbusip === 'your-cgate-ip') {
+        if (settings.cbusip === 'your-cgate-ip' || !settings.cbusip) {
             recommendations.push('Update cbusip to match your actual C-Gate server IP address');
         }
 

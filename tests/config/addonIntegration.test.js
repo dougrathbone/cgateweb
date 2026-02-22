@@ -163,7 +163,7 @@ describe('Addon Configuration Integration', () => {
                 const loader = new ConfigLoader({ environmentDetector: mockDetector });
                 const config = loader.load();
 
-                expect(config.cbusip).toBe(configYaml.options.cgate_host);
+                expect(config.cbusip).toBe(configYaml.options.cgate_host || 'your-cgate-ip');
                 expect(config.cbuscommandport).toBe(configYaml.options.cgate_port);
                 expect(config.cbuseventport).toBe(configYaml.options.cgate_event_port);
                 expect(config.cbusname).toBe(configYaml.options.cgate_project);

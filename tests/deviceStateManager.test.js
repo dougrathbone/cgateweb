@@ -235,6 +235,26 @@ describe('DeviceStateManager', () => {
             expect(stateManager.isRelativeLevelOperationActive(address)).toBe(true);
         });
 
+        it('should still respond to matching event after non-matching events arrive first', () => {
+            const callback = jest.fn();
+            const address = '254/56/4';
+
+            stateManager.setupRelativeLevelOperation(address, callback);
+
+            // Emit several non-matching events first
+            stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/5', 150);
+            stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/6', 200);
+
+            expect(callback).not.toHaveBeenCalled();
+            expect(stateManager.isRelativeLevelOperationActive(address)).toBe(true);
+
+            // Now emit the matching event
+            stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, address, 100);
+
+            expect(callback).toHaveBeenCalledWith(100);
+            expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
+        });
+
         it('should timeout and clean up operation', (done) => {
             const callback = jest.fn();
             const address = '254/56/4';
@@ -265,7 +285,7 @@ describe('DeviceStateManager', () => {
             expect(stateManager.isRelativeLevelOperationActive(address1)).toBe(true);
             expect(stateManager.isRelativeLevelOperationActive(address2)).toBe(true);
 
-            // Trigger first operation
+            // Trigger first operation - should not consume second operation's listener
             stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, address1, 100);
 
             expect(callback1).toHaveBeenCalledWith(100);
@@ -273,6 +293,13 @@ describe('DeviceStateManager', () => {
             expect(stateManager.getActiveOperationCount()).toBe(1);
             expect(stateManager.isRelativeLevelOperationActive(address1)).toBe(false);
             expect(stateManager.isRelativeLevelOperationActive(address2)).toBe(true);
+
+            // Trigger second operation - must still work after first was handled
+            stateManager.getEventEmitter().emit(MQTT_TOPIC_SUFFIX_LEVEL, address2, 200);
+
+            expect(callback2).toHaveBeenCalledWith(200);
+            expect(stateManager.getActiveOperationCount()).toBe(0);
+            expect(stateManager.isRelativeLevelOperationActive(address2)).toBe(false);
         });
     });
 

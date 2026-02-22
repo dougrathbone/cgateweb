@@ -30,7 +30,7 @@ The add-on supports two modes:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `cgate_host` | string | `your-cgate-ip` | IP address of the C-Gate server (ignored in managed mode) |
+| `cgate_host` | string | (empty) | IP address of the C-Gate server (ignored in managed mode) |
 | `cgate_port` | integer | `20023` | C-Gate command port |
 | `cgate_event_port` | integer | `20025` | C-Gate event port for real-time device updates |
 | `cgate_project` | string | `HOME` | C-Gate project name |

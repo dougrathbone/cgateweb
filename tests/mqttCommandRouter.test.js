@@ -182,6 +182,36 @@ describe('MqttCommandRouter', () => {
             // Should floor at 0
             expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 0\n');
         });
+
+        it('should still respond after non-matching level events arrive first', () => {
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            // Non-matching events for different addresses should not consume the listener
+            mockInternalEmitter.emit('level', '254/56/2', 80);
+            mockInternalEmitter.emit('level', '254/56/3', 200);
+
+            // Only the GET query should have been queued so far
+            expect(queueSpy).toHaveBeenCalledTimes(1);
+            expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n');
+
+            // Now the matching event arrives
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 126\n');
+        });
+
+        it('should clean up listener after matching event', () => {
+            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+
+            mockInternalEmitter.emit('level', '254/56/1', 100);
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 126\n');
+
+            queueSpy.mockClear();
+
+            // Further events for the same address should not trigger additional ramp commands
+            mockInternalEmitter.emit('level', '254/56/1', 150);
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
     });
 
     describe('Cover Position Commands', () => {

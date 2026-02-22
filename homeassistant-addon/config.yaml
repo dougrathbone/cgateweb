@@ -32,7 +32,7 @@ options:
   cgate_mode: "remote"
 
   # C-Gate connection settings
-  cgate_host: "your-cgate-ip"
+  cgate_host: ""
   cgate_port: 20023
   cgate_event_port: 20025
   cgate_project: "HOME"
