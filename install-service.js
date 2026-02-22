@@ -51,10 +51,9 @@ function checkDependencies() {
 
 function ensureServiceUser() {
     const username = 'cgateweb';
-    try {
-        runCommand(`id ${username}`);
+    if (runCommand(`id ${username}`)) {
         console.log(`Service user '${username}' already exists ✓`);
-    } catch (_e) {
+    } else {
         console.log(`Creating service user '${username}'...`);
         if (!runCommand(`useradd --system --no-create-home --shell /usr/sbin/nologin ${username}`)) {
             console.error(`Failed to create service user '${username}'.`);
