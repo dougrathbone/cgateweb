@@ -9,7 +9,7 @@ const EnvironmentDetector = require('./EnvironmentDetector');
  */
 class ConfigLoader {
     constructor(options = {}) {
-        this.logger = new Logger('ConfigLoader');
+        this.logger = new Logger({ component: 'ConfigLoader' });
         this.environmentDetector = options.environmentDetector || new EnvironmentDetector();
         this._cachedConfig = null;
         this._httpGet = options.httpGet || null;
@@ -162,7 +162,9 @@ class ConfigLoader {
 
         config.messageinterval = options.message_interval || 200;
 
-        config.logging = options.log_level === 'debug';
+        const validLevels = ['error', 'warn', 'info', 'debug', 'trace'];
+        config.log_level = validLevels.includes(options.log_level) ? options.log_level : 'info';
+        config.logging = config.log_level === 'info' || config.log_level === 'debug' || config.log_level === 'trace';
 
         // Home Assistant Discovery settings
         if (options.ha_discovery_enabled) {

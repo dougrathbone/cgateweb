@@ -59,7 +59,7 @@ class CgateWebBridge {
         this.settings = { ...defaultSettings, ...settings };
         this.logger = createLogger({ 
             component: 'bridge', 
-            level: this.settings.logging ? 'info' : 'warn',
+            level: this.settings.log_level || (this.settings.logging ? 'info' : 'warn'),
             enabled: true 
         });
 

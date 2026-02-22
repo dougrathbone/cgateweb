@@ -30,7 +30,7 @@ class ConnectionManager extends EventEmitter {
         
         this.logger = createLogger({ 
             component: 'connection-manager', 
-            level: settings.logging ? 'info' : 'warn',
+            level: settings.log_level || (settings.logging ? 'info' : 'warn'),
             enabled: true 
         });
 

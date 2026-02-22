@@ -78,6 +78,7 @@ describe('ConfigLoader', () => {
             expect(config.getallperiod).toBe(3600);
             expect(config.retainreads).toBe(true);
             expect(config.messageinterval).toBe(150);
+            expect(config.log_level).toBe('debug');
             expect(config.logging).toBe(true);
             expect(config.ha_discovery_enabled).toBe(true);
             expect(config.ha_discovery_prefix).toBe('homeassistant');
@@ -104,7 +105,8 @@ describe('ConfigLoader', () => {
             expect(config.cbusname).toBe('HOME');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
-            expect(config.logging).toBe(false);
+            expect(config.log_level).toBe('info');
+            expect(config.logging).toBe(true);
             expect(config.cgate_mode).toBe('remote');
         });
 
@@ -185,6 +187,64 @@ describe('ConfigLoader', () => {
             expect(config.cgate_mode).toBe('remote');
             expect(config.cgate_install_source).toBeUndefined();
             expect(config.cgate_download_url).toBeUndefined();
+        });
+
+        test('should enable logging when log_level is info', () => {
+            const infoLevelOptions = {
+                ...mockAddonOptions,
+                log_level: 'info'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(infoLevelOptions));
+
+            const config = configLoader.load();
+
+            expect(config.log_level).toBe('info');
+            expect(config.logging).toBe(true);
+        });
+
+        test('should disable logging when log_level is warn', () => {
+            const warnLevelOptions = {
+                ...mockAddonOptions,
+                log_level: 'warn'
+            };
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(warnLevelOptions));
+
+            const config = configLoader.load();
+
+            expect(config.log_level).toBe('warn');
+            expect(config.logging).toBe(false);
+        });
+
+        test('should pass through log_level to config for all valid levels', () => {
+            const levels = ['error', 'warn', 'info', 'debug', 'trace'];
+            const expectedLogging = { error: false, warn: false, info: true, debug: true, trace: true };
+
+            for (const level of levels) {
+                const opts = { ...mockAddonOptions, log_level: level };
+                fs.existsSync.mockReturnValue(true);
+                fs.readFileSync.mockReturnValue(JSON.stringify(opts));
+
+                configLoader._cachedConfig = null;
+                const config = configLoader.load();
+
+                expect(config.log_level).toBe(level);
+                expect(config.logging).toBe(expectedLogging[level]);
+            }
+        });
+
+        test('should default log_level to info for invalid values', () => {
+            const opts = { ...mockAddonOptions, log_level: 'invalid' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(opts));
+
+            const config = configLoader.load();
+
+            expect(config.log_level).toBe('info');
+            expect(config.logging).toBe(true);
         });
 
         test('should use core-mosquitto as default MQTT host for addon', () => {

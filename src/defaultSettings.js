@@ -12,6 +12,7 @@ const defaultSettings = {
     cgatepassword: null,
     retainreads: false,
     logging: true,
+    log_level: 'info',
     messageinterval: 200,
     maxQueueSize: 1000,
     getallnetapp: null,

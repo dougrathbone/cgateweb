@@ -36,7 +36,7 @@ class EventPublisher {
         
         this.logger = options.logger || createLogger({ 
             component: 'event-publisher', 
-            level: this.settings.logging ? 'info' : 'warn',
+            level: this.settings.log_level || (this.settings.logging ? 'info' : 'warn'),
             enabled: true 
         });
     }
