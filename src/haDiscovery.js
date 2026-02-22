@@ -195,7 +195,7 @@ class HaDiscovery {
         const viaInterface = treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
         if (viaInterface && String(viaInterface.NetworkNumber) === idStr) return viaInterface;
 
-        // Path 2: treeData IS the network node (top-level <Network>)
+        // Path 2: single <Network> wrapper without Interface layer
         if (treeData.Network && String(treeData.Network.NetworkNumber) === idStr) return treeData.Network;
 
         // Path 3: top-level has NetworkNumber directly (flat parse)
