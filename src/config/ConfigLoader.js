@@ -3,6 +3,8 @@ const path = require('path');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 
+const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
+
 /**
  * Loads configuration from either settings.js (standalone) or 
  * Home Assistant addon options (/data/options.json)
@@ -121,7 +123,14 @@ class ConfigLoader {
         if (config.cgate_mode === 'managed') {
             config.cbusip = '127.0.0.1';
         } else {
-            config.cbusip = options.cgate_host || '';
+            if (!options.cgate_host) {
+                throw new Error(
+                    'C-Gate host address is required when running in remote mode. ' +
+                    'Please set \'cgate_host\' in the addon configuration to the IP address ' +
+                    'of your C-Gate server (e.g., "192.168.1.100").'
+                );
+            }
+            config.cbusip = options.cgate_host;
         }
         config.cbuscommandport = options.cgate_port || 20023;
         config.cbuseventport = options.cgate_event_port || 20025;
@@ -244,6 +253,15 @@ class ConfigLoader {
     async applyMqttAutoDetection(settings) {
         const mqttConfig = await this.detectMqttConfig();
         if (!mqttConfig) {
+            const hasDefaultBroker = DEFAULT_MQTT_VALUES.includes(settings.mqtt);
+            const missingCredentials = !settings.mqttusername || !settings.mqttpassword;
+            if (hasDefaultBroker && missingCredentials) {
+                this.logger.warn(
+                    'MQTT auto-detection from Supervisor API failed and no MQTT credentials are configured. ' +
+                    `MQTT broker "${settings.mqtt || '(not set)'}" may require authentication. ` +
+                    'Set mqtt_username/mqtt_password in addon options if connection fails.'
+                );
+            }
             return settings;
         }
 
@@ -255,8 +273,7 @@ class ConfigLoader {
             settings.mqttpassword = mqttConfig.password;
             this.logger.info('Applied auto-detected MQTT password');
         }
-        const defaultMqttValues = ['127.0.0.1:1883', 'core-mosquitto:1883', undefined, null, ''];
-        if (defaultMqttValues.includes(settings.mqtt)) {
+        if (DEFAULT_MQTT_VALUES.includes(settings.mqtt)) {
             const detectedMqtt = `${mqttConfig.host}:${mqttConfig.port}`;
             settings.mqtt = detectedMqtt;
             this.logger.info(`Applied auto-detected MQTT broker: ${detectedMqtt}`);

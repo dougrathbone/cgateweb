@@ -680,6 +680,47 @@ describe('ConfigLoader', () => {
             expect(result).toBe(settings);
             expect(settings.mqttusername).toBeUndefined();
         });
+
+        test('should warn when auto-detection fails and default broker has no credentials', async () => {
+            delete process.env.SUPERVISOR_TOKEN;
+            const loader = new ConfigLoader();
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+            const warnSpy = jest.spyOn(loader.logger, 'warn');
+
+            const settings = { mqtt: 'core-mosquitto:1883' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('MQTT auto-detection from Supervisor API failed')
+            );
+            expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('mqtt_username/mqtt_password')
+            );
+        });
+
+        test('should not warn when auto-detection fails but credentials are configured', async () => {
+            delete process.env.SUPERVISOR_TOKEN;
+            const loader = new ConfigLoader();
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+            const warnSpy = jest.spyOn(loader.logger, 'warn');
+
+            const settings = { mqtt: 'core-mosquitto:1883', mqttusername: 'user', mqttpassword: 'pass' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
+
+        test('should not warn when auto-detection fails but broker is explicitly configured', async () => {
+            delete process.env.SUPERVISOR_TOKEN;
+            const loader = new ConfigLoader();
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+            const warnSpy = jest.spyOn(loader.logger, 'warn');
+
+            const settings = { mqtt: 'my-broker.local:1883' };
+            await loader.applyMqttAutoDetection(settings);
+
+            expect(warnSpy).not.toHaveBeenCalled();
+        });
     });
 
     describe('caching and reloading', () => {
