@@ -42,7 +42,6 @@ options:
 
   # C-Gate managed mode settings
   cgate_install_source: "download"
-  cgate_download_url: ""
 
   # C-Bus monitoring settings
   getall_networks:
@@ -63,7 +62,6 @@ options:
   ha_discovery_networks:
     - 254
   ha_discovery_cover_app_id: 203
-  ha_discovery_switch_app_id: null
 
 schema:
   # C-Gate mode
@@ -77,7 +75,7 @@ schema:
 
   # C-Gate managed mode settings
   cgate_install_source: "list(download|upload)"
-  cgate_download_url: "url?"
+  cgate_download_url: "str?"
 
   # MQTT settings (auto-detected from Mosquitto add-on)
   mqtt_host: "str?"

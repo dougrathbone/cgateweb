@@ -1,9 +1,8 @@
-#!/usr/bin/execlineb -S1
+#!/usr/bin/with-contenv bashio
 # ==============================================================================
 # cgateweb service finish script
 # ==============================================================================
 
-if { s6-test ${1} -ne 0 }
-if { s6-test ${1} -ne 256 }
-
-s6-nuke ${1}
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+    bashio::log.warning "cgateweb exited with code ${1}, will restart"
+fi

@@ -134,10 +134,9 @@ class HaDiscovery {
         this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
         const startTime = Date.now();
         
-        // Basic validation of the parsed tree data structure
-        const networkData = treeData && treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
-        if (!networkData || networkData.NetworkNumber !== String(networkId)) {
-             this.logger.warn(`TreeXML for network ${networkId} seems malformed or doesn't match expected structure.`);
+        const networkData = this._findNetworkData(networkId, treeData);
+        if (!networkData) {
+             this.logger.warn(`TreeXML for network ${networkId}: could not find network data. Top-level keys: ${JSON.stringify(Object.keys(treeData || {}))}`);
              return;
         }
 
@@ -182,6 +181,39 @@ class HaDiscovery {
 
         const duration = Date.now() - startTime;
         this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms)`);
+    }
+
+    /**
+     * Locate the Network node within parsed TreeXML, handling different
+     * XML structures that C-Gate versions may produce.
+     */
+    _findNetworkData(networkId, treeData) {
+        if (!treeData) return null;
+        const idStr = String(networkId);
+
+        // Path 1: <Network><Interface><Network NetworkNumber="254">
+        const viaInterface = treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
+        if (viaInterface && String(viaInterface.NetworkNumber) === idStr) return viaInterface;
+
+        // Path 2: treeData IS the network node (top-level <Network>)
+        if (treeData.Network && String(treeData.Network.NetworkNumber) === idStr) return treeData.Network;
+
+        // Path 3: top-level has NetworkNumber directly (flat parse)
+        if (String(treeData.NetworkNumber) === idStr) return treeData;
+
+        // Path 4: wrapped in a container element -- walk one level
+        for (const key of Object.keys(treeData)) {
+            const child = treeData[key];
+            if (child && typeof child === 'object') {
+                if (String(child.NetworkNumber) === idStr) return child;
+                if (child.Network && String(child.Network.NetworkNumber) === idStr) return child.Network;
+                if (child.Interface && child.Interface.Network && String(child.Interface.Network.NetworkNumber) === idStr) {
+                    return child.Interface.Network;
+                }
+            }
+        }
+
+        return null;
     }
 
     _processLightingGroups(networkId, appId, groups) {

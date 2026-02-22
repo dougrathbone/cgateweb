@@ -6,8 +6,8 @@
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
 
 if [[ "${CGATE_MODE}" != "managed" ]]; then
-    bashio::log.info "C-Gate mode is '${CGATE_MODE}', C-Gate service disabled"
-    exec s6-svc -Od /var/run/s6/services/cgate
+    bashio::log.info "C-Gate mode is '${CGATE_MODE}', C-Gate service sleeping"
+    exec sleep infinity
 fi
 
 CGATE_DIR="/data/cgate"
