@@ -113,12 +113,16 @@ async function main() {
     }
 
     let labels = result.labels;
+    let preservedSections = {};
 
     if (args.merge && fs.existsSync(args.output)) {
         console.log(`Merging with existing file: ${args.output}`);
         try {
             const existing = JSON.parse(fs.readFileSync(args.output, 'utf8'));
             labels = { ...existing.labels, ...result.labels };
+            if (existing.type_overrides) preservedSections.type_overrides = existing.type_overrides;
+            if (existing.entity_ids) preservedSections.entity_ids = existing.entity_ids;
+            if (existing.exclude) preservedSections.exclude = existing.exclude;
         } catch (err) {
             console.warn(`Warning: Could not read existing file for merge: ${err.message}`);
         }
@@ -128,7 +132,8 @@ async function main() {
         version: 1,
         source: filename,
         generated: new Date().toISOString(),
-        labels
+        labels,
+        ...preservedSections
     };
 
     const outputPath = path.resolve(args.output);
