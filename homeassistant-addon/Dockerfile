@@ -23,9 +23,9 @@ COPY index.js ./
 
 RUN mkdir -p /data /share/cgate
 
-COPY homeassistant-addon/rootfs /
+COPY rootfs /
 
-COPY homeassistant-addon/run.sh /
+COPY run.sh /
 RUN chmod a+x /run.sh && \
     chmod a+x /etc/cont-init.d/*.sh && \
     chmod a+x /etc/services.d/*/run && \
