@@ -4,11 +4,11 @@ cgateweb
 [![Node.js CI](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml)
 [![Build and Deploy Home Assistant Addon](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml)
 
-MQTT interface for C-Bus lighting written in Node.js.
+MQTT bridge for Clipsal C-Bus lighting systems, written in Node.js. Available as a **Home Assistant Add-on** or as a standalone service.
 
-This script acts as a middleware broker that connects to C-Gate over telnet and publishes the events to an MQTT broker.
+Connects to C-Gate over TCP, publishes C-Bus events to an MQTT broker, and supports Home Assistant MQTT Discovery for automatic device configuration. Control your C-Bus lights, covers, switches, and sensors from Home Assistant or any MQTT-compatible platform.
 
-(If you're looking for HVAC, I haven't/can't try it but have a look at this fork: https://github.com/mminehanNZ/cgateweb)
+> **Looking for HVAC support?** See this fork: https://github.com/mminehanNZ/cgateweb
 
 ### Install:
 

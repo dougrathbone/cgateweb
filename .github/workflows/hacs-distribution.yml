@@ -35,7 +35,8 @@ jobs:
       id: version
       run: |
         if [[ $GITHUB_REF == refs/tags/* ]]; then
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${VERSION#v}
         else
           VERSION=$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA:0:7}
         fi
