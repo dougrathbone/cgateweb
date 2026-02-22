@@ -1,38 +1,32 @@
 ARG BUILD_FROM
 FROM $BUILD_FROM
 
-# Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Node.js and npm
 RUN \
     apk add --no-cache \
         nodejs \
-        npm \
-    && npm install -g npm@latest
+        npm
 
-# Set work directory
 WORKDIR /app
 
-# Copy package files first for better caching
 COPY package*.json ./
 
-# Install dependencies
 RUN npm ci --only=production
 
-# Copy application source
 COPY src/ ./src/
 COPY index.js ./
-COPY *.md ./
 
-# Create data directory for addon configuration
 RUN mkdir -p /data
 
-# Copy run script
 COPY homeassistant-addon/run.sh /
 RUN chmod a+x /run.sh
 
-# Labels
+ARG BUILD_ARCH
+ARG BUILD_DATE
+ARG BUILD_REF
+ARG BUILD_VERSION
+
 LABEL \
     io.hass.name="C-Gate Web Bridge" \
     io.hass.description="Bridge between Clipsal C-Bus systems and MQTT/Home Assistant" \
