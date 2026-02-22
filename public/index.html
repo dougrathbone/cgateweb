@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>C-Bus Label Editor - cgateweb</title>
+<style>
+:root {
+  --bg: #f8f9fa;
+  --surface: #ffffff;
+  --surface-alt: #f1f3f5;
+  --border: #dee2e6;
+  --text: #212529;
+  --text-muted: #868e96;
+  --primary: #228be6;
+  --primary-hover: #1c7ed6;
+  --success: #40c057;
+  --success-bg: #d3f9d8;
+  --danger: #fa5252;
+  --danger-bg: #ffe3e3;
+  --warning: #fd7e14;
+  --warning-bg: #fff3bf;
+  --radius: 6px;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1b1e;
+    --surface: #25262b;
+    --surface-alt: #2c2e33;
+    --border: #373a40;
+    --text: #c1c2c5;
+    --text-muted: #909296;
+    --primary: #4dabf7;
+    --primary-hover: #74c0fc;
+    --success: #51cf66;
+    --success-bg: #2b3a2e;
+    --danger: #ff6b6b;
+    --danger-bg: #3a2b2b;
+    --warning: #ffa94d;
+    --warning-bg: #3a352b;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  padding: 0;
+}
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+.status-bar {
+  display: flex;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+.status-item { display: flex; gap: 4px; align-items: center; }
+.status-value { font-weight: 600; }
+
+.section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+.section-header {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.section-header h2 { font-size: 0.95rem; font-weight: 600; }
+.section-body { padding: 14px; }
+.section-body.collapsed { display: none; }
+
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone.dragover {
+  border-color: var(--primary);
+  background: rgba(34, 139, 230, 0.05);
+}
+.drop-zone p { color: var(--text-muted); margin-bottom: 8px; }
+.drop-zone input[type="file"] { display: none; }
+
+.import-options {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: center;
+}
+.import-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface-alt);
+  border-radius: var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  font-family: monospace;
+  display: none;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.search-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.search-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+.filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+thead th {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid var(--border);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+thead th:hover { color: var(--text); }
+thead th.no-sort { cursor: default; }
+thead th.no-sort:hover { color: var(--text-muted); }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:nth-child(even) { background: var(--surface-alt); }
+tbody tr:hover { background: rgba(34, 139, 230, 0.04); }
+tbody tr.excluded { opacity: 0.5; }
+td { padding: 6px 10px; vertical-align: middle; }
+td.addr { font-family: monospace; font-size: 0.85rem; white-space: nowrap; }
+td.label-cell { position: relative; }
+.label-display {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-height: 1.5em;
+  display: block;
+}
+.label-display:hover { background: rgba(34, 139, 230, 0.08); }
+.label-input, .eid-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: inherit;
+  font-family: inherit;
+}
+.eid-display {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-height: 1.5em;
+  display: block;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.eid-display:hover { background: rgba(34, 139, 230, 0.08); }
+.eid-display.has-value { color: var(--text); }
+td.source-cell {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.badge-custom { background: var(--success-bg); color: var(--success); }
+.badge-fallback { background: var(--warning-bg); color: var(--warning); }
+.badge-cover { background: #e7f5ff; color: #1971c2; }
+.badge-switch { background: #fff3bf; color: #e67700; }
+.badge-light { background: var(--surface-alt); color: var(--text-muted); }
+td.actions-cell { white-space: nowrap; }
+
+.type-select {
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.type-select:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+
+.exclude-cb {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--danger);
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.1s;
+}
+button:hover { background: var(--surface-alt); }
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+button.primary:hover { background: var(--primary-hover); }
+button.danger { color: var(--danger); }
+button.danger:hover { background: var(--danger-bg); }
+button.small { padding: 2px 8px; font-size: 0.8rem; }
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--success);
+  color: #fff;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(80px);
+  opacity: 0;
+  transition: transform 0.2s, opacity 0.2s;
+  z-index: 100;
+}
+.toast.visible { transform: translateY(0); opacity: 1; }
+.toast.error { background: var(--danger); }
+
+.add-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.add-row input, .add-row select {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.add-row input[type="text"]:first-of-type { font-family: monospace; }
+.empty-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.empty-state p { margin-bottom: 8px; }
+
+.chevron { transition: transform 0.15s; display: inline-block; }
+.chevron.open { transform: rotate(90deg); }
+
+@media (prefers-color-scheme: dark) {
+  .badge-cover { background: #1b2838; color: #74c0fc; }
+  .badge-switch { background: #2e2a1b; color: #ffa94d; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>C-Bus Label Editor</h1>
+    <div class="header-actions">
+      <button class="primary" id="saveBtn" disabled>Save Labels</button>
+    </div>
+  </header>
+
+  <div class="status-bar" id="statusBar">
+    <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
+    <div class="status-item">Custom: <span class="status-value" id="statCustom">-</span></div>
+    <div class="status-item">Overrides: <span class="status-value" id="statOverrides">-</span></div>
+    <div class="status-item">Excluded: <span class="status-value" id="statExcluded">-</span></div>
+    <div class="status-item">Unsaved: <span class="status-value" id="statDirty">0</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-section="import">
+      <h2><span class="chevron open" id="importChevron">&#9654;</span> Import from Clipsal Toolkit</h2>
+    </div>
+    <div class="section-body" id="importBody">
+      <div class="drop-zone" id="dropZone">
+        <p>Drag and drop a .cbz or .xml file here, or click to browse</p>
+        <button>Choose File</button>
+        <input type="file" id="fileInput" accept=".cbz,.xml">
+      </div>
+      <div class="import-options" id="importOptions" style="display:none">
+        <label><input type="checkbox" id="mergeCheck" checked> Merge with existing labels</label>
+        <button class="primary" id="confirmImport">Import Labels</button>
+        <button id="cancelImport">Cancel</button>
+      </div>
+      <div class="import-preview" id="importPreview"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-section="labels">
+      <h2><span class="chevron open" id="labelsChevron">&#9654;</span> Labels</h2>
+    </div>
+    <div class="section-body" id="labelsBody">
+      <div class="toolbar">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by address, label, or entity ID...">
+        <select class="filter-select" id="typeFilter">
+          <option value="">All types</option>
+          <option value="light">Lights</option>
+          <option value="cover">Covers</option>
+          <option value="switch">Switches</option>
+          <option value="excluded">Excluded</option>
+        </select>
+      </div>
+      <div id="tableContainer"></div>
+      <div class="add-row">
+        <input type="text" id="addAddress" placeholder="network/app/group" style="width:160px">
+        <input type="text" id="addLabel" placeholder="Label name" style="flex:1">
+        <select id="addType">
+          <option value="">light (default)</option>
+          <option value="cover">cover</option>
+          <option value="switch">switch</option>
+        </select>
+        <button id="addBtn">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function() {
+  const API_BASE = getApiBase();
+  let labels = {};
+  let typeOverrides = {};
+  let entityIds = {};
+  let excludeList = [];
+  let dirtyLabels = {};
+  let dirtyTypes = {};
+  let dirtyEntityIds = {};
+  let dirtyExcludes = {};
+  let sortCol = 'address';
+  let sortDir = 1;
+  let pendingImport = null;
+
+  function getApiBase() {
+    const match = window.location.pathname.match(/^(\/api\/hassio_ingress\/[^/]+)/);
+    return match ? match[1] : '';
+  }
+
+  async function api(path, options = {}) {
+    const res = await fetch(API_BASE + path, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      ...options
+    });
+    return res.json();
+  }
+
+  function isDirty() {
+    return Object.keys(dirtyLabels).length > 0 ||
+           Object.keys(dirtyTypes).length > 0 ||
+           Object.keys(dirtyEntityIds).length > 0 ||
+           Object.keys(dirtyExcludes).length > 0;
+  }
+
+  async function loadLabels() {
+    try {
+      const data = await api('/api/labels');
+      labels = data.labels || {};
+      typeOverrides = data.type_overrides || {};
+      entityIds = data.entity_ids || {};
+      excludeList = data.exclude || [];
+      dirtyLabels = {};
+      dirtyTypes = {};
+      dirtyEntityIds = {};
+      dirtyExcludes = {};
+      render();
+    } catch (e) {
+      showToast('Failed to load labels: ' + e.message, true);
+    }
+  }
+
+  async function saveLabels() {
+    const mergedLabels = { ...labels, ...dirtyLabels };
+    for (const k of Object.keys(mergedLabels)) {
+      if (mergedLabels[k] === null) delete mergedLabels[k];
+    }
+
+    const mergedTypes = { ...typeOverrides, ...dirtyTypes };
+    for (const k of Object.keys(mergedTypes)) {
+      if (mergedTypes[k] === null || mergedTypes[k] === '' || mergedTypes[k] === 'light') delete mergedTypes[k];
+    }
+
+    const mergedEids = { ...entityIds, ...dirtyEntityIds };
+    for (const k of Object.keys(mergedEids)) {
+      if (mergedEids[k] === null || mergedEids[k] === '') delete mergedEids[k];
+    }
+
+    let mergedExcludes = [...excludeList];
+    for (const [k, v] of Object.entries(dirtyExcludes)) {
+      if (v && !mergedExcludes.includes(k)) mergedExcludes.push(k);
+      if (!v) mergedExcludes = mergedExcludes.filter(x => x !== k);
+    }
+
+    try {
+      const payload = { labels: mergedLabels };
+      if (Object.keys(mergedTypes).length > 0) payload.type_overrides = mergedTypes;
+      if (Object.keys(mergedEids).length > 0) payload.entity_ids = mergedEids;
+      if (mergedExcludes.length > 0) payload.exclude = mergedExcludes;
+
+      const data = await api('/api/labels', {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      labels = data.labels || mergedLabels;
+      typeOverrides = mergedTypes;
+      entityIds = mergedEids;
+      excludeList = mergedExcludes;
+      dirtyLabels = {};
+      dirtyTypes = {};
+      dirtyEntityIds = {};
+      dirtyExcludes = {};
+      render();
+      showToast('Saved (' + data.count + ' labels). HA Discovery will update shortly.');
+    } catch (e) {
+      showToast('Failed to save: ' + e.message, true);
+    }
+  }
+
+  function getAllLabels() {
+    const all = { ...labels };
+    for (const [k, v] of Object.entries(dirtyLabels)) {
+      if (v === null) delete all[k];
+      else all[k] = v;
+    }
+    return all;
+  }
+
+  function getType(addr) {
+    if (addr in dirtyTypes) return dirtyTypes[addr] || 'light';
+    return typeOverrides[addr] || 'light';
+  }
+
+  function getEntityId(addr) {
+    if (addr in dirtyEntityIds) return dirtyEntityIds[addr] || '';
+    return entityIds[addr] || '';
+  }
+
+  function isExcluded(addr) {
+    if (addr in dirtyExcludes) return dirtyExcludes[addr];
+    return excludeList.includes(addr);
+  }
+
+  function render() {
+    const all = getAllLabels();
+    const keys = Object.keys(all);
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const typeFilter = document.getElementById('typeFilter').value;
+
+    const filtered = keys.filter(function(k) {
+      if (typeFilter === 'excluded') return isExcluded(k);
+      if (typeFilter && getType(k) !== typeFilter) return false;
+      if (!search) return true;
+      return k.toLowerCase().includes(search) ||
+             (all[k] || '').toLowerCase().includes(search) ||
+             getEntityId(k).toLowerCase().includes(search);
+    });
+
+    filtered.sort(function(a, b) {
+      var va, vb;
+      if (sortCol === 'address') {
+        var pa = a.split('/').map(Number);
+        var pb = b.split('/').map(Number);
+        va = pa[0] * 100000 + pa[1] * 1000 + pa[2];
+        vb = pb[0] * 100000 + pb[1] * 1000 + pb[2];
+      } else if (sortCol === 'type') {
+        va = getType(a);
+        vb = getType(b);
+      } else if (sortCol === 'entity_id') {
+        va = getEntityId(a).toLowerCase();
+        vb = getEntityId(b).toLowerCase();
+      } else {
+        va = (all[a] || '').toLowerCase();
+        vb = (all[b] || '').toLowerCase();
+      }
+      if (va < vb) return -sortDir;
+      if (va > vb) return sortDir;
+      return 0;
+    });
+
+    var container = document.getElementById('tableContainer');
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>No labels found</p><p>Import a Clipsal project file or add labels manually below.</p></div>';
+    } else {
+      var rows = filtered.map(function(k) {
+        var val = all[k];
+        var type = getType(k);
+        var eid = getEntityId(k);
+        var excl = isExcluded(k);
+        var rowDirty = (k in dirtyLabels) || (k in dirtyTypes) || (k in dirtyEntityIds) || (k in dirtyExcludes);
+
+        var typeBadge = type === 'cover' ? 'badge-cover' : type === 'switch' ? 'badge-switch' : 'badge-light';
+        var trClass = excl ? ' class="excluded"' : '';
+
+        return '<tr' + trClass + '>' +
+          '<td class="addr">' + esc(k) + '</td>' +
+          '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
+          '<td><select class="type-select" data-type-key="' + esc(k) + '">' +
+            '<option value="light"' + (type === 'light' ? ' selected' : '') + '>light</option>' +
+            '<option value="cover"' + (type === 'cover' ? ' selected' : '') + '>cover</option>' +
+            '<option value="switch"' + (type === 'switch' ? ' selected' : '') + '>switch</option>' +
+          '</select></td>' +
+          '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
+          '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
+          '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +
+          '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
+          '</tr>';
+      }).join('');
+
+      container.innerHTML =
+        '<table><thead><tr>' +
+        '<th data-sort="address">Address' + sortArrow('address') + '</th>' +
+        '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
+        '<th data-sort="type">Type' + sortArrow('type') + '</th>' +
+        '<th data-sort="entity_id">Entity ID' + sortArrow('entity_id') + '</th>' +
+        '<th class="no-sort">Excl</th>' +
+        '<th class="no-sort"></th>' +
+        '<th class="no-sort"></th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table>';
+    }
+
+    var allCount = Object.keys(all).length;
+    var overrideCount = Object.keys(typeOverrides).length + Object.keys(dirtyTypes).filter(function(k) { return dirtyTypes[k] && dirtyTypes[k] !== 'light'; }).length;
+    var excludedCount = keys.filter(function(k) { return isExcluded(k); }).length;
+
+    document.getElementById('statTotal').textContent = allCount;
+    document.getElementById('statCustom').textContent = Object.keys(labels).length;
+    document.getElementById('statOverrides').textContent = overrideCount;
+    document.getElementById('statExcluded').textContent = excludedCount;
+    document.getElementById('statDirty').textContent = isDirty() ? 'yes' : '0';
+    document.getElementById('saveBtn').disabled = !isDirty();
+  }
+
+  function sortArrow(col) {
+    if (sortCol !== col) return '';
+    return sortDir === 1 ? ' &#9650;' : ' &#9660;';
+  }
+
+  function esc(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, isError) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast visible' + (isError ? ' error' : '');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(function() { t.className = 'toast'; }, 3000);
+  }
+
+  // --- Table interactions ---
+  document.getElementById('tableContainer').addEventListener('click', function(e) {
+    // Inline label editing
+    var display = e.target.closest('.label-display');
+    if (display) {
+      var key = display.dataset.key;
+      var current = getAllLabels()[key] || '';
+      var input = document.createElement('input');
+      input.className = 'label-input';
+      input.value = current;
+      display.replaceWith(input);
+      input.focus();
+      input.select();
+
+      function commitLabel() {
+        var newVal = input.value.trim();
+        if (newVal !== (labels[key] || '')) {
+          dirtyLabels[key] = newVal;
+        } else {
+          delete dirtyLabels[key];
+        }
+        render();
+      }
+      input.addEventListener('blur', commitLabel);
+      input.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitLabel(); }
+        if (ev.key === 'Escape') { delete dirtyLabels[key]; render(); }
+      });
+      return;
+    }
+
+    // Inline entity ID editing
+    var eidDisplay = e.target.closest('.eid-display');
+    if (eidDisplay) {
+      var eidKey = eidDisplay.dataset.eidKey;
+      var currentEid = getEntityId(eidKey);
+      var eidInput = document.createElement('input');
+      eidInput.className = 'eid-input';
+      eidInput.value = currentEid;
+      eidInput.placeholder = 'auto';
+      eidInput.style.fontFamily = 'monospace';
+      eidInput.style.fontSize = '0.85rem';
+      eidDisplay.replaceWith(eidInput);
+      eidInput.focus();
+      eidInput.select();
+
+      function commitEid() {
+        var newVal = eidInput.value.trim();
+        if (newVal !== (entityIds[eidKey] || '')) {
+          dirtyEntityIds[eidKey] = newVal || null;
+        } else {
+          delete dirtyEntityIds[eidKey];
+        }
+        render();
+      }
+      eidInput.addEventListener('blur', commitEid);
+      eidInput.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitEid(); }
+        if (ev.key === 'Escape') { delete dirtyEntityIds[eidKey]; render(); }
+      });
+      return;
+    }
+
+    // Delete button
+    var delBtn = e.target.closest('[data-delete]');
+    if (delBtn) {
+      var delKey = delBtn.dataset.delete;
+      if (delKey in labels) {
+        dirtyLabels[delKey] = null;
+      } else {
+        delete dirtyLabels[delKey];
+      }
+      delete dirtyTypes[delKey];
+      delete dirtyEntityIds[delKey];
+      delete dirtyExcludes[delKey];
+      render();
+      return;
+    }
+
+    // Sort headers
+    var sortTh = e.target.closest('[data-sort]');
+    if (sortTh) {
+      var col = sortTh.dataset.sort;
+      if (sortCol === col) sortDir *= -1;
+      else { sortCol = col; sortDir = 1; }
+      render();
+    }
+  });
+
+  // Type select changes
+  document.getElementById('tableContainer').addEventListener('change', function(e) {
+    var typeSelect = e.target.closest('.type-select');
+    if (typeSelect) {
+      var key = typeSelect.dataset.typeKey;
+      var newType = typeSelect.value;
+      var origType = typeOverrides[key] || 'light';
+      if (newType !== origType) {
+        dirtyTypes[key] = newType === 'light' ? null : newType;
+      } else {
+        delete dirtyTypes[key];
+      }
+      render();
+      return;
+    }
+
+    var exclCb = e.target.closest('.exclude-cb');
+    if (exclCb) {
+      var exclKey = exclCb.dataset.exclKey;
+      var checked = exclCb.checked;
+      var origExcl = excludeList.includes(exclKey);
+      if (checked !== origExcl) {
+        dirtyExcludes[exclKey] = checked;
+      } else {
+        delete dirtyExcludes[exclKey];
+      }
+      render();
+    }
+  });
+
+  // --- Search & filter ---
+  document.getElementById('searchInput').addEventListener('input', render);
+  document.getElementById('typeFilter').addEventListener('change', render);
+
+  // --- Save ---
+  document.getElementById('saveBtn').addEventListener('click', saveLabels);
+
+  // --- Add row ---
+  document.getElementById('addBtn').addEventListener('click', function() {
+    var addr = document.getElementById('addAddress').value.trim();
+    var label = document.getElementById('addLabel').value.trim();
+    var type = document.getElementById('addType').value;
+    if (!addr || !label) return showToast('Both address and label are required', true);
+    if (!/^\d+\/\d+\/\d+$/.test(addr)) return showToast('Address must be in format: network/app/group (e.g. 254/56/10)', true);
+    dirtyLabels[addr] = label;
+    if (type) dirtyTypes[addr] = type;
+    document.getElementById('addAddress').value = '';
+    document.getElementById('addLabel').value = '';
+    document.getElementById('addType').value = '';
+    render();
+  });
+
+  // --- Section toggle ---
+  document.querySelectorAll('.section-header').forEach(function(hdr) {
+    hdr.addEventListener('click', function() {
+      var body = hdr.nextElementSibling;
+      var chevron = hdr.querySelector('.chevron');
+      body.classList.toggle('collapsed');
+      chevron.classList.toggle('open');
+    });
+  });
+
+  // --- File import ---
+  var dropZone = document.getElementById('dropZone');
+  var fileInput = document.getElementById('fileInput');
+
+  dropZone.addEventListener('click', function() { fileInput.click(); });
+  dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('dragover'); });
+  dropZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', function() {
+    if (fileInput.files.length) handleFile(fileInput.files[0]);
+    fileInput.value = '';
+  });
+
+  function handleFile(file) {
+    pendingImport = file;
+    var preview = document.getElementById('importPreview');
+    preview.style.display = 'block';
+    preview.textContent = 'Selected: ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)\nClick "Import Labels" to process...';
+    document.getElementById('importOptions').style.display = 'flex';
+  }
+
+  document.getElementById('confirmImport').addEventListener('click', async function() {
+    if (!pendingImport) return;
+    var merge = document.getElementById('mergeCheck').checked;
+    var formData = new FormData();
+    formData.append('file', pendingImport);
+
+    try {
+      var res = await fetch(API_BASE + '/api/labels/import?merge=' + merge, {
+        method: 'POST',
+        body: formData
+      });
+      var data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      showToast('Imported ' + data.imported + ' labels (' + data.total + ' total). HA Discovery will update shortly.');
+      pendingImport = null;
+      document.getElementById('importOptions').style.display = 'none';
+      document.getElementById('importPreview').style.display = 'none';
+      await loadLabels();
+    } catch (e) {
+      showToast('Import failed: ' + e.message, true);
+    }
+  });
+
+  document.getElementById('cancelImport').addEventListener('click', function() {
+    pendingImport = null;
+    document.getElementById('importOptions').style.display = 'none';
+    document.getElementById('importPreview').style.display = 'none';
+  });
+
+  // Keyboard shortcut: Ctrl/Cmd+S to save
+  document.addEventListener('keydown', function(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      if (isDirty()) saveLabels();
+    }
+  });
+
+  // Init
+  loadLabels();
+})();
+</script>
+</body>
+</html>

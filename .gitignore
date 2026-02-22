@@ -3,3 +3,6 @@ settings.js.bak
 .claude/
 .cursor/mcp.json
 build/
+labels.json
+tools/cbus-labels-backup-*.json
+toolkit-certs/

@@ -135,3 +135,10 @@ configuration:
       встановлення — "download". Перевизначте URL за замовчуванням,
       якщо офіційне розташування завантаження Clipsal зміниться.
       Залиште порожнім, щоб використовувати URL за замовчуванням.
+  cbus_label_file:
+    name: Custom Label File
+    description: >-
+      Path to a JSON file with custom device names for C-Bus groups. Generated
+      by the import tool or the built-in label editor. Labels from this file
+      take priority over names from C-Gate. Auto-detected from common paths
+      if not set. The file is watched and changes are applied automatically.

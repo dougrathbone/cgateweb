@@ -14,12 +14,16 @@ startup: application
 boot: auto
 init: false
 host_network: true
+ingress: true
+ingress_port: 8080
+panel_icon: "mdi:label-outline"
+panel_title: "C-Bus Labels"
 
 ports:
   "8080/tcp": 8080
 
 ports_description:
-  "8080/tcp": "Web interface for debugging and status"
+  "8080/tcp": "C-Bus Label Editor web interface"
 
 homeassistant_api: true
 
@@ -63,6 +67,9 @@ options:
     - 254
   ha_discovery_cover_app_id: 203
 
+  # Label file for custom device names (auto-detected if not set)
+  cbus_label_file: ""
+
 schema:
   # C-Gate mode
   cgate_mode: "list(remote|managed)"
@@ -101,3 +108,4 @@ schema:
   ha_discovery_networks: ["int(1,255)"]
   ha_discovery_cover_app_id: "int(1,255)?"
   ha_discovery_switch_app_id: "int(1,255)?"
+  cbus_label_file: "str?"
