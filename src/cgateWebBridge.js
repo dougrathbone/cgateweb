@@ -125,6 +125,10 @@ class CgateWebBridge {
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
 
+        // Label loader for custom device names (before EventPublisher so it can use type overrides)
+        this.labelLoader = new LabelLoader(this.settings.cbus_label_file || null);
+        this.labelLoader.load();
+
         // Event publisher for MQTT messages -- publishes directly without throttling.
         // MQTT QoS 0 publishes are near-instant TCP buffer writes; the mqtt library
         // handles its own buffering and flow control.
@@ -132,6 +136,7 @@ class CgateWebBridge {
             settings: this.settings,
             publishFn: (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
             mqttOptions: this._mqttOptions,
+            labelLoader: this.labelLoader,
             logger: this.logger
         });
 
@@ -142,10 +147,6 @@ class CgateWebBridge {
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             logger: this.logger
         });
-
-        // Label loader for custom device names
-        this.labelLoader = new LabelLoader(this.settings.cbus_label_file || null);
-        this.labelLoader.load();
 
         // Web server for label editing UI
         const ingressBasePath = process.env.INGRESS_ENTRY || '';

@@ -399,4 +399,186 @@ describe('EventPublisher', () => {
             expect(positionCall).toBeUndefined();
         });
     });
+
+    describe('Type override cover publishing', () => {
+        let mockLabelLoader;
+
+        beforeEach(() => {
+            const typeOverrides = new Map([
+                ['254/56/0', 'cover'],
+                ['254/56/21', 'cover'],
+                ['254/56/6', 'switch']
+            ]);
+            mockLabelLoader = {
+                getTypeOverrides: jest.fn().mockReturnValue(typeOverrides)
+            };
+        });
+
+        it('should publish position for a lighting group type-overridden to cover', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                labelLoader: mockLabelLoader,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '0',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/0/state', 'ON', mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/0/level', '50', mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/0/position', '50', mockMqttOptions
+            );
+        });
+
+        it('should use cover state logic for type-overridden covers', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                labelLoader: mockLabelLoader,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '21',
+                getLevel: () => 0,
+                getAction: () => 'ramp'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/21/state', 'OFF', mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/21/position', '0', mockMqttOptions
+            );
+        });
+
+        it('should not publish position for a lighting group not overridden to cover', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                labelLoader: mockLabelLoader,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '16',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            const positionCall = mockPublishFn.mock.calls.find(
+                call => call[0].endsWith('/position')
+            );
+            expect(positionCall).toBeUndefined();
+        });
+
+        it('should not publish position for a switch type override', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                labelLoader: mockLabelLoader,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '6',
+                getLevel: () => 255,
+                getAction: () => 'on'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            const positionCall = mockPublishFn.mock.calls.find(
+                call => call[0].endsWith('/position')
+            );
+            expect(positionCall).toBeUndefined();
+        });
+
+        it('should fall back to app-ID-only check when labelLoader is null', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '0',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            // Without labelLoader, group 0 on app 56 is a regular light (2 messages)
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            const positionCall = mockPublishFn.mock.calls.find(
+                call => call[0].endsWith('/position')
+            );
+            expect(positionCall).toBeUndefined();
+        });
+
+        it('should still detect covers by app ID even with labelLoader present', () => {
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                labelLoader: mockLabelLoader,
+                logger: mockLogger
+            });
+
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '203',
+                getGroup: () => '5',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            publisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position', '50', mockMqttOptions
+            );
+        });
+    });
 });

@@ -27,12 +27,14 @@ class EventPublisher {
      * @param {Object} options.settings - Bridge settings containing PIR sensor config
      * @param {Function} options.publishFn - Direct MQTT publish function: (topic, payload, options) => void
      * @param {Object} options.mqttOptions - MQTT publishing options (retain, qos, etc.)
+     * @param {Object} [options.labelLoader] - Optional LabelLoader for type override awareness
      * @param {Object} [options.logger] - Optional logger instance
      */
     constructor(options) {
         this.settings = options.settings;
         this.publishFn = options.publishFn;
         this.mqttOptions = options.mqttOptions;
+        this.labelLoader = options.labelLoader || null;
         
         this.logger = options.logger || createLogger({ 
             component: 'event-publisher', 
@@ -57,7 +59,9 @@ class EventPublisher {
 
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
         const isPirSensor = event.getApplication() === this.settings.ha_discovery_pir_app_id;
-        const isCover = event.getApplication() === this.settings.ha_discovery_cover_app_id;
+        const isCoverApp = event.getApplication() === this.settings.ha_discovery_cover_app_id;
+        const isCoverOverride = this._isTypeOverride(event, 'cover');
+        const isCover = isCoverApp || isCoverOverride;
         
         // Calculate level percentage for Home Assistant
         let levelPercent;
@@ -114,6 +118,18 @@ class EventPublisher {
                 );
             }
         }
+    }
+
+    /**
+     * Checks whether the event's group has a type override matching the given type.
+     * Falls back to false when no labelLoader is configured.
+     */
+    _isTypeOverride(event, type) {
+        if (!this.labelLoader) return false;
+        const typeOverrides = this.labelLoader.getTypeOverrides();
+        if (!typeOverrides) return false;
+        const labelKey = `${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
+        return typeOverrides.get(labelKey) === type;
     }
 }
 
