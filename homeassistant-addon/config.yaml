@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.4.1"
+version: "1.4.2"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
