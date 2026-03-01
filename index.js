@@ -37,7 +37,12 @@ try {
         console.error('[ERROR] Please check the addon configuration and restart.');
         process.exit(1);
     }
-    console.error('[ERROR] Using default settings only');
+    const allowFallback = String(process.env.ALLOW_DEFAULT_FALLBACK || '').toLowerCase() === 'true';
+    if (!allowFallback) {
+        console.error('[ERROR] Standalone startup aborted due to invalid configuration.');
+        process.exit(1);
+    }
+    console.error('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using default settings only');
 }
 
 const envOverrides = {
@@ -71,6 +76,8 @@ async function main() {
             console.error('[WARN] MQTT auto-detection failed:', error.message);
         }
     }
+
+    configLoader.validate(settings);
     
     validateWithWarnings(settings);
     

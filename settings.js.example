@@ -116,6 +116,12 @@ exports.ha_discovery_pir_app_id = '36';
 exports.ha_device_manufacturer = 'Clipsal C-Bus via CGateWeb';
 exports.ha_device_via = 'cgateweb_bridge';
 
+// Web UI and API security
+// Bind web interface to localhost by default (recommended)
+exports.web_bind_host = '127.0.0.1';
+// Optional API key for mutating label endpoints (PUT/PATCH/POST)
+// exports.web_api_key = 'replace_with_long_random_key';
+
 // MQTT topic structure
 exports.mqttprefix = 'cbus';  // Creates topics like: cbus/read/254/56/4/state
 

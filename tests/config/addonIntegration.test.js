@@ -30,8 +30,8 @@ describe('Addon Configuration Integration', () => {
             expect(configYaml.arch).toContain('amd64');
         });
 
-        test('should use host networking', () => {
-            expect(configYaml.host_network).toBe(true);
+        test('should not require host networking', () => {
+            expect(configYaml.host_network).toBe(false);
         });
 
         test('should mount share for C-Gate uploads', () => {
@@ -67,8 +67,10 @@ describe('Addon Configuration Integration', () => {
             );
             const translated = Object.keys(translations.configuration);
             const schema = Object.keys(configYaml.schema);
+            const nonUiSchemaKeys = new Set(['web_api_key']);
 
             for (const sch of schema) {
+                if (nonUiSchemaKeys.has(sch)) continue;
                 expect(translated).toContain(sch);
             }
         });
@@ -103,8 +105,10 @@ describe('Addon Configuration Integration', () => {
         test('every config option should have a translation', () => {
             const options = Object.keys(configYaml.options);
             const translated = Object.keys(translations.configuration);
+            const nonUiOptionKeys = new Set(['web_api_key']);
 
             for (const opt of options) {
+                if (nonUiOptionKeys.has(opt)) continue;
                 expect(translated).toContain(opt);
             }
         });

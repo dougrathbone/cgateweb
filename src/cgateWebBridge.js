@@ -152,8 +152,11 @@ class CgateWebBridge {
         const ingressBasePath = process.env.INGRESS_ENTRY || '';
         this.webServer = new WebServer({
             port: this.settings.web_port || 8080,
+            bindHost: this.settings.web_bind_host || '127.0.0.1',
             basePath: ingressBasePath,
             labelLoader: this.labelLoader,
+            apiKey: this.settings.web_api_key || null,
+            allowedOrigins: this.settings.web_allowed_origins || null,
             getStatus: () => this._getBridgeStatus()
         });
 
@@ -165,6 +168,11 @@ class CgateWebBridge {
         this.connectionManager.on('allConnected', () => {
             this._handleAllConnected();
         });
+        this.commandConnectionPool.on('allConnectionsUnhealthy', () => this._updateBridgeReadiness('command-pool-unhealthy'));
+        this.commandConnectionPool.on('connectionLost', () => this._updateBridgeReadiness('command-pool-connection-lost'));
+        this.eventConnection.on('close', () => this._updateBridgeReadiness('event-disconnected'));
+        this.eventConnection.on('error', () => this._updateBridgeReadiness('event-error'));
+        this.mqttManager.on('close', () => this._updateBridgeReadiness('mqtt-disconnected'));
 
         // Set first connection for backward compatibility when pool starts
         this.commandConnectionPool.on('started', () => {
@@ -214,6 +222,7 @@ class CgateWebBridge {
      */
     async start() {
         this.logger.info('Starting cgateweb bridge');
+        this._updateBridgeReadiness('startup');
         
         // Start web server
         try {
@@ -239,6 +248,7 @@ class CgateWebBridge {
      */
     async stop() {
         this.log(`Stopping cgateweb bridge...`);
+        this._updateBridgeReadiness('shutdown');
         
         // Clear periodic tasks
         if (this.periodicGetAllInterval) {
@@ -324,6 +334,8 @@ class CgateWebBridge {
         if (this.settings.ha_discovery_enabled) {
             this.haDiscovery.trigger();
         }
+
+        this._updateBridgeReadiness('all-connected');
     }
 
     // MQTT message handling now delegated to MqttCommandRouter
@@ -414,19 +426,42 @@ class CgateWebBridge {
     }
 
     _getBridgeStatus() {
+        const commandStats = this.commandConnectionPool ? this.commandConnectionPool.getStats() : null;
+        const mqttConnected = !!this.mqttManager.connected;
+        const eventConnected = !!this.eventConnection.connected;
+        const healthyCommandConnections = commandStats ? commandStats.healthyConnections : 0;
+        const ready = mqttConnected && eventConnected && healthyCommandConnections > 0;
+
         return {
             version: require('../package.json').version,
             uptime: process.uptime(),
+            ready,
             connections: {
-                mqtt: this.mqttManager.isConnected ? this.mqttManager.isConnected() : 'unknown',
-                commandPool: this.commandConnectionPool ? 'active' : 'inactive',
-                event: this.eventConnection ? 'active' : 'inactive'
+                mqtt: mqttConnected,
+                commandPool: {
+                    started: commandStats ? commandStats.isStarted : false,
+                    healthyConnections: healthyCommandConnections,
+                    totalConnections: commandStats ? commandStats.totalConnections : 0,
+                    isShuttingDown: commandStats ? commandStats.isShuttingDown : false
+                },
+                event: eventConnected
             },
             discovery: this.haDiscovery ? {
                 count: this.haDiscovery.discoveryCount,
                 labelStats: this.haDiscovery.labelStats
             } : null
         };
+    }
+
+    _updateBridgeReadiness(reason = 'state-change') {
+        const commandStats = this.commandConnectionPool ? this.commandConnectionPool.getStats() : null;
+        const ready = !!(
+            this.mqttManager.connected &&
+            this.eventConnection.connected &&
+            commandStats &&
+            commandStats.healthyConnections > 0
+        );
+        this.mqttManager.setBridgeReady(ready, reason);
     }
 
     // Legacy method compatibility for tests

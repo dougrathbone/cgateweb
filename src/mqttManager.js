@@ -40,6 +40,8 @@ class MqttManager extends EventEmitter {
         this.client = null;
         this.connected = false;
         this._intentionalDisconnect = false;
+        this._bridgeReady = false;
+        this._lastStatusPayload = null;
         this.logger = createLogger({ component: 'MqttManager' });
         this.errorHandler = createErrorHandler('MqttManager');
     }
@@ -78,10 +80,11 @@ class MqttManager extends EventEmitter {
 
     disconnect() {
         this._intentionalDisconnect = true;
+        this._bridgeReady = false;
         if (this.client) {
             if (this.connected) {
                 try {
-                    this.client.publish(MQTT_TOPIC_STATUS, MQTT_PAYLOAD_STATUS_OFFLINE, { retain: true, qos: 1 });
+                    this._publishStatus(MQTT_PAYLOAD_STATUS_OFFLINE);
                 } catch (_e) {
                     // Best effort - don't block shutdown if publish fails
                 }
@@ -188,9 +191,8 @@ class MqttManager extends EventEmitter {
     _handleConnect() {
         this.connected = true;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
-        
-        // Publish online status
-        this.publish(MQTT_TOPIC_STATUS, MQTT_PAYLOAD_STATUS_ONLINE, { retain: true, qos: 1 });
+
+        this._publishStatus(this._bridgeReady ? MQTT_PAYLOAD_STATUS_ONLINE : MQTT_PAYLOAD_STATUS_OFFLINE);
         
         // Subscribe to command topics
         this.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
@@ -206,6 +208,7 @@ class MqttManager extends EventEmitter {
 
     _handleClose() {
         this.connected = false;
+        this._bridgeReady = false;
         
         if (this._intentionalDisconnect) {
             this.logger.info('MQTT Client closed (intentional disconnect).');
@@ -270,6 +273,28 @@ class MqttManager extends EventEmitter {
     _handleMessage(topic, message) {
         const payload = message.toString();
         this.emit('message', topic, payload);
+    }
+
+    setBridgeReady(isReady, reason = 'state-change') {
+        this._bridgeReady = !!isReady;
+        if (!this.connected) return false;
+
+        const payload = this._bridgeReady ? MQTT_PAYLOAD_STATUS_ONLINE : MQTT_PAYLOAD_STATUS_OFFLINE;
+        this.logger.info(`Bridge readiness changed: ${payload} (${reason})`);
+        return this._publishStatus(payload);
+    }
+
+    _publishStatus(payload) {
+        if (!this.client || !this.connected) {
+            return false;
+        }
+        if (this._lastStatusPayload === payload) {
+            return true;
+        }
+
+        this.client.publish(MQTT_TOPIC_STATUS, payload, { retain: true, qos: 1 });
+        this._lastStatusPayload = payload;
+        return true;
     }
 
     // Logging methods that can be overridden

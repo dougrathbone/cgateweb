@@ -102,7 +102,14 @@ class ConfigLoader {
             return config;
         } catch (error) {
             this.logger.error('Failed to load settings.js:', error.message);
-            this.logger.info('Falling back to default configuration');
+            const allowFallback = String(process.env.ALLOW_DEFAULT_FALLBACK || '').toLowerCase() === 'true';
+            if (!allowFallback) {
+                throw new Error(
+                    `Failed to load standalone settings from ${settingsPath}: ${error.message}. ` +
+                    'Set ALLOW_DEFAULT_FALLBACK=true to continue with defaults.'
+                );
+            }
+            this.logger.warn('ALLOW_DEFAULT_FALLBACK=true set; falling back to default configuration');
             const defaultConfig = this._getDefaultConfig();
             defaultConfig._environment.type = 'default';
             return defaultConfig;
@@ -211,6 +218,9 @@ class ConfigLoader {
 
         if (options.web_port) {
             config.web_port = options.web_port;
+        }
+        if (options.web_api_key) {
+            config.web_api_key = options.web_api_key;
         }
 
         return config;

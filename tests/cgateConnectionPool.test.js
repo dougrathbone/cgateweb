@@ -17,10 +17,12 @@ jest.useFakeTimers();
 describe('CgateConnectionPool', () => {
     let pool;
     let mockSettings;
+    let randomSpy;
 
     beforeEach(() => {
         jest.clearAllMocks();
         jest.clearAllTimers();
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
         
         mockSettings = {
             connectionPoolSize: 3,
@@ -45,6 +47,7 @@ describe('CgateConnectionPool', () => {
     });
 
     afterEach(async () => {
+        randomSpy.mockRestore();
         if (pool.isStarted) {
             await pool.stop();
         }

@@ -40,7 +40,10 @@ const defaultSettings = {
     ha_discovery_relay_app_id: null,
     ha_discovery_pir_app_id: null,
     cbus_label_file: null,
-    web_port: 8080
+    web_port: 8080,
+    web_bind_host: '127.0.0.1',
+    web_api_key: null,
+    web_allowed_origins: null
 };
 
 module.exports = { defaultSettings };

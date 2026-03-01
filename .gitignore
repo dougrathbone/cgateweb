@@ -1,4 +1,5 @@
 node_modules
+settings.js
 settings.js.bak
 .claude/
 .cursor/mcp.json

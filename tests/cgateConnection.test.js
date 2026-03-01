@@ -9,6 +9,7 @@ describe('CgateConnection', () => {
     let connection;
     let mockSocket;
     let settings;
+    let randomSpy;
 
     beforeEach(() => {
         // Clear all mocks
@@ -18,6 +19,7 @@ describe('CgateConnection', () => {
         mockSocket = new EventEmitter();
         mockSocket.write = jest.fn();
         mockSocket.destroy = jest.fn();
+        mockSocket.setTimeout = jest.fn();
         mockSocket.destroyed = false;
         
         // Mock net.createConnection
@@ -25,13 +27,17 @@ describe('CgateConnection', () => {
         
         settings = {
             reconnectinitialdelay: 1000,
-            reconnectmaxdelay: 5000
+            reconnectmaxdelay: 5000,
+            connectionTimeout: 5000
         };
+
+        randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
         
         connection = new CgateConnection('command', 'localhost', 20023, settings);
     });
 
     afterEach(() => {
+        randomSpy.mockRestore();
         // Clean up any timers
         jest.clearAllTimers();
         // Clean up connection to avoid async operations after test completion
@@ -102,6 +108,8 @@ describe('CgateConnection', () => {
             expect(mockSocket.listenerCount('close')).toBe(1);
             expect(mockSocket.listenerCount('error')).toBe(1);
             expect(mockSocket.listenerCount('data')).toBe(1);
+            expect(mockSocket.listenerCount('timeout')).toBe(1);
+            expect(mockSocket.setTimeout).toHaveBeenCalledWith(5000);
         });
     });
 
@@ -350,6 +358,7 @@ describe('CgateConnection', () => {
             const secondMockSocket = new EventEmitter();
             secondMockSocket.write = jest.fn();
             secondMockSocket.destroy = jest.fn();
+            secondMockSocket.setTimeout = jest.fn();
             secondMockSocket.destroyed = false;
             net.createConnection.mockReturnValueOnce(secondMockSocket);
             

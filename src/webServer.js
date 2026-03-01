@@ -21,18 +21,31 @@ class WebServer {
     /**
      * @param {Object} options
      * @param {number} options.port - Port to listen on (default 8080)
+ * @param {string} [options.bindHost] - Host interface to bind to (default 127.0.0.1)
      * @param {string} [options.basePath] - Base path prefix for ingress (e.g., '/api/hassio_ingress/abc')
      * @param {import('./labelLoader')} options.labelLoader - Label loader instance
      * @param {Function} [options.getStatus] - Function returning bridge status info
+ * @param {string|null} [options.apiKey] - API key required for mutating endpoints
+ * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (null means '*')
      */
     constructor(options = {}) {
         this.port = (options.port !== null && options.port !== undefined) ? options.port : 8080;
+        this.bindHost = options.bindHost || '127.0.0.1';
         this.basePath = (options.basePath || '').replace(/\/+$/, '');
         this.labelLoader = options.labelLoader;
         this.getStatus = options.getStatus || (() => ({}));
+        this.apiKey = options.apiKey || null;
+        this.allowedOrigins = Array.isArray(options.allowedOrigins)
+            ? options.allowedOrigins
+            : (typeof options.allowedOrigins === 'string' && options.allowedOrigins.trim() !== ''
+                ? options.allowedOrigins.split(',').map((origin) => origin.trim()).filter(Boolean)
+                : null);
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
         this._parser = new CbusProjectParser();
+        if (!this.apiKey) {
+            this.logger.warn('Web API key not configured; mutating endpoints are not authenticated.');
+        }
     }
 
     start() {
@@ -44,8 +57,10 @@ class WebServer {
                 reject(err);
             });
 
-            this._server.listen(this.port, () => {
-                this.logger.info(`Web server listening on port ${this.port}${this.basePath ? ` (base path: ${this.basePath})` : ''}`);
+            this._server.listen(this.port, this.bindHost, () => {
+                this.logger.info(
+                    `Web server listening on ${this.bindHost}:${this.port}${this.basePath ? ` (base path: ${this.basePath})` : ''}`
+                );
                 resolve();
             });
         });
@@ -72,15 +87,16 @@ class WebServer {
                 urlPath = urlPath.slice(this.basePath.length) || '/';
             }
 
-            // CORS for standalone use
-            res.setHeader('Access-Control-Allow-Origin', '*');
-            res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, PATCH, POST, DELETE, OPTIONS');
-            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            this._setCorsHeaders(req, res);
 
             if (req.method === 'OPTIONS') {
                 res.writeHead(204);
                 res.end();
                 return;
+            }
+
+            if (this._isMutatingApiRoute(urlPath, req.method) && !this._isAuthorizedMutation(req)) {
+                return this._sendJSON(res, 401, { error: 'Unauthorized' });
             }
 
             // API routes
@@ -292,6 +308,37 @@ class WebServer {
     _sendJSON(res, statusCode, data) {
         res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(data));
+    }
+
+    _isMutatingApiRoute(urlPath, method) {
+        if (!['PUT', 'PATCH', 'POST', 'DELETE'].includes(method)) return false;
+        return urlPath === '/api/labels' || urlPath === '/api/labels/import';
+    }
+
+    _isAuthorizedMutation(req) {
+        if (!this.apiKey) {
+            return true;
+        }
+
+        const rawAuth = req.headers.authorization || '';
+        const bearer = rawAuth.startsWith('Bearer ') ? rawAuth.slice('Bearer '.length).trim() : null;
+        const headerKey = req.headers['x-api-key'];
+        const provided = bearer || headerKey;
+        return provided === this.apiKey;
+    }
+
+    _setCorsHeaders(req, res) {
+        const requestOrigin = req.headers.origin;
+        let origin = '*';
+        if (this.allowedOrigins && this.allowedOrigins.length > 0) {
+            const isAllowed = requestOrigin && this.allowedOrigins.includes(requestOrigin);
+            origin = isAllowed ? requestOrigin : this.allowedOrigins[0];
+            res.setHeader('Vary', 'Origin');
+        }
+
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, PATCH, POST, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
     }
 
     _readBody(req) {

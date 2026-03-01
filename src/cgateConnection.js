@@ -22,6 +22,7 @@ class CgateConnection extends EventEmitter {
         this.maxReconnectAttempts = 10;
         this.reconnectInitialDelay = settings.reconnectinitialdelay || 1000;
         this.reconnectMaxDelay = settings.reconnectmaxdelay || 60000;
+        this.connectionTimeout = Math.max(1000, settings.connectionTimeout || 5000);
         this.logger = createLogger({ component: `CgateConnection-${type}` });
         
         // Pool support properties
@@ -40,11 +41,13 @@ class CgateConnection extends EventEmitter {
         this.logger.info(`Connecting to C-Gate ${this.type} port: ${this.host}:${this.port}`);
         
         this.socket = net.createConnection(this.port, this.host);
+        this.socket.setTimeout(this.connectionTimeout);
         
         this.socket.on('connect', () => this._handleConnect());
         this.socket.on('close', (hadError) => this._handleClose(hadError));
         this.socket.on('error', (err) => this._handleError(err));
         this.socket.on('data', (data) => this._handleData(data));
+        this.socket.on('timeout', () => this._handleTimeout());
         
         return this;
     }
@@ -137,6 +140,13 @@ class CgateConnection extends EventEmitter {
         this.emit('data', data);
     }
 
+    _handleTimeout() {
+        this.logger.warn(`C-Gate ${this.type} socket timed out after ${this.connectionTimeout}ms`);
+        if (this.socket && !this.socket.destroyed) {
+            this.socket.destroy();
+        }
+    }
+
     _sendInitialCommands() {
         try {
             if (this.socket && !this.socket.destroyed) {
@@ -168,10 +178,12 @@ class CgateConnection extends EventEmitter {
         }
 
         // Exponential backoff, capped at reconnectMaxDelay -- never permanently give up
-        const delay = Math.min(
+        const baseDelay = Math.min(
             this.reconnectInitialDelay * Math.pow(2, this.reconnectAttempts),
             this.reconnectMaxDelay
         );
+        const jitterMultiplier = 0.5 + Math.random();
+        const delay = Math.round(baseDelay * jitterMultiplier);
 
         this.reconnectAttempts++;
         

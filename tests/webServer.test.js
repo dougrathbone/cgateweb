@@ -41,14 +41,14 @@ describe('WebServer', () => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    function request(method, urlPath, body = null) {
+    function request(method, urlPath, body = null, extraHeaders = {}) {
         return new Promise((resolve, reject) => {
             const options = {
                 hostname: '127.0.0.1',
                 port,
                 path: urlPath,
                 method,
-                headers: {}
+                headers: { ...extraHeaders }
             };
             if (body && typeof body === 'string') {
                 options.headers['Content-Type'] = 'application/json';
@@ -252,6 +252,49 @@ describe('WebServer', () => {
 
             expect(res.status).toBe(204);
             expect(res.headers['access-control-allow-origin']).toBe('*');
+        });
+    });
+
+    describe('API key protection', () => {
+        let protectedServer;
+        let protectedPort;
+
+        afterEach(async () => {
+            if (protectedServer) await protectedServer.close();
+        });
+
+        it('should require API key for mutating routes', async () => {
+            protectedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                apiKey: 'secret-key',
+                getStatus: () => ({})
+            });
+            await protectedServer.start();
+            protectedPort = protectedServer._server.address().port;
+
+            const makeReq = (headers = {}) => new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: protectedPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...headers }
+                }, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => { data += chunk; });
+                    res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+                req.end();
+            });
+
+            const unauthorized = await makeReq();
+            expect(unauthorized.status).toBe(401);
+
+            const authorized = await makeReq({ 'X-API-Key': 'secret-key' });
+            expect(authorized.status).toBe(200);
         });
     });
 });

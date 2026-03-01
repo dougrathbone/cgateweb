@@ -304,7 +304,9 @@ class CgateConnectionPool extends EventEmitter {
         
         // Exponential backoff capped at 60s -- never permanently give up
         const retryCount = this.retryCounts[index];
-        const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 60000);
+        const baseDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 60000);
+        const jitterMultiplier = 0.5 + Math.random();
+        const delay = Math.round(baseDelay * jitterMultiplier);
         
         if (retryCount <= this.maxRetries) {
             this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`);

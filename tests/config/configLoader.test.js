@@ -12,6 +12,7 @@ describe('ConfigLoader', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        delete process.env.ALLOW_DEFAULT_FALLBACK;
         
         mockEnvironmentDetector = {
             detect: jest.fn(),
@@ -426,15 +427,34 @@ describe('ConfigLoader', () => {
             expect(config._environment.type).toBe('default');
         });
 
-        test('should handle module load errors gracefully', () => {
+        test('should fail fast on module load errors by default', () => {
             fs.existsSync.mockReturnValue(true);
+            mockEnvironmentDetector.detect.mockReturnValue({
+                type: 'standalone',
+                isAddon: false,
+                isStandalone: true,
+                settingsPath: '/tmp/nonexistent-settings.js',
+                workingDirectory: process.cwd()
+            });
             
-            expect(() => configLoader.load()).not.toThrow();
-            
-            const config = configLoader.getConfig();
+            expect(() => configLoader.load()).toThrow('Set ALLOW_DEFAULT_FALLBACK=true');
+        });
+
+        test('should allow fallback when ALLOW_DEFAULT_FALLBACK=true', () => {
+            fs.existsSync.mockReturnValue(true);
+            process.env.ALLOW_DEFAULT_FALLBACK = 'true';
+            mockEnvironmentDetector.detect.mockReturnValue({
+                type: 'standalone',
+                isAddon: false,
+                isStandalone: true,
+                settingsPath: '/tmp/nonexistent-settings.js',
+                workingDirectory: process.cwd()
+            });
+
+            const config = configLoader.load();
             expect(config).toBeDefined();
-            expect(config.cbusip).toBeDefined();
-            expect(config.mqtt).toBeDefined();
+            expect(config._environment.type).toBe('default');
+            delete process.env.ALLOW_DEFAULT_FALLBACK;
         });
     });
 

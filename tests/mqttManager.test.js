@@ -246,7 +246,6 @@ describe('MqttManager', () => {
             it('should handle successful connection', () => {
                 const loggerSpy = jest.spyOn(mqttManager.logger, 'info');
                 const emitSpy = jest.spyOn(mqttManager, 'emit');
-                const publishSpy = jest.spyOn(mqttManager, 'publish');
                 const subscribeSpy = jest.spyOn(mqttManager, 'subscribe');
                 
                 mockClient.emit('connect');
@@ -254,8 +253,15 @@ describe('MqttManager', () => {
                 expect(mqttManager.connected).toBe(true);
                 expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('CONNECTED TO MQTT BROKER'));
                 expect(emitSpy).toHaveBeenCalledWith('connect');
-                expect(publishSpy).toHaveBeenCalledWith('hello/cgateweb', 'Online', { retain: true, qos: 1 });
+                expect(mockClient.publish).toHaveBeenCalledWith('hello/cgateweb', 'Offline', { retain: true, qos: 1 });
                 expect(subscribeSpy).toHaveBeenCalledWith('cbus/write/#', expect.any(Function));
+            });
+
+            it('should publish Online when bridge becomes ready', () => {
+                mockClient.emit('connect');
+                mqttManager.setBridgeReady(true, 'test-ready');
+
+                expect(mockClient.publish).toHaveBeenCalledWith('hello/cgateweb', 'Online', { retain: true, qos: 1 });
             });
 
             it('should handle subscription errors', () => {
