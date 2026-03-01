@@ -1,7 +1,7 @@
 const CgateConnection = require('./cgateConnection');
 const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');
-const HaDiscovery = require('./haDiscovery');
+const BridgeInitializationService = require('./bridgeInitializationService');
 const ThrottledQueue = require('./throttledQueue');
 const CBusEvent = require('./cbusEvent');
 const MqttCommandRouter = require('./mqttCommandRouter');
@@ -13,11 +13,6 @@ const LabelLoader = require('./labelLoader');
 const WebServer = require('./webServer');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
-const {
-    CGATE_CMD_GET,
-    CGATE_PARAM_LEVEL,
-    NEWLINE
-} = require('./constants');
 
 /**
  * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
@@ -159,6 +154,7 @@ class CgateWebBridge {
             getStatus: () => this._getBridgeStatus()
         });
 
+        this.initializationService = new BridgeInitializationService(this);
         this._setupEventHandlers();
     }
 
@@ -249,18 +245,7 @@ class CgateWebBridge {
         this.log(`Stopping cgateweb bridge...`);
         this._updateBridgeReadiness('shutdown');
         
-        // Clear periodic tasks
-        if (this.periodicGetAllInterval) {
-            clearInterval(this.periodicGetAllInterval);
-            this.periodicGetAllInterval = null;
-        }
-
-        // Stop label file watcher and remove listener
-        if (this._onLabelsChanged) {
-            this.labelLoader.removeListener('labels-changed', this._onLabelsChanged);
-            this._onLabelsChanged = null;
-        }
-        this.labelLoader.unwatch();
+        this.initializationService.stop();
 
         // Stop web server
         await this.webServer.close();
@@ -283,58 +268,7 @@ class CgateWebBridge {
     }
 
     _handleAllConnected() {
-        const now = Date.now();
-        if (now - this._lastInitTime < 10000) {
-            this.log(`ALL CONNECTED (duplicate within 10s, skipping re-initialization)`);
-            return;
-        }
-        this._lastInitTime = now;
-        this.log(`ALL CONNECTED - Initializing services...`);
-
-        // Trigger initial get all
-        if (this.settings.getallnetapp && this.settings.getallonstart) {
-            this.log(`Getting all initial values for ${this.settings.getallnetapp}...`);
-            this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
-        }
-
-        // Setup periodic get all
-        if (this.settings.getallnetapp && this.settings.getallperiod) {
-            if (this.periodicGetAllInterval) {
-                clearInterval(this.periodicGetAllInterval);
-            }
-            this.log(`Starting periodic 'get all' every ${this.settings.getallperiod} seconds.`);
-            this.periodicGetAllInterval = setInterval(() => {
-                this.log(`Getting all periodic values for ${this.settings.getallnetapp}...`);
-                this.cgateCommandQueue.add(`${CGATE_CMD_GET} //${this.settings.cbusname}/${this.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`);
-            }, this.settings.getallperiod * 1000);
-        }
-        
-        // Initialize haDiscovery after pool starts, with label data
-        if (!this.haDiscovery) {
-            this.haDiscovery = new HaDiscovery(
-                this.settings,
-                (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
-                (command) => this._sendCgateCommand(command),
-                this.labelLoader.getLabelData()
-            );
-            this.commandResponseProcessor.haDiscovery = this.haDiscovery;
-
-            // Start label file watcher after haDiscovery exists so updates are never dropped
-            this._onLabelsChanged = (labelData) => {
-                this.logger.info(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
-                this.haDiscovery.updateLabels(labelData);
-                this.haDiscovery.trigger();
-            };
-            this.labelLoader.on('labels-changed', this._onLabelsChanged);
-            this.labelLoader.watch();
-        }
-        
-        // Trigger HA Discovery
-        if (this.settings.ha_discovery_enabled) {
-            this.haDiscovery.trigger();
-        }
-
-        this._updateBridgeReadiness('all-connected');
+        this.initializationService.handleAllConnected();
     }
 
     // MQTT message handling now delegated to MqttCommandRouter

@@ -1,5 +1,7 @@
 const parseString = require('xml2js').parseString;
 const { createLogger } = require('./logger');
+const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
+const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_TOPIC_PREFIX_READ,
@@ -15,18 +17,10 @@ const {
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
     HA_COMPONENT_LIGHT,
-    HA_COMPONENT_COVER,
-    HA_COMPONENT_SWITCH,
     HA_DISCOVERY_SUFFIX,
-    HA_DEVICE_CLASS_SHUTTER,
-    HA_DEVICE_CLASS_OUTLET,
     HA_DEVICE_VIA,
     HA_DEVICE_MANUFACTURER,
     HA_MODEL_LIGHTING,
-    HA_MODEL_COVER,
-    HA_MODEL_SWITCH,
-    HA_MODEL_RELAY,
-    HA_MODEL_PIR,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,
@@ -174,7 +168,7 @@ class HaDiscovery {
         this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
         const startTime = Date.now();
         
-        const networkData = this._findNetworkData(networkId, treeData);
+        const networkData = findNetworkData(networkId, treeData);
         if (!networkData) {
              this.logger.warn(`TreeXML for network ${networkId}: could not find network data. Top-level keys: ${JSON.stringify(Object.keys(treeData || {}))}`);
              return;
@@ -211,7 +205,7 @@ class HaDiscovery {
 
         units.forEach(unit => {
             if (!unit) return;
-            this._collectUnitGroups(unit, groupsByApp, targetApps);
+            collectUnitGroups(unit, groupsByApp, targetApps);
         });
 
         for (const [appId, groupMap] of groupsByApp) {
@@ -231,53 +225,6 @@ class HaDiscovery {
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
         this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
-    }
-
-    /**
-     * Collect groups from a unit into groupsByApp, handling both structured and flat formats.
-     * Structured format preserves per-app group mapping and labels.
-     * Flat format assigns all groups to every matching target app.
-     */
-    _collectUnitGroups(unit, groupsByApp, targetApps) {
-        if (!unit.Application) return;
-
-        // Structured format: Application is an object or array of objects with Group sub-arrays
-        if (typeof unit.Application === 'object') {
-            const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
-            apps.forEach(app => {
-                const appId = app.ApplicationAddress !== null && app.ApplicationAddress !== undefined
-                    ? String(app.ApplicationAddress)
-                    : undefined;
-                if (!appId || !targetApps.includes(appId) || !app.Group) return;
-                const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
-                if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
-                const groupMap = groupsByApp.get(appId);
-                groups.forEach(g => {
-                    if (g.GroupAddress !== null && g.GroupAddress !== undefined && !groupMap.has(String(g.GroupAddress))) {
-                        groupMap.set(String(g.GroupAddress), g);
-                    }
-                });
-            });
-            return;
-        }
-
-        // Flat format: Application is a comma-separated string, Groups is a comma-separated string
-        const unitAppIds = String(unit.Application).split(',').map(s => s.trim()).filter(Boolean);
-        const groupIds = (unit.Groups && typeof unit.Groups === 'string')
-            ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
-            : [];
-        if (groupIds.length === 0) return;
-
-        const matchingApps = targetApps.filter(t => unitAppIds.includes(t));
-        matchingApps.forEach(appId => {
-            if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
-            const groupMap = groupsByApp.get(appId);
-            groupIds.forEach(gid => {
-                if (!groupMap.has(gid)) {
-                    groupMap.set(gid, { GroupAddress: gid });
-                }
-            });
-        });
     }
 
     /**
@@ -309,44 +256,6 @@ class HaDiscovery {
         }
     }
 
-    /**
-     * Locate the Network node within parsed TreeXML, handling different
-     * XML structures that C-Gate versions may produce.
-     */
-    _findNetworkData(networkId, treeData) {
-        if (!treeData) return null;
-        const idStr = String(networkId);
-
-        // Path 1: <Network><Interface><Network NetworkNumber="254">
-        const viaInterface = treeData.Network && treeData.Network.Interface && treeData.Network.Interface.Network;
-        if (viaInterface && String(viaInterface.NetworkNumber) === idStr) return viaInterface;
-
-        // Path 2: single <Network> wrapper with matching NetworkNumber
-        if (treeData.Network && String(treeData.Network.NetworkNumber) === idStr) return treeData.Network;
-
-        // Path 3: top-level has NetworkNumber directly (flat parse)
-        if (String(treeData.NetworkNumber) === idStr) return treeData;
-
-        // Path 4: <Network> with Unit children but no NetworkNumber attribute.
-        // C-Gate's TREEXML for a specific network omits NetworkNumber.
-        if (treeData.Network && treeData.Network.Unit) return treeData.Network;
-
-        // Path 5: wrapped in a container element -- walk one level
-        for (const key of Object.keys(treeData)) {
-            const child = treeData[key];
-            if (child && typeof child === 'object') {
-                if (String(child.NetworkNumber) === idStr) return child;
-                if (child.Network && String(child.Network.NetworkNumber) === idStr) return child.Network;
-                if (child.Interface && child.Interface.Network && String(child.Interface.Network.NetworkNumber) === idStr) {
-                    return child.Interface.Network;
-                }
-                if (child.Unit) return child;
-            }
-        }
-
-        return null;
-    }
-
     _processLightingGroups(networkId, appId, groups, labelSnapshot) {
         const { labelMap, typeOverrides, entityIds, exclude } = labelSnapshot;
         const groupArray = Array.isArray(groups) ? groups : [groups];
@@ -367,7 +276,7 @@ class HaDiscovery {
 
             const typeOverride = typeOverrides.get(labelKey);
             if (typeOverride && typeOverride !== 'light') {
-                const config = this._getDiscoveryConfig(typeOverride);
+                const config = getDiscoveryConfig(typeOverride);
                 if (config) {
                     this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
                     this._createDiscovery(networkId, appId, groupId, group.Label, config, labelSnapshot);
@@ -429,7 +338,7 @@ class HaDiscovery {
         const groupArray = Array.isArray(groups) ? groups : [groups];
         
         // Determine the discovery type based on application address
-        const discoveryType = this._getDiscoveryTypeForApp(appAddress);
+        const discoveryType = getDiscoveryTypeForApp(this.settings, appAddress);
         if (!discoveryType) {
             return;
         }
@@ -441,31 +350,8 @@ class HaDiscovery {
                 return;
             }
 
-            this._createDiscovery(networkId, appAddress, groupId, group.Label, this._getDiscoveryConfig(discoveryType), labelSnapshot);
+            this._createDiscovery(networkId, appAddress, groupId, group.Label, getDiscoveryConfig(discoveryType), labelSnapshot);
         });
-    }
-
-    /**
-     * Determines the discovery type for a given application address.
-     * @param {string} appAddress - The application address
-     * @returns {string|null} The discovery type ('cover', 'switch', 'relay', 'pir') or null if not configured
-     * @private
-     */
-    _getDiscoveryTypeForApp(appAddress) {
-        const appStr = String(appAddress);
-        if (this.settings.ha_discovery_cover_app_id && appStr === String(this.settings.ha_discovery_cover_app_id)) {
-            return 'cover';
-        }
-        if (this.settings.ha_discovery_switch_app_id && appStr === String(this.settings.ha_discovery_switch_app_id)) {
-            return 'switch';
-        }
-        if (this.settings.ha_discovery_relay_app_id && appStr === String(this.settings.ha_discovery_relay_app_id)) {
-            return 'relay';
-        }
-        if (this.settings.ha_discovery_pir_app_id && appStr === String(this.settings.ha_discovery_pir_app_id)) {
-            return 'pir';
-        }
-        return null;
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config, labelSnapshot) {
@@ -522,61 +408,6 @@ class HaDiscovery {
         this.discoveryCount++;
     }
 
-    // Configuration objects for different discovery types
-    _getDiscoveryConfig(type) {
-        const configs = {
-            cover: {
-                component: HA_COMPONENT_COVER,
-                defaultType: 'Cover',
-                model: HA_MODEL_COVER,
-                deviceClass: HA_DEVICE_CLASS_SHUTTER,
-                // Enable position support for covers (0-100%)
-                positionSupport: true,
-                payloads: {
-                    payload_open: MQTT_STATE_ON,
-                    payload_close: MQTT_STATE_OFF,
-                    state_open: MQTT_STATE_ON,
-                    state_closed: MQTT_STATE_OFF
-                }
-            },
-            switch: {
-                component: HA_COMPONENT_SWITCH,
-                defaultType: 'Switch',
-                model: HA_MODEL_SWITCH,
-                payloads: {
-                    payload_on: MQTT_STATE_ON,
-                    payload_off: MQTT_STATE_OFF,
-                    state_on: MQTT_STATE_ON,
-                    state_off: MQTT_STATE_OFF
-                }
-            },
-            relay: {
-                component: HA_COMPONENT_SWITCH,
-                defaultType: 'Relay',
-                model: HA_MODEL_RELAY,
-                deviceClass: HA_DEVICE_CLASS_OUTLET,
-                payloads: {
-                    payload_on: MQTT_STATE_ON,
-                    payload_off: MQTT_STATE_OFF,
-                    state_on: MQTT_STATE_ON,
-                    state_off: MQTT_STATE_OFF
-                }
-            },
-            pir: {
-                component: 'binary_sensor',
-                defaultType: 'PIR',
-                model: HA_MODEL_PIR,
-                deviceClass: 'motion',
-                payloads: {
-                    payload_on: MQTT_STATE_ON,
-                    payload_off: MQTT_STATE_OFF
-                },
-                // PIR sensors don't have command topics - they're read-only
-                omitCommandTopic: true
-            }
-        };
-        return configs[type];
-    }
 }
 
 module.exports = HaDiscovery;
