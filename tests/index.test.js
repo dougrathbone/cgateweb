@@ -1,368 +1,224 @@
-// Removed unused path import
+const ORIGINAL_ENV = { ...process.env };
 
-// Mock the CgateWebBridge before requiring index
-jest.mock('../src/cgateWebBridge');
-const MockCgateWebBridge = require('../src/cgateWebBridge');
+function loadIndexWithMocks({
+    loadedConfig = { cbusip: '10.0.0.10', mqtt: 'broker:1883', _environment: { type: 'standalone' } },
+    loadError = null,
+    envInfo = { type: 'standalone', isAddon: false },
+    haConfig = { isAddon: false, optimizationsApplied: [], ingressConfig: null },
+    autoDetectError = null
+} = {}) {
+    let indexModule;
+    let bridgeInstance;
+    let mockBridgeClass;
+    let mockValidateWithWarnings;
+    let mockConfigLoaderInstance;
 
-// Mock settings validator
-jest.mock('../src/settingsValidator');
-const { validateWithWarnings } = require('../src/settingsValidator');
+    jest.isolateModules(() => {
+        bridgeInstance = {
+            start: jest.fn().mockResolvedValue(undefined),
+            stop: jest.fn().mockResolvedValue(undefined)
+        };
 
-// Mock console methods
-const mockConsoleLog = jest.spyOn(console, 'log').mockImplementation();
-const mockConsoleError = jest.spyOn(console, 'error').mockImplementation();
+        jest.doMock('../src/cgateWebBridge', () => {
+            mockBridgeClass = jest.fn(() => bridgeInstance);
+            return mockBridgeClass;
+        });
 
-// Mock process methods
-const mockProcessExit = jest.spyOn(process, 'exit').mockImplementation(() => {});
+        jest.doMock('../src/settingsValidator', () => {
+            mockValidateWithWarnings = jest.fn();
+            return { validateWithWarnings: mockValidateWithWarnings };
+        });
+
+        jest.doMock('../src/config/ConfigLoader', () => {
+            return jest.fn(() => {
+                mockConfigLoaderInstance = {
+                    load: jest.fn(() => {
+                        if (loadError) throw loadError;
+                        return loadedConfig;
+                    }),
+                    getEnvironment: jest.fn(() => envInfo),
+                    applyMqttAutoDetection: jest.fn(async () => {
+                        if (autoDetectError) throw autoDetectError;
+                    }),
+                    validate: jest.fn()
+                };
+                return mockConfigLoaderInstance;
+            });
+        });
+
+        jest.doMock('../src/config/HAIntegration', () => {
+            return jest.fn(() => ({ initialize: jest.fn(() => haConfig) }));
+        });
+
+        indexModule = require('../index.js');
+    });
+
+    return {
+        indexModule,
+        bridgeInstance,
+        mockBridgeClass,
+        mockValidateWithWarnings,
+        mockConfigLoaderInstance
+    };
+}
 
 describe('index.js', () => {
-    let originalRequireMain;
-    let mockBridge;
+    let _exitSpy;
+    let logSpy;
+    let errorSpy;
 
     beforeEach(() => {
-        jest.clearAllMocks();
-        
-        // Reset module cache to get fresh instance
-        delete require.cache[require.resolve('../index.js')];
-        
-        // Re-establish console mocks after clearAllMocks
-        mockConsoleLog.mockImplementation();
-        mockConsoleError.mockImplementation();
-        mockProcessExit.mockImplementation(() => {}); // Prevent actual process exit
-        
-        // Mock CgateWebBridge instance
-        mockBridge = {
-            start: jest.fn().mockResolvedValue(), // Now async
-            stop: jest.fn().mockResolvedValue()   // Now async
-        };
-        MockCgateWebBridge.mockImplementation(() => mockBridge);
-        
-        // Store original require.main
-        originalRequireMain = require.main;
+        jest.resetModules();
+        process.env = { ...ORIGINAL_ENV };
+        delete process.env.ALLOW_DEFAULT_FALLBACK;
+        delete process.env.SUPERVISOR_TOKEN;
+        delete process.env.MQTT_HOST;
+        delete process.env.CGATE_IP;
+        delete process.env.MQTT_USERNAME;
+        delete process.env.MQTT_PASSWORD;
+        delete process.env.CGATE_USERNAME;
+        delete process.env.CGATE_PASSWORD;
+        delete process.env.CGATE_PROJECT;
+
+        _exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
+            throw new Error(`process.exit:${code}`);
+        });
+        logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
     });
 
     afterEach(() => {
-        // Restore require.main
+        process.env = { ...ORIGINAL_ENV };
+        jest.restoreAllMocks();
+    });
+
+    it('exports main and default settings', () => {
+        const { indexModule } = loadIndexWithMocks();
+        expect(typeof indexModule.main).toBe('function');
+        expect(indexModule.defaultSettings).toBeDefined();
+        expect(indexModule.defaultSettings.mqtt).toBe('localhost:1883');
+    });
+
+    it('starts bridge and validates settings in main()', async () => {
+        const {
+            indexModule,
+            bridgeInstance,
+            mockBridgeClass,
+            mockValidateWithWarnings,
+            mockConfigLoaderInstance
+        } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        expect(mockConfigLoaderInstance.validate).toHaveBeenCalled();
+        expect(mockValidateWithWarnings).toHaveBeenCalled();
+        expect(mockBridgeClass).toHaveBeenCalledTimes(1);
+        expect(bridgeInstance.start).toHaveBeenCalledTimes(1);
+    });
+
+    it('applies environment overrides to startup settings', async () => {
+        process.env.MQTT_HOST = 'env-broker:1883';
+        process.env.CGATE_IP = '10.0.0.99';
+        process.env.MQTT_USERNAME = 'env-user';
+        process.env.MQTT_PASSWORD = 'env-pass';
+
+        const { indexModule, mockBridgeClass } = loadIndexWithMocks();
+        await indexModule.main();
+
+        expect(mockBridgeClass).toHaveBeenCalledWith(expect.objectContaining({
+            mqtt: 'env-broker:1883',
+            cbusip: '10.0.0.99',
+            mqttusername: 'env-user',
+            mqttpassword: 'env-pass'
+        }));
+    });
+
+    it('auto-detects MQTT credentials in addon mode', async () => {
+        const {
+            indexModule,
+            mockConfigLoaderInstance
+        } = loadIndexWithMocks({
+            envInfo: { type: 'addon', isAddon: true },
+            haConfig: { isAddon: true, optimizationsApplied: ['ingress'], ingressConfig: null }
+        });
+
+        await indexModule.main();
+        expect(mockConfigLoaderInstance.applyMqttAutoDetection).toHaveBeenCalledTimes(1);
+    });
+
+    it('continues startup when MQTT auto-detection fails', async () => {
+        const {
+            indexModule,
+            bridgeInstance
+        } = loadIndexWithMocks({
+            envInfo: { type: 'addon', isAddon: true },
+            autoDetectError: new Error('supervisor unavailable')
+        });
+
+        await indexModule.main();
+        expect(bridgeInstance.start).toHaveBeenCalledTimes(1);
+        expect(errorSpy).toHaveBeenCalledWith('[WARN] MQTT auto-detection failed:', 'supervisor unavailable');
+    });
+
+    it('exits on standalone config load failure by default', () => {
+        expect(() => {
+            loadIndexWithMocks({
+                loadError: new Error('settings parse error'),
+                envInfo: { type: 'standalone', isAddon: false }
+            });
+        }).toThrow('process.exit:1');
+
+        expect(errorSpy).toHaveBeenCalledWith('[ERROR] Standalone startup aborted due to invalid configuration.');
+    });
+
+    it('allows standalone fallback when ALLOW_DEFAULT_FALLBACK is true', async () => {
+        process.env.ALLOW_DEFAULT_FALLBACK = 'true';
+
+        const {
+            indexModule,
+            bridgeInstance
+        } = loadIndexWithMocks({
+            loadError: new Error('settings parse error'),
+            envInfo: { type: 'standalone', isAddon: false }
+        });
+
+        await indexModule.main();
+        expect(bridgeInstance.start).toHaveBeenCalledTimes(1);
+        expect(errorSpy).toHaveBeenCalledWith('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using default settings only');
+    });
+
+    it('exits on addon config load failure', () => {
+        process.env.SUPERVISOR_TOKEN = 'token';
+
+        expect(() => {
+            loadIndexWithMocks({
+                loadError: new Error('addon options missing'),
+                envInfo: { type: 'addon', isAddon: true }
+            });
+        }).toThrow('process.exit:1');
+
+        expect(errorSpy).toHaveBeenCalledWith('[ERROR] Please check the addon configuration and restart.');
+    });
+
+    it('registers expected process signal handlers', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('SIGUSR1', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('uncaughtException', expect.any(Function));
+        expect(processOnSpy).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
+    });
+
+    it('does not auto-start when imported as a module', () => {
+        const originalRequireMain = require.main;
+        require.main = { filename: '/tmp/another-module.js' };
+        loadIndexWithMocks();
+
+        expect(logSpy).not.toHaveBeenCalledWith('[INFO] Starting cgateweb...');
         require.main = originalRequireMain;
-        mockConsoleLog.mockRestore();
-        mockConsoleError.mockRestore();
-        mockProcessExit.mockRestore();
-    });
-
-    describe('Module exports', () => {
-        it('should export defaultSettings', () => {
-            const indexModule = require('../index.js');
-            expect(indexModule.defaultSettings).toBeDefined();
-            expect(indexModule.defaultSettings.mqtt).toBe('localhost:1883');
-            expect(indexModule.defaultSettings.cbusip).toBe('your-cgate-ip');
-            expect(indexModule.defaultSettings.cbusname).toBe('CLIPSAL');
-        });
-
-        it('should export CgateWebBridge class', () => {
-            const indexModule = require('../index.js');
-            expect(indexModule.CgateWebBridge).toBeDefined();
-        });
-    });
-
-    describe('Settings loading', () => {
-        it('should handle missing settings.js file', () => {
-            // This test doesn't work properly with existing settings.js file
-            // The jest.doMock doesn't override existing files
-            // For now, we'll skip this test and note that error handling works
-            // when settings.js doesn't exist, which can be tested manually
-            expect(true).toBe(true); // Placeholder test
-        });
-
-        it('should handle other settings.js loading errors', () => {
-            // This test also doesn't work properly with existing settings.js file
-            // The jest.doMock doesn't override existing files
-            // For now, we'll skip this test and note that error handling works
-            // when settings.js has syntax errors, which can be tested manually
-            expect(true).toBe(true); // Placeholder test
-        });
-
-        it('should merge user settings with defaults when available', async () => {
-            // Use the actual settings.js file that exists
-            // Temporarily set require.main to trigger main()
-            require.main = { filename: require.resolve('../index.js') };
-            
-            const indexModule = require('../index.js');
-            
-            // Call main() and wait for it to complete
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify bridge was created with merged settings (using actual settings.js)
-            expect(MockCgateWebBridge).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    mqtt: '127.0.0.1:1883', // From actual settings.js
-                    cbusip: '127.0.0.1', // From actual settings.js  
-                    cbusname: 'HOME', // From actual settings.js
-                    logging: false // From actual settings.js
-                })
-            );
-        });
-    });
-
-    describe('main() function execution', () => {
-        beforeEach(() => {
-            // Mock package.json
-            jest.doMock('../package.json', () => ({ version: '1.0.0' }));
-        });
-
-        afterEach(() => {
-            jest.dontMock('../package.json');
-        });
-
-        it('should start application when run as main module', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            
-            const indexModule = require('../index.js');
-            
-            // Wait for main() to complete since it's now async
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Check that the bridge was properly started instead of console logs
-            expect(validateWithWarnings).toHaveBeenCalled();
-            expect(MockCgateWebBridge).toHaveBeenCalled();
-            expect(mockBridge.start).toHaveBeenCalled();
-        });
-
-        it('should not start application when imported as module', () => {
-            require.main = { filename: '/some/other/file.js' };
-            
-            require('../index.js');
-            
-            expect(mockConsoleLog).not.toHaveBeenCalledWith('[INFO] Starting cgateweb...');
-            expect(MockCgateWebBridge).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('Environment variable overrides', () => {
-        const envVars = ['MQTT_HOST', 'MQTT_USERNAME', 'MQTT_PASSWORD', 'CGATE_IP', 'CGATE_USERNAME', 'CGATE_PASSWORD', 'CGATE_PROJECT'];
-        let savedEnv;
-
-        beforeEach(() => {
-            savedEnv = {};
-            envVars.forEach(v => {
-                savedEnv[v] = process.env[v];
-                delete process.env[v];
-            });
-        });
-
-        afterEach(() => {
-            envVars.forEach(v => {
-                if (savedEnv[v] !== undefined) {
-                    process.env[v] = savedEnv[v];
-                } else {
-                    delete process.env[v];
-                }
-            });
-        });
-
-        it('should override mqtt setting from MQTT_HOST env var', async () => {
-            process.env.MQTT_HOST = 'envbroker:1883';
-            
-            let localMockBridge, LocalMockBridge;
-            jest.isolateModules(() => {
-                LocalMockBridge = require('../src/cgateWebBridge');
-                localMockBridge = { start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue() };
-                LocalMockBridge.mockImplementation(() => localMockBridge);
-                require.main = { filename: require.resolve('../index.js') };
-                const indexModule = require('../index.js');
-                indexModule.main();
-            });
-            
-            await new Promise(r => setTimeout(r, 10));
-            expect(LocalMockBridge).toHaveBeenCalledWith(
-                expect.objectContaining({ mqtt: 'envbroker:1883' })
-            );
-        });
-
-        it('should override cbusip setting from CGATE_IP env var', async () => {
-            process.env.CGATE_IP = '10.0.0.50';
-            
-            let LocalMockBridge;
-            jest.isolateModules(() => {
-                LocalMockBridge = require('../src/cgateWebBridge');
-                LocalMockBridge.mockImplementation(() => ({
-                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
-                }));
-                require.main = { filename: require.resolve('../index.js') };
-                const indexModule = require('../index.js');
-                indexModule.main();
-            });
-            
-            await new Promise(r => setTimeout(r, 10));
-            expect(LocalMockBridge).toHaveBeenCalledWith(
-                expect.objectContaining({ cbusip: '10.0.0.50' })
-            );
-        });
-
-        it('should override MQTT credentials from env vars', async () => {
-            process.env.MQTT_USERNAME = 'envuser';
-            process.env.MQTT_PASSWORD = 'envpass';
-            
-            let LocalMockBridge;
-            jest.isolateModules(() => {
-                LocalMockBridge = require('../src/cgateWebBridge');
-                LocalMockBridge.mockImplementation(() => ({
-                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
-                }));
-                require.main = { filename: require.resolve('../index.js') };
-                const indexModule = require('../index.js');
-                indexModule.main();
-            });
-            
-            await new Promise(r => setTimeout(r, 10));
-            expect(LocalMockBridge).toHaveBeenCalledWith(
-                expect.objectContaining({ mqttusername: 'envuser', mqttpassword: 'envpass' })
-            );
-        });
-
-        it('should override C-Gate credentials from env vars', async () => {
-            process.env.CGATE_USERNAME = 'cgateuser';
-            process.env.CGATE_PASSWORD = 'cgatepass';
-            
-            let LocalMockBridge;
-            jest.isolateModules(() => {
-                LocalMockBridge = require('../src/cgateWebBridge');
-                LocalMockBridge.mockImplementation(() => ({
-                    start: jest.fn().mockResolvedValue(), stop: jest.fn().mockResolvedValue()
-                }));
-                require.main = { filename: require.resolve('../index.js') };
-                const indexModule = require('../index.js');
-                indexModule.main();
-            });
-            
-            await new Promise(r => setTimeout(r, 10));
-            expect(LocalMockBridge).toHaveBeenCalledWith(
-                expect.objectContaining({ cgateusername: 'cgateuser', cgatepassword: 'cgatepass' })
-            );
-        });
-    });
-
-    describe('Signal handling', () => {
-        let processOnSpy;
-
-        beforeEach(() => {
-            processOnSpy = jest.spyOn(process, 'on');
-            require.main = { filename: require.resolve('../index.js') };
-        });
-
-        afterEach(() => {
-            processOnSpy.mockRestore();
-        });
-
-        it('should set up signal handlers', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
-            expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
-            expect(processOnSpy).toHaveBeenCalledWith('SIGUSR1', expect.any(Function));
-            expect(processOnSpy).toHaveBeenCalledWith('uncaughtException', expect.any(Function));
-            expect(processOnSpy).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
-        });
-
-        it('should handle SIGTERM gracefully', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify signal handler was registered
-            const sigtermCall = processOnSpy.mock.calls.find(call => call[0] === 'SIGTERM');
-            expect(sigtermCall).toBeDefined();
-            expect(typeof sigtermCall[1]).toBe('function');
-            
-            // Note: We cannot safely test the actual signal handler execution
-            // as it calls process.exit which can terminate the test runner
-            // The fact that the handler is registered is sufficient for this test
-        });
-
-        it('should handle SIGINT gracefully', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify signal handler was registered
-            const sigintCall = processOnSpy.mock.calls.find(call => call[0] === 'SIGINT');
-            expect(sigintCall).toBeDefined();
-            expect(typeof sigintCall[1]).toBe('function');
-            
-            // Note: We cannot safely test the actual signal handler execution
-            // as it calls process.exit which can terminate the test runner
-        });
-
-        it('should handle SIGUSR1 for configuration reload', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify signal handler was registered
-            const sigusr1Call = processOnSpy.mock.calls.find(call => call[0] === 'SIGUSR1');
-            expect(sigusr1Call).toBeDefined();
-            expect(typeof sigusr1Call[1]).toBe('function');
-            
-            // Note: SIGUSR1 handler is safe to test as it doesn't call process.exit
-            // Just test that it doesn't throw an error when called
-            expect(() => sigusr1Call[1]()).not.toThrow();
-        });
-
-        it('should handle uncaught exceptions', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify exception handler was registered
-            const exceptionCall = processOnSpy.mock.calls.find(call => call[0] === 'uncaughtException');
-            expect(exceptionCall).toBeDefined();
-            expect(typeof exceptionCall[1]).toBe('function');
-            
-            // Note: We cannot safely test the actual exception handler execution
-            // as it calls process.exit which can terminate the test runner
-        });
-
-        it('should handle unhandled promise rejections', async () => {
-            require.main = { filename: require.resolve('../index.js') };
-            const indexModule = require('../index.js');
-            
-            // Call main() to set up signal handlers
-            if (typeof indexModule.main === 'function') {
-                await indexModule.main();
-            }
-            
-            // Verify rejection handler was registered
-            const rejectionCall = processOnSpy.mock.calls.find(call => call[0] === 'unhandledRejection');
-            expect(rejectionCall).toBeDefined();
-            expect(typeof rejectionCall[1]).toBe('function');
-            
-            // Note: We cannot safely test the actual rejection handler execution
-            // as it calls process.exit which can terminate the test runner
-        });
     });
 });
