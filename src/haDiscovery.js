@@ -245,13 +245,15 @@ class HaDiscovery {
         if (typeof unit.Application === 'object') {
             const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
             apps.forEach(app => {
-                const appId = app.ApplicationAddress != null ? String(app.ApplicationAddress) : undefined;
+                const appId = app.ApplicationAddress !== null && app.ApplicationAddress !== undefined
+                    ? String(app.ApplicationAddress)
+                    : undefined;
                 if (!appId || !targetApps.includes(appId) || !app.Group) return;
                 const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
                 if (!groupsByApp.has(appId)) groupsByApp.set(appId, new Map());
                 const groupMap = groupsByApp.get(appId);
                 groups.forEach(g => {
-                    if (g.GroupAddress != null && !groupMap.has(String(g.GroupAddress))) {
+                    if (g.GroupAddress !== null && g.GroupAddress !== undefined && !groupMap.has(String(g.GroupAddress))) {
                         groupMap.set(String(g.GroupAddress), g);
                     }
                 });

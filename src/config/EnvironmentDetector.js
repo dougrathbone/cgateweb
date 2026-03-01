@@ -165,7 +165,7 @@ class EnvironmentDetector {
     _fileExists(filePath) {
         try {
             return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
-        } catch (error) {
+        } catch {
             return false;
         }
     }
@@ -177,7 +177,7 @@ class EnvironmentDetector {
     _directoryExists(dirPath) {
         try {
             return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
-        } catch (error) {
+        } catch {
             return false;
         }
     }

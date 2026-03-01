@@ -22,7 +22,6 @@ class HAIntegration {
 
         // Check for HA addon environment indicators
         const hasHAToken = !!process.env.SUPERVISOR_TOKEN;
-        const hasHAIngress = !!process.env.INGRESS_SESSION;
         const hasDataDir = fs.existsSync('/data');
         const hasOptionsFile = fs.existsSync('/data/options.json');
 

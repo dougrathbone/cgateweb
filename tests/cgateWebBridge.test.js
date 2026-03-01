@@ -655,12 +655,6 @@ describe('CgateWebBridge', () => {
         describe('DeviceStateManager integration', () => {
             it('should use DeviceStateManager for level tracking', () => {
                 const updateSpy = jest.spyOn(bridge.deviceStateManager, 'updateLevelFromEvent');
-                const mockEvent = {
-                    getNetwork: () => '254',
-                    getApplication: () => '56',
-                    getGroup: () => '1',
-                    getLevel: () => 75
-                };
                 
                 bridge._processEventLine('lighting ramp 254/56/1 75');
                 
