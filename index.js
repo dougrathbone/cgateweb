@@ -42,7 +42,8 @@ try {
         console.error('[ERROR] Standalone startup aborted due to invalid configuration.');
         process.exit(1);
     }
-    console.error('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using default settings only');
+    settings = { ...defaultSettings, ...configLoader.getDefaultConfig() };
+    console.error('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using safe fallback settings only');
 }
 
 const envOverrides = {

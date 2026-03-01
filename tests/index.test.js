@@ -5,7 +5,8 @@ function loadIndexWithMocks({
     loadError = null,
     envInfo = { type: 'standalone', isAddon: false },
     haConfig = { isAddon: false, optimizationsApplied: [], ingressConfig: null },
-    autoDetectError = null
+    autoDetectError = null,
+    validateImpl = null
 } = {}) {
     let indexModule;
     let bridgeInstance;
@@ -40,7 +41,19 @@ function loadIndexWithMocks({
                     applyMqttAutoDetection: jest.fn(async () => {
                         if (autoDetectError) throw autoDetectError;
                     }),
-                    validate: jest.fn()
+                    validate: validateImpl ? jest.fn(validateImpl) : jest.fn(),
+                    getDefaultConfig: jest.fn(() => ({
+                        cbusip: '127.0.0.1',
+                        cbuscommandport: 20023,
+                        cbuseventport: 20025,
+                        cbusname: 'HOME',
+                        mqtt: '127.0.0.1:1883',
+                        messageinterval: 200,
+                        logging: false,
+                        ha_discovery_enabled: false,
+                        ha_discovery_prefix: 'homeassistant',
+                        _environment: { type: 'default' }
+                    }))
                 };
                 return mockConfigLoaderInstance;
             });
@@ -184,7 +197,30 @@ describe('index.js', () => {
 
         await indexModule.main();
         expect(bridgeInstance.start).toHaveBeenCalledTimes(1);
-        expect(errorSpy).toHaveBeenCalledWith('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using default settings only');
+        expect(errorSpy).toHaveBeenCalledWith('[WARN] ALLOW_DEFAULT_FALLBACK=true set; using safe fallback settings only');
+    });
+
+    it('uses safe fallback values before validation when standalone fallback is enabled', async () => {
+        process.env.ALLOW_DEFAULT_FALLBACK = 'true';
+
+        const {
+            indexModule,
+            mockConfigLoaderInstance
+        } = loadIndexWithMocks({
+            loadError: new Error('settings parse error'),
+            envInfo: { type: 'standalone', isAddon: false },
+            validateImpl: (config) => {
+                if (config.cbusip === 'your-cgate-ip') {
+                    throw new Error('Configuration validation failed: C-Gate IP address (cbusip) is required');
+                }
+            }
+        });
+
+        await expect(indexModule.main()).resolves.toBeUndefined();
+        expect(mockConfigLoaderInstance.validate).toHaveBeenCalledWith(expect.objectContaining({
+            cbusip: '127.0.0.1',
+            mqtt: '127.0.0.1:1883'
+        }));
     });
 
     it('exits on addon config load failure', () => {

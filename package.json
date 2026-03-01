@@ -1,6 +1,6 @@
 {
   "name": "cgateweb",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Node.js bridge connecting Clipsal C-Bus automation systems to MQTT for Home Assistant integration",
   "keywords": [
     "cbus",
@@ -48,5 +48,31 @@
     "lint:fix": "eslint src/ tests/ index.js --fix",
     "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\"",
     "check-setup": "node -e \"const { validateSetup } = require('./src/settingsValidator'); let settings; try { settings = require('./settings.js'); } catch(e) { settings = {}; } const result = validateSetup(settings); if (result.isFirstTime) { console.log(result.message); process.exit(1); } if (result.issues.length > 0) { console.log('Issues:', result.issues.join(', ')); } if (result.recommendations.length > 0) { console.log('Recommendations:', result.recommendations.join(', ')); } console.log(result.isValid ? 'Setup looks good!' : 'Please address the issues above');\""
+  },
+  "jest": {
+    "coverageThreshold": {
+      "global": {
+        "statements": 80,
+        "branches": 70,
+        "functions": 75,
+        "lines": 80
+      },
+      "./index.js": {
+        "statements": 70,
+        "lines": 70
+      },
+      "./install-service.js": {
+        "statements": 75,
+        "lines": 75
+      },
+      "./uninstall-service.js": {
+        "statements": 75,
+        "lines": 75
+      },
+      "./src/cgateConnectionPool.js": {
+        "statements": 35,
+        "lines": 35
+      }
+    }
   }
 }

@@ -154,4 +154,12 @@ function installService() {
 }
 
 // Run the installation
-installService(); 
+if (require.main === module || (require.main && require.main.filename === __filename)) {
+    installService();
+}
+
+module.exports = {
+    installService,
+    checkDependencies,
+    ensureServiceUser
+};

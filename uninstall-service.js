@@ -78,4 +78,10 @@ function uninstallService() {
 }
 
 // Run the uninstallation
-uninstallService();
+if (require.main === module || (require.main && require.main.filename === __filename)) {
+    uninstallService();
+}
+
+module.exports = {
+    uninstallService
+};

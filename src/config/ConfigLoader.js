@@ -274,6 +274,14 @@ class ConfigLoader {
     }
 
     /**
+     * Get a safe default configuration for startup fallback.
+     * @returns {Object} Default configuration object
+     */
+    getDefaultConfig() {
+        return this._getDefaultConfig();
+    }
+
+    /**
      * Apply auto-detected MQTT config to the loaded settings.
      * Only fills in host/credentials when not explicitly configured.
      * @param {Object} settings - The settings object to augment
