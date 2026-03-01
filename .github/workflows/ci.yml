@@ -31,5 +31,8 @@ jobs:
     - name: Install dependencies
       run: npm ci # Use npm ci for cleaner installs in CI
       
+    - name: Run lint
+      run: npm run lint
+
     - name: Run unit tests
       run: npm test -- --coverage # Use npm test script which should call jest 
