@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.4.2"
+version: "1.4.3"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -70,6 +70,7 @@ options:
   # Label file for custom device names (auto-detected if not set)
   cbus_label_file: ""
   web_api_key: ""
+  web_mutation_rate_limit_per_minute: 120
 
 schema:
   # C-Gate mode
@@ -111,3 +112,4 @@ schema:
   ha_discovery_switch_app_id: "int(1,255)?"
   cbus_label_file: "str?"
   web_api_key: "password?"
+  web_mutation_rate_limit_per_minute: "int(1,5000)?"

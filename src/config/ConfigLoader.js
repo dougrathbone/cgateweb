@@ -221,6 +221,9 @@ class ConfigLoader {
         if (options.web_api_key) {
             config.web_api_key = options.web_api_key;
         }
+        if (options.web_mutation_rate_limit_per_minute !== undefined && options.web_mutation_rate_limit_per_minute !== null) {
+            config.web_mutation_rate_limit_per_minute = options.web_mutation_rate_limit_per_minute;
+        }
 
         return config;
     }

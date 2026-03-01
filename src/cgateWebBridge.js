@@ -151,6 +151,7 @@ class CgateWebBridge {
             labelLoader: this.labelLoader,
             apiKey: this.settings.web_api_key || null,
             allowedOrigins: this.settings.web_allowed_origins || null,
+            maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
             getStatus: () => this._getBridgeStatus()
         });
 

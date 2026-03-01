@@ -67,7 +67,7 @@ describe('Addon Configuration Integration', () => {
             );
             const translated = Object.keys(translations.configuration);
             const schema = Object.keys(configYaml.schema);
-            const nonUiSchemaKeys = new Set(['web_api_key']);
+            const nonUiSchemaKeys = new Set(['web_api_key', 'web_mutation_rate_limit_per_minute']);
 
             for (const sch of schema) {
                 if (nonUiSchemaKeys.has(sch)) continue;
@@ -105,7 +105,7 @@ describe('Addon Configuration Integration', () => {
         test('every config option should have a translation', () => {
             const options = Object.keys(configYaml.options);
             const translated = Object.keys(translations.configuration);
-            const nonUiOptionKeys = new Set(['web_api_key']);
+            const nonUiOptionKeys = new Set(['web_api_key', 'web_mutation_rate_limit_per_minute']);
 
             for (const opt of options) {
                 if (nonUiOptionKeys.has(opt)) continue;

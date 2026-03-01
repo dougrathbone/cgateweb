@@ -297,4 +297,55 @@ describe('WebServer', () => {
             expect(authorized.status).toBe(200);
         });
     });
+
+    describe('Mutation rate limiting', () => {
+        let limitedServer;
+        let limitedPort;
+
+        afterEach(async () => {
+            if (limitedServer) await limitedServer.close();
+        });
+
+        it('returns 429 when mutating requests exceed per-minute limit', async () => {
+            limitedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                maxMutationRequestsPerWindow: 1,
+                getStatus: () => ({})
+            });
+            await limitedServer.start();
+            limitedPort = limitedServer._server.address().port;
+
+            const doPatch = () => new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: limitedPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                }, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => { data += chunk; });
+                    res.on('end', () => {
+                        let body;
+                        try {
+                            body = JSON.parse(data);
+                        } catch {
+                            body = data;
+                        }
+                        resolve({ status: res.statusCode, body });
+                    });
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Updated' }));
+                req.end();
+            });
+
+            const first = await doPatch();
+            expect(first.status).toBe(200);
+
+            const second = await doPatch();
+            expect(second.status).toBe(429);
+        });
+    });
 });
