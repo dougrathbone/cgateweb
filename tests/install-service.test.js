@@ -298,8 +298,6 @@ WantedBy=multi-user.target
         // Test the actual ensureServiceUser function from install-service.js
         // by importing systemUtils and controlling its behavior
         
-        let systemUtils;
-        
         beforeEach(() => {
             jest.resetModules();
             jest.clearAllMocks();

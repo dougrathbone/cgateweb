@@ -85,7 +85,7 @@ class MqttManager extends EventEmitter {
             if (this.connected) {
                 try {
                     this._publishStatus(MQTT_PAYLOAD_STATUS_OFFLINE);
-                } catch (_e) {
+                } catch {
                     // Best effort - don't block shutdown if publish fails
                 }
             }

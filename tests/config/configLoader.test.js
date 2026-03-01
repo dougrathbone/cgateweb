@@ -553,11 +553,6 @@ describe('ConfigLoader', () => {
 
         test('should return MQTT config from Supervisor API', async () => {
             process.env.SUPERVISOR_TOKEN = 'test-token';
-
-            const mockResponse = {
-                on: jest.fn(),
-                statusCode: 200
-            };
             
             const mockReq = {
                 on: jest.fn(),

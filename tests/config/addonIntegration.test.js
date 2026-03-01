@@ -123,7 +123,7 @@ describe('Addon Configuration Integration', () => {
         });
 
         test('translations should have name and description', () => {
-            for (const [key, value] of Object.entries(translations.configuration)) {
+            for (const [_key, value] of Object.entries(translations.configuration)) {
                 expect(value.name).toBeDefined();
                 expect(value.description).toBeDefined();
                 expect(typeof value.name).toBe('string');

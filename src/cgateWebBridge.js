@@ -1,4 +1,3 @@
-const { EventEmitter } = require('events');
 const CgateConnection = require('./cgateConnection');
 const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');

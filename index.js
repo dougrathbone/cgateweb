@@ -32,7 +32,7 @@ try {
 } catch (error) {
     console.error(`[ERROR] Failed to load configuration: ${error.message}`);
     let envInfo;
-    try { envInfo = configLoader.getEnvironment(); } catch (_) { /* ignore */ }
+    try { envInfo = configLoader.getEnvironment(); } catch { /* ignore */ }
     if (process.env.SUPERVISOR_TOKEN || (envInfo && envInfo.isAddon)) {
         console.error('[ERROR] Please check the addon configuration and restart.');
         process.exit(1);
