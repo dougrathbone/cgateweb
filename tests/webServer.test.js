@@ -347,5 +347,27 @@ describe('WebServer', () => {
             const second = await doPatch();
             expect(second.status).toBe(429);
         });
+
+        it('removes dormant source entries after the rate limit window passes', () => {
+            const directServer = new WebServer({
+                labelLoader,
+                maxMutationRequestsPerWindow: 5,
+                getStatus: () => ({})
+            });
+            directServer.rateLimitWindowMs = 1000;
+
+            const ipA = { headers: { 'x-forwarded-for': '192.168.1.10' }, socket: {} };
+            const ipB = { headers: { 'x-forwarded-for': '192.168.1.11' }, socket: {} };
+
+            const nowSpy = jest.spyOn(Date, 'now');
+            nowSpy.mockReturnValue(1000);
+            expect(directServer._isRateLimited(ipA)).toBe(false);
+            expect(directServer._mutationRequestLog.has('192.168.1.10')).toBe(true);
+
+            nowSpy.mockReturnValue(2501);
+            expect(directServer._isRateLimited(ipB)).toBe(false);
+            expect(directServer._mutationRequestLog.has('192.168.1.10')).toBe(false);
+            expect(directServer._mutationRequestLog.has('192.168.1.11')).toBe(true);
+        });
     });
 });

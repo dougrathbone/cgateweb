@@ -362,11 +362,24 @@ class WebServer {
         ).split(',')[0].trim();
         const now = Date.now();
         const windowStart = now - this.rateLimitWindowMs;
-        const existing = this._mutationRequestLog.get(source) || [];
-        const inWindow = existing.filter((ts) => ts >= windowStart);
+        this._pruneMutationRequestLog(windowStart);
+        const inWindow = this._mutationRequestLog.get(source) || [];
         inWindow.push(now);
         this._mutationRequestLog.set(source, inWindow);
         return inWindow.length > this.maxMutationRequestsPerWindow;
+    }
+
+    _pruneMutationRequestLog(windowStart) {
+        for (const [source, timestamps] of this._mutationRequestLog.entries()) {
+            const inWindow = timestamps.filter((ts) => ts >= windowStart);
+            if (inWindow.length === 0) {
+                this._mutationRequestLog.delete(source);
+                continue;
+            }
+            if (inWindow.length !== timestamps.length) {
+                this._mutationRequestLog.set(source, inWindow);
+            }
+        }
     }
 
     _readBody(req) {
