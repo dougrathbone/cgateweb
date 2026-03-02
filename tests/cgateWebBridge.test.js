@@ -623,6 +623,24 @@ describe('CgateWebBridge', () => {
                 expect(publishEventSpy).not.toHaveBeenCalled();
                 publishEventSpy.mockRestore();
             });
+
+            it('should ignore clock date events without publishing', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                
+                bridge._processEventLine('clock date //CLIPSAL/254/223 2026-03-02 0 #sourceunit=8 OID=');
+                
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
+
+            it('should ignore clock time events without publishing', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                
+                bridge._processEventLine('clock time //CLIPSAL/254/223 21:13:21 0 #sourceunit=8 OID=');
+                
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
         });
 
         describe('EventPublisher integration', () => {

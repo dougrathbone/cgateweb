@@ -302,6 +302,11 @@ class CgateWebBridge {
             return;
         }
 
+        if (line.startsWith('clock ')) {
+            this.log(`Ignoring clock event from event port:`, line);
+            return;
+        }
+
         this.log(`C-Gate Recv (Evt): ${line}`);
 
         try {

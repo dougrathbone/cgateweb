@@ -94,6 +94,24 @@ describe('CBusEvent', () => {
          expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
+    it('should be invalid for clock date events (2-segment address)', () => {
+        const data = Buffer.from("clock date //CLIPSAL/254/223 2026-03-02 0 #sourceunit=8 OID=");
+        const event = new CBusEvent(data);
+        expect(event.isValid()).toBe(false);
+        expect(event.getDeviceType()).toBeNull();
+        expect(event.getAddress()).toBeNull();
+        expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
+    it('should be invalid for clock time events (2-segment address)', () => {
+        const data = Buffer.from("clock time //CLIPSAL/254/223 21:13:21 0 #sourceunit=8 OID=");
+        const event = new CBusEvent(data);
+        expect(event.isValid()).toBe(false);
+        expect(event.getDeviceType()).toBeNull();
+        expect(event.getAddress()).toBeNull();
+        expect(mockConsoleWarn).toHaveBeenCalled();
+    });
+
     it('should handle events with only essential parts', () => {
         const data = Buffer.from("lighting off 1/2/3");
         const event = new CBusEvent(data);
