@@ -52,6 +52,10 @@ class ConnectionManager extends EventEmitter {
             this.logger.info('MQTT disconnected');
             this.allConnected = false;
         });
+        this.mqttManager.on('error', (err) => {
+            this.logger.warn('MQTT error:', { error: err.message });
+            this.allConnected = false;
+        });
 
         // Command connection pool events
         this.commandConnectionPool.on('started', () => {

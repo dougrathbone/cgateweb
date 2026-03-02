@@ -78,6 +78,7 @@ describe('ConnectionManager', () => {
         it('should set up event handlers for all connections', () => {
             expect(mockConnections.mqttManager.listenerCount('connect')).toBe(1);
             expect(mockConnections.mqttManager.listenerCount('close')).toBe(1);
+            expect(mockConnections.mqttManager.listenerCount('error')).toBe(1);
             expect(mockConnections.commandConnectionPool.listenerCount('started')).toBe(1);
             expect(mockConnections.commandConnectionPool.listenerCount('allConnectionsUnhealthy')).toBe(1);
             expect(mockConnections.eventConnection.listenerCount('connect')).toBe(1);
@@ -164,6 +165,16 @@ describe('ConnectionManager', () => {
 
             mockConnections.mqttManager.disconnect();
             await new Promise(resolve => process.nextTick(resolve));
+
+            expect(connectionManager.allConnected).toBe(false);
+        });
+
+        it('should set allConnected to false when MQTT emits an error', async () => {
+            await connectionManager.start();
+            await new Promise(resolve => process.nextTick(resolve));
+            expect(connectionManager.isAllConnected).toBe(true);
+
+            mockConnections.mqttManager.emit('error', new Error('connection failed'));
 
             expect(connectionManager.allConnected).toBe(false);
         });
