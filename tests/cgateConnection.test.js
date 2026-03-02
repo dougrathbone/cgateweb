@@ -193,6 +193,23 @@ describe('CgateConnection', () => {
                 expect(emitSpy).toHaveBeenCalledWith('connect');
             });
 
+            it('should disable socket idle timeout after successful connection', () => {
+                mockSocket.setTimeout.mockClear();
+                
+                mockSocket.emit('connect');
+                
+                expect(mockSocket.setTimeout).toHaveBeenCalledWith(0);
+            });
+
+            it('should use timeout only for connection establishment then disable it', () => {
+                expect(mockSocket.setTimeout).toHaveBeenCalledWith(5000);
+                
+                mockSocket.setTimeout.mockClear();
+                mockSocket.emit('connect');
+                
+                expect(mockSocket.setTimeout).toHaveBeenCalledWith(0);
+            });
+
             it('should send EVENT ON command for event connections', () => {
                 const eventConnection = new CgateConnection('event', 'localhost', 20025);
                 eventConnection.connect();

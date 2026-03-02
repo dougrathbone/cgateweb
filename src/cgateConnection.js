@@ -94,6 +94,13 @@ class CgateConnection extends EventEmitter {
             this.reconnectTimeout = null;
         }
         
+        // Disable socket idle timeout now that we're connected. The timeout is only
+        // needed during initial connection establishment; once connected, the pool's
+        // keep-alive pings and health checks manage connection liveness.
+        if (this.socket) {
+            this.socket.setTimeout(0);
+        }
+        
         this.logger.info(`CONNECTED TO C-GATE ${this.type.toUpperCase()} PORT: ${this.host}:${this.port}`);
         
         // Send initial commands for command connection
