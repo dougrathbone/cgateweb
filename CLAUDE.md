@@ -17,6 +17,25 @@ cgateweb is a Node.js MQTT bridge for C-Bus lighting systems that connects to C-
 
 **IMPORTANT**: Before making any source code commits, you MUST run the full test suite (`npm test`) and ensure all tests pass. No code should be committed with failing tests. This ensures code quality and prevents regressions in the codebase.
 
+## Releasing / Home Assistant Add-on Distribution
+
+This project uses a **two-repository model** for Home Assistant add-on distribution:
+
+- **Source repo** (this repo): `dougrathbone/cgateweb` -- contains all source code, tests, and the add-on packaging under `homeassistant-addon/`.
+- **Distribution repo**: `dougrathbone/cgateweb-homeassistant` -- the HA add-on repository that users add to Home Assistant. HA Supervisor checks this repo for version updates.
+
+A GitHub Actions workflow (`.github/workflows/hacs-distribution.yml`) syncs code from this repo to the distribution repo. **It only triggers on git tag pushes matching `v*`** (or manual `workflow_dispatch`).
+
+### Version bump and release process
+
+When bumping the version (e.g., for a bug fix or feature release), you MUST:
+
+1. Update the version in **both** `package.json` and `homeassistant-addon/config.yaml` (keep them in sync).
+2. Commit and push the version bump.
+3. **Create and push a git tag** matching the version: `git tag v<version> && git push origin v<version>` (e.g., `git tag v1.4.7 && git push origin v1.4.7`).
+
+If you skip step 3, the distribution repo will NOT be updated, Home Assistant will not see the new version, and the add-on will not auto-update on user devices. This has caused stale deployments in the past.
+
 ## Architecture
 
 ### Core Components
