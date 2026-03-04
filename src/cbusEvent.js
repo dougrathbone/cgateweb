@@ -142,8 +142,17 @@ class CBusEvent {
 
     _extractLeadingInt(value) {
         if (value === undefined || value === null) return null;
-        const match = String(value).match(/^(\d+)/);
-        return match ? parseInt(match[1], 10) : null;
+        const str = String(value);
+        let end = 0;
+        while (end < str.length) {
+            const code = str.charCodeAt(end);
+            if (code < 48 || code > 57) {
+                break;
+            }
+            end += 1;
+        }
+        if (end === 0) return null;
+        return parseInt(str.slice(0, end), 10);
     }
 
     _applyAddress(address) {
@@ -162,15 +171,42 @@ class CBusEvent {
         return true;
     }
 
+    _applyAddressComponents(network, application, group) {
+        this._address = `${network}/${application}/${group}`;
+        this._network = network;
+        this._application = application;
+        this._group = group;
+        this._isValid = true;
+    }
+
+    _isDigits(value) {
+        if (!value) return false;
+        for (let i = 0; i < value.length; i += 1) {
+            const code = value.charCodeAt(i);
+            if (code < 48 || code > 57) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     _parseStatusResponse() {
         // Example: "300 //PROJECT/254/56/1: level=255"
         const markerIndex = this._rawEvent.indexOf('//');
         const colonIndex = this._rawEvent.indexOf(':', markerIndex);
         if (markerIndex !== -1 && colonIndex !== -1) {
             const addressRegion = this._rawEvent.slice(markerIndex, colonIndex);
-            const addressMatch = addressRegion.match(/(\d+\/\d+\/\d+)$/);
-            if (addressMatch) {
-                this._applyAddress(addressMatch[1]);
+            // Fast parse of trailing network/application/group without regex.
+            const lastSlash = addressRegion.lastIndexOf('/');
+            const secondSlash = lastSlash > -1 ? addressRegion.lastIndexOf('/', lastSlash - 1) : -1;
+            const thirdSlash = secondSlash > -1 ? addressRegion.lastIndexOf('/', secondSlash - 1) : -1;
+            if (thirdSlash > -1) {
+                const network = addressRegion.slice(thirdSlash + 1, secondSlash);
+                const application = addressRegion.slice(secondSlash + 1, lastSlash);
+                const group = addressRegion.slice(lastSlash + 1);
+                if (this._isDigits(network) && this._isDigits(application) && this._isDigits(group)) {
+                    this._applyAddressComponents(network, application, group);
+                }
             }
         }
 
