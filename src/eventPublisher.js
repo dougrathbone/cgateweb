@@ -38,13 +38,17 @@ class EventPublisher {
         this.eventPublishDedupWindowMs = Math.max(0, Number(this.settings.eventPublishDedupWindowMs) || 0);
         this.eventPublishDedupMaxEntries = Math.max(100, Number(this.settings.eventPublishDedupMaxEntries) || 5000);
         this.topicCacheMaxEntries = Math.max(100, Number(this.settings.topicCacheMaxEntries) || 5000);
+        this.eventPublishCoalesce = this.settings.eventPublishCoalesce === true;
         this._recentPublishes = new Map();
         this._topicCache = new Map();
+        this._coalesceBuffer = new Map();
+        this._coalesceTimer = null;
         this._publishStats = {
             publishAttempts: 0,
             published: 0,
             dedupDropped: 0,
             dedupEvicted: 0,
+            coalesced: 0,
             topicCacheHit: 0,
             topicCacheMiss: 0
         };
@@ -147,6 +151,20 @@ class EventPublisher {
 
     _publishIfNeeded(topic, payload, options) {
         this._publishStats.publishAttempts += 1;
+        if (this.eventPublishCoalesce) {
+            const hadExisting = this._coalesceBuffer.has(topic);
+            this._coalesceBuffer.set(topic, { payload, options });
+            if (hadExisting) {
+                this._publishStats.coalesced += 1;
+            }
+            this._scheduleCoalesceFlush();
+            return;
+        }
+
+        this._publishNow(topic, payload, options);
+    }
+
+    _publishNow(topic, payload, options) {
         if (!this.eventPublishDedupWindowMs) {
             this.publishFn(topic, payload, options);
             this._publishStats.published += 1;
@@ -164,6 +182,25 @@ class EventPublisher {
         this._pruneDedupCache(now);
         this.publishFn(topic, payload, options);
         this._publishStats.published += 1;
+    }
+
+    _scheduleCoalesceFlush() {
+        if (this._coalesceTimer) return;
+        this._coalesceTimer = setImmediate(() => {
+            this._coalesceTimer = null;
+            this._flushCoalesceBuffer();
+        });
+    }
+
+    _flushCoalesceBuffer() {
+        if (this._coalesceBuffer.size === 0) {
+            return;
+        }
+        const entries = [...this._coalesceBuffer.entries()];
+        this._coalesceBuffer.clear();
+        for (const [topic, value] of entries) {
+            this._publishNow(topic, value.payload, value.options);
+        }
     }
 
     _getTopicsForAddress(network, application, group) {
@@ -220,7 +257,9 @@ class EventPublisher {
             ...this._publishStats,
             dedupWindowMs: this.eventPublishDedupWindowMs,
             dedupCacheSize: this._recentPublishes.size,
-            topicCacheSize: this._topicCache.size
+            topicCacheSize: this._topicCache.size,
+            coalesceEnabled: this.eventPublishCoalesce,
+            coalesceBufferSize: this._coalesceBuffer.size
         };
     }
 }

@@ -167,7 +167,8 @@ class SettingsValidator {
             'cbusname': 'The name of your C-Bus project as configured in C-Gate',
             'cbuscommandport': 'Default is 20023 for C-Gate command interface',
             'cbuseventport': 'Default is 20025 for C-Gate event interface',
-            'messageinterval': 'Recommended value is 200ms to avoid overwhelming C-Gate'
+            'messageinterval': 'Recommended value is 200ms to avoid overwhelming C-Gate',
+            'commandMinIntervalMs': 'Lower bound for adaptive command pacing (recommended 10ms)'
         };
         return suggestions[setting] || null;
     }

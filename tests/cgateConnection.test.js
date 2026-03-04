@@ -17,7 +17,7 @@ describe('CgateConnection', () => {
         
         // Mock socket
         mockSocket = new EventEmitter();
-        mockSocket.write = jest.fn();
+        mockSocket.write = jest.fn().mockReturnValue(true);
         mockSocket.destroy = jest.fn();
         mockSocket.setTimeout = jest.fn();
         mockSocket.destroyed = false;
@@ -109,6 +109,7 @@ describe('CgateConnection', () => {
             expect(mockSocket.listenerCount('error')).toBe(1);
             expect(mockSocket.listenerCount('data')).toBe(1);
             expect(mockSocket.listenerCount('timeout')).toBe(1);
+            expect(mockSocket.listenerCount('drain')).toBe(1);
             expect(mockSocket.setTimeout).toHaveBeenCalledWith(5000);
         });
     });
@@ -145,9 +146,31 @@ describe('CgateConnection', () => {
         it('should send data when connected', () => {
             const testData = 'test command';
             
-            connection.send(testData);
+            const ok = connection.send(testData);
             
             expect(mockSocket.write).toHaveBeenCalledWith(testData);
+            expect(ok).toBe(true);
+        });
+
+        it('should mark connection as non-writable when backpressure occurs', () => {
+            mockSocket.write.mockReturnValue(false);
+            const ok = connection.send('test command');
+
+            expect(ok).toBe(false);
+            expect(connection.isWritable).toBe(false);
+        });
+
+        it('should wait for drain in sendWithBackpressure', async () => {
+            mockSocket.write
+                .mockReturnValueOnce(false)
+                .mockReturnValueOnce(true);
+
+            const sendPromise = connection.sendWithBackpressure('test command');
+            mockSocket.emit('drain');
+            const ok = await sendPromise;
+
+            expect(ok).toBe(true);
+            expect(mockSocket.write).toHaveBeenCalledTimes(2);
         });
 
         it('should warn when not connected', () => {

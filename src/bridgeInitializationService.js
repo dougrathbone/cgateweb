@@ -43,7 +43,7 @@ class BridgeInitializationService {
             this.bridge.haDiscovery = new HaDiscovery(
                 this.bridge.settings,
                 (topic, payload, options) => this.bridge.mqttManager.publish(topic, payload, options),
-                (command) => this.bridge._sendCgateCommand(command),
+                (command) => this.bridge.cgateCommandQueue.add(command, { priority: 'bulk' }),
                 this.bridge.labelLoader.getLabelData()
             );
             this.bridge.commandResponseProcessor.haDiscovery = this.bridge.haDiscovery;

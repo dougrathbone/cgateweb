@@ -30,6 +30,8 @@ class CgateConnection extends EventEmitter {
         this.lastActivity = Date.now();
         this.retryCount = 0;
         this.isDestroyed = false;
+        this.isWritable = true;
+        this._drainWaiters = [];
     }
 
     connect() {
@@ -48,6 +50,7 @@ class CgateConnection extends EventEmitter {
         this.socket.on('error', (err) => this._handleError(err));
         this.socket.on('data', (data) => this._handleData(data));
         this.socket.on('timeout', () => this._handleTimeout());
+        this.socket.on('drain', () => this._handleDrain());
         
         return this;
     }
@@ -67,6 +70,8 @@ class CgateConnection extends EventEmitter {
         this.connected = false;
         this.reconnectAttempts = 0;
         this.isDestroyed = true;
+        this.isWritable = false;
+        this._resolveDrainWaiters(false);
     }
 
     send(data) {
@@ -75,19 +80,44 @@ class CgateConnection extends EventEmitter {
             return false;
         }
 
+        if (!this.isWritable) {
+            return false;
+        }
+
         try {
-            this.socket.write(data);
+            const writable = this.socket.write(data);
             this.lastActivity = Date.now(); // Update activity timestamp for pool health monitoring
-            return true;
+            this.isWritable = writable;
+            if (!writable) {
+                this.emit('backpressure', { poolIndex: this.poolIndex });
+            }
+            return writable;
         } catch (error) {
             this.logger.error(`Error writing to ${this.type} socket:`, { error });
             return false;
         }
     }
 
+    async sendWithBackpressure(data) {
+        const writableNow = this.send(data);
+        if (writableNow) {
+            return true;
+        }
+        if (!this.connected || !this.socket || this.socket.destroyed) {
+            return false;
+        }
+
+        const drained = await this._waitForDrain();
+        if (!drained) {
+            return false;
+        }
+        return this.send(data);
+    }
+
     _handleConnect() {
         this.connected = true;
         this.reconnectAttempts = 0;
+        this.isWritable = true;
         
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
@@ -120,6 +150,8 @@ class CgateConnection extends EventEmitter {
         }
         
         this.logger.warn(`${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
+        this.isWritable = false;
+        this._resolveDrainWaiters(false);
         this.emit('close', hadError);
         
         // Only self-reconnect if NOT managed by a connection pool.
@@ -137,6 +169,8 @@ class CgateConnection extends EventEmitter {
             this.socket.destroy();
         }
         this.socket = null;
+        this.isWritable = false;
+        this._resolveDrainWaiters(false);
         
         this.emit('error', err);
     }
@@ -151,6 +185,41 @@ class CgateConnection extends EventEmitter {
         this.logger.warn(`C-Gate ${this.type} socket timed out after ${this.connectionTimeout}ms`);
         if (this.socket && !this.socket.destroyed) {
             this.socket.destroy();
+        }
+    }
+
+    _handleDrain() {
+        this.isWritable = true;
+        this._resolveDrainWaiters(true);
+        this.emit('writable', { poolIndex: this.poolIndex });
+    }
+
+    _waitForDrain(timeoutMs = this.connectionTimeout) {
+        if (this.isWritable) {
+            return Promise.resolve(true);
+        }
+
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                this._drainWaiters = this._drainWaiters.filter(waiter => waiter !== waiterRef);
+                resolve(false);
+            }, timeoutMs);
+
+            const waiterRef = {
+                resolve: (value) => {
+                    clearTimeout(timeout);
+                    resolve(value);
+                }
+            };
+            this._drainWaiters.push(waiterRef);
+        });
+    }
+
+    _resolveDrainWaiters(value) {
+        if (this._drainWaiters.length === 0) return;
+        const waiters = this._drainWaiters.splice(0, this._drainWaiters.length);
+        for (const waiter of waiters) {
+            waiter.resolve(value);
         }
     }
 

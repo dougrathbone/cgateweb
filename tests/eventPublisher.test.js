@@ -675,4 +675,41 @@ describe('EventPublisher', () => {
             expect(stats.topicCacheSize).toBe(1);
         });
     });
+
+    describe('publish coalescing', () => {
+        it('should coalesce same-tick updates when enabled', async () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishCoalesce: true
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const eventA = new CBusEvent('lighting on 254/56/16');
+            const eventB = new CBusEvent('lighting off 254/56/16');
+            publisher.publishEvent(eventA);
+            publisher.publishEvent(eventB);
+
+            await new Promise(resolve => setImmediate(resolve));
+
+            // State and level should each be emitted once with latest payload.
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/16/state',
+                'OFF',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/16/level',
+                '0',
+                mockMqttOptions
+            );
+
+            const stats = publisher.getStats();
+            expect(stats.coalesced).toBeGreaterThan(0);
+        });
+    });
 });

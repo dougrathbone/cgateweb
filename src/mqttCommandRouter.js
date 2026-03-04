@@ -331,7 +331,7 @@ class MqttCommandRouter extends EventEmitter {
             // Use RAMP command to set cover position
             // Level is already converted from percentage (0-100) to C-Gate level (0-255)
             const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
-            this._queueCommand(cgateCommand);
+            this._queueCommand(cgateCommand, 'interactive');
             this.logger.debug(`Setting cover position: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
         } else {
             this.logger.warn(`Invalid position value for topic ${topic}`);
@@ -355,7 +355,7 @@ class MqttCommandRouter extends EventEmitter {
         
         // TERMINATERAMP stops any in-progress ramp operation, effectively stopping the cover
         const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
-        this._queueCommand(cgateCommand);
+        this._queueCommand(cgateCommand, 'critical');
         this.logger.debug(`Stopping cover: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
     }
 
@@ -374,8 +374,12 @@ class MqttCommandRouter extends EventEmitter {
      * @param {string} command - The C-Gate command to queue
      * @private
      */
-    _queueCommand(command) {
-        this.cgateCommandQueue.add(command);
+    _queueCommand(command, priority = 'interactive') {
+        if (priority === 'interactive' || !priority) {
+            this.cgateCommandQueue.add(command);
+            return;
+        }
+        this.cgateCommandQueue.add(command, { priority });
     }
 }
 

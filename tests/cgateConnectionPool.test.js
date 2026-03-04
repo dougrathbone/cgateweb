@@ -95,6 +95,7 @@ describe('CgateConnectionPool', () => {
                 totalConnections: 0,
                 healthyConnections: 0,
                 pendingReconnects: 0,
+                writableConnections: 0,
                 retryCounts: [0, 0, 0],
                 isStarted: false,
                 isShuttingDown: false
@@ -103,7 +104,7 @@ describe('CgateConnectionPool', () => {
     });
 
     describe('Healthy connection caching', () => {
-        it('should cache healthy array and return consistent connections via round-robin', () => {
+        it('should cache healthy array and prefer stable writable least-loaded connection selection', () => {
             pool.isStarted = true;
             const conn0 = { poolIndex: 0, connected: true, send: jest.fn().mockReturnValue(true) };
             const conn1 = { poolIndex: 1, connected: true, send: jest.fn().mockReturnValue(true) };
@@ -114,7 +115,7 @@ describe('CgateConnectionPool', () => {
             const second = pool._getHealthyConnection();
             expect([conn0, conn1]).toContain(first);
             expect([conn0, conn1]).toContain(second);
-            expect(first).not.toBe(second);
+            expect(first.poolIndex).toBe(0);
         });
 
         it('should invalidate cache when a connection is added', () => {

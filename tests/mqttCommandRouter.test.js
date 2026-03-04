@@ -378,13 +378,13 @@ describe('MqttCommandRouter', () => {
         it('should handle stop command', () => {
             router.routeMessage('cbus/write/254/203/1/stop', 'STOP');
             
-            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n');
+            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n', { priority: 'critical' });
         });
 
         it('should handle stop command with empty payload', () => {
             router.routeMessage('cbus/write/254/203/1/stop', '');
             
-            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n');
+            expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/203/1\n', { priority: 'critical' });
         });
 
         it('should reject stop command without device ID', () => {

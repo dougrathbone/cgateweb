@@ -86,7 +86,11 @@ class CgateWebBridge {
         this.haDiscovery = null;
         
         // C-Gate command queue with throttling to avoid overwhelming serial protocol
-        const queueOptions = { maxSize: this.settings.maxQueueSize || 1000 };
+        const queueOptions = {
+            maxSize: this.settings.maxQueueSize || 1000,
+            getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
+            canProcessFn: () => this._canProcessCommandQueue()
+        };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
             this.settings.messageinterval,
@@ -345,6 +349,27 @@ class CgateWebBridge {
         }
     }
 
+    _canProcessCommandQueue() {
+        const stats = this.commandConnectionPool?.getStats?.();
+        return !!(stats && stats.isStarted && !stats.isShuttingDown && stats.healthyConnections > 0);
+    }
+
+    _getAdaptiveQueueIntervalMs() {
+        const baseInterval = Math.max(10, Number(this.settings.messageinterval) || 200);
+        const minInterval = Math.max(5, Number(this.settings.commandMinIntervalMs) || 10);
+        const stats = this.commandConnectionPool?.getStats?.();
+        if (!stats || stats.healthyConnections <= 0) {
+            return baseInterval;
+        }
+
+        // Scale interval by writable healthy connections and queue pressure.
+        const writableConnections = Math.max(1, stats.writableConnections || stats.healthyConnections);
+        const queueDepth = this.cgateCommandQueue?.length || 0;
+        const depthMultiplier = queueDepth > (writableConnections * 20) ? 0.5 : 1;
+        const interval = Math.round((baseInterval / writableConnections) * depthMultiplier);
+        return Math.max(minInterval, interval);
+    }
+
     /**
      * Logs an informational message.
      * 
@@ -406,10 +431,9 @@ class CgateWebBridge {
             },
             metrics: {
                 commandQueue: {
-                    depth: this.cgateCommandQueue.length,
-                    dropped: this.cgateCommandQueue.droppedCount,
-                    maxSize: this.cgateCommandQueue.maxSize
-                }
+                    ...this.cgateCommandQueue.getStats()
+                },
+                publisher: this.eventPublisher?.getStats ? this.eventPublisher.getStats() : null
             },
             discovery: this.haDiscovery ? {
                 count: this.haDiscovery.discoveryCount,

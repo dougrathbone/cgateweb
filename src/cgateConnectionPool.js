@@ -60,9 +60,9 @@ class CgateConnectionPool extends EventEmitter {
         this.connections = [];
         this.healthyConnections = new Set();
         this._healthyArray = null; // Cached array of healthy connections
-        this.connectionIndex = 0; // Round-robin index
         this.retryCounts = new Array(this.poolSize).fill(0);
         this.pendingReconnects = new Set(); // Tracks indices with scheduled reconnection
+        this.connectionInFlight = new Map(); // Tracks in-flight writes per connection
         this.isStarted = false;
         this.isShuttingDown = false;
         
@@ -164,6 +164,7 @@ class CgateConnectionPool extends EventEmitter {
         this.healthyConnections.clear();
         this._healthyArray = null;
         this.pendingReconnects.clear();
+        this.connectionInFlight.clear();
         this.retryCounts.fill(0);
         this.isStarted = false;
         this.isShuttingDown = false;
@@ -182,20 +183,41 @@ class CgateConnectionPool extends EventEmitter {
         if (!this.isStarted || this.isShuttingDown) {
             throw new Error('Connection pool is not started');
         }
-        
-        const connection = this._getHealthyConnection();
-        if (!connection) {
+
+        const healthyConnections = this._getHealthyConnectionsSorted();
+        if (healthyConnections.length === 0) {
             throw new Error('No healthy connections available in pool');
         }
-        
-        const success = connection.send(command);
-        if (!success) {
-            // Mark connection as potentially unhealthy
-            this._markConnectionUnhealthy(connection);
-            throw new Error('Failed to send command through connection');
+
+        let lastError = null;
+        for (const connection of healthyConnections) {
+            const inFlight = this.connectionInFlight.get(connection) || 0;
+            this.connectionInFlight.set(connection, inFlight + 1);
+            try {
+                const success = connection.sendWithBackpressure
+                    ? await connection.sendWithBackpressure(command)
+                    : connection.send(command);
+
+                if (success) {
+                    return true;
+                }
+
+                this._markConnectionUnhealthy(connection);
+                lastError = new Error('Failed to send command through connection');
+            } catch (error) {
+                this._markConnectionUnhealthy(connection);
+                lastError = error;
+            } finally {
+                const remainingInFlight = (this.connectionInFlight.get(connection) || 1) - 1;
+                if (remainingInFlight <= 0) {
+                    this.connectionInFlight.delete(connection);
+                } else {
+                    this.connectionInFlight.set(connection, remainingInFlight);
+                }
+            }
         }
-        
-        return success;
+
+        throw lastError || new Error('Failed to send command through all healthy connections');
     }
     
     /**
@@ -209,6 +231,7 @@ class CgateConnectionPool extends EventEmitter {
             totalConnections: this.connections.length,
             healthyConnections: this.healthyConnections.size,
             pendingReconnects: this.pendingReconnects.size,
+            writableConnections: this._getHealthyConnectionsSorted().filter(connection => connection.isWritable !== false).length,
             retryCounts: [...this.retryCounts],
             isStarted: this.isStarted,
             isShuttingDown: this.isShuttingDown
@@ -236,6 +259,7 @@ class CgateConnectionPool extends EventEmitter {
             connection.on('connect', () => {
                 this.logger.info(`Pool connection ${index} established`);
                 this._addHealthy(connection);
+                this.connectionInFlight.set(connection, 0);
                 connection.lastActivity = Date.now();
                 this.emit('connectionAdded', { index, connection });
                 resolve(connection);
@@ -244,6 +268,7 @@ class CgateConnectionPool extends EventEmitter {
             connection.on('close', (hadError) => {
                 this.logger.warn(`Pool connection ${index} closed ${hadError ? 'with error' : 'normally'}`);
                 this._removeHealthy(connection);
+                this.connectionInFlight.delete(connection);
                 this.emit('connectionLost', { index, connection, hadError });
                 
                 // Attempt to reconnect if pool is still active
@@ -255,6 +280,7 @@ class CgateConnectionPool extends EventEmitter {
             connection.on('error', (error) => {
                 this.logger.error(`Pool connection ${index} error:`, { error });
                 this._removeHealthy(connection);
+                this.connectionInFlight.delete(connection);
                 this.emit('connectionError', { index, connection, error });
             });
             
@@ -262,6 +288,14 @@ class CgateConnectionPool extends EventEmitter {
                 connection.lastActivity = Date.now();
                 // Forward data events to pool listeners
                 this.emit('data', data, connection);
+            });
+
+            connection.on('backpressure', () => {
+                this.emit('connectionBackpressure', { index, connection });
+            });
+
+            connection.on('writable', () => {
+                this.emit('connectionWritable', { index, connection });
             });
             
             // Store connection and attempt to connect
@@ -351,25 +385,38 @@ class CgateConnectionPool extends EventEmitter {
     }
 
     /**
-     * Gets the next healthy connection using round-robin load balancing.
+     * Gets the best healthy connection using writable + inflight heuristics.
      * 
      * @private
      * @returns {CgateConnection|null} Next healthy connection or null if none available
      */
     _getHealthyConnection() {
+        const sorted = this._getHealthyConnectionsSorted();
+        return sorted.length > 0 ? sorted[0] : null;
+    }
+
+    _getHealthyConnectionsSorted() {
         if (this.healthyConnections.size === 0) {
-            return null;
+            return [];
         }
-        
+
         if (!this._healthyArray) {
             this._healthyArray = Array.from(this.healthyConnections);
         }
-        
-        // Round-robin selection
-        const connection = this._healthyArray[this.connectionIndex % this._healthyArray.length];
-        this.connectionIndex = (this.connectionIndex + 1) % this._healthyArray.length;
-        
-        return connection;
+
+        return [...this._healthyArray].sort((a, b) => {
+            const aWritable = a.isWritable !== false ? 1 : 0;
+            const bWritable = b.isWritable !== false ? 1 : 0;
+            if (aWritable !== bWritable) return bWritable - aWritable;
+
+            const aInFlight = this.connectionInFlight.get(a) || 0;
+            const bInFlight = this.connectionInFlight.get(b) || 0;
+            if (aInFlight !== bInFlight) return aInFlight - bInFlight;
+
+            const aIndex = typeof a.poolIndex === 'number' ? a.poolIndex : 0;
+            const bIndex = typeof b.poolIndex === 'number' ? b.poolIndex : 0;
+            return aIndex - bIndex;
+        });
     }
     
     /**

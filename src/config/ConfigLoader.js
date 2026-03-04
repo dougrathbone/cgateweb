@@ -257,6 +257,10 @@ class ConfigLoader {
             config.ha_discovery_enabled = config.ha_discovery_enabled.toLowerCase() === 'true';
         }
 
+        if (typeof config.eventPublishCoalesce === 'string') {
+            config.eventPublishCoalesce = config.eventPublishCoalesce.toLowerCase() === 'true';
+        }
+
         return config;
     }
 
@@ -411,6 +415,22 @@ class ConfigLoader {
 
         if (configToValidate.messageinterval && (configToValidate.messageinterval < 10 || configToValidate.messageinterval > 10000)) {
             warnings.push('Message interval should be between 10 and 10000 milliseconds');
+        }
+
+        if (configToValidate.commandMinIntervalMs && (configToValidate.commandMinIntervalMs < 1 || configToValidate.commandMinIntervalMs > 1000)) {
+            warnings.push('commandMinIntervalMs should be between 1 and 1000 milliseconds');
+        }
+
+        if (configToValidate.eventPublishDedupWindowMs && (configToValidate.eventPublishDedupWindowMs < 0 || configToValidate.eventPublishDedupWindowMs > 60000)) {
+            warnings.push('eventPublishDedupWindowMs should be between 0 and 60000 milliseconds');
+        }
+
+        if (configToValidate.eventPublishDedupMaxEntries && configToValidate.eventPublishDedupMaxEntries < 100) {
+            warnings.push('eventPublishDedupMaxEntries should be at least 100');
+        }
+
+        if (configToValidate.topicCacheMaxEntries && configToValidate.topicCacheMaxEntries < 100) {
+            warnings.push('topicCacheMaxEntries should be at least 100');
         }
 
         // Validate C-Gate mode settings
