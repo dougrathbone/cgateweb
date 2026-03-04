@@ -66,7 +66,7 @@ class HaBridgeDiagnostics {
             const topic = `${this.settings.ha_discovery_prefix}/${entity.component}/cgateweb_bridge_${entity.key}/config`;
             const stateTopic = `cbus/read/bridge/diagnostics/${entity.key}/state`;
             const payload = {
-                name: null,
+                name: entity.name,
                 unique_id: `cgateweb_bridge_${entity.key}`,
                 object_id: `cgateweb_bridge_${entity.key}`,
                 state_topic: stateTopic,
