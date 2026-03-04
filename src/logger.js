@@ -44,6 +44,10 @@ class Logger {
         return this.enabled && this.levels[level] <= this.currentLevel;
     }
 
+    isLevelEnabled(level) {
+        return this._shouldLog(level);
+    }
+
     _formatMessage(level, message, meta = {}) {
         const timestamp = new Date().toISOString();
         const levelStr = level.toUpperCase().padEnd(5);

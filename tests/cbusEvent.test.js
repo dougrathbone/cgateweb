@@ -65,12 +65,23 @@ describe('CBusEvent', () => {
         // Level testing is covered in new-style getter method tests 
     });
 
+    it('should parse events with //PROJECT address prefix', () => {
+        const data = Buffer.from("lighting on //CLIPSAL/254/56/10");
+        const event = new CBusEvent(data);
+        expect(event.isValid()).toBe(true);
+        expect(event.getAddress()).toBe('254/56/10');
+        expect(event.getNetwork()).toBe('254');
+        expect(event.getApplication()).toBe('56');
+        expect(event.getGroup()).toBe('10');
+    });
+
     // === Edge Cases and Malformed Data ===
 
     it('should be invalid if data is completely malformed', () => {
         const data = Buffer.from("garbage data");
         const event = new CBusEvent(data);
         expect(event.isValid()).toBe(false);
+        expect(event.isParsed()).toBe(true);
         expect(event.getDeviceType()).toBeNull();
         expect(event.getAction()).toBeNull();
         expect(event.getNetwork()).toBeNull();

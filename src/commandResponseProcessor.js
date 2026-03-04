@@ -41,7 +41,9 @@ class CommandResponseProcessor {
      * @param {string} line - Command response line to process
      */
     processLine(line) {
-        this.logger.info(`C-Gate Recv (Cmd): ${line}`);
+        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            this.logger.debug(`C-Gate Recv (Cmd): ${line}`);
+        }
 
         try {
             const parsedResponse = this._parseCommandResponseLine(line);

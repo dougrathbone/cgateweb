@@ -316,7 +316,9 @@ class CgateWebBridge {
             return;
         }
 
-        this.log(`C-Gate Recv (Evt): ${line}`);
+        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            this.logger.debug(`C-Gate Recv (Evt): ${line}`);
+        }
 
         try {
             const event = new CBusEvent(line);

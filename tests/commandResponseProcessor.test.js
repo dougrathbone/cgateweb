@@ -31,7 +31,8 @@ describe('CommandResponseProcessor', () => {
             info: jest.fn(),
             debug: jest.fn(),
             warn: jest.fn(),
-            error: jest.fn()
+            error: jest.fn(),
+            isLevelEnabled: jest.fn(() => true)
         };
 
         processor = new CommandResponseProcessor({
@@ -63,9 +64,9 @@ describe('CommandResponseProcessor', () => {
     });
 
     describe('processLine', () => {
-        it('should log received line', () => {
+        it('should log received line at debug level', () => {
             processor.processLine('200-OK');
-            expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('C-Gate Recv (Cmd): 200-OK'));
+            expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('C-Gate Recv (Cmd): 200-OK'));
         });
 
         it('should parse and process valid response lines', () => {

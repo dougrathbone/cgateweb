@@ -35,6 +35,19 @@ class EventPublisher {
         this.publishFn = options.publishFn;
         this.mqttOptions = options.mqttOptions;
         this.labelLoader = options.labelLoader || null;
+        this.eventPublishDedupWindowMs = Math.max(0, Number(this.settings.eventPublishDedupWindowMs) || 0);
+        this.eventPublishDedupMaxEntries = Math.max(100, Number(this.settings.eventPublishDedupMaxEntries) || 5000);
+        this.topicCacheMaxEntries = Math.max(100, Number(this.settings.topicCacheMaxEntries) || 5000);
+        this._recentPublishes = new Map();
+        this._topicCache = new Map();
+        this._publishStats = {
+            publishAttempts: 0,
+            published: 0,
+            dedupDropped: 0,
+            dedupEvicted: 0,
+            topicCacheHit: 0,
+            topicCacheMiss: 0
+        };
         
         this.logger = options.logger || createLogger({ 
             component: 'event-publisher', 
@@ -57,62 +70,62 @@ class EventPublisher {
             return;
         }
 
-        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
-        const isPirSensor = event.getApplication() === this.settings.ha_discovery_pir_app_id;
-        const isCoverApp = event.getApplication() === this.settings.ha_discovery_cover_app_id;
+        const network = event.getNetwork();
+        const application = event.getApplication();
+        const group = event.getGroup();
+        const action = event.getAction();
+        const rawLevel = event.getLevel();
+        const actionIsOn = action === CGATE_CMD_ON.toLowerCase();
+
+        const topics = this._getTopicsForAddress(network, application, group);
+        const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
+        const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(event, 'cover');
         const isCover = isCoverApp || isCoverOverride;
         
         // Calculate level percentage for Home Assistant
-        let levelPercent;
-        if (event.getLevel() !== null) {
-            // Explicit level from ramp events (0-255) -> (0-100)
-            levelPercent = Math.round(event.getLevel() / CGATE_LEVEL_MAX * 100);
-        } else {
-            // Implicit level from on/off events: ON=100%, OFF=0%
-            levelPercent = (event.getAction() === CGATE_CMD_ON.toLowerCase()) ? 100 : 0;
-        }
+        const levelPercent = rawLevel !== null
+            ? Math.round(rawLevel / CGATE_LEVEL_MAX * 100)
+            : (actionIsOn ? 100 : 0);
 
         let state;
         if (isPirSensor) {
             // PIR sensors: state based on action (motion detected/cleared)
-            state = (event.getAction() === CGATE_CMD_ON.toLowerCase()) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+            state = actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF;
         } else if (isCover) {
             // Covers: state is open/closed based on level
             // Position 0 = closed, Position > 0 = open
             state = (levelPercent > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
         } else {
             // Lighting devices: state based on action or level
-            if (event.getLevel() !== null) {
-                // Ramp events with explicit level (0-255)
-                state = (levelPercent > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
-            } else {
-                // On/Off events without explicit level - use action
-                state = (event.getAction() === CGATE_CMD_ON.toLowerCase()) ? MQTT_STATE_ON : MQTT_STATE_OFF;
-            }
+            state = rawLevel !== null
+                ? ((levelPercent > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
+                : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         }
        
-        this.logger.info(`C-Bus Status ${source}: ${event.getNetwork()}/${event.getApplication()}/${event.getGroup()} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
+        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            this.logger.debug(`C-Bus Status ${source}: ${network}/${application}/${group} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
+        }
 
         // Publish state message directly (no throttle)
-        this.publishFn(
-            `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`, 
+        this._publishIfNeeded(
+            topics.state,
             state, 
             this.mqttOptions
         );
         
         // Publish level/position message for non-PIR sensors
         if (!isPirSensor) {
-            this.publishFn(
-                `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`, 
+            this._publishIfNeeded(
+                topics.level,
                 levelPercent.toString(), 
                 this.mqttOptions
             );
             
             // Also publish position for covers (same value, different topic for HA cover entity)
             if (isCover) {
-                this.publishFn(
-                    `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`, 
+                this._publishIfNeeded(
+                    topics.position,
                     levelPercent.toString(), 
                     this.mqttOptions
                 );
@@ -130,6 +143,85 @@ class EventPublisher {
         if (!typeOverrides) return false;
         const labelKey = `${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
         return typeOverrides.get(labelKey) === type;
+    }
+
+    _publishIfNeeded(topic, payload, options) {
+        this._publishStats.publishAttempts += 1;
+        if (!this.eventPublishDedupWindowMs) {
+            this.publishFn(topic, payload, options);
+            this._publishStats.published += 1;
+            return;
+        }
+
+        const now = Date.now();
+        const previous = this._recentPublishes.get(topic);
+        if (previous && previous.payload === payload && (now - previous.atMs) <= this.eventPublishDedupWindowMs) {
+            this._publishStats.dedupDropped += 1;
+            return;
+        }
+
+        this._recentPublishes.set(topic, { payload, atMs: now });
+        this._pruneDedupCache(now);
+        this.publishFn(topic, payload, options);
+        this._publishStats.published += 1;
+    }
+
+    _getTopicsForAddress(network, application, group) {
+        const key = `${network}/${application}/${group}`;
+        const cached = this._topicCache.get(key);
+        if (cached) {
+            this._publishStats.topicCacheHit += 1;
+            return cached;
+        }
+
+        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${key}`;
+        const topics = {
+            state: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            level: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
+            position: `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`
+        };
+
+        if (this._topicCache.size >= this.topicCacheMaxEntries) {
+            const oldestKey = this._topicCache.keys().next().value;
+            if (oldestKey !== undefined) {
+                this._topicCache.delete(oldestKey);
+            }
+        }
+        this._topicCache.set(key, topics);
+        this._publishStats.topicCacheMiss += 1;
+        return topics;
+    }
+
+    _pruneDedupCache(now) {
+        if (this._recentPublishes.size <= this.eventPublishDedupMaxEntries) {
+            return;
+        }
+
+        // First pass: remove expired entries.
+        const expiryCutoff = now - this.eventPublishDedupWindowMs;
+        for (const [key, value] of this._recentPublishes) {
+            if (value.atMs < expiryCutoff) {
+                this._recentPublishes.delete(key);
+                this._publishStats.dedupEvicted += 1;
+            }
+        }
+
+        // Second pass: enforce max size by oldest insertion order.
+        while (this._recentPublishes.size > this.eventPublishDedupMaxEntries) {
+            const oldestKey = this._recentPublishes.keys().next().value;
+            if (oldestKey === undefined) break;
+            this._recentPublishes.delete(oldestKey);
+            this._publishStats.dedupEvicted += 1;
+        }
+    }
+
+    getStats() {
+        return {
+            ...this._publishStats,
+            dedupWindowMs: this.eventPublishDedupWindowMs,
+            dedupCacheSize: this._recentPublishes.size,
+            topicCacheSize: this._topicCache.size
+        };
     }
 }
 

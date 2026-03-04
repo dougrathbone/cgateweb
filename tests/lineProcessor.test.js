@@ -96,6 +96,17 @@ describe('LineProcessor', () => {
             });
         });
 
+        it('should handle lines split across multiple chunks', () => {
+            processor.processData('line1\nline', (line) => {
+                processedLines.push(line);
+            });
+            processor.processData('2\n', (line) => {
+                processedLines.push(line);
+            });
+
+            expect(processedLines).toEqual(['line1', 'line2']);
+        });
+
         it('should throw error if lineProcessor is not a function', () => {
             expect(() => {
                 processor.processData('test\n', 'not a function');
@@ -131,7 +142,7 @@ describe('LineProcessor', () => {
     });
 
     describe('Compatibility methods', () => {
-        it('should return empty buffer for compatibility', () => {
+        it('should return empty buffer by default', () => {
             expect(processor.getBuffer()).toBe('');
         });
 
@@ -144,17 +155,31 @@ describe('LineProcessor', () => {
             expect(processor.getBuffer()).toBe('');
         });
 
-        it('should handle processFinalLine as no-op', () => {
+        it('should handle processFinalLine with no buffered data', () => {
             processor.processFinalLine(() => {});
             expect(processedLines).toEqual([]);
+        });
+
+        it('should process buffered final line', () => {
+            processor.processData('partial line', (line) => {
+                processedLines.push(line);
+            });
+            expect(processor.hasData()).toBe(true);
+
+            processor.processFinalLine();
+            expect(processedLines).toEqual(['partial line']);
+            expect(processor.getBuffer()).toBe('');
         });
     });
 
     describe('close', () => {
         it('should clean up resources', () => {
+            processor.processData('leftover', (line) => {
+                processedLines.push(line);
+            });
             processor.close();
-            // Should not throw errors
-            expect(processor.rl).toBeDefined();
+            expect(processedLines).toEqual(['leftover']);
+            expect(processor.getBuffer()).toBe('');
         });
     });
 });
@@ -197,5 +222,11 @@ describe('processLines utility function', () => {
             expect(remaining).toBe('');
             done();
         }, 10);
+    });
+
+    it('should return remaining partial buffer for incomplete input', () => {
+        const remaining = processLines('line1\npartial', (line) => processedLines.push(line));
+        expect(processedLines).toEqual(['line1']);
+        expect(remaining).toBe('partial');
     });
 });

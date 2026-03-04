@@ -23,9 +23,11 @@ describe('EventPublisher', () => {
         };
 
         mockLogger = {
+            debug: jest.fn(),
             info: jest.fn(),
             warn: jest.fn(),
-            error: jest.fn()
+            error: jest.fn(),
+            isLevelEnabled: jest.fn(() => true)
         };
 
         eventPublisher = new EventPublisher({
@@ -93,7 +95,7 @@ describe('EventPublisher', () => {
                 mockMqttOptions
             );
 
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('C-Bus Status (Test): 254/56/16 ON (100%)')
             );
         });
@@ -120,7 +122,7 @@ describe('EventPublisher', () => {
                 mockMqttOptions
             );
 
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('C-Bus Status (Test): 254/56/16 OFF (0%)')
             );
         });
@@ -164,10 +166,10 @@ describe('EventPublisher', () => {
                 mockMqttOptions
             );
 
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('C-Bus Status (Test): 254/202/16 ON')
             );
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.not.stringContaining('(%)')
             );
         });
@@ -195,7 +197,7 @@ describe('EventPublisher', () => {
             
             eventPublisher.publishEvent(event);
 
-            expect(mockLogger.info).toHaveBeenCalledWith(
+            expect(mockLogger.debug).toHaveBeenCalledWith(
                 expect.stringContaining('C-Bus Status : 254/56/16 ON (100%)')
             );
         });
@@ -579,6 +581,98 @@ describe('EventPublisher', () => {
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/203/5/position', '50', mockMqttOptions
             );
+        });
+    });
+
+    describe('publish deduplication', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('should suppress unchanged payloads within dedup window', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 200
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const event = new CBusEvent('lighting on 254/56/16');
+            publisher.publishEvent(event);
+            publisher.publishEvent(event);
+
+            // first call publishes state+level, second is deduplicated
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('should allow unchanged payloads after dedup window expires', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 200
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const event = new CBusEvent('lighting on 254/56/16');
+            publisher.publishEvent(event);
+            jest.advanceTimersByTime(250);
+            publisher.publishEvent(event);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(4);
+        });
+
+        it('should expose publish stats including dedup counters', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 200
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const event = new CBusEvent('lighting on 254/56/16');
+            publisher.publishEvent(event);
+            publisher.publishEvent(event);
+
+            const stats = publisher.getStats();
+            expect(stats.publishAttempts).toBe(4);
+            expect(stats.published).toBe(2);
+            expect(stats.dedupDropped).toBe(2);
+        });
+    });
+
+    describe('topic cache', () => {
+        it('should reuse cached topics for repeated addresses', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    topicCacheMaxEntries: 10
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            const event = new CBusEvent('lighting on 254/56/16');
+            publisher.publishEvent(event);
+            publisher.publishEvent(event);
+
+            const stats = publisher.getStats();
+            expect(stats.topicCacheMiss).toBeGreaterThan(0);
+            expect(stats.topicCacheHit).toBeGreaterThan(0);
+            expect(stats.topicCacheSize).toBe(1);
         });
     });
 });

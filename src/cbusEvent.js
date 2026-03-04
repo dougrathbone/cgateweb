@@ -61,36 +61,30 @@ class CBusEvent {
                 return;
             }
 
+            if (this._parseStandardEventFastPath()) {
+                this._parsed = true;
+                return;
+            }
+
             // Use regex to parse standard events
             const match = this._rawEvent.match(EVENT_REGEX);
             if (!match) {
                 // Not a recognizable event format
                 this._logger.warn(`Could not parse C-Bus event: ${this._rawEvent}`);
                 this._isValid = false;
+                this._parsed = true;
                 return;
             }
 
             this._deviceType = match[1] || null;
             this._action = match[2] || null;
             this._address = match[3] || null;
-            this._levelRaw = match[4] ? parseInt(match[4], 10) : null;
+            this._levelRaw = this._extractLeadingInt(match[4]);
             this._level = this._levelRaw;
 
             // Parse address into components
-            if (this._address) {
-                const addressParts = this._address.split('/');
-                if (addressParts.length === 3) {
-                    this._network = addressParts[0];
-                    this._application = addressParts[1];
-                    this._group = addressParts[2];
-                    this._isValid = true;
-                } else {
-                    this._logger.warn(`Invalid C-Bus address format: ${this._address}`);
-                    this._isValid = false;
-                }
-            } else {
+            if (!this._applyAddress(this._address)) {
                 this._logger.warn(`Missing address in C-Bus event: ${this._rawEvent}`);
-                this._isValid = false;
             }
 
             this._parsed = true;
@@ -101,30 +95,98 @@ class CBusEvent {
         }
     }
 
-    _parseStatusResponse() {
-        // Example: 300 //PROJECT/254/56/1: level=255
-        // Extract level information from status responses
-        const levelMatch = this._rawEvent.match(/level=(\d+)/);
-        if (levelMatch) {
-            this._levelRaw = parseInt(levelMatch[1], 10);
-            this._level = this._levelRaw;
+    _parseStandardEventFastPath() {
+        const firstSpace = this._rawEvent.indexOf(' ');
+        if (firstSpace <= 0) return false;
+        const secondSpace = this._rawEvent.indexOf(' ', firstSpace + 1);
+        if (secondSpace <= firstSpace + 1) return false;
+
+        const deviceType = this._rawEvent.slice(0, firstSpace);
+        const action = this._rawEvent.slice(firstSpace + 1, secondSpace);
+        if (!deviceType || !action) return false;
+
+        const rest = this._rawEvent.slice(secondSpace + 1);
+        if (!rest) return false;
+
+        const restParts = rest.split(' ');
+        const addressToken = restParts[0];
+        if (!addressToken) return false;
+
+        const address = this._extractAddress(addressToken);
+        if (!address) return false;
+
+        this._deviceType = deviceType;
+        this._action = action;
+        if (!this._applyAddress(address)) return false;
+
+        if (restParts.length > 1) {
+            const levelToken = restParts[1];
+            if (levelToken) {
+                this._levelRaw = this._extractLeadingInt(levelToken);
+                this._level = this._levelRaw;
+            }
         }
 
-        // Extract address from status response
-        const addressMatch = this._rawEvent.match(/\/\/\w+\/(\d+\/\d+\/\d+):/);
-        if (addressMatch) {
-            this._address = addressMatch[1];
-            const addressParts = this._address.split('/');
-            if (addressParts.length === 3) {
-                this._network = addressParts[0];
-                this._application = addressParts[1];
-                this._group = addressParts[2];
-                this._isValid = true;
+        return true;
+    }
+
+    _extractAddress(addressToken) {
+        // Handle both "254/56/1" and "//PROJECT/254/56/1"
+        const normalized = addressToken.startsWith('//')
+            ? addressToken.slice(addressToken.indexOf('/', 2) + 1)
+            : addressToken;
+
+        const addressMatch = normalized.match(/^(\d+\/\d+\/\d+)/);
+        return addressMatch ? addressMatch[1] : null;
+    }
+
+    _extractLeadingInt(value) {
+        if (value === undefined || value === null) return null;
+        const match = String(value).match(/^(\d+)/);
+        return match ? parseInt(match[1], 10) : null;
+    }
+
+    _applyAddress(address) {
+        if (!address) return false;
+        const addressParts = address.split('/');
+        if (addressParts.length !== 3) {
+            this._logger.warn(`Invalid C-Bus address format: ${address}`);
+            this._isValid = false;
+            return false;
+        }
+        this._address = address;
+        this._network = addressParts[0];
+        this._application = addressParts[1];
+        this._group = addressParts[2];
+        this._isValid = true;
+        return true;
+    }
+
+    _parseStatusResponse() {
+        // Example: "300 //PROJECT/254/56/1: level=255"
+        const markerIndex = this._rawEvent.indexOf('//');
+        const colonIndex = this._rawEvent.indexOf(':', markerIndex);
+        if (markerIndex !== -1 && colonIndex !== -1) {
+            const addressRegion = this._rawEvent.slice(markerIndex, colonIndex);
+            const addressMatch = addressRegion.match(/(\d+\/\d+\/\d+)$/);
+            if (addressMatch) {
+                this._applyAddress(addressMatch[1]);
             }
-        } else {
+        }
+
+        if (!this._isValid) {
             // Invalid status response format
             this._logger.warn(`Invalid status response format: ${this._rawEvent}`);
             this._isValid = false;
+        }
+
+        const levelIndex = this._rawEvent.indexOf('level=');
+        if (levelIndex !== -1) {
+            const levelPart = this._rawEvent.slice(levelIndex + 6);
+            this._levelRaw = this._extractLeadingInt(levelPart);
+            if (this._levelRaw !== null) {
+                this._level = this._levelRaw;
+            }
         }
 
         if (this._isValid) {

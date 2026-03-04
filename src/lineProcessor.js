@@ -1,10 +1,7 @@
-const readline = require('readline');
-const { PassThrough } = require('stream');
 const { NEWLINE } = require('./constants');
 
 /**
- * A line processor that uses Node.js built-in readline interface to process lines
- * Replaces the custom BufferParser with standard Node.js functionality
+ * A lightweight line processor optimized for hot-path socket data.
  */
 class LineProcessor {
     constructor(options = {}) {
@@ -13,28 +10,9 @@ class LineProcessor {
             trimLines: options.trimLines !== false, // Default to true
             skipEmptyLines: options.skipEmptyLines !== false // Default to true
         };
-        
-        this.stream = new PassThrough();
+
         this.lineProcessor = null;
-        
-        // Create readline interface
-        this.rl = readline.createInterface({
-            input: this.stream,
-            crlfDelay: Infinity
-        });
-        
-        // Set up line handling
-        this.rl.on('line', (line) => {
-            this._processLine(line);
-        });
-        
-        this.rl.on('error', (error) => {
-            // Re-throw with additional context if we have a line processor
-            if (this.lineProcessor) {
-                throw new Error(`Error in line processing: ${error.message}`);
-            }
-            throw error;
-        });
+        this._buffer = '';
     }
     
     /**
@@ -46,11 +24,17 @@ class LineProcessor {
         if (typeof lineProcessor !== 'function') {
             throw new Error('lineProcessor must be a function');
         }
-        
+
         this.lineProcessor = lineProcessor;
-        
-        // Write data to the stream, which will trigger line events
-        this.stream.write(data);
+        this._buffer += Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+
+        let delimiterIndex = this._buffer.indexOf(this.options.delimiter);
+        while (delimiterIndex !== -1) {
+            const rawLine = this._buffer.slice(0, delimiterIndex);
+            this._buffer = this._buffer.slice(delimiterIndex + this.options.delimiter.length);
+            this._processLine(rawLine);
+            delimiterIndex = this._buffer.indexOf(this.options.delimiter);
+        }
     }
     
     /**
@@ -63,7 +47,11 @@ class LineProcessor {
             return; // No processor set
         }
         
-        // Apply line processing options
+        // Handle CRLF line endings even when delimiter is '\n'.
+        if (line.endsWith('\r')) {
+            line = line.slice(0, -1);
+        }
+
         if (this.options.trimLines) {
             line = line.trim();
         }
@@ -85,70 +73,68 @@ class LineProcessor {
      * Close the line processor and clean up resources
      */
     close() {
-        if (this.rl) {
-            this.rl.close();
+        if (this._buffer && this.lineProcessor) {
+            this._processLine(this._buffer);
         }
-        if (this.stream) {
-            this.stream.end();
-        }
+        this._buffer = '';
+        this.lineProcessor = null;
     }
     
     // Compatibility methods for existing BufferParser interface
     
     /**
-     * Get any remaining data (not applicable to stream-based processing)
-     * Returns empty string for compatibility
-     * @returns {string} - Always returns empty string
+     * Get any remaining buffered partial line.
+     * @returns {string} Remaining unprocessed partial line
      */
     getBuffer() {
-        return '';
+        return this._buffer;
     }
     
     /**
-     * Check if there's remaining data (not applicable to stream-based processing)
-     * @returns {boolean} - Always returns false
+     * Check if there's remaining buffered partial line data.
+     * @returns {boolean}
      */
     hasData() {
-        return false;
+        return this._buffer.length > 0;
     }
     
     /**
-     * Clear buffer (no-op for stream-based processing)
+     * Clear buffered partial line.
      */
     clearBuffer() {
-        // No-op for streams
+        this._buffer = '';
     }
     
     /**
-     * Process final line (no-op for stream-based processing since readline handles this)
-     * @param {function} _lineProcessor - Not used
+     * Process the final line if there is buffered data.
+     * @param {function} lineProcessor - Optional line processor callback
      */
-    processFinalLine(_lineProcessor) {
-        // No-op for streams - readline handles incomplete lines automatically
+    processFinalLine(lineProcessor) {
+        if (typeof lineProcessor === 'function') {
+            this.lineProcessor = lineProcessor;
+        }
+
+        if (this._buffer) {
+            this._processLine(this._buffer);
+            this._buffer = '';
+        }
     }
 }
 
 /**
- * Convenience function for simple line-by-line processing
- * Uses Node.js streams instead of custom buffer management
+ * Convenience function for simple line-by-line processing.
  * @param {Buffer|string} data - Data to process
  * @param {function} lineProcessor - Function to call for each line
  * @param {Object} options - Processor options
- * @returns {string} - Empty string for compatibility (streams don't have remaining buffer)
+ * @returns {string} - Remaining partial line buffer
  */
 function processLines(data, lineProcessor, options = {}) {
     const processor = new LineProcessor(options);
-    
-    // Set up the line processor
     processor.processData(data, lineProcessor);
-    
-    // For streams, we need to end the stream to ensure all data is processed
-    processor.stream.end();
-    
-    // Clean up
+    const remaining = processor.getBuffer();
+    processor.clearBuffer();
     processor.close();
-    
-    return ''; // Return empty string for compatibility
+    return remaining;
 }
 
 module.exports = {
