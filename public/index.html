@@ -82,6 +82,26 @@ header h1 {
 }
 .status-item { display: flex; gap: 4px; align-items: center; }
 .status-value { font-weight: 600; }
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+}
+.diag-item {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.diag-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+.diag-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
 
 .section {
   background: var(--surface);
@@ -347,6 +367,22 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   </div>
 
   <div class="section">
+    <div class="section-header" data-section="runtime">
+      <h2><span class="chevron open" id="runtimeChevron">&#9654;</span> Runtime Status</h2>
+    </div>
+    <div class="section-body" id="runtimeBody">
+      <div class="diag-grid">
+        <div class="diag-item"><div class="diag-label">Ready</div><div class="diag-value" id="diagReady">-</div></div>
+        <div class="diag-item"><div class="diag-label">Lifecycle</div><div class="diag-value" id="diagLifecycle">-</div></div>
+        <div class="diag-item"><div class="diag-label">MQTT</div><div class="diag-value" id="diagMqtt">-</div></div>
+        <div class="diag-item"><div class="diag-label">Event</div><div class="diag-value" id="diagEvent">-</div></div>
+        <div class="diag-item"><div class="diag-label">Cmd Pool Healthy</div><div class="diag-value" id="diagHealthy">-</div></div>
+        <div class="diag-item"><div class="diag-label">Queue Depth</div><div class="diag-value" id="diagQueueDepth">-</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-header" data-section="import">
       <h2><span class="chevron open" id="importChevron">&#9654;</span> Import from Clipsal Toolkit</h2>
     </div>
@@ -411,6 +447,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   let sortCol = 'address';
   let sortDir = 1;
   let pendingImport = null;
+  let statusRefreshTimer = null;
 
   function getApiBase() {
     const match = window.location.pathname.match(/^(\/api\/hassio_ingress\/[^/]+)/);
@@ -446,6 +483,29 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
       render();
     } catch (e) {
       showToast('Failed to load labels: ' + e.message, true);
+    }
+  }
+
+  async function loadRuntimeStatus() {
+    try {
+      var status = await api('/api/status');
+      document.getElementById('diagReady').textContent = status.ready ? 'yes' : 'no';
+      document.getElementById('diagLifecycle').textContent = (status.lifecycle && status.lifecycle.state) ? status.lifecycle.state : 'unknown';
+      document.getElementById('diagMqtt').textContent = status.connections && status.connections.mqtt ? 'connected' : 'disconnected';
+      document.getElementById('diagEvent').textContent = status.connections && status.connections.event ? 'connected' : 'disconnected';
+      document.getElementById('diagHealthy').textContent = (status.connections && status.connections.commandPool)
+        ? String(status.connections.commandPool.healthyConnections || 0)
+        : '0';
+      document.getElementById('diagQueueDepth').textContent = (status.metrics && status.metrics.commandQueue)
+        ? String(status.metrics.commandQueue.depth || 0)
+        : '0';
+    } catch (_e) {
+      document.getElementById('diagReady').textContent = 'unavailable';
+      document.getElementById('diagLifecycle').textContent = 'unavailable';
+      document.getElementById('diagMqtt').textContent = '-';
+      document.getElementById('diagEvent').textContent = '-';
+      document.getElementById('diagHealthy').textContent = '-';
+      document.getElementById('diagQueueDepth').textContent = '-';
     }
   }
 
@@ -844,6 +904,8 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
   // Init
   loadLabels();
+  loadRuntimeStatus();
+  statusRefreshTimer = setInterval(loadRuntimeStatus, 10000);
 })();
 </script>
 </body>

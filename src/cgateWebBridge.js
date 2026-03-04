@@ -11,6 +11,7 @@ const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
 const WebServer = require('./webServer');
+const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 
@@ -166,6 +167,12 @@ class CgateWebBridge {
             maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
             getStatus: () => this._getBridgeStatus()
         });
+        this.haBridgeDiagnostics = new HaBridgeDiagnostics(
+            this.settings,
+            (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
+            () => this._getBridgeStatus(),
+            this.logger
+        );
 
         this.initializationService = new BridgeInitializationService(this);
         this._setupEventHandlers();
@@ -240,6 +247,8 @@ class CgateWebBridge {
         
         // Start all connections via connection manager
         await this.connectionManager.start();
+        this.haBridgeDiagnostics.start();
+        this.haBridgeDiagnostics.publishNow('startup');
         this._updateBridgeReadiness('startup-complete');
         
         return this;
@@ -260,6 +269,7 @@ class CgateWebBridge {
         this._updateBridgeReadiness('shutdown');
         
         this.initializationService.stop();
+        this.haBridgeDiagnostics.stop();
 
         // Stop web server
         await this.webServer.close();
@@ -457,6 +467,7 @@ class CgateWebBridge {
             this._setLifecycleState(this._hasEverBeenReady ? 'degraded' : 'booting', reason);
         }
         this.mqttManager.setBridgeReady(ready, reason);
+        this.haBridgeDiagnostics.publishNow(reason);
     }
 
     _setLifecycleState(state, reason) {

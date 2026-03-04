@@ -44,6 +44,8 @@ const defaultSettings = {
     ha_discovery_switch_app_id: null,
     ha_discovery_relay_app_id: null,
     ha_discovery_pir_app_id: null,
+    ha_bridge_diagnostics_enabled: true,
+    ha_bridge_diagnostics_interval_sec: 60,
     cbus_label_file: null,
     web_port: 8080,
     web_bind_host: '127.0.0.1',

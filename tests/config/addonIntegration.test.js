@@ -215,6 +215,8 @@ describe('Addon Configuration Integration', () => {
                 expect(config.cgate_mode).toBe(configYaml.options.cgate_mode);
                 expect(config.web_allow_unauthenticated_mutations).toBe(configYaml.options.web_allow_unauthenticated_mutations);
                 expect(config.web_allowed_origins).toEqual(configYaml.options.web_allowed_origins);
+                expect(config.ha_bridge_diagnostics_enabled).toBe(configYaml.options.ha_bridge_diagnostics_enabled);
+                expect(config.ha_bridge_diagnostics_interval_sec).toBe(configYaml.options.ha_bridge_diagnostics_interval_sec);
             } finally {
                 fs.unlinkSync(tmpPath);
             }

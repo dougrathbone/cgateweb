@@ -201,6 +201,14 @@ class ConfigLoader {
             }
         }
 
+        if (options.ha_bridge_diagnostics_enabled !== undefined && options.ha_bridge_diagnostics_enabled !== null) {
+            config.ha_bridge_diagnostics_enabled = options.ha_bridge_diagnostics_enabled === true;
+        }
+
+        if (options.ha_bridge_diagnostics_interval_sec !== undefined && options.ha_bridge_diagnostics_interval_sec !== null) {
+            config.ha_bridge_diagnostics_interval_sec = options.ha_bridge_diagnostics_interval_sec;
+        }
+
         // Label file: use explicit setting, or auto-detect from common addon paths
         if (options.cbus_label_file) {
             config.cbus_label_file = options.cbus_label_file;

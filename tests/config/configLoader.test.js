@@ -46,7 +46,9 @@ describe('ConfigLoader', () => {
             ha_discovery_prefix: 'homeassistant',
             ha_discovery_networks: [254],
             ha_discovery_cover_app_id: 203,
-            ha_discovery_switch_app_id: 201
+            ha_discovery_switch_app_id: 201,
+            ha_bridge_diagnostics_enabled: true,
+            ha_bridge_diagnostics_interval_sec: 45
         };
 
         beforeEach(() => {
@@ -86,6 +88,8 @@ describe('ConfigLoader', () => {
             expect(config.ha_discovery_networks).toEqual([254]);
             expect(config.ha_discovery_cover_app_id).toBe('203');
             expect(config.ha_discovery_switch_app_id).toBe('201');
+            expect(config.ha_bridge_diagnostics_enabled).toBe(true);
+            expect(config.ha_bridge_diagnostics_interval_sec).toBe(45);
             expect(config._environment.type).toBe('addon');
         });
 
@@ -109,6 +113,21 @@ describe('ConfigLoader', () => {
             expect(config.log_level).toBe('info');
             expect(config.logging).toBe(true);
             expect(config.cgate_mode).toBe('remote');
+        });
+
+        test('should map bridge diagnostics options when disabled', () => {
+            const options = {
+                ...mockAddonOptions,
+                ha_bridge_diagnostics_enabled: false,
+                ha_bridge_diagnostics_interval_sec: 120
+            };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.ha_bridge_diagnostics_enabled).toBe(false);
+            expect(config.ha_bridge_diagnostics_interval_sec).toBe(120);
         });
 
         test('should throw error when options file is missing', () => {

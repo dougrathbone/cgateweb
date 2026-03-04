@@ -98,6 +98,8 @@ MQTT connection details are **automatically detected** from the Mosquitto add-on
 | `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
 | `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters) |
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional) |
+| `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
+| `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
 ## Finding Your C-Bus Network ID
 
@@ -212,6 +214,17 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `homeassistant/light/cgateweb_{network}_{app}_{group}/config` - Light discovery
 - `homeassistant/cover/cgateweb_{network}_{app}_{group}/config` - Cover discovery
 - `homeassistant/switch/cgateweb_{network}_{app}_{group}/config` - Switch discovery
+- `homeassistant/sensor/cgateweb_bridge_*/config` - Bridge diagnostics discovery
+- `homeassistant/binary_sensor/cgateweb_bridge_*/config` - Bridge connectivity discovery
+
+### Bridge Diagnostics Topics (Published by add-on)
+- `cbus/read/bridge/diagnostics/ready/state`
+- `cbus/read/bridge/diagnostics/lifecycle_state/state`
+- `cbus/read/bridge/diagnostics/mqtt_connected/state`
+- `cbus/read/bridge/diagnostics/event_connected/state`
+- `cbus/read/bridge/diagnostics/command_pool_healthy/state`
+- `cbus/read/bridge/diagnostics/command_queue_depth/state`
+- `cbus/read/bridge/diagnostics/reconnect_indicator/state`
 
 ## Device Discovery
 

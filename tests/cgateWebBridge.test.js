@@ -154,6 +154,7 @@ describe('CgateWebBridge', () => {
             try {
                 // Clear queues first to stop async operations
                 bridge.cgateCommandQueue?.clear?.();
+                bridge.haBridgeDiagnostics?.stop?.();
                 bridge.eventConnection?.disconnect?.();
                 await bridge.commandConnectionPool?.stop?.();
             } catch {

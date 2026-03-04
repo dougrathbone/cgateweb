@@ -1,149 +1,136 @@
 configuration:
   cgate_host:
     name: C-Gate Host
-    description: >-
-      IP address or hostname of the C-Gate server. Set to 127.0.0.1 when using
-      managed mode, or the remote server address when using remote mode.
+    description: IP address or hostname of the C-Gate server. Set to 127.0.0.1 when
+      using managed mode, or the remote server address when using remote mode.
   cgate_port:
     name: C-Gate Command Port
-    description: >-
-      TCP port for C-Gate command connections. The default C-Gate command port
-      is 20023.
+    description: TCP port for C-Gate command connections. The default C-Gate command
+      port is 20023.
   cgate_event_port:
     name: C-Gate Event Port
-    description: >-
-      TCP port for C-Gate event connections. The default C-Gate event port
-      is 20025. This port receives real-time updates from C-Bus devices.
+    description: TCP port for C-Gate event connections. The default C-Gate event
+      port is 20025. This port receives real-time updates from C-Bus devices.
   cgate_project:
     name: C-Gate Project Name
-    description: >-
-      The name of your C-Bus project as configured in C-Gate (e.g., HOME).
+    description: The name of your C-Bus project as configured in C-Gate (e.g., HOME).
   mqtt_host:
     name: MQTT Broker Host
-    description: >-
-      Auto-detected from the Mosquitto add-on. Only set this if you are
+    description: Auto-detected from the Mosquitto add-on. Only set this if you are
       using an external MQTT broker instead of the HA Mosquitto add-on.
   mqtt_port:
     name: MQTT Broker Port
-    description: >-
-      Auto-detected from the Mosquitto add-on. Only set this if you are
+    description: Auto-detected from the Mosquitto add-on. Only set this if you are
       using an external MQTT broker (default port is 1883).
   mqtt_username:
     name: MQTT Username
-    description: >-
-      Auto-detected from the Mosquitto add-on. Only set this if you are
+    description: Auto-detected from the Mosquitto add-on. Only set this if you are
       using an external MQTT broker or need to override the credentials.
   mqtt_password:
     name: MQTT Password
-    description: >-
-      Auto-detected from the Mosquitto add-on. Only set this if you are
+    description: Auto-detected from the Mosquitto add-on. Only set this if you are
       using an external MQTT broker or need to override the credentials.
   getall_networks:
     name: C-Bus Networks to Monitor
-    description: >-
-      List of C-Bus network IDs to poll for device states. The default network
-      is 254, which is the standard C-Bus network number for most installations.
-      To find your network IDs, open the C-Gate Toolkit application, expand your
-      project, and look at the network numbers listed under it. You can also use
-      Clipsal C-Bus Toolkit (CBAT) under Project > Network List.
+    description: List of C-Bus network IDs to poll for device states. The default
+      network is 254, which is the standard C-Bus network number for most
+      installations. To find your network IDs, open the C-Gate Toolkit
+      application, expand your project, and look at the network numbers listed
+      under it. You can also use Clipsal C-Bus Toolkit (CBAT) under Project >
+      Network List.
   getall_on_start:
     name: Poll on Startup
-    description: >-
-      Request all device states when the add-on starts. Useful for
+    description: Request all device states when the add-on starts. Useful for
       synchronizing Home Assistant with the current state of all C-Bus devices.
   getall_period:
     name: Poll Interval (seconds)
-    description: >-
-      How often to request all device states, in seconds. Lower values
+    description: How often to request all device states, in seconds. Lower values
       provide fresher state but increase network traffic to C-Gate.
   retain_reads:
     name: Retain MQTT State Messages
-    description: >-
-      Set the MQTT retain flag on state messages. When enabled, new MQTT
+    description: Set the MQTT retain flag on state messages. When enabled, new MQTT
       subscribers immediately receive the last known state of each device.
   message_interval:
     name: Command Interval (ms)
-    description: >-
-      Minimum delay between commands sent to C-Gate, in milliseconds.
+    description: Minimum delay between commands sent to C-Gate, in milliseconds.
       Prevents overwhelming C-Gate with rapid commands. Default 200ms.
   log_level:
     name: Log Level
-    description: >-
-      Logging verbosity. Use debug for troubleshooting, info for normal
+    description: Logging verbosity. Use debug for troubleshooting, info for normal
       operation, warn for warnings only, or error for errors only.
   ha_discovery_enabled:
     name: Enable Home Assistant Discovery
-    description: >-
-      Automatically register C-Bus devices with Home Assistant using
-      MQTT Discovery. Devices appear as entities without manual configuration.
+    description: Automatically register C-Bus devices with Home Assistant using MQTT
+      Discovery. Devices appear as entities without manual configuration.
   ha_discovery_prefix:
     name: Discovery Topic Prefix
-    description: >-
-      MQTT topic prefix for Home Assistant Discovery messages. This must
-      match your Home Assistant MQTT discovery prefix (default: homeassistant).
+    description: "MQTT topic prefix for Home Assistant Discovery messages. This must
+      match your Home Assistant MQTT discovery prefix (default: homeassistant)."
   ha_discovery_networks:
     name: Discovery Networks
-    description: >-
-      C-Bus network IDs to scan for device discovery. Defaults to 254, the
-      standard C-Bus network. If empty, falls back to the networks listed in
+    description: C-Bus network IDs to scan for device discovery. Defaults to 254,
+      the standard C-Bus network. If empty, falls back to the networks listed in
       "C-Bus Networks to Monitor". Most installations only have one network.
   ha_discovery_cover_app_id:
     name: Cover Application ID
-    description: >-
-      C-Bus application ID to treat as covers (blinds, shutters, garage doors).
-      Common value is 203 (Enable Control). Leave empty to disable cover discovery.
+    description: C-Bus application ID to treat as covers (blinds, shutters, garage
+      doors). Common value is 203 (Enable Control). Leave empty to disable cover
+      discovery.
   ha_discovery_switch_app_id:
     name: Switch Application ID
-    description: >-
-      C-Bus application ID to treat as switches. Leave empty to disable
+    description: C-Bus application ID to treat as switches. Leave empty to disable
       switch discovery.
+  ha_bridge_diagnostics_enabled:
+    name: Enable Bridge Diagnostics
+    description: Publish bridge health entities (ready state, connection status,
+      queue depth) using Home Assistant MQTT Discovery.
+  ha_bridge_diagnostics_interval_sec:
+    name: Diagnostics Update Interval (seconds)
+    description: How often bridge diagnostic entity states are refreshed. Lower
+      values update faster but increase MQTT traffic.
   cgate_mode:
     name: C-Gate Mode
-    description: >-
-      How C-Gate is provided. "remote" connects to a C-Gate server running
-      elsewhere on your network. "managed" downloads and runs C-Gate locally
-      inside this add-on (requires Java and a C-Bus serial interface).
+    description: How C-Gate is provided. "remote" connects to a C-Gate server
+      running elsewhere on your network. "managed" downloads and runs C-Gate
+      locally inside this add-on (requires Java and a C-Bus serial interface).
   cgate_install_source:
     name: C-Gate Install Source
-    description: >-
-      Only used when C-Gate Mode is "managed". "download" automatically
-      downloads C-Gate from the official Clipsal URL on first start.
-      "upload" looks for a C-Gate zip file you place in /share/cgate/.
+    description: Only used when C-Gate Mode is "managed". "download" automatically
+      downloads C-Gate from the official Clipsal URL on first start. "upload"
+      looks for a C-Gate zip file you place in /share/cgate/.
   cgate_download_url:
     name: C-Gate Download URL
-    description: >-
-      Only used when C-Gate Mode is "managed" and Install Source is "download".
-      Override the default URL if the official Clipsal download location changes.
-      Leave empty to use the default URL.
+    description: Only used when C-Gate Mode is "managed" and Install Source is
+      "download". Override the default URL if the official Clipsal download
+      location changes. Leave empty to use the default URL.
   cgate_download_sha256:
     name: C-Gate Download SHA256
-    description: >-
-      Optional SHA256 checksum used to verify the downloaded (or uploaded) C-Gate
-      zip file before installation. Recommended when using a custom download URL.
+    description: Optional SHA256 checksum used to verify the downloaded (or
+      uploaded) C-Gate zip file before installation. Recommended when using a
+      custom download URL.
   cbus_label_file:
     name: Custom Label File
-    description: >-
-      Path to a JSON file with custom device names for C-Bus groups. Generated
-      by the import tool or the built-in label editor. Labels from this file
-      take priority over names from C-Gate. Auto-detected from common paths
-      if not set. The file is watched and changes are applied automatically.
+    description: Path to a JSON file with custom device names for C-Bus groups.
+      Generated by the import tool or the built-in label editor. Labels from
+      this file take priority over names from C-Gate. Auto-detected from common
+      paths if not set. The file is watched and changes are applied
+      automatically.
   web_api_key:
     name: Web API Key
-    description: >-
-      API key required for write operations in the label editor API. Set this
-      when exposing port 8080 beyond Home Assistant ingress.
+    description: API key required for write operations in the label editor API. Set
+      this when exposing port 8080 beyond Home Assistant ingress.
   web_allow_unauthenticated_mutations:
     name: Allow Unauthenticated Web Writes (Unsafe)
-    description: >-
-      If enabled, PUT/PATCH/POST write endpoints are allowed without an API key.
-      Keep disabled unless you fully trust network access to this add-on.
+    description: If enabled, PUT/PATCH/POST write endpoints are allowed without an
+      API key. Keep disabled unless you fully trust network access to this
+      add-on.
   web_allowed_origins:
     name: Allowed Web Origins
-    description: >-
-      Optional CORS allowlist for browser access. Provide full origins such as
-      https://ha.example.com. Leave empty to disable cross-origin browser access.
+    description: Optional CORS allowlist for browser access. Provide full origins
+      such as https://ha.example.com. Leave empty to disable cross-origin
+      browser access.
   web_mutation_rate_limit_per_minute:
     name: Web Write Rate Limit Per Minute
-    description: >-
-      Maximum number of mutating API requests per minute per client source.
-      Helps protect label update endpoints from abuse or runaway clients.
+    description: Maximum number of mutating API requests per minute per client
+      source. Helps protect label update endpoints from abuse or runaway
+      clients.

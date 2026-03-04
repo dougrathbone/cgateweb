@@ -67,6 +67,8 @@ options:
   ha_discovery_networks:
     - 254
   ha_discovery_cover_app_id: 203
+  ha_bridge_diagnostics_enabled: true
+  ha_bridge_diagnostics_interval_sec: 60
 
   # Label file for custom device names (auto-detected if not set)
   cbus_label_file: ""
@@ -114,6 +116,8 @@ schema:
   ha_discovery_networks: ["int(1,255)"]
   ha_discovery_cover_app_id: "int(1,255)?"
   ha_discovery_switch_app_id: "int(1,255)?"
+  ha_bridge_diagnostics_enabled: "bool"
+  ha_bridge_diagnostics_interval_sec: "int(10,3600)?"
   cbus_label_file: "str?"
   web_api_key: "password?"
   web_allow_unauthenticated_mutations: "bool"
