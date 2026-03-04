@@ -22,6 +22,28 @@ function getP95(bundle, pathName) {
     return bundle[pathName].lineToPublishFlushMs.p95;
 }
 
+function toCount(value) {
+    return Number.isFinite(Number(value)) ? Number(value) : 0;
+}
+
+function estimateElapsedMs(bundle, pathName) {
+    const sampleCount = toCount(bundle[pathName]?.sampleCount);
+    const throughput = Number(bundle[pathName]?.throughputMsgsPerSec || 0);
+    if (sampleCount <= 0 || throughput <= 0) {
+        return 0;
+    }
+    return (sampleCount / throughput) * 1000;
+}
+
+function calculatePublishedThroughput(bundle, pathName) {
+    const published = toCount(bundle[pathName]?.publishStats?.published);
+    const elapsedMs = estimateElapsedMs(bundle, pathName);
+    if (published <= 0 || elapsedMs <= 0) {
+        return 0;
+    }
+    return (published / elapsedMs) * 1000;
+}
+
 function printSection(title) {
     process.stdout.write(`\n${title}\n`);
     process.stdout.write(`${'-'.repeat(title.length)}\n`);
@@ -39,6 +61,12 @@ function main() {
     process.stdout.write(`Baseline: ${baselineFile}\n`);
     process.stdout.write(`After:    ${afterFile}\n`);
 
+    printSection('Benchmark config');
+    process.stdout.write(`Baseline profile: ${baseline.profile || 'n/a'}\n`);
+    process.stdout.write(`After profile:    ${after.profile || 'n/a'}\n`);
+    process.stdout.write(`Baseline dedup ms: ${baseline.benchmarkConfig?.dedupWindowMs ?? 'n/a'}\n`);
+    process.stdout.write(`After dedup ms:    ${after.benchmarkConfig?.dedupWindowMs ?? 'n/a'}\n`);
+
     printSection('Event path');
     process.stdout.write(`Throughput msg/s: ${formatDelta(baseline.eventPath.throughputMsgsPerSec, after.eventPath.throughputMsgsPerSec, false)}\n`);
     process.stdout.write(`Line->Publish p95 ms: ${formatDelta(baseline.eventPath.lineToPublishCallMs.p95, after.eventPath.lineToPublishCallMs.p95, true)}\n`);
@@ -46,6 +74,26 @@ function main() {
     if (baseline.eventPath.publishStats && after.eventPath.publishStats) {
         process.stdout.write(`Published msgs: baseline=${baseline.eventPath.publishStats.published}, after=${after.eventPath.publishStats.published}\n`);
         process.stdout.write(`Dedup dropped: baseline=${baseline.eventPath.publishStats.dedupDropped}, after=${after.eventPath.publishStats.dedupDropped}\n`);
+    }
+    const baselinePublishedThroughput = calculatePublishedThroughput(baseline, 'eventPath');
+    const afterPublishedThroughput = calculatePublishedThroughput(after, 'eventPath');
+    if (baselinePublishedThroughput > 0 && afterPublishedThroughput > 0) {
+        process.stdout.write(`Published msg/s (estimated): ${formatDelta(baselinePublishedThroughput, afterPublishedThroughput, false)}\n`);
+    }
+
+    const baselinePublished = toCount(baseline.eventPath?.publishStats?.published);
+    const afterPublished = toCount(after.eventPath?.publishStats?.published);
+    const baselineAttempts = toCount(baseline.eventPath?.publishStats?.publishAttempts || baseline.eventPath?.sampleCount);
+    const afterAttempts = toCount(after.eventPath?.publishStats?.publishAttempts || after.eventPath?.sampleCount);
+    const baselinePublishRatio = baselineAttempts > 0 ? baselinePublished / baselineAttempts : 0;
+    const afterPublishRatio = afterAttempts > 0 ? afterPublished / afterAttempts : 0;
+
+    printSection('Workload equivalence');
+    process.stdout.write(`Publish ratio: baseline=${(baselinePublishRatio * 100).toFixed(2)}%, after=${(afterPublishRatio * 100).toFixed(2)}%\n`);
+    if (baselinePublished !== afterPublished || baselinePublishRatio !== afterPublishRatio) {
+        process.stdout.write('NOTE: Event publish work differs between artifacts; raw throughput is not an apples-to-apples publish-cost comparison.\n');
+    } else {
+        process.stdout.write('Publish work is equivalent between artifacts; throughput comparison is apples-to-apples for publish cost.\n');
     }
 
     printSection('Command path');

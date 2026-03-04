@@ -54,10 +54,18 @@ function getEnvNumber(name, fallback) {
 }
 
 function loadBenchmarkConfig() {
-    const variant = process.env.PERF_VARIANT || process.env.PERF_PROFILE || 'baseline';
+    const variant = process.env.PERF_VARIANT || process.env.PERF_PROFILE || 'raw';
+    const variantDefaultDedupWindowMs = {
+        raw: 0,
+        baseline: 0,
+        dedup: 200,
+        after: 200
+    };
     return {
         variant,
-        dedupWindowMs: Number(process.env.PERF_DEDUP_WINDOW_MS || (variant === 'after' ? 200 : 0)),
+        dedupWindowMs: Number(
+            process.env.PERF_DEDUP_WINDOW_MS || variantDefaultDedupWindowMs[variant] || 0
+        ),
         logLevel: process.env.PERF_LOG_LEVEL || 'info',
         repeat: Math.max(1, getEnvNumber('PERF_REPEAT', 5)),
         warmup: Math.max(0, getEnvNumber('PERF_WARMUP', 1)),

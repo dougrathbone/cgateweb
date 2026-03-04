@@ -1,0 +1,527 @@
+{
+  "generatedAt": "2026-03-04T11:42:46.679Z",
+  "profile": "dedup",
+  "benchmarkConfig": {
+    "repeat": 5,
+    "warmup": 1,
+    "logLevel": "info",
+    "dedupWindowMs": 200,
+    "eventCount": 1500,
+    "commandCount": 1000,
+    "uniqueGroups": 50
+  },
+  "summary": {
+    "runCount": 5,
+    "eventThroughputMedian": 645971.74,
+    "commandThroughputMedian": 617363.22,
+    "eventP95FlushMedianMs": 2.284,
+    "commandP95FlushMedianMs": 0.241
+  },
+  "workload": {
+    "eventCount": 1500,
+    "commandCount": 1000
+  },
+  "resource": {
+    "cpuUserMs": 49.194,
+    "cpuSystemMs": 2.117,
+    "rssBeforeMb": 91.45,
+    "rssAfterMb": 105.34
+  },
+  "eventPath": {
+    "profile": "dedup",
+    "sampleCount": 1500,
+    "uniqueGroups": 50,
+    "parsedEvents": 1500,
+    "throughputMsgsPerSec": 645971.74,
+    "lineToParseMs": {
+      "count": 1500,
+      "min": 0,
+      "p50": 0,
+      "p95": 0.001,
+      "p99": 0.002,
+      "max": 0.038,
+      "avg": 0.001
+    },
+    "lineToPublishCallMs": {
+      "count": 100,
+      "min": 0.001,
+      "p50": 0.002,
+      "p95": 0.003,
+      "p99": 0.009,
+      "max": 0.011,
+      "avg": 0.002
+    },
+    "lineToPublishFlushMs": {
+      "count": 100,
+      "min": 2.179,
+      "p50": 2.23,
+      "p95": 2.284,
+      "p99": 2.296,
+      "max": 2.299,
+      "avg": 2.232
+    },
+    "publishCallToFlushMs": {
+      "count": 100,
+      "min": 2.177,
+      "p50": 2.229,
+      "p95": 2.28,
+      "p99": 2.287,
+      "max": 2.288,
+      "avg": 2.23
+    },
+    "publishStats": {
+      "publishAttempts": 3000,
+      "published": 100,
+      "dedupDropped": 2900,
+      "dedupEvicted": 0,
+      "coalesced": 0,
+      "topicCacheHit": 1450,
+      "topicCacheMiss": 50,
+      "dedupWindowMs": 200,
+      "dedupCacheSize": 100,
+      "topicCacheSize": 50,
+      "coalesceEnabled": false,
+      "coalesceBufferSize": 0
+    }
+  },
+  "commandPath": {
+    "profile": "dedup",
+    "sampleCount": 1000,
+    "throughputMsgsPerSec": 470976.1,
+    "lineToPublishCallMs": {
+      "count": 1000,
+      "min": 0.001,
+      "p50": 0.001,
+      "p95": 0.002,
+      "p99": 0.002,
+      "max": 0.029,
+      "avg": 0.001
+    },
+    "lineToPublishFlushMs": {
+      "count": 1000,
+      "min": 0.506,
+      "p50": 0.569,
+      "p95": 0.614,
+      "p99": 0.618,
+      "max": 0.619,
+      "avg": 0.567
+    }
+  },
+  "trials": [
+    {
+      "run": 1,
+      "eventPath": {
+        "profile": "dedup",
+        "sampleCount": 1500,
+        "uniqueGroups": 50,
+        "parsedEvents": 1500,
+        "throughputMsgsPerSec": 489955.9,
+        "lineToParseMs": {
+          "count": 1500,
+          "min": 0,
+          "p50": 0,
+          "p95": 0.001,
+          "p99": 0.002,
+          "max": 0.012,
+          "avg": 0.001
+        },
+        "lineToPublishCallMs": {
+          "count": 100,
+          "min": 0.001,
+          "p50": 0.002,
+          "p95": 0.004,
+          "p99": 0.027,
+          "max": 0.032,
+          "avg": 0.003
+        },
+        "lineToPublishFlushMs": {
+          "count": 100,
+          "min": 2.877,
+          "p50": 2.941,
+          "p95": 3.003,
+          "p99": 3.033,
+          "max": 3.041,
+          "avg": 2.942
+        },
+        "publishCallToFlushMs": {
+          "count": 100,
+          "min": 2.875,
+          "p50": 2.938,
+          "p95": 3,
+          "p99": 3.006,
+          "max": 3.009,
+          "avg": 2.94
+        },
+        "publishStats": {
+          "publishAttempts": 3000,
+          "published": 100,
+          "dedupDropped": 2900,
+          "dedupEvicted": 0,
+          "coalesced": 0,
+          "topicCacheHit": 1450,
+          "topicCacheMiss": 50,
+          "dedupWindowMs": 200,
+          "dedupCacheSize": 100,
+          "topicCacheSize": 50,
+          "coalesceEnabled": false,
+          "coalesceBufferSize": 0
+        }
+      },
+      "commandPath": {
+        "profile": "dedup",
+        "sampleCount": 1000,
+        "throughputMsgsPerSec": 617363.22,
+        "lineToPublishCallMs": {
+          "count": 1000,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.001,
+          "p99": 0.002,
+          "max": 0.018,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 1000,
+          "min": 0.078,
+          "p50": 0.162,
+          "p95": 0.241,
+          "p99": 0.247,
+          "max": 0.248,
+          "avg": 0.164
+        }
+      }
+    },
+    {
+      "run": 2,
+      "eventPath": {
+        "profile": "dedup",
+        "sampleCount": 1500,
+        "uniqueGroups": 50,
+        "parsedEvents": 1500,
+        "throughputMsgsPerSec": 631191.2,
+        "lineToParseMs": {
+          "count": 1500,
+          "min": 0,
+          "p50": 0,
+          "p95": 0.001,
+          "p99": 0.001,
+          "max": 0.002,
+          "avg": 0
+        },
+        "lineToPublishCallMs": {
+          "count": 100,
+          "min": 0.001,
+          "p50": 0.002,
+          "p95": 0.002,
+          "p99": 0.008,
+          "max": 0.01,
+          "avg": 0.002
+        },
+        "lineToPublishFlushMs": {
+          "count": 100,
+          "min": 2.249,
+          "p50": 2.298,
+          "p95": 2.345,
+          "p99": 2.355,
+          "max": 2.358,
+          "avg": 2.299
+        },
+        "publishCallToFlushMs": {
+          "count": 100,
+          "min": 2.248,
+          "p50": 2.297,
+          "p95": 2.343,
+          "p99": 2.347,
+          "max": 2.348,
+          "avg": 2.298
+        },
+        "publishStats": {
+          "publishAttempts": 3000,
+          "published": 100,
+          "dedupDropped": 2900,
+          "dedupEvicted": 0,
+          "coalesced": 0,
+          "topicCacheHit": 1450,
+          "topicCacheMiss": 50,
+          "dedupWindowMs": 200,
+          "dedupCacheSize": 100,
+          "topicCacheSize": 50,
+          "coalesceEnabled": false,
+          "coalesceBufferSize": 0
+        }
+      },
+      "commandPath": {
+        "profile": "dedup",
+        "sampleCount": 1000,
+        "throughputMsgsPerSec": 550648.36,
+        "lineToPublishCallMs": {
+          "count": 1000,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.001,
+          "p99": 0.002,
+          "max": 0.029,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 1000,
+          "min": 0.077,
+          "p50": 0.181,
+          "p95": 0.261,
+          "p99": 0.267,
+          "max": 0.268,
+          "avg": 0.179
+        }
+      }
+    },
+    {
+      "run": 3,
+      "eventPath": {
+        "profile": "dedup",
+        "sampleCount": 1500,
+        "uniqueGroups": 50,
+        "parsedEvents": 1500,
+        "throughputMsgsPerSec": 645971.74,
+        "lineToParseMs": {
+          "count": 1500,
+          "min": 0,
+          "p50": 0,
+          "p95": 0.001,
+          "p99": 0.002,
+          "max": 0.038,
+          "avg": 0.001
+        },
+        "lineToPublishCallMs": {
+          "count": 100,
+          "min": 0.001,
+          "p50": 0.002,
+          "p95": 0.003,
+          "p99": 0.009,
+          "max": 0.011,
+          "avg": 0.002
+        },
+        "lineToPublishFlushMs": {
+          "count": 100,
+          "min": 2.179,
+          "p50": 2.23,
+          "p95": 2.284,
+          "p99": 2.296,
+          "max": 2.299,
+          "avg": 2.232
+        },
+        "publishCallToFlushMs": {
+          "count": 100,
+          "min": 2.177,
+          "p50": 2.229,
+          "p95": 2.28,
+          "p99": 2.287,
+          "max": 2.288,
+          "avg": 2.23
+        },
+        "publishStats": {
+          "publishAttempts": 3000,
+          "published": 100,
+          "dedupDropped": 2900,
+          "dedupEvicted": 0,
+          "coalesced": 0,
+          "topicCacheHit": 1450,
+          "topicCacheMiss": 50,
+          "dedupWindowMs": 200,
+          "dedupCacheSize": 100,
+          "topicCacheSize": 50,
+          "coalesceEnabled": false,
+          "coalesceBufferSize": 0
+        }
+      },
+      "commandPath": {
+        "profile": "dedup",
+        "sampleCount": 1000,
+        "throughputMsgsPerSec": 470976.1,
+        "lineToPublishCallMs": {
+          "count": 1000,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.002,
+          "p99": 0.002,
+          "max": 0.029,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 1000,
+          "min": 0.506,
+          "p50": 0.569,
+          "p95": 0.614,
+          "p99": 0.618,
+          "max": 0.619,
+          "avg": 0.567
+        }
+      }
+    },
+    {
+      "run": 4,
+      "eventPath": {
+        "profile": "dedup",
+        "sampleCount": 1500,
+        "uniqueGroups": 50,
+        "parsedEvents": 1500,
+        "throughputMsgsPerSec": 837228.77,
+        "lineToParseMs": {
+          "count": 1500,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0.001,
+          "max": 0.017,
+          "avg": 0
+        },
+        "lineToPublishCallMs": {
+          "count": 100,
+          "min": 0.001,
+          "p50": 0.002,
+          "p95": 0.002,
+          "p99": 0.007,
+          "max": 0.009,
+          "avg": 0.002
+        },
+        "lineToPublishFlushMs": {
+          "count": 100,
+          "min": 1.662,
+          "p50": 1.712,
+          "p95": 1.761,
+          "p99": 1.771,
+          "max": 1.772,
+          "avg": 1.713
+        },
+        "publishCallToFlushMs": {
+          "count": 100,
+          "min": 1.661,
+          "p50": 1.711,
+          "p95": 1.758,
+          "p99": 1.764,
+          "max": 1.764,
+          "avg": 1.711
+        },
+        "publishStats": {
+          "publishAttempts": 3000,
+          "published": 100,
+          "dedupDropped": 2900,
+          "dedupEvicted": 0,
+          "coalesced": 0,
+          "topicCacheHit": 1450,
+          "topicCacheMiss": 50,
+          "dedupWindowMs": 200,
+          "dedupCacheSize": 100,
+          "topicCacheSize": 50,
+          "coalesceEnabled": false,
+          "coalesceBufferSize": 0
+        }
+      },
+      "commandPath": {
+        "profile": "dedup",
+        "sampleCount": 1000,
+        "throughputMsgsPerSec": 697593.3,
+        "lineToPublishCallMs": {
+          "count": 1000,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.001,
+          "p99": 0.001,
+          "max": 0.011,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 1000,
+          "min": 0.038,
+          "p50": 0.102,
+          "p95": 0.154,
+          "p99": 0.158,
+          "max": 0.159,
+          "avg": 0.101
+        }
+      }
+    },
+    {
+      "run": 5,
+      "eventPath": {
+        "profile": "dedup",
+        "sampleCount": 1500,
+        "uniqueGroups": 50,
+        "parsedEvents": 1500,
+        "throughputMsgsPerSec": 919000.52,
+        "lineToParseMs": {
+          "count": 1500,
+          "min": 0,
+          "p50": 0,
+          "p95": 0,
+          "p99": 0.001,
+          "max": 0.001,
+          "avg": 0
+        },
+        "lineToPublishCallMs": {
+          "count": 100,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.002,
+          "p99": 0.005,
+          "max": 0.007,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 100,
+          "min": 1.514,
+          "p50": 1.561,
+          "p95": 1.608,
+          "p99": 1.615,
+          "max": 1.615,
+          "avg": 1.561
+        },
+        "publishCallToFlushMs": {
+          "count": 100,
+          "min": 1.513,
+          "p50": 1.56,
+          "p95": 1.606,
+          "p99": 1.61,
+          "max": 1.611,
+          "avg": 1.559
+        },
+        "publishStats": {
+          "publishAttempts": 3000,
+          "published": 100,
+          "dedupDropped": 2900,
+          "dedupEvicted": 0,
+          "coalesced": 0,
+          "topicCacheHit": 1450,
+          "topicCacheMiss": 50,
+          "dedupWindowMs": 200,
+          "dedupCacheSize": 100,
+          "topicCacheSize": 50,
+          "coalesceEnabled": false,
+          "coalesceBufferSize": 0
+        }
+      },
+      "commandPath": {
+        "profile": "dedup",
+        "sampleCount": 1000,
+        "throughputMsgsPerSec": 649122.61,
+        "lineToPublishCallMs": {
+          "count": 1000,
+          "min": 0.001,
+          "p50": 0.001,
+          "p95": 0.001,
+          "p99": 0.002,
+          "max": 0.006,
+          "avg": 0.001
+        },
+        "lineToPublishFlushMs": {
+          "count": 1000,
+          "min": 0.057,
+          "p50": 0.133,
+          "p95": 0.206,
+          "p99": 0.212,
+          "max": 0.213,
+          "avg": 0.133
+        }
+      }
+    }
+  ]
+}
