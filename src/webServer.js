@@ -26,7 +26,8 @@ class WebServer {
      * @param {import('./labelLoader')} options.labelLoader - Label loader instance
      * @param {Function} [options.getStatus] - Function returning bridge status info
  * @param {string|null} [options.apiKey] - API key required for mutating endpoints
- * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (null means '*')
+ * @param {boolean} [options.allowUnauthenticatedMutations=false] - Allow mutating requests without API key
+ * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (empty disables cross-origin access)
  * @param {number} [options.maxMutationRequestsPerWindow=120] - Maximum mutating requests per minute per client
      */
     constructor(options = {}) {
@@ -36,6 +37,7 @@ class WebServer {
         this.labelLoader = options.labelLoader;
         this.getStatus = options.getStatus || (() => ({}));
         this.apiKey = options.apiKey || null;
+        this.allowUnauthenticatedMutations = options.allowUnauthenticatedMutations === true;
         this.allowedOrigins = Array.isArray(options.allowedOrigins)
             ? options.allowedOrigins
             : (typeof options.allowedOrigins === 'string' && options.allowedOrigins.trim() !== ''
@@ -52,8 +54,10 @@ class WebServer {
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
         this._parser = new CbusProjectParser();
-        if (!this.apiKey) {
-            this.logger.warn('Web API key not configured; mutating endpoints are not authenticated.');
+        if (!this.apiKey && this.allowUnauthenticatedMutations) {
+            this.logger.warn('Web API key not configured; mutating endpoints are unauthenticated due to explicit override.');
+        } else if (!this.apiKey) {
+            this.logger.info('Web API key not configured; mutating endpoints require explicit unsafe override.');
         }
     }
 
@@ -127,6 +131,12 @@ class WebServer {
             }
             if (urlPath === '/api/status' && req.method === 'GET') {
                 return this._handleGetStatus(req, res);
+            }
+            if (urlPath === '/healthz' && req.method === 'GET') {
+                return this._handleHealth(req, res);
+            }
+            if (urlPath === '/readyz' && req.method === 'GET') {
+                return this._handleReady(req, res);
             }
 
             // Static files
@@ -285,6 +295,24 @@ class WebServer {
         });
     }
 
+    _handleHealth(_req, res) {
+        const status = this.getStatus();
+        this._sendJSON(res, 200, {
+            ok: true,
+            uptime: status.uptime || process.uptime(),
+            lifecycle: status.lifecycle || { state: 'unknown' }
+        });
+    }
+
+    _handleReady(_req, res) {
+        const status = this.getStatus();
+        const isReady = !!status.ready;
+        this._sendJSON(res, isReady ? 200 : 503, {
+            ready: isReady,
+            lifecycle: status.lifecycle || { state: 'unknown' }
+        });
+    }
+
     _serveStatic(urlPath, res) {
         if (urlPath === '/' || urlPath === '') {
             urlPath = '/index.html';
@@ -330,7 +358,7 @@ class WebServer {
 
     _isAuthorizedMutation(req) {
         if (!this.apiKey) {
-            return true;
+            return this.allowUnauthenticatedMutations;
         }
 
         const rawAuth = req.headers.authorization || '';
@@ -342,14 +370,15 @@ class WebServer {
 
     _setCorsHeaders(req, res) {
         const requestOrigin = req.headers.origin;
-        let origin = '*';
+        let origin = null;
         if (this.allowedOrigins && this.allowedOrigins.length > 0) {
             const isAllowed = requestOrigin && this.allowedOrigins.includes(requestOrigin);
             origin = isAllowed ? requestOrigin : this.allowedOrigins[0];
             res.setHeader('Vary', 'Origin');
         }
-
-        res.setHeader('Access-Control-Allow-Origin', origin);
+        if (origin) {
+            res.setHeader('Access-Control-Allow-Origin', origin);
+        }
         res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, PATCH, POST, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
     }

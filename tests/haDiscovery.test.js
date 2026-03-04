@@ -166,6 +166,34 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.treeBufferParts).toEqual([]);
             expect(haDiscovery.treeNetwork).toBeNull();
         });
+
+        it('should isolate network context across queued TreeXML requests', () => {
+            mockSettings.ha_discovery_networks = ['254', '200'];
+            haDiscovery.trigger();
+
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<xml>first</xml>');
+            haDiscovery.handleTreeEnd('end');
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<xml>second</xml>');
+            haDiscovery.handleTreeEnd('end');
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254///tree',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/200///tree',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+        });
     });
 
     describe('Discovery Publishing', () => {

@@ -224,6 +224,12 @@ describe('CgateWebBridge', () => {
             expect(bridge.cgateCommandQueue.constructor.name).toBe('ThrottledQueue');
         });
 
+        it('should initialize lifecycle state as booting', () => {
+            const status = bridge._getBridgeStatus();
+            expect(status.lifecycle.state).toBe('booting');
+            expect(status.lifecycle.transitions).toBe(0);
+        });
+
 
         it('should set MQTT options based on retainreads setting', () => {
             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });
@@ -438,6 +444,39 @@ describe('CgateWebBridge', () => {
                 expect(discoverySpy).toHaveBeenCalled();
                 discoverySpy.mockRestore();
             });
+        });
+    });
+
+    describe('Readiness and Observability', () => {
+        it('should expose queue and lifecycle metrics in status', () => {
+            const status = bridge._getBridgeStatus();
+            expect(status.metrics.commandQueue).toEqual(expect.objectContaining({
+                depth: expect.any(Number),
+                dropped: expect.any(Number),
+                maxSize: expect.any(Number)
+            }));
+            expect(status.lifecycle).toEqual(expect.objectContaining({
+                state: expect.any(String),
+                reason: expect.any(String),
+                transitions: expect.any(Number)
+            }));
+        });
+
+        it('should transition to ready when all connections are healthy', () => {
+            bridge.mqttManager.connected = true;
+            bridge.eventConnection.connected = true;
+            bridge.commandConnectionPool.getStats.mockReturnValue({
+                poolSize: 3,
+                totalConnections: 3,
+                healthyConnections: 2,
+                pendingReconnects: 0,
+                retryCounts: [0, 0, 0],
+                isStarted: true,
+                isShuttingDown: false
+            });
+
+            bridge._updateBridgeReadiness('test-ready');
+            expect(bridge._getBridgeStatus().lifecycle.state).toBe('ready');
         });
     });
 

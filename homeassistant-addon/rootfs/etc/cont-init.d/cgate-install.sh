@@ -13,6 +13,13 @@ fi
 CGATE_DIR="/data/cgate"
 CGATE_JAR="${CGATE_DIR}/cgate.jar"
 INSTALL_SOURCE=$(bashio::config 'cgate_install_source' 'download')
+DOWNLOAD_SHA256=$(bashio::config 'cgate_download_sha256' '')
+WORK_DIR=$(mktemp -d /tmp/cgate-install.XXXXXX)
+
+cleanup() {
+    rm -rf "${WORK_DIR}"
+}
+trap cleanup EXIT
 
 # Check if C-Gate is already installed
 if [[ -f "${CGATE_JAR}" ]]; then
@@ -32,20 +39,32 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
 
     bashio::log.info "Downloading C-Gate from: ${DOWNLOAD_URL}"
 
-    TEMP_ZIP="/tmp/cgate-download.zip"
+    TEMP_ZIP="${WORK_DIR}/cgate-download.zip"
     if ! curl -fSL -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>&1; then
         bashio::log.error "Failed to download C-Gate from ${DOWNLOAD_URL}"
         bashio::log.error "Try using 'upload' install source instead"
         exit 1
     fi
 
+    if [[ -n "${DOWNLOAD_SHA256}" ]]; then
+        ACTUAL_SHA256=$(sha256sum "${TEMP_ZIP}" | awk '{print $1}')
+        EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
+        if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
+            bashio::log.error "C-Gate download checksum mismatch"
+            bashio::log.error "Expected: ${EXPECTED_SHA256}"
+            bashio::log.error "Actual:   ${ACTUAL_SHA256}"
+            exit 1
+        fi
+        bashio::log.info "Checksum verification passed"
+    else
+        bashio::log.warning "No cgate_download_sha256 configured; integrity verification skipped"
+    fi
+
     bashio::log.info "Download complete, extracting..."
-    if ! unzip -o "${TEMP_ZIP}" -d /tmp/cgate-extract 2>&1; then
+    if ! unzip -o "${TEMP_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
         bashio::log.error "Failed to extract C-Gate zip file"
-        rm -f "${TEMP_ZIP}"
         exit 1
     fi
-    rm -f "${TEMP_ZIP}"
 
 elif [[ "${INSTALL_SOURCE}" == "upload" ]]; then
     SHARE_DIR="/share/cgate"
@@ -64,7 +83,19 @@ elif [[ "${INSTALL_SOURCE}" == "upload" ]]; then
 
     bashio::log.info "Found C-Gate zip: ${ZIP_FILE}"
     bashio::log.info "Extracting..."
-    if ! unzip -o "${ZIP_FILE}" -d /tmp/cgate-extract 2>&1; then
+    if [[ -n "${DOWNLOAD_SHA256}" ]]; then
+        ACTUAL_SHA256=$(sha256sum "${ZIP_FILE}" | awk '{print $1}')
+        EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
+        if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
+            bashio::log.error "Uploaded C-Gate checksum mismatch"
+            bashio::log.error "Expected: ${EXPECTED_SHA256}"
+            bashio::log.error "Actual:   ${ACTUAL_SHA256}"
+            exit 1
+        fi
+        bashio::log.info "Checksum verification passed"
+    fi
+
+    if ! unzip -o "${ZIP_FILE}" -d "${WORK_DIR}/extract" 2>&1; then
         bashio::log.error "Failed to extract ${ZIP_FILE}"
         exit 1
     fi
@@ -74,11 +105,10 @@ else
 fi
 
 # Find and copy the C-Gate files to the persistent data directory
-EXTRACTED_JAR=$(find /tmp/cgate-extract -name 'cgate.jar' -type f | head -1)
+EXTRACTED_JAR=$(find "${WORK_DIR}/extract" -name 'cgate.jar' -type f | head -1)
 if [[ -z "${EXTRACTED_JAR}" ]]; then
     bashio::log.error "cgate.jar not found in extracted archive"
     bashio::log.error "The zip file may not be a valid C-Gate package"
-    rm -rf /tmp/cgate-extract
     exit 1
 fi
 
@@ -86,7 +116,6 @@ EXTRACTED_DIR=$(dirname "${EXTRACTED_JAR}")
 bashio::log.info "Found C-Gate installation in: ${EXTRACTED_DIR}"
 
 cp -r "${EXTRACTED_DIR}"/* "${CGATE_DIR}/"
-rm -rf /tmp/cgate-extract
 
 # Configure access.txt to allow local connections
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"
@@ -95,7 +124,7 @@ if [[ ! -f "${ACCESS_FILE}" ]]; then
     cat > "${ACCESS_FILE}" << 'ACCESSEOF'
 # C-Gate Access Control
 # Allow local connections from the addon
-interface 0.0.0.0
+interface 127.0.0.1
 program 127.0.0.1
 monitor 127.0.0.1
 ACCESSEOF

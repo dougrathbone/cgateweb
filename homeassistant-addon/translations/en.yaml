@@ -115,6 +115,11 @@ configuration:
       Only used when C-Gate Mode is "managed" and Install Source is "download".
       Override the default URL if the official Clipsal download location changes.
       Leave empty to use the default URL.
+  cgate_download_sha256:
+    name: C-Gate Download SHA256
+    description: >-
+      Optional SHA256 checksum used to verify the downloaded (or uploaded) C-Gate
+      zip file before installation. Recommended when using a custom download URL.
   cbus_label_file:
     name: Custom Label File
     description: >-
@@ -122,3 +127,23 @@ configuration:
       by the import tool or the built-in label editor. Labels from this file
       take priority over names from C-Gate. Auto-detected from common paths
       if not set. The file is watched and changes are applied automatically.
+  web_api_key:
+    name: Web API Key
+    description: >-
+      API key required for write operations in the label editor API. Set this
+      when exposing port 8080 beyond Home Assistant ingress.
+  web_allow_unauthenticated_mutations:
+    name: Allow Unauthenticated Web Writes (Unsafe)
+    description: >-
+      If enabled, PUT/PATCH/POST write endpoints are allowed without an API key.
+      Keep disabled unless you fully trust network access to this add-on.
+  web_allowed_origins:
+    name: Allowed Web Origins
+    description: >-
+      Optional CORS allowlist for browser access. Provide full origins such as
+      https://ha.example.com. Leave empty to disable cross-origin browser access.
+  web_mutation_rate_limit_per_minute:
+    name: Web Write Rate Limit Per Minute
+    description: >-
+      Maximum number of mutating API requests per minute per client source.
+      Helps protect label update endpoints from abuse or runaway clients.

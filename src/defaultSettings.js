@@ -43,6 +43,7 @@ const defaultSettings = {
     web_port: 8080,
     web_bind_host: '127.0.0.1',
     web_api_key: null,
+    web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120
 };

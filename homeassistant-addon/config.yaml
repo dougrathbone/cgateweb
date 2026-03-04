@@ -46,6 +46,7 @@ options:
 
   # C-Gate managed mode settings
   cgate_install_source: "download"
+  cgate_download_sha256: ""
 
   # C-Bus monitoring settings
   getall_networks:
@@ -70,6 +71,8 @@ options:
   # Label file for custom device names (auto-detected if not set)
   cbus_label_file: ""
   web_api_key: ""
+  web_allow_unauthenticated_mutations: false
+  web_allowed_origins: []
   web_mutation_rate_limit_per_minute: 120
 
 schema:
@@ -85,6 +88,7 @@ schema:
   # C-Gate managed mode settings
   cgate_install_source: "list(download|upload)"
   cgate_download_url: "str?"
+  cgate_download_sha256: "str?"
 
   # MQTT settings (auto-detected from Mosquitto add-on)
   mqtt_host: "str?"
@@ -112,4 +116,6 @@ schema:
   ha_discovery_switch_app_id: "int(1,255)?"
   cbus_label_file: "str?"
   web_api_key: "password?"
+  web_allow_unauthenticated_mutations: "bool"
+  web_allowed_origins: ["str"]
   web_mutation_rate_limit_per_minute: "int(1,5000)?"

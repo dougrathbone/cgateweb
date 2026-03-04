@@ -11,7 +11,6 @@ function loadIndexWithMocks({
     let indexModule;
     let bridgeInstance;
     let mockBridgeClass;
-    let mockValidateWithWarnings;
     let mockConfigLoaderInstance;
 
     jest.isolateModules(() => {
@@ -23,11 +22,6 @@ function loadIndexWithMocks({
         jest.doMock('../src/cgateWebBridge', () => {
             mockBridgeClass = jest.fn(() => bridgeInstance);
             return mockBridgeClass;
-        });
-
-        jest.doMock('../src/settingsValidator', () => {
-            mockValidateWithWarnings = jest.fn();
-            return { validateWithWarnings: mockValidateWithWarnings };
         });
 
         jest.doMock('../src/config/ConfigLoader', () => {
@@ -70,7 +64,6 @@ function loadIndexWithMocks({
         indexModule,
         bridgeInstance,
         mockBridgeClass,
-        mockValidateWithWarnings,
         mockConfigLoaderInstance
     };
 }
@@ -117,14 +110,12 @@ describe('index.js', () => {
             indexModule,
             bridgeInstance,
             mockBridgeClass,
-            mockValidateWithWarnings,
             mockConfigLoaderInstance
         } = loadIndexWithMocks();
 
         await indexModule.main();
 
         expect(mockConfigLoaderInstance.validate).toHaveBeenCalled();
-        expect(mockValidateWithWarnings).toHaveBeenCalled();
         expect(mockBridgeClass).toHaveBeenCalledTimes(1);
         expect(bridgeInstance.start).toHaveBeenCalledTimes(1);
     });

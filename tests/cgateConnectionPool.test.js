@@ -94,6 +94,8 @@ describe('CgateConnectionPool', () => {
                 poolSize: 3,
                 totalConnections: 0,
                 healthyConnections: 0,
+                pendingReconnects: 0,
+                retryCounts: [0, 0, 0],
                 isStarted: false,
                 isShuttingDown: false
             });

@@ -208,6 +208,8 @@ class CgateConnectionPool extends EventEmitter {
             poolSize: this.poolSize,
             totalConnections: this.connections.length,
             healthyConnections: this.healthyConnections.size,
+            pendingReconnects: this.pendingReconnects.size,
+            retryCounts: [...this.retryCounts],
             isStarted: this.isStarted,
             isShuttingDown: this.isShuttingDown
         };

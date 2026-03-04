@@ -45,6 +45,8 @@ class HaDiscovery {
         this._sendCommand = sendCommandFn;
         this._applyLabelData(labelData);
         
+        this.pendingTreeNetworks = [];
+        this.activeTreeSession = null;
         this.treeBufferParts = [];
         this.treeNetwork = null;
         this.discoveryCount = 0;
@@ -111,32 +113,68 @@ class HaDiscovery {
 
         // Request TreeXML for each configured network
         networksToDiscover.forEach(networkId => {
-            this.logger.info(`Requesting TreeXML for network ${networkId}...`);
-            this.treeNetwork = networkId;
-            this._sendCommand(`${CGATE_CMD_TREEXML} ${networkId}${NEWLINE}`);
+            this.queueTreeRequest(networkId);
         });
     }
 
+    queueTreeRequest(networkId) {
+        const normalizedNetwork = String(networkId);
+        this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
+        this.pendingTreeNetworks.push(normalizedNetwork);
+        this._sendCommand(`${CGATE_CMD_TREEXML} ${normalizedNetwork}${NEWLINE}`);
+    }
+
     handleTreeStart(_statusData) {
-        this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}`);
-        this.treeBufferParts = [];
+        if (this.activeTreeSession && this.activeTreeSession.bufferParts.length > 0) {
+            this.logger.warn(`Received a new TreeXML start before previous tree completed; dropping incomplete tree for network ${this.activeTreeSession.network}`);
+        }
+
+        const nextNetwork = this.pendingTreeNetworks.shift() || this.treeNetwork || 'unknown';
+        this.activeTreeSession = {
+            network: String(nextNetwork),
+            bufferParts: []
+        };
+
+        this.treeNetwork = this.activeTreeSession.network;
+        this.treeBufferParts = this.activeTreeSession.bufferParts;
+        this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork}`);
     }
 
     handleTreeData(statusData) {
-        this.treeBufferParts.push(statusData);
+        if (!this.activeTreeSession) {
+            this.logger.warn('Received TreeXML data without active tree session; creating fallback session.');
+            this.handleTreeStart('');
+        }
+        this.activeTreeSession.bufferParts.push(statusData);
     }
 
     handleTreeEnd(_statusData) {
-        const treeXmlData = this.treeBufferParts.join(NEWLINE) + (this.treeBufferParts.length > 0 ? NEWLINE : '');
-        this.logger.info(`Finished receiving TreeXML. Network: ${this.treeNetwork || 'unknown'}. Size: ${treeXmlData.length} bytes. Parsing...`);
-        const networkForTree = this.treeNetwork;
+        if (!this.activeTreeSession) {
+            // Backward-compatibility fallback for existing tests/callers that
+            // still set treeNetwork/treeBufferParts directly.
+            if (this.treeNetwork && Array.isArray(this.treeBufferParts)) {
+                this.activeTreeSession = {
+                    network: String(this.treeNetwork),
+                    bufferParts: [...this.treeBufferParts]
+                };
+            } else {
+                this.logger.warn('Received TreeXML end (344) but no active tree session was set.');
+                return;
+            }
+        }
+
+        const { network, bufferParts } = this.activeTreeSession;
+        const treeXmlData = bufferParts.join(NEWLINE) + (bufferParts.length > 0 ? NEWLINE : '');
+        this.logger.info(`Finished receiving TreeXML. Network: ${network}. Size: ${treeXmlData.length} bytes. Parsing...`);
+        const networkForTree = network;
         
         // Clear buffer and network context immediately
+        this.activeTreeSession = null;
         this.treeBufferParts = []; 
         this.treeNetwork = null; 
 
         if (!networkForTree || !treeXmlData) {
-             this.logger.warn(`Received TreeXML end (344) but no buffer or network context was set.`); 
+             this.logger.warn(`Received TreeXML end (344) but no buffer or network context was set.`);
              return;
         }
 

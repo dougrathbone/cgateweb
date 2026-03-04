@@ -29,6 +29,7 @@ describe('WebServer', () => {
         server = new WebServer({
             port,
             labelLoader,
+            allowUnauthenticatedMutations: true,
             getStatus: () => ({ test: true })
         });
         await server.start();
@@ -187,6 +188,42 @@ describe('WebServer', () => {
         });
     });
 
+    describe('GET /healthz and /readyz', () => {
+        it('should return healthy status from /healthz', async () => {
+            const res = await request('GET', '/healthz');
+            expect(res.status).toBe(200);
+            expect(res.body.ok).toBe(true);
+        });
+
+        it('should return 503 from /readyz when bridge is not ready', async () => {
+            const unreadyServer = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({ ready: false, lifecycle: { state: 'booting' } })
+            });
+            await unreadyServer.start();
+            const unreadyPort = unreadyServer._server.address().port;
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: unreadyPort,
+                    path: '/readyz',
+                    method: 'GET'
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            await unreadyServer.close();
+
+            expect(res.status).toBe(503);
+            expect(res.body.ready).toBe(false);
+        });
+    });
+
     describe('GET / (static file)', () => {
         it('should serve index.html', async () => {
             const res = await request('GET', '/');
@@ -251,7 +288,36 @@ describe('WebServer', () => {
             });
 
             expect(res.status).toBe(204);
-            expect(res.headers['access-control-allow-origin']).toBe('*');
+            expect(res.headers['access-control-allow-origin']).toBeUndefined();
+        });
+
+        it('should return an allowlisted origin when configured', async () => {
+            const corsServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowedOrigins: ['https://ha.local'],
+                getStatus: () => ({})
+            });
+            await corsServer.start();
+            const corsPort = corsServer._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: corsPort,
+                    path: '/api/labels',
+                    method: 'OPTIONS',
+                    headers: { Origin: 'https://ha.local' }
+                }, (response) => {
+                    resolve({ status: response.statusCode, headers: response.headers });
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            await corsServer.close();
+
+            expect(res.status).toBe(204);
+            expect(res.headers['access-control-allow-origin']).toBe('https://ha.local');
         });
     });
 
@@ -296,6 +362,66 @@ describe('WebServer', () => {
             const authorized = await makeReq({ 'X-API-Key': 'secret-key' });
             expect(authorized.status).toBe(200);
         });
+
+        it('should reject mutating routes by default when no API key is configured', async () => {
+            const defaultServer = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await defaultServer.start();
+            const defaultPort = defaultServer._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: defaultPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+                req.end();
+            });
+            await defaultServer.close();
+
+            expect(res.status).toBe(401);
+        });
+
+        it('should allow unauthenticated mutating routes only with explicit override', async () => {
+            protectedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                getStatus: () => ({})
+            });
+            await protectedServer.start();
+            protectedPort = protectedServer._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: protectedPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+                req.end();
+            });
+
+            expect(res.status).toBe(200);
+        });
     });
 
     describe('Mutation rate limiting', () => {
@@ -310,6 +436,7 @@ describe('WebServer', () => {
             limitedServer = new WebServer({
                 port: 0,
                 labelLoader,
+                allowUnauthenticatedMutations: true,
                 maxMutationRequestsPerWindow: 1,
                 getStatus: () => ({})
             });

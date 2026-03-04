@@ -115,6 +115,13 @@ class CgateWebBridge {
         this.eventLineProcessor = new LineProcessor();
         this.periodicGetAllInterval = null;
         this._lastInitTime = 0;
+        this._hasEverBeenReady = false;
+        this._lifecycle = {
+            state: 'booting',
+            reason: 'startup',
+            since: Date.now(),
+            transitions: 0
+        };
 
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
@@ -150,6 +157,7 @@ class CgateWebBridge {
             basePath: ingressBasePath,
             labelLoader: this.labelLoader,
             apiKey: this.settings.web_api_key || null,
+            allowUnauthenticatedMutations: this.settings.web_allow_unauthenticated_mutations === true,
             allowedOrigins: this.settings.web_allowed_origins || null,
             maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
             getStatus: () => this._getBridgeStatus()
@@ -200,9 +208,7 @@ class CgateWebBridge {
             }
         });
         this.mqttCommandRouter.on('treeRequest', (networkId) => {
-            if (this.haDiscovery) {
-                this.haDiscovery.treeNetwork = networkId;
-            }
+            if (this.haDiscovery) this.haDiscovery.queueTreeRequest(networkId);
         });
     }
 
@@ -218,6 +224,7 @@ class CgateWebBridge {
      */
     async start() {
         this.logger.info('Starting cgateweb bridge');
+        this._setLifecycleState('booting', 'startup');
         this._updateBridgeReadiness('startup');
         
         // Start web server
@@ -229,6 +236,7 @@ class CgateWebBridge {
         
         // Start all connections via connection manager
         await this.connectionManager.start();
+        this._updateBridgeReadiness('startup-complete');
         
         return this;
     }
@@ -244,6 +252,7 @@ class CgateWebBridge {
      */
     async stop() {
         this.log(`Stopping cgateweb bridge...`);
+        this._setLifecycleState('stopping', 'shutdown');
         this._updateBridgeReadiness('shutdown');
         
         this.initializationService.stop();
@@ -375,15 +384,30 @@ class CgateWebBridge {
             version: require('../package.json').version,
             uptime: process.uptime(),
             ready,
+            lifecycle: {
+                state: this._lifecycle.state,
+                reason: this._lifecycle.reason,
+                since: this._lifecycle.since,
+                transitions: this._lifecycle.transitions
+            },
             connections: {
                 mqtt: mqttConnected,
                 commandPool: {
                     started: commandStats ? commandStats.isStarted : false,
                     healthyConnections: healthyCommandConnections,
                     totalConnections: commandStats ? commandStats.totalConnections : 0,
+                    pendingReconnects: commandStats ? commandStats.pendingReconnects : 0,
                     isShuttingDown: commandStats ? commandStats.isShuttingDown : false
                 },
-                event: eventConnected
+                event: eventConnected,
+                eventReconnectAttempts: this.eventConnection?.reconnectAttempts || 0
+            },
+            metrics: {
+                commandQueue: {
+                    depth: this.cgateCommandQueue.length,
+                    dropped: this.cgateCommandQueue.droppedCount,
+                    maxSize: this.cgateCommandQueue.maxSize
+                }
             },
             discovery: this.haDiscovery ? {
                 count: this.haDiscovery.discoveryCount,
@@ -400,7 +424,23 @@ class CgateWebBridge {
             commandStats &&
             commandStats.healthyConnections > 0
         );
+        if (ready) {
+            this._hasEverBeenReady = true;
+            this._setLifecycleState('ready', reason);
+        } else if (this._lifecycle.state !== 'stopping') {
+            this._setLifecycleState(this._hasEverBeenReady ? 'degraded' : 'booting', reason);
+        }
         this.mqttManager.setBridgeReady(ready, reason);
+    }
+
+    _setLifecycleState(state, reason) {
+        if (this._lifecycle.state === state && this._lifecycle.reason === reason) return;
+        if (this._lifecycle.state !== state) {
+            this._lifecycle.transitions += 1;
+        }
+        this._lifecycle.state = state;
+        this._lifecycle.reason = reason;
+        this._lifecycle.since = Date.now();
     }
 
     // Legacy method compatibility for tests

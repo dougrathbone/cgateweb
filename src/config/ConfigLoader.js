@@ -221,6 +221,12 @@ class ConfigLoader {
         if (options.web_api_key) {
             config.web_api_key = options.web_api_key;
         }
+        if (options.web_allow_unauthenticated_mutations !== undefined && options.web_allow_unauthenticated_mutations !== null) {
+            config.web_allow_unauthenticated_mutations = options.web_allow_unauthenticated_mutations === true;
+        }
+        if (Array.isArray(options.web_allowed_origins)) {
+            config.web_allowed_origins = options.web_allowed_origins.filter((origin) => typeof origin === 'string' && origin.trim() !== '');
+        }
         if (options.web_mutation_rate_limit_per_minute !== undefined && options.web_mutation_rate_limit_per_minute !== null) {
             config.web_mutation_rate_limit_per_minute = options.web_mutation_rate_limit_per_minute;
         }
@@ -259,7 +265,9 @@ class ConfigLoader {
      * @private
      */
     _getDefaultConfig() {
+        const { defaultSettings } = require('../defaultSettings');
         return {
+            ...defaultSettings,
             cbusip: '127.0.0.1',
             cbuscommandport: 20023,
             cbuseventport: 20025,
@@ -269,6 +277,8 @@ class ConfigLoader {
             logging: false,
             ha_discovery_enabled: false,
             ha_discovery_prefix: 'homeassistant',
+            web_bind_host: '127.0.0.1',
+            web_allow_unauthenticated_mutations: false,
             _environment: {
                 type: 'default',
                 loadedAt: new Date().toISOString()

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const CgateWebBridge = require('./src/cgateWebBridge');
-const { validateWithWarnings } = require('./src/settingsValidator');
 const ConfigLoader = require('./src/config/ConfigLoader');
 const HAIntegration = require('./src/config/HAIntegration');
 const { defaultSettings } = require('./src/defaultSettings');
@@ -80,8 +79,6 @@ async function main() {
 
     configLoader.validate(settings);
     
-    validateWithWarnings(settings);
-    
     // Create and start the bridge
     const bridge = new CgateWebBridge(settings);
     
@@ -115,7 +112,12 @@ async function main() {
     // Start the bridge (async)
     return bridge.start()
         .then(() => {
-            console.log('[INFO] cgateweb started successfully');
+            if (typeof bridge._getBridgeStatus === 'function') {
+                const status = bridge._getBridgeStatus();
+                console.log(`[INFO] cgateweb started successfully (${status.lifecycle.state})`);
+            } else {
+                console.log('[INFO] cgateweb started successfully');
+            }
         })
         .catch(error => {
             console.error('[ERROR] Failed to start bridge:', error);

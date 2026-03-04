@@ -67,7 +67,7 @@ describe('Addon Configuration Integration', () => {
             );
             const translated = Object.keys(translations.configuration);
             const schema = Object.keys(configYaml.schema);
-            const nonUiSchemaKeys = new Set(['web_api_key', 'web_mutation_rate_limit_per_minute']);
+            const nonUiSchemaKeys = new Set();
 
             for (const sch of schema) {
                 if (nonUiSchemaKeys.has(sch)) continue;
@@ -105,7 +105,7 @@ describe('Addon Configuration Integration', () => {
         test('every config option should have a translation', () => {
             const options = Object.keys(configYaml.options);
             const translated = Object.keys(translations.configuration);
-            const nonUiOptionKeys = new Set(['web_api_key', 'web_mutation_rate_limit_per_minute']);
+            const nonUiOptionKeys = new Set();
 
             for (const opt of options) {
                 if (nonUiOptionKeys.has(opt)) continue;
@@ -213,6 +213,8 @@ describe('Addon Configuration Integration', () => {
                 expect(config.cbuseventport).toBe(configYaml.options.cgate_event_port);
                 expect(config.cbusname).toBe(configYaml.options.cgate_project);
                 expect(config.cgate_mode).toBe(configYaml.options.cgate_mode);
+                expect(config.web_allow_unauthenticated_mutations).toBe(configYaml.options.web_allow_unauthenticated_mutations);
+                expect(config.web_allowed_origins).toEqual(configYaml.options.web_allowed_origins);
             } finally {
                 fs.unlinkSync(tmpPath);
             }
