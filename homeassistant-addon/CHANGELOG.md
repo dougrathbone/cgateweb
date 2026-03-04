@@ -5,6 +5,19 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.8] - 2026-03-04
+
+### Changed
+- Hardened web API defaults: mutating endpoints now require authentication by default unless explicitly overridden
+- Added configurable CORS allowlist support and explicit unsafe override toggle for unauthenticated writes
+- Improved HA discovery TreeXML handling by isolating queued network context to avoid state bleed between requests
+- Expanded bridge runtime status with lifecycle/readiness state and queue/pool health metrics, plus `/healthz` and `/readyz` endpoints
+- Aligned CI and distribution release quality gates with lint (`--max-warnings=0`) and coverage checks
+
+### Fixed
+- Consolidated startup validation path to reduce duplicate config validation logic and drift
+- Managed-mode C-Gate install now supports checksum verification and safer default local-only interface access
+
 ## [1.2.2] - 2026-02-28
 
 ### Fixed

@@ -10,6 +10,12 @@ Connects to C-Gate over TCP, publishes C-Bus events to an MQTT broker, and suppo
 
 > **Looking for HVAC support?** See this fork: https://github.com/mminehanNZ/cgateweb
 
+### Home Assistant Add-on Repositories
+
+- **Source repository (this repo):** https://github.com/dougrathbone/cgateweb
+- **Home Assistant add-on repository (for Home Assistant):** https://github.com/dougrathbone/cgateweb-homeassistant
+- Add the add-on repository URL above in Home Assistant Add-on Store to install/update the add-on.
+
 ### Install:
 
 **Option 1: Home Assistant Addon (Recommended for HA users)**

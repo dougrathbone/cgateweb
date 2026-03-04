@@ -5,3 +5,7 @@ Bridge between Clipsal C-Bus automation systems and MQTT/Home Assistant.
 For full documentation, see [DOCS.md](DOCS.md).
 
 For the main project, visit [github.com/dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb).
+
+For Home Assistant installation, add this repository URL in Add-on Store:
+
+`https://github.com/dougrathbone/cgateweb-homeassistant`

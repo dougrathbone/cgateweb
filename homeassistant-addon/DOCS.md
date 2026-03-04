@@ -43,6 +43,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 |--------|------|---------|-------------|
 | `cgate_install_source` | list | `download` | `download` fetches C-Gate from the official Clipsal URL. `upload` uses a zip file you place in `/share/cgate/`. |
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
+| `cgate_download_sha256` | string | (empty) | Optional SHA256 checksum to verify downloaded/uploaded C-Gate zip integrity before install. |
 
 #### Uploading C-Gate manually
 
@@ -78,6 +79,15 @@ MQTT connection details are **automatically detected** from the Mosquitto add-on
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `log_level` | list | `info` | Log level: `debug`, `info`, `warn`, `error` |
+
+### Web/API Security
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `web_api_key` | password | (empty) | API key required for write operations (`PUT/PATCH/POST`) on label-management endpoints. |
+| `web_allow_unauthenticated_mutations` | boolean | `false` | Unsafe override to allow write operations without API key authentication. |
+| `web_allowed_origins` | list | `[]` | Optional CORS allowlist of browser origins (e.g. `https://ha.example.com`). Empty disables cross-origin access. |
+| `web_mutation_rate_limit_per_minute` | integer | `120` | Per-client write rate limit for label mutation endpoints. |
 
 ### Home Assistant Discovery
 
@@ -217,10 +227,13 @@ When `ha_discovery_enabled` is true, the add-on automatically:
 
 ## Networking
 
-This add-on uses `host_network: true` to allow direct access to:
-- C-Gate server (ports 20023 and 20025)
-- MQTT broker
-- Any other network services your C-Bus system requires
+This add-on runs with `host_network: false`.
+
+- Ingress is enabled and routes the label editor UI through Home Assistant.
+- Port `8080/tcp` is exposed by the add-on for direct access if needed.
+- Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
+
+If you expose `8080`, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`.
 
 ## Troubleshooting
 
