@@ -449,6 +449,13 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   let pendingImport = null;
   let statusRefreshTimer = null;
 
+  function clearStatusRefreshTimer() {
+    if (statusRefreshTimer !== null) {
+      clearInterval(statusRefreshTimer);
+      statusRefreshTimer = null;
+    }
+  }
+
   function getApiBase() {
     const match = window.location.pathname.match(/^(\/api\/hassio_ingress\/[^/]+)/);
     return match ? match[1] : '';
@@ -903,8 +910,12 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   });
 
   // Init
+  window.addEventListener('pagehide', clearStatusRefreshTimer);
+  window.addEventListener('beforeunload', clearStatusRefreshTimer);
+
   loadLabels();
   loadRuntimeStatus();
+  clearStatusRefreshTimer();
   statusRefreshTimer = setInterval(loadRuntimeStatus, 10000);
 })();
 </script>
