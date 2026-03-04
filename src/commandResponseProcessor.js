@@ -72,22 +72,34 @@ class CommandResponseProcessor {
             statusData = line.substring(hyphenIndex + 1).trim();
         } else {
             // Alternative format: "200 OK" (space-separated)
-            const spaceParts = line.split(' ');
-            responseCode = spaceParts[0].trim();
-            if (spaceParts.length > 1) {
-                 statusData = spaceParts.slice(1).join(' ').trim();
+            const firstSpace = line.indexOf(' ');
+            if (firstSpace === -1) {
+                responseCode = line.trim();
+            } else {
+                responseCode = line.substring(0, firstSpace).trim();
+                statusData = line.substring(firstSpace + 1).trim();
             }
         }
         
         // C-Gate response codes are 3-digit numbers starting with 1-6 (like HTTP status codes).
         // Non-matching lines (e.g., C-Gate v3.6.0 timestamp-prefixed notifications) are
         // harmless and logged at debug to avoid alarming users.
-        if (!responseCode || !/^[1-6]\d{2}$/.test(responseCode)) {
+        if (!this._isValidResponseCode(responseCode)) {
              this.logger.debug(`Skipping non-response line: ${line}`);
              return null; 
         }
 
         return { responseCode, statusData };
+    }
+
+    _isValidResponseCode(responseCode) {
+        if (!responseCode || responseCode.length !== 3) {
+            return false;
+        }
+        const c0 = responseCode.charCodeAt(0);
+        const c1 = responseCode.charCodeAt(1);
+        const c2 = responseCode.charCodeAt(2);
+        return c0 >= 49 && c0 <= 54 && c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57;
     }
 
     /**
@@ -139,7 +151,7 @@ class CommandResponseProcessor {
      * @param {string} statusData - Object status data from C-Gate
      */
     _processCommandObjectStatus(statusData) {
-        const event = new CBusEvent(`${CGATE_RESPONSE_OBJECT_STATUS} ${statusData}`);
+        const event = new CBusEvent(statusData, { statusDataOnly: true });
         if (event.isValid()) {
             this.eventPublisher.publishEvent(event, '(Cmd)');
             if (this.onObjectStatus) {

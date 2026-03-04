@@ -27,10 +27,11 @@ class CBusEvent {
      * 
      * @param {string|Buffer} eventString - The raw event string from C-Gate
      */
-    constructor(eventString) {
+    constructor(eventString, options = {}) {
         // Handle both Buffer and string inputs
         const eventStr = Buffer.isBuffer(eventString) ? eventString.toString() : eventString;
         this._rawEvent = eventStr ? eventStr.trim() : '';
+        this._statusDataOnly = options.statusDataOnly === true;
         this._parsed = false;
         this._deviceType = null;
         this._action = null;
@@ -55,6 +56,11 @@ class CBusEvent {
 
     _parse() {
         try {
+            if (this._statusDataOnly) {
+                this._parseStatusResponse();
+                return;
+            }
+
             // Handle status response code (300) differently
             if (this._rawEvent.startsWith(CGATE_RESPONSE_OBJECT_STATUS)) {
                 this._parseStatusResponse();
@@ -105,22 +111,30 @@ class CBusEvent {
         const action = this._rawEvent.slice(firstSpace + 1, secondSpace);
         if (!deviceType || !action) return false;
 
-        const rest = this._rawEvent.slice(secondSpace + 1);
-        if (!rest) return false;
-
-        const restParts = rest.split(' ');
-        const addressToken = restParts[0];
+        const restStart = secondSpace + 1;
+        if (restStart >= this._rawEvent.length) return false;
+        const thirdSpace = this._rawEvent.indexOf(' ', restStart);
+        const addressToken = thirdSpace === -1
+            ? this._rawEvent.slice(restStart)
+            : this._rawEvent.slice(restStart, thirdSpace);
         if (!addressToken) return false;
 
-        const address = this._extractAddress(addressToken);
-        if (!address) return false;
+        const addressComponents = this._extractAddressComponents(addressToken);
+        if (!addressComponents) return false;
 
         this._deviceType = deviceType;
         this._action = action;
-        if (!this._applyAddress(address)) return false;
+        this._applyAddressComponents(
+            addressComponents.network,
+            addressComponents.application,
+            addressComponents.group
+        );
 
-        if (restParts.length > 1) {
-            const levelToken = restParts[1];
+        if (thirdSpace !== -1 && thirdSpace + 1 < this._rawEvent.length) {
+            const fourthSpace = this._rawEvent.indexOf(' ', thirdSpace + 1);
+            const levelToken = fourthSpace === -1
+                ? this._rawEvent.slice(thirdSpace + 1)
+                : this._rawEvent.slice(thirdSpace + 1, fourthSpace);
             if (levelToken) {
                 this._levelRaw = this._extractLeadingInt(levelToken);
                 this._level = this._levelRaw;
@@ -131,13 +145,37 @@ class CBusEvent {
     }
 
     _extractAddress(addressToken) {
+        const components = this._extractAddressComponents(addressToken);
+        if (!components) return null;
+        return `${components.network}/${components.application}/${components.group}`;
+    }
+
+    _extractAddressComponents(addressToken) {
         // Handle both "254/56/1" and "//PROJECT/254/56/1"
         const normalized = addressToken.startsWith('//')
             ? addressToken.slice(addressToken.indexOf('/', 2) + 1)
             : addressToken;
+        if (!normalized) return null;
 
-        const addressMatch = normalized.match(/^(\d+\/\d+\/\d+)/);
-        return addressMatch ? addressMatch[1] : null;
+        const firstSlash = normalized.indexOf('/');
+        if (firstSlash <= 0) return null;
+        const secondSlash = normalized.indexOf('/', firstSlash + 1);
+        if (secondSlash <= firstSlash + 1) return null;
+
+        const network = normalized.slice(0, firstSlash);
+        const application = normalized.slice(firstSlash + 1, secondSlash);
+
+        let thirdPartEnd = normalized.indexOf('/', secondSlash + 1);
+        if (thirdPartEnd === -1) {
+            thirdPartEnd = normalized.length;
+        }
+        const group = normalized.slice(secondSlash + 1, thirdPartEnd);
+
+        if (!this._isDigits(network) || !this._isDigits(application) || !this._isDigits(group)) {
+            return null;
+        }
+
+        return { network, application, group };
     }
 
     _extractLeadingInt(value) {

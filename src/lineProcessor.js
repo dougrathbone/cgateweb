@@ -28,12 +28,29 @@ class LineProcessor {
         this.lineProcessor = lineProcessor;
         this._buffer += Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
 
-        let delimiterIndex = this._buffer.indexOf(this.options.delimiter);
+        const buffer = this._buffer;
+        const delimiter = this.options.delimiter;
+        const delimiterLength = delimiter.length;
+        let searchStart = 0;
+        let delimiterIndex = buffer.indexOf(delimiter, searchStart);
+
         while (delimiterIndex !== -1) {
-            const rawLine = this._buffer.slice(0, delimiterIndex);
-            this._buffer = this._buffer.slice(delimiterIndex + this.options.delimiter.length);
-            this._processLine(rawLine);
-            delimiterIndex = this._buffer.indexOf(this.options.delimiter);
+            const rawLine = buffer.slice(searchStart, delimiterIndex);
+            searchStart = delimiterIndex + delimiterLength;
+            // Preserve existing semantics for re-entrant callbacks (e.g. close()).
+            this._buffer = buffer.slice(searchStart);
+
+            try {
+                this._processLine(rawLine);
+            } catch (error) {
+                throw error;
+            }
+
+            delimiterIndex = buffer.indexOf(delimiter, searchStart);
+        }
+
+        if (searchStart === 0) {
+            this._buffer = buffer;
         }
     }
     

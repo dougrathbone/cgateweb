@@ -84,7 +84,7 @@ class EventPublisher {
         const topics = this._getTopicsForAddress(network, application, group);
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
-        const isCoverOverride = this._isTypeOverride(event, 'cover');
+        const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
         
         // Calculate level percentage for Home Assistant
@@ -141,11 +141,11 @@ class EventPublisher {
      * Checks whether the event's group has a type override matching the given type.
      * Falls back to false when no labelLoader is configured.
      */
-    _isTypeOverride(event, type) {
+    _isTypeOverride(network, application, group, type) {
         if (!this.labelLoader) return false;
         const typeOverrides = this.labelLoader.getTypeOverrides();
         if (!typeOverrides) return false;
-        const labelKey = `${event.getNetwork()}/${event.getApplication()}/${event.getGroup()}`;
+        const labelKey = `${network}/${application}/${group}`;
         return typeOverrides.get(labelKey) === type;
     }
 

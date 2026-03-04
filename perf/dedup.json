@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-03-04T11:45:15.109Z",
+  "generatedAt": "2026-03-04T11:52:41.853Z",
   "profile": "dedup",
   "benchmarkConfig": {
     "repeat": 5,
@@ -12,62 +12,62 @@
   },
   "summary": {
     "runCount": 5,
-    "eventThroughputMedian": 747228.9,
-    "commandThroughputMedian": 777352.91,
-    "eventP95FlushMedianMs": 1.98,
-    "commandP95FlushMedianMs": 0.153
+    "eventThroughputMedian": 754638.01,
+    "commandThroughputMedian": 793860.6,
+    "eventP95FlushMedianMs": 1.955,
+    "commandP95FlushMedianMs": 0.163
   },
   "workload": {
     "eventCount": 1500,
     "commandCount": 1000
   },
   "resource": {
-    "cpuUserMs": 44.613,
-    "cpuSystemMs": 1.493,
-    "rssBeforeMb": 89.44,
-    "rssAfterMb": 101.66
+    "cpuUserMs": 48.991,
+    "cpuSystemMs": 1.854,
+    "rssBeforeMb": 90.42,
+    "rssAfterMb": 103.11
   },
   "eventPath": {
     "profile": "dedup",
     "sampleCount": 1500,
     "uniqueGroups": 50,
     "parsedEvents": 1500,
-    "throughputMsgsPerSec": 747228.9,
+    "throughputMsgsPerSec": 754638.01,
     "lineToParseMs": {
       "count": 1500,
       "min": 0,
       "p50": 0,
       "p95": 0,
-      "p99": 0.001,
-      "max": 0.003,
+      "p99": 0,
+      "max": 0.012,
       "avg": 0
     },
     "lineToPublishCallMs": {
       "count": 100,
       "min": 0.001,
-      "p50": 0.002,
+      "p50": 0.001,
       "p95": 0.002,
       "p99": 0.006,
       "max": 0.008,
-      "avg": 0.002
+      "avg": 0.001
     },
     "lineToPublishFlushMs": {
       "count": 100,
-      "min": 1.889,
-      "p50": 1.935,
-      "p95": 1.98,
-      "p99": 1.991,
-      "max": 1.992,
-      "avg": 1.936
+      "min": 1.871,
+      "p50": 1.913,
+      "p95": 1.955,
+      "p99": 1.964,
+      "max": 1.966,
+      "avg": 1.914
     },
     "publishCallToFlushMs": {
       "count": 100,
-      "min": 1.887,
-      "p50": 1.934,
-      "p95": 1.978,
-      "p99": 1.984,
-      "max": 1.984,
-      "avg": 1.935
+      "min": 1.869,
+      "p50": 1.912,
+      "p95": 1.953,
+      "p99": 1.958,
+      "max": 1.958,
+      "avg": 1.912
     },
     "publishStats": {
       "publishAttempts": 3000,
@@ -87,24 +87,24 @@
   "commandPath": {
     "profile": "dedup",
     "sampleCount": 1000,
-    "throughputMsgsPerSec": 687836.91,
+    "throughputMsgsPerSec": 729239.29,
     "lineToPublishCallMs": {
       "count": 1000,
       "min": 0,
       "p50": 0.001,
       "p95": 0.001,
-      "p99": 0.002,
-      "max": 0.022,
+      "p99": 0.001,
+      "max": 0.006,
       "avg": 0.001
     },
     "lineToPublishFlushMs": {
       "count": 1000,
-      "min": 0.033,
-      "p50": 0.09,
-      "p95": 0.142,
-      "p99": 0.146,
-      "max": 0.147,
-      "avg": 0.09
+      "min": 0.044,
+      "p50": 0.109,
+      "p95": 0.169,
+      "p99": 0.174,
+      "max": 0.175,
+      "avg": 0.11
     }
   },
   "trials": [
@@ -115,14 +115,14 @@
         "sampleCount": 1500,
         "uniqueGroups": 50,
         "parsedEvents": 1500,
-        "throughputMsgsPerSec": 536904.87,
+        "throughputMsgsPerSec": 530558.77,
         "lineToParseMs": {
           "count": 1500,
           "min": 0,
           "p50": 0,
-          "p95": 0.001,
-          "p99": 0.002,
-          "max": 0.011,
+          "p95": 0,
+          "p99": 0.001,
+          "max": 0.009,
           "avg": 0
         },
         "lineToPublishCallMs": {
@@ -130,27 +130,27 @@
           "min": 0.001,
           "p50": 0.002,
           "p95": 0.003,
-          "p99": 0.011,
-          "max": 0.013,
+          "p99": 0.023,
+          "max": 0.027,
           "avg": 0.002
         },
         "lineToPublishFlushMs": {
           "count": 100,
-          "min": 2.634,
-          "p50": 2.694,
-          "p95": 2.759,
-          "p99": 2.771,
-          "max": 2.776,
-          "avg": 2.695
+          "min": 2.648,
+          "p50": 2.709,
+          "p95": 2.773,
+          "p99": 2.798,
+          "max": 2.804,
+          "avg": 2.712
         },
         "publishCallToFlushMs": {
           "count": 100,
-          "min": 2.631,
-          "p50": 2.693,
-          "p95": 2.756,
-          "p99": 2.761,
-          "max": 2.762,
-          "avg": 2.693
+          "min": 2.647,
+          "p50": 2.707,
+          "p95": 2.771,
+          "p99": 2.775,
+          "max": 2.777,
+          "avg": 2.709
         },
         "publishStats": {
           "publishAttempts": 3000,
@@ -170,24 +170,24 @@
       "commandPath": {
         "profile": "dedup",
         "sampleCount": 1000,
-        "throughputMsgsPerSec": 777352.91,
+        "throughputMsgsPerSec": 793860.6,
         "lineToPublishCallMs": {
           "count": 1000,
           "min": 0,
           "p50": 0.001,
           "p95": 0.001,
           "p99": 0.001,
-          "max": 0.011,
+          "max": 0.016,
           "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 1000,
-          "min": 0.031,
-          "p50": 0.092,
-          "p95": 0.159,
-          "p99": 0.164,
-          "max": 0.165,
-          "avg": 0.097
+          "min": 0.032,
+          "p50": 0.093,
+          "p95": 0.163,
+          "p99": 0.168,
+          "max": 0.169,
+          "avg": 0.099
         }
       }
     },
@@ -198,42 +198,42 @@
         "sampleCount": 1500,
         "uniqueGroups": 50,
         "parsedEvents": 1500,
-        "throughputMsgsPerSec": 747228.9,
+        "throughputMsgsPerSec": 754638.01,
         "lineToParseMs": {
           "count": 1500,
           "min": 0,
           "p50": 0,
           "p95": 0,
-          "p99": 0.001,
-          "max": 0.003,
+          "p99": 0,
+          "max": 0.012,
           "avg": 0
         },
         "lineToPublishCallMs": {
           "count": 100,
           "min": 0.001,
-          "p50": 0.002,
+          "p50": 0.001,
           "p95": 0.002,
           "p99": 0.006,
           "max": 0.008,
-          "avg": 0.002
+          "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 100,
-          "min": 1.889,
-          "p50": 1.935,
-          "p95": 1.98,
-          "p99": 1.991,
-          "max": 1.992,
-          "avg": 1.936
+          "min": 1.871,
+          "p50": 1.913,
+          "p95": 1.955,
+          "p99": 1.964,
+          "max": 1.966,
+          "avg": 1.914
         },
         "publishCallToFlushMs": {
           "count": 100,
-          "min": 1.887,
-          "p50": 1.934,
-          "p95": 1.978,
-          "p99": 1.984,
-          "max": 1.984,
-          "avg": 1.935
+          "min": 1.869,
+          "p50": 1.912,
+          "p95": 1.953,
+          "p99": 1.958,
+          "max": 1.958,
+          "avg": 1.912
         },
         "publishStats": {
           "publishAttempts": 3000,
@@ -253,24 +253,24 @@
       "commandPath": {
         "profile": "dedup",
         "sampleCount": 1000,
-        "throughputMsgsPerSec": 687836.91,
+        "throughputMsgsPerSec": 729239.29,
         "lineToPublishCallMs": {
           "count": 1000,
           "min": 0,
           "p50": 0.001,
           "p95": 0.001,
-          "p99": 0.002,
-          "max": 0.022,
+          "p99": 0.001,
+          "max": 0.006,
           "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 1000,
-          "min": 0.033,
-          "p50": 0.09,
-          "p95": 0.142,
-          "p99": 0.146,
-          "max": 0.147,
-          "avg": 0.09
+          "min": 0.044,
+          "p50": 0.109,
+          "p95": 0.169,
+          "p99": 0.174,
+          "max": 0.175,
+          "avg": 0.11
         }
       }
     },
@@ -281,14 +281,14 @@
         "sampleCount": 1500,
         "uniqueGroups": 50,
         "parsedEvents": 1500,
-        "throughputMsgsPerSec": 694591.72,
+        "throughputMsgsPerSec": 798084.6,
         "lineToParseMs": {
           "count": 1500,
           "min": 0,
           "p50": 0,
-          "p95": 0.001,
-          "p99": 0.002,
-          "max": 0.008,
+          "p95": 0,
+          "p99": 0.001,
+          "max": 0.006,
           "avg": 0
         },
         "lineToPublishCallMs": {
@@ -296,27 +296,27 @@
           "min": 0.001,
           "p50": 0.001,
           "p95": 0.003,
-          "p99": 0.003,
-          "max": 0.004,
-          "avg": 0.001
+          "p99": 0.007,
+          "max": 0.007,
+          "avg": 0.002
         },
         "lineToPublishFlushMs": {
           "count": 100,
-          "min": 2.035,
-          "p50": 2.082,
-          "p95": 2.125,
-          "p99": 2.131,
-          "max": 2.132,
-          "avg": 2.082
+          "min": 1.744,
+          "p50": 1.803,
+          "p95": 1.847,
+          "p99": 1.857,
+          "max": 1.858,
+          "avg": 1.8
         },
         "publishCallToFlushMs": {
           "count": 100,
-          "min": 2.033,
-          "p50": 2.081,
-          "p95": 2.122,
-          "p99": 2.128,
-          "max": 2.128,
-          "avg": 2.081
+          "min": 1.742,
+          "p50": 1.801,
+          "p95": 1.845,
+          "p99": 1.851,
+          "max": 1.852,
+          "avg": 1.799
         },
         "publishStats": {
           "publishAttempts": 3000,
@@ -336,24 +336,24 @@
       "commandPath": {
         "profile": "dedup",
         "sampleCount": 1000,
-        "throughputMsgsPerSec": 524590.16,
+        "throughputMsgsPerSec": 464369.18,
         "lineToPublishCallMs": {
           "count": 1000,
-          "min": 0.001,
+          "min": 0,
           "p50": 0.001,
           "p95": 0.001,
           "p99": 0.002,
-          "max": 0.017,
+          "max": 0.006,
           "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 1000,
-          "min": 0.448,
-          "p50": 0.51,
-          "p95": 0.577,
-          "p99": 0.581,
-          "max": 0.582,
-          "avg": 0.516
+          "min": 0.736,
+          "p50": 0.793,
+          "p95": 0.845,
+          "p99": 0.85,
+          "max": 0.851,
+          "avg": 0.794
         }
       }
     },
@@ -364,14 +364,14 @@
         "sampleCount": 1500,
         "uniqueGroups": 50,
         "parsedEvents": 1500,
-        "throughputMsgsPerSec": 928529.25,
+        "throughputMsgsPerSec": 747678.83,
         "lineToParseMs": {
           "count": 1500,
           "min": 0,
           "p50": 0,
           "p95": 0,
-          "p99": 0,
-          "max": 0.009,
+          "p99": 0.002,
+          "max": 0.023,
           "avg": 0
         },
         "lineToPublishCallMs": {
@@ -380,26 +380,26 @@
           "p50": 0.001,
           "p95": 0.002,
           "p99": 0.007,
-          "max": 0.009,
+          "max": 0.01,
           "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 100,
-          "min": 1.507,
-          "p50": 1.546,
-          "p95": 1.587,
-          "p99": 1.599,
-          "max": 1.6,
-          "avg": 1.548
+          "min": 1.887,
+          "p50": 1.927,
+          "p95": 1.965,
+          "p99": 1.974,
+          "max": 1.977,
+          "avg": 1.927
         },
         "publishCallToFlushMs": {
           "count": 100,
-          "min": 1.505,
-          "p50": 1.546,
-          "p95": 1.585,
-          "p99": 1.59,
-          "max": 1.592,
-          "avg": 1.546
+          "min": 1.885,
+          "p50": 1.926,
+          "p95": 1.963,
+          "p99": 1.967,
+          "max": 1.968,
+          "avg": 1.926
         },
         "publishStats": {
           "publishAttempts": 3000,
@@ -419,24 +419,24 @@
       "commandPath": {
         "profile": "dedup",
         "sampleCount": 1000,
-        "throughputMsgsPerSec": 826531.67,
+        "throughputMsgsPerSec": 829044.41,
         "lineToPublishCallMs": {
           "count": 1000,
           "min": 0,
           "p50": 0.001,
           "p95": 0.001,
           "p99": 0.001,
-          "max": 0.003,
+          "max": 0.005,
           "avg": 0.001
         },
         "lineToPublishFlushMs": {
           "count": 1000,
-          "min": 0.033,
-          "p50": 0.097,
-          "p95": 0.152,
-          "p99": 0.157,
-          "max": 0.158,
-          "avg": 0.096
+          "min": 0.029,
+          "p50": 0.092,
+          "p95": 0.147,
+          "p99": 0.152,
+          "max": 0.153,
+          "avg": 0.092
         }
       }
     },
@@ -447,7 +447,7 @@
         "sampleCount": 1500,
         "uniqueGroups": 50,
         "parsedEvents": 1500,
-        "throughputMsgsPerSec": 858962.88,
+        "throughputMsgsPerSec": 1091703.06,
         "lineToParseMs": {
           "count": 1500,
           "min": 0,
@@ -462,27 +462,27 @@
           "min": 0.001,
           "p50": 0.001,
           "p95": 0.002,
-          "p99": 0.012,
-          "max": 0.013,
-          "avg": 0.001
+          "p99": 0.022,
+          "max": 0.023,
+          "avg": 0.002
         },
         "lineToPublishFlushMs": {
           "count": 100,
-          "min": 1.628,
-          "p50": 1.664,
-          "p95": 1.721,
-          "p99": 1.726,
-          "max": 1.727,
-          "avg": 1.668
+          "min": 1.239,
+          "p50": 1.275,
+          "p95": 1.35,
+          "p99": 1.357,
+          "max": 1.357,
+          "avg": 1.288
         },
         "publishCallToFlushMs": {
           "count": 100,
-          "min": 1.627,
-          "p50": 1.663,
-          "p95": 1.72,
-          "p99": 1.723,
-          "max": 1.724,
-          "avg": 1.667
+          "min": 1.237,
+          "p50": 1.274,
+          "p95": 1.348,
+          "p99": 1.352,
+          "max": 1.353,
+          "avg": 1.286
         },
         "publishStats": {
           "publishAttempts": 3000,
@@ -502,7 +502,7 @@
       "commandPath": {
         "profile": "dedup",
         "sampleCount": 1000,
-        "throughputMsgsPerSec": 827158.59,
+        "throughputMsgsPerSec": 795044.65,
         "lineToPublishCallMs": {
           "count": 1000,
           "min": 0,
@@ -514,12 +514,12 @@
         },
         "lineToPublishFlushMs": {
           "count": 1000,
-          "min": 0.028,
-          "p50": 0.088,
-          "p95": 0.153,
-          "p99": 0.159,
-          "max": 0.161,
-          "avg": 0.089
+          "min": 0.034,
+          "p50": 0.093,
+          "p95": 0.155,
+          "p99": 0.161,
+          "max": 0.163,
+          "avg": 0.094
         }
       }
     }
