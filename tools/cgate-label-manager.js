@@ -43,7 +43,7 @@ function loadSettingsDefaults() {
                 project: settings.cbusname || null
             };
         }
-    } catch (_) { /* ignore */ }
+    } catch { /* ignore */ }
     return { host: '127.0.0.1', port: 20023, project: null };
 }
 

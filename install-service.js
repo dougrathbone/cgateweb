@@ -95,7 +95,7 @@ function installService() {
                 console.warn('Failed to stop existing service, continuing with installation...');
             }
         }
-    } catch (error) {
+    } catch {
         // Service doesn't exist or is inactive, which is fine
         console.log('No existing service to stop.');
     }

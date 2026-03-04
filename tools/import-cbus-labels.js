@@ -113,7 +113,7 @@ async function main() {
     }
 
     let labels = result.labels;
-    let preservedSections = {};
+    const preservedSections = {};
 
     if (args.merge && fs.existsSync(args.output)) {
         console.log(`Merging with existing file: ${args.output}`);

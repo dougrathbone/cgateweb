@@ -32,7 +32,7 @@ jobs:
       run: npm ci # Use npm ci for cleaner installs in CI
       
     - name: Run lint
-      run: npm run lint
+      run: npm run lint -- --max-warnings=0
 
     - name: Run unit tests
       run: npm test -- --coverage # Use npm test script which should call jest 

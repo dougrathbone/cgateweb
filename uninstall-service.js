@@ -33,7 +33,7 @@ function uninstallService() {
         } else {
             console.log(`Service ${SERVICE_NAME} is not active.`);
         }
-    } catch (error) {
+    } catch {
         console.log(`Service ${SERVICE_NAME} status check failed (may not exist).`);
     }
 
@@ -48,7 +48,7 @@ function uninstallService() {
         } else {
             console.log(`Service ${SERVICE_NAME} is not enabled.`);
         }
-    } catch (error) {
+    } catch {
         console.log(`Service ${SERVICE_NAME} enable status check failed (may not exist).`);
     }
 

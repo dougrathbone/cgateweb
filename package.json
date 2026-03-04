@@ -44,12 +44,18 @@
     "uninstall-service": "node uninstall-service.js",
     "setup": "cp settings.js.example settings.js && echo 'Settings file created! Edit settings.js to configure your C-Gate and MQTT settings.'",
     "import-labels": "node tools/import-cbus-labels.js",
-    "lint": "eslint src/ tests/ index.js",
-    "lint:fix": "eslint src/ tests/ index.js --fix",
+    "lint": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js",
+    "lint:fix": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --fix",
     "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\"",
     "check-setup": "node -e \"const { validateSetup } = require('./src/settingsValidator'); let settings; try { settings = require('./settings.js'); } catch(e) { settings = {}; } const result = validateSetup(settings); if (result.isFirstTime) { console.log(result.message); process.exit(1); } if (result.issues.length > 0) { console.log('Issues:', result.issues.join(', ')); } if (result.recommendations.length > 0) { console.log('Recommendations:', result.recommendations.join(', ')); } console.log(result.isValid ? 'Setup looks good!' : 'Please address the issues above');\""
   },
   "jest": {
+    "collectCoverageFrom": [
+      "src/**/*.js",
+      "index.js",
+      "install-service.js",
+      "uninstall-service.js"
+    ],
     "coverageThreshold": {
       "global": {
         "statements": 80,
@@ -70,8 +76,8 @@
         "lines": 75
       },
       "./src/cgateConnectionPool.js": {
-        "statements": 35,
-        "lines": 35
+        "statements": 38,
+        "lines": 38
       }
     }
   }
