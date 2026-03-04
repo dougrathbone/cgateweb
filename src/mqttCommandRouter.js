@@ -375,7 +375,9 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _queueCommand(command, priority = 'interactive') {
-        if (priority === 'interactive' || !priority) {
+        // Preserve historical behavior for omitted/empty priority while allowing
+        // explicit interactive commands to retain their priority in the queue.
+        if (arguments.length < 2 || !priority) {
             this.cgateCommandQueue.add(command);
             return;
         }

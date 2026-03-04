@@ -333,31 +333,57 @@ describe('MqttCommandRouter', () => {
         });
     });
 
+    describe('_queueCommand() Priority Handling', () => {
+        it('should preserve interactive priority when explicitly provided', () => {
+            router._queueCommand('RAMP //TestProject/254/203/1 128\n', 'interactive');
+
+            expect(queueSpy).toHaveBeenCalledWith(
+                'RAMP //TestProject/254/203/1 128\n',
+                { priority: 'interactive' }
+            );
+        });
+
+        it('should pass through critical priority', () => {
+            router._queueCommand('TERMINATERAMP //TestProject/254/203/1\n', 'critical');
+
+            expect(queueSpy).toHaveBeenCalledWith(
+                'TERMINATERAMP //TestProject/254/203/1\n',
+                { priority: 'critical' }
+            );
+        });
+
+        it('should use bare queue add when priority is omitted', () => {
+            router._queueCommand('GET //TestProject/254/56/* level\n');
+
+            expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
+        });
+    });
+
     describe('Cover Position Commands', () => {
         it('should handle position command with percentage', () => {
             router.routeMessage('cbus/write/254/203/1/position', '50');
             
             // 50% of 255 = 128
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 128\n');
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 128\n', { priority: 'interactive' });
         });
 
         it('should handle position 0 (fully closed)', () => {
             router.routeMessage('cbus/write/254/203/1/position', '0');
             
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 0\n');
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 0\n', { priority: 'interactive' });
         });
 
         it('should handle position 100 (fully open)', () => {
             router.routeMessage('cbus/write/254/203/1/position', '100');
             
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 255\n');
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 255\n', { priority: 'interactive' });
         });
 
         it('should handle partial position', () => {
             router.routeMessage('cbus/write/254/203/1/position', '75');
             
             // 75% of 255 = 191
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 191\n');
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/203/1 191\n', { priority: 'interactive' });
         });
 
         it('should reject position command without device ID', () => {
