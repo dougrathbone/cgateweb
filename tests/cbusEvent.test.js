@@ -273,6 +273,46 @@ describe('CBusEvent', () => {
             expect(statusEvent.getGroup()).toBe('1');
         });
 
+        it('should parse a 300 GET response for a cover app (app 203) correctly', () => {
+            const event = new CBusEvent("300 //HOME/254/203/5: level=128");
+            expect(event.isValid()).toBe(true);
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('203');
+            expect(event.getGroup()).toBe('5');
+            expect(event.getLevel()).toBe(128);
+            expect(event.getAction()).toBe('on'); // level > 0
+        });
+
+        it('should parse a 300 GET response for a cover app at level 0 (closed)', () => {
+            const event = new CBusEvent("300 //HOME/254/203/5: level=0");
+            expect(event.isValid()).toBe(true);
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('203');
+            expect(event.getGroup()).toBe('5');
+            expect(event.getLevel()).toBe(0);
+            expect(event.getAction()).toBe('off'); // level === 0
+        });
+
+        it('should parse a statusDataOnly cover GET response (stripped 300 prefix)', () => {
+            // This is the format passed by commandResponseProcessor after stripping the "300-" prefix
+            const event = new CBusEvent("//HOME/254/203/5: level=128", { statusDataOnly: true });
+            expect(event.isValid()).toBe(true);
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('203');
+            expect(event.getGroup()).toBe('5');
+            expect(event.getLevel()).toBe(128);
+        });
+
+        it('should parse a ramp event for a cover app via standard event format', () => {
+            const event = new CBusEvent("lighting ramp 254/203/5 128");
+            expect(event.isValid()).toBe(true);
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('203');
+            expect(event.getGroup()).toBe('5');
+            expect(event.getLevel()).toBe(128);
+            expect(event.getAction()).toBe('ramp');
+        });
+
         it('should handle invalid events correctly via getter methods', () => {
             const invalidEvent = new CBusEvent("invalid event data");
             expect(invalidEvent.isValid()).toBe(false);

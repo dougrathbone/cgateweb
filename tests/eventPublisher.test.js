@@ -388,17 +388,105 @@ describe('EventPublisher', () => {
                 getLevel: () => 128,
                 getAction: () => 'ramp'
             };
-            
+
             eventPublisher.publishEvent(mockEvent);
 
             // Should only publish state and level (2 messages), not position
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            
+
             // Verify no position topic was published
             const positionCall = mockPublishFn.mock.calls.find(
                 call => call[0].endsWith('/position')
             );
             expect(positionCall).toBeUndefined();
+        });
+    });
+
+    describe('Cover getall response parsing (regression)', () => {
+        it('should publish position and ON state for a 300 GET response on cover app at level=128', () => {
+            // Simulates: commandResponseProcessor strips "300-" prefix, creates CBusEvent with statusDataOnly
+            const event = new CBusEvent('//HOME/254/203/5: level=128', { statusDataOnly: true });
+            expect(event.isValid()).toBe(true);
+
+            eventPublisher.publishEvent(event, '(Cmd)');
+
+            // Expect 3 publishes: state, level, position
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/state',
+                'ON',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/level',
+                '50', // 128/255*100 ≈ 50
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '50',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish position=0 and OFF state for a 300 GET response on cover app at level=0', () => {
+            const event = new CBusEvent('//HOME/254/203/5: level=0', { statusDataOnly: true });
+            expect(event.isValid()).toBe(true);
+
+            eventPublisher.publishEvent(event, '(Cmd)');
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/state',
+                'OFF',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '0',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish position=100 and ON state for a 300 GET response on cover app at level=255', () => {
+            const event = new CBusEvent('//HOME/254/203/5: level=255', { statusDataOnly: true });
+            expect(event.isValid()).toBe(true);
+
+            eventPublisher.publishEvent(event, '(Cmd)');
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/state',
+                'ON',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '100',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish cover position for a ramp event from the event connection', () => {
+            // Simulates: event connection delivers "lighting ramp 254/203/5 128"
+            const event = new CBusEvent('lighting ramp 254/203/5 128');
+            expect(event.isValid()).toBe(true);
+
+            eventPublisher.publishEvent(event, '(Evt)');
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/state',
+                'ON',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '50',
+                mockMqttOptions
+            );
         });
     });
 
