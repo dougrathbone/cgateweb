@@ -347,6 +347,51 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   .badge-cover { background: #1b2838; color: #74c0fc; }
   .badge-switch { background: #2e2a1b; color: #ffa94d; }
 }
+
+/* Batch selection */
+tbody tr.selected { background: #e8f0fe !important; }
+@media (prefers-color-scheme: dark) {
+  tbody tr.selected { background: #1a2a4a !important; }
+}
+th.cb-col, td.cb-col {
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
+  text-align: center;
+  padding: 6px 4px;
+}
+.select-cb {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+.bulk-toolbar {
+  display: none;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 0.875rem;
+  flex-wrap: wrap;
+}
+.bulk-toolbar.visible { display: flex; }
+.bulk-count {
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.bulk-toolbar button { padding: 4px 10px; font-size: 0.8rem; }
+.bulk-sep {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+  margin: 0 4px;
+}
 </style>
 </head>
 <body>
@@ -420,6 +465,19 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
           <option value="excluded">Excluded</option>
         </select>
       </div>
+      <div class="bulk-toolbar" id="bulkToolbar">
+        <span class="bulk-count" id="bulkCount">0 selected</span>
+        <div class="bulk-sep"></div>
+        <span style="color:var(--text-muted)">Set type:</span>
+        <button id="bulkLight">light</button>
+        <button id="bulkCover">cover</button>
+        <button id="bulkSwitch">switch</button>
+        <div class="bulk-sep"></div>
+        <button id="bulkExclude">Exclude</button>
+        <button id="bulkInclude">Include</button>
+        <div class="bulk-sep"></div>
+        <button id="bulkClear">Clear selection</button>
+      </div>
       <div id="tableContainer"></div>
       <div class="add-row">
         <input type="text" id="addAddress" placeholder="network/app/group" style="width:160px">
@@ -452,6 +510,9 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
   let sortDir = 1;
   let pendingImport = null;
   let statusRefreshTimer = null;
+  let selectedKeys = new Set();
+  let lastClickedKey = null;
+  let lastFilteredKeys = [];
 
   function clearStatusRefreshTimer() {
     if (statusRefreshTimer !== null) {
@@ -649,21 +710,34 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
       return 0;
     });
 
+    lastFilteredKeys = filtered;
+    // Remove any selected keys that are no longer visible after filter change
+    for (const sk of [...selectedKeys]) {
+      if (!filtered.includes(sk)) selectedKeys.delete(sk);
+    }
+    updateBulkToolbar();
+
     var container = document.getElementById('tableContainer');
     if (filtered.length === 0) {
       container.innerHTML = '<div class="empty-state"><p>No labels found</p><p>Import a Clipsal project file or add labels manually below.</p></div>';
     } else {
+      var allVisibleSelected = filtered.length > 0 && filtered.every(function(k) { return selectedKeys.has(k); });
+
       var rows = filtered.map(function(k) {
         var val = all[k];
         var type = getType(k);
         var eid = getEntityId(k);
         var excl = isExcluded(k);
         var rowDirty = (k in dirtyLabels) || (k in dirtyTypes) || (k in dirtyEntityIds) || (k in dirtyExcludes);
+        var isSel = selectedKeys.has(k);
 
-        var typeBadge = type === 'cover' ? 'badge-cover' : type === 'switch' ? 'badge-switch' : 'badge-light';
-        var trClass = excl ? ' class="excluded"' : '';
+        var trClasses = [];
+        if (excl) trClasses.push('excluded');
+        if (isSel) trClasses.push('selected');
+        var trClass = trClasses.length ? ' class="' + trClasses.join(' ') + '"' : '';
 
         return '<tr' + trClass + '>' +
+          '<td class="cb-col"><input type="checkbox" class="select-cb" data-sel-key="' + esc(k) + '"' + (isSel ? ' checked' : '') + '></td>' +
           '<td class="addr">' + esc(k) + '</td>' +
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
           '<td><select class="type-select" data-type-key="' + esc(k) + '">' +
@@ -680,6 +754,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
       container.innerHTML =
         '<table><thead><tr>' +
+        '<th class="cb-col no-sort"><input type="checkbox" class="select-cb" id="selectAllCb"' + (allVisibleSelected ? ' checked' : '') + '></th>' +
         '<th data-sort="address">Address' + sortArrow('address') + '</th>' +
         '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
         '<th data-sort="type">Type' + sortArrow('type') + '</th>' +
@@ -712,6 +787,19 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
+  function updateBulkToolbar() {
+    var count = selectedKeys.size;
+    var toolbar = document.getElementById('bulkToolbar');
+    var countEl = document.getElementById('bulkCount');
+    if (count > 0) {
+      toolbar.classList.add('visible');
+      countEl.textContent = count + ' selected';
+    } else {
+      toolbar.classList.remove('visible');
+      countEl.textContent = '0 selected';
+    }
+  }
+
   function showToast(msg, isError) {
     var t = document.getElementById('toast');
     t.textContent = msg;
@@ -722,6 +810,46 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 
   // --- Table interactions ---
   document.getElementById('tableContainer').addEventListener('click', function(e) {
+    // Select-all checkbox in header
+    var selectAllCb = e.target.closest('#selectAllCb');
+    if (selectAllCb) {
+      e.stopPropagation();
+      if (selectAllCb.checked) {
+        lastFilteredKeys.forEach(function(k) { selectedKeys.add(k); });
+      } else {
+        lastFilteredKeys.forEach(function(k) { selectedKeys.delete(k); });
+      }
+      lastClickedKey = null;
+      render();
+      return;
+    }
+
+    // Per-row selection checkbox
+    var selCb = e.target.closest('.select-cb');
+    if (selCb && selCb.id !== 'selectAllCb') {
+      e.stopPropagation();
+      var selKey = selCb.dataset.selKey;
+      if (e.shiftKey && lastClickedKey !== null) {
+        var idxA = lastFilteredKeys.indexOf(lastClickedKey);
+        var idxB = lastFilteredKeys.indexOf(selKey);
+        if (idxA !== -1 && idxB !== -1) {
+          var lo = Math.min(idxA, idxB);
+          var hi = Math.max(idxA, idxB);
+          var shouldSelect = selCb.checked;
+          for (var i = lo; i <= hi; i++) {
+            if (shouldSelect) selectedKeys.add(lastFilteredKeys[i]);
+            else selectedKeys.delete(lastFilteredKeys[i]);
+          }
+        }
+      } else {
+        if (selCb.checked) selectedKeys.add(selKey);
+        else selectedKeys.delete(selKey);
+      }
+      lastClickedKey = selKey;
+      render();
+      return;
+    }
+
     // Inline label editing
     var display = e.target.closest('.label-display');
     if (display) {
@@ -858,6 +986,42 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     document.getElementById('addAddress').value = '';
     document.getElementById('addLabel').value = '';
     document.getElementById('addType').value = '';
+    render();
+  });
+
+  // --- Bulk actions ---
+  function applyBulkType(type) {
+    selectedKeys.forEach(function(k) {
+      var origType = typeOverrides[k] || 'light';
+      if (type !== origType) {
+        dirtyTypes[k] = type === 'light' ? null : type;
+      } else {
+        delete dirtyTypes[k];
+      }
+    });
+    render();
+  }
+
+  function applyBulkExclude(exclude) {
+    selectedKeys.forEach(function(k) {
+      var origExcl = excludeList.includes(k);
+      if (exclude !== origExcl) {
+        dirtyExcludes[k] = exclude;
+      } else {
+        delete dirtyExcludes[k];
+      }
+    });
+    render();
+  }
+
+  document.getElementById('bulkLight').addEventListener('click', function() { applyBulkType('light'); });
+  document.getElementById('bulkCover').addEventListener('click', function() { applyBulkType('cover'); });
+  document.getElementById('bulkSwitch').addEventListener('click', function() { applyBulkType('switch'); });
+  document.getElementById('bulkExclude').addEventListener('click', function() { applyBulkExclude(true); });
+  document.getElementById('bulkInclude').addEventListener('click', function() { applyBulkExclude(false); });
+  document.getElementById('bulkClear').addEventListener('click', function() {
+    selectedKeys.clear();
+    lastClickedKey = null;
     render();
   });
 
