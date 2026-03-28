@@ -32,6 +32,12 @@ class CgateConnection extends EventEmitter {
         this.isDestroyed = false;
         this.isWritable = true;
         this._drainWaiters = [];
+
+        // Keep-alive for event connection
+        this.keepAliveTimer = null;
+        this.keepAliveInterval = type === 'event'
+            ? Math.max(10000, settings.eventConnectionKeepAliveInterval || settings.keepAliveInterval || 60000)
+            : null;
     }
 
     connect() {
@@ -60,12 +66,14 @@ class CgateConnection extends EventEmitter {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
         }
-        
+
+        this._stopKeepAlive();
+
         if (this.socket && !this.socket.destroyed) {
             this.socket.removeAllListeners();
             this.socket.destroy();
         }
-        
+
         this.socket = null;
         this.connected = false;
         this.reconnectAttempts = 0;
@@ -132,23 +140,29 @@ class CgateConnection extends EventEmitter {
         }
         
         this.logger.info(`CONNECTED TO C-GATE ${this.type.toUpperCase()} PORT: ${this.host}:${this.port}`);
-        
+
         // Send initial commands for command connection
         if (this.type === 'command') {
             this._sendInitialCommands();
         }
-        
+
+        // Start keep-alive pings for event connection
+        if (this.type === 'event') {
+            this._startKeepAlive();
+        }
+
         this.emit('connect');
     }
 
     _handleClose(hadError) {
         this.connected = false;
-        
+        this._stopKeepAlive();
+
         if (this.socket) {
             this.socket.removeAllListeners();
             this.socket = null;
         }
-        
+
         this.logger.warn(`${this.type.toUpperCase()} PORT DISCONNECTED${hadError ? ' with error' : ''}`);
         this.isWritable = false;
         this._resolveDrainWaiters(false);
@@ -164,7 +178,8 @@ class CgateConnection extends EventEmitter {
     _handleError(err) {
         this.logger.error(`C-Gate ${this.type} Socket Error:`, { error: err });
         this.connected = false;
-        
+        this._stopKeepAlive();
+
         if (this.socket && !this.socket.destroyed) {
             this.socket.destroy();
         }
@@ -273,6 +288,46 @@ class CgateConnection extends EventEmitter {
             this.reconnectTimeout = null;
             this.connect();
         }, delay);
+    }
+
+    _startKeepAlive() {
+        if (!this.keepAliveInterval) return;
+
+        this._stopKeepAlive();
+
+        this.keepAliveTimer = setInterval(() => {
+            this._sendKeepAlive();
+        }, this.keepAliveInterval);
+
+        this.logger.debug(`Event keep-alive started: pinging every ${this.keepAliveInterval}ms`);
+    }
+
+    _stopKeepAlive() {
+        if (this.keepAliveTimer) {
+            clearInterval(this.keepAliveTimer);
+            this.keepAliveTimer = null;
+        }
+    }
+
+    _sendKeepAlive() {
+        if (!this.connected || !this.socket || this.socket.destroyed) {
+            this.logger.warn('Event keep-alive: not connected, skipping ping and scheduling reconnect');
+            this._stopKeepAlive();
+            if (!this.isDestroyed && this.poolIndex < 0) {
+                this._scheduleReconnect();
+            }
+            return;
+        }
+
+        try {
+            this.socket.write(`# Keep-alive ${Date.now()}${NEWLINE}`);
+            this.lastActivity = Date.now();
+            this.logger.debug('Event keep-alive ping sent');
+        } catch (error) {
+            this.logger.error('Event keep-alive ping failed:', { error });
+            this._stopKeepAlive();
+            this._handleError(error);
+        }
     }
 
     // Logging methods that can be overridden

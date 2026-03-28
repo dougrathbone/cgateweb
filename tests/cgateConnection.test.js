@@ -411,8 +411,191 @@ describe('CgateConnection', () => {
         it('should handle disconnect when not connected', () => {
             connection.connected = false;
             connection.socket = null;
-            
+
             expect(() => connection.disconnect()).not.toThrow();
+        });
+    });
+
+    describe('Event connection keep-alive', () => {
+        let eventConnection;
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            eventConnection = new CgateConnection('event', 'localhost', 20025, {
+                eventConnectionKeepAliveInterval: 30000
+            });
+            eventConnection.connect();
+        });
+
+        afterEach(() => {
+            eventConnection.disconnect();
+            jest.useRealTimers();
+        });
+
+        it('should set keepAliveInterval from eventConnectionKeepAliveInterval setting', () => {
+            expect(eventConnection.keepAliveInterval).toBe(30000);
+        });
+
+        it('should fall back to keepAliveInterval setting when eventConnectionKeepAliveInterval is absent', () => {
+            const conn = new CgateConnection('event', 'localhost', 20025, {
+                keepAliveInterval: 45000
+            });
+            expect(conn.keepAliveInterval).toBe(45000);
+        });
+
+        it('should enforce minimum of 10000ms for event keep-alive interval', () => {
+            const conn = new CgateConnection('event', 'localhost', 20025, {
+                eventConnectionKeepAliveInterval: 1000
+            });
+            expect(conn.keepAliveInterval).toBe(10000);
+        });
+
+        it('should not set keepAliveInterval for command connections', () => {
+            const cmdConn = new CgateConnection('command', 'localhost', 20023, {
+                eventConnectionKeepAliveInterval: 30000
+            });
+            expect(cmdConn.keepAliveInterval).toBeNull();
+        });
+
+        it('should start keep-alive timer when event connection connects', () => {
+            mockSocket.emit('connect');
+
+            expect(eventConnection.keepAliveTimer).not.toBeNull();
+        });
+
+        it('should send a comment keep-alive line at the configured interval', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+            mockSocket.destroyed = false;
+
+            mockSocket.emit('connect');
+            mockSocket.write.mockClear();
+
+            jest.advanceTimersByTime(30000);
+
+            expect(mockSocket.write).toHaveBeenCalledWith(
+                expect.stringMatching(/^# Keep-alive \d+\n$/)
+            );
+        });
+
+        it('should send multiple keep-alive pings over time', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+            mockSocket.destroyed = false;
+
+            mockSocket.emit('connect');
+            mockSocket.write.mockClear();
+
+            jest.advanceTimersByTime(90000); // 3 intervals of 30000ms
+
+            const keepAliveCalls = mockSocket.write.mock.calls.filter(
+                call => typeof call[0] === 'string' && call[0].startsWith('# Keep-alive')
+            );
+            expect(keepAliveCalls.length).toBe(3);
+        });
+
+        it('should stop keep-alive timer when connection closes', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+
+            mockSocket.emit('connect');
+            expect(eventConnection.keepAliveTimer).not.toBeNull();
+
+            mockSocket.emit('close', false);
+
+            expect(eventConnection.keepAliveTimer).toBeNull();
+        });
+
+        it('should stop keep-alive timer on disconnect()', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+
+            mockSocket.emit('connect');
+            expect(eventConnection.keepAliveTimer).not.toBeNull();
+
+            eventConnection.disconnect();
+
+            expect(eventConnection.keepAliveTimer).toBeNull();
+        });
+
+        it('should stop keep-alive timer on socket error', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+
+            mockSocket.emit('connect');
+            expect(eventConnection.keepAliveTimer).not.toBeNull();
+
+            eventConnection.on('error', () => {}); // suppress unhandled error
+            mockSocket.emit('error', new Error('connection reset'));
+
+            expect(eventConnection.keepAliveTimer).toBeNull();
+        });
+
+        it('should restart keep-alive after reconnect', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+
+            // First connect starts keep-alive
+            mockSocket.emit('connect');
+            const firstTimer = eventConnection.keepAliveTimer;
+            expect(firstTimer).not.toBeNull();
+
+            // Disconnect stops it
+            mockSocket.emit('close', false);
+            expect(eventConnection.keepAliveTimer).toBeNull();
+
+            // Simulate reconnect: advance timer to trigger reconnect, then fire connect
+            jest.advanceTimersByTime(2000);
+            mockSocket.emit('connect');
+
+            expect(eventConnection.keepAliveTimer).not.toBeNull();
+        });
+
+        it('should schedule reconnect when keep-alive fires but socket is not connected', () => {
+            eventConnection.connected = false;
+            eventConnection.socket = mockSocket;
+            mockSocket.destroyed = false;
+            eventConnection.isDestroyed = false;
+            eventConnection.keepAliveTimer = null;
+
+            const reconnectSpy = jest.spyOn(eventConnection, '_scheduleReconnect');
+
+            // Start the keep-alive directly and then fire it while disconnected
+            eventConnection._startKeepAlive();
+            jest.advanceTimersByTime(30000);
+
+            expect(reconnectSpy).toHaveBeenCalled();
+        });
+
+        it('should call _handleError when keep-alive write throws', () => {
+            eventConnection.connected = true;
+            eventConnection.socket = mockSocket;
+            mockSocket.destroyed = false;
+
+            const handleErrorSpy = jest.spyOn(eventConnection, '_handleError');
+            eventConnection.on('error', () => {}); // suppress unhandled error
+
+            mockSocket.write.mockImplementation(() => { throw new Error('write failed'); });
+
+            mockSocket.emit('connect');
+            mockSocket.write.mockClear();
+            mockSocket.write.mockImplementation(() => { throw new Error('write failed'); });
+
+            jest.advanceTimersByTime(30000);
+
+            expect(handleErrorSpy).toHaveBeenCalledWith(expect.any(Error));
+        });
+
+        it('should not start keep-alive for command connections on connect', () => {
+            const cmdConn = new CgateConnection('command', 'localhost', 20023, settings);
+            cmdConn.connect();
+
+            // Simulate successful connect (suppress initial commands writing)
+            mockSocket.write.mockReturnValue(true);
+            mockSocket.emit('connect');
+
+            expect(cmdConn.keepAliveTimer).toBeNull();
+            cmdConn.disconnect();
         });
     });
 });
