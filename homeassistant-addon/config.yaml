@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.4.20"
+version: "1.4.21"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -54,6 +54,11 @@ options:
   getall_on_start: true
   getall_period: 3600
 
+  # MQTT TLS settings (for external brokers with SSL/TLS)
+  mqtt_use_tls: false
+  mqtt_ca_file: ""
+  mqtt_reject_unauthorized: true
+
   # MQTT settings
   retain_reads: false
   message_interval: 200
@@ -102,6 +107,11 @@ schema:
   getall_networks: ["int(1,255)"]
   getall_on_start: "bool"
   getall_period: "int(60,86400)"
+
+  # MQTT TLS settings
+  mqtt_use_tls: "bool"
+  mqtt_ca_file: "str?"
+  mqtt_reject_unauthorized: "bool"
 
   # MQTT settings
   retain_reads: "bool"

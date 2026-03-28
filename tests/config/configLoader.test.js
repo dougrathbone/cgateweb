@@ -1041,6 +1041,66 @@ describe('ConfigLoader', () => {
             expect(config.web_mutation_rate_limit_per_minute).toBe(60);
         });
 
+        test('should enable MQTT TLS when mqtt_use_tls is true', () => {
+            const options = { ...baseAddonOptions, mqtt_use_tls: true };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttUseTls).toBe(true);
+        });
+
+        test('should not set mqttUseTls when mqtt_use_tls is false', () => {
+            const options = { ...baseAddonOptions, mqtt_use_tls: false };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttUseTls).toBeUndefined();
+        });
+
+        test('should set mqttCaFile when mqtt_ca_file is provided', () => {
+            const options = { ...baseAddonOptions, mqtt_use_tls: true, mqtt_ca_file: '/ssl/ca.crt' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttCaFile).toBe('/ssl/ca.crt');
+        });
+
+        test('should not set mqttCaFile when mqtt_ca_file is empty', () => {
+            const options = { ...baseAddonOptions, mqtt_ca_file: '' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttCaFile).toBeUndefined();
+        });
+
+        test('should set mqttRejectUnauthorized false when mqtt_reject_unauthorized is false', () => {
+            const options = { ...baseAddonOptions, mqtt_use_tls: true, mqtt_reject_unauthorized: false };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttRejectUnauthorized).toBe(false);
+        });
+
+        test('should not set mqttRejectUnauthorized when mqtt_reject_unauthorized is true', () => {
+            const options = { ...baseAddonOptions, mqtt_use_tls: true, mqtt_reject_unauthorized: true };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttRejectUnauthorized).toBeUndefined();
+        });
+
         test('should auto-detect label file when cbus_label_file not set and a path exists', () => {
             fs.existsSync.mockImplementation((p) => {
                 // Options file exists, and /config/cgateweb-labels.json auto-detected path exists

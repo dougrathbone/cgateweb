@@ -64,6 +64,35 @@ MQTT connection details are **automatically detected** from the Mosquitto add-on
 | `mqtt_username` | string | (auto) | MQTT username. Auto-detected from Mosquitto add-on. |
 | `mqtt_password` | password | (auto) | MQTT password. Auto-detected from Mosquitto add-on. |
 
+### MQTT TLS Settings
+
+These settings are only needed when connecting to an external MQTT broker that requires TLS encryption. The built-in Mosquitto add-on does not require TLS configuration.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `mqtt_use_tls` | boolean | `false` | Connect using TLS (mqtts://). Enable for brokers that require encrypted connections, typically on port 8883. |
+| `mqtt_ca_file` | string | (empty) | Path to a CA certificate file for verifying the broker's certificate. Required for self-signed broker certificates. Store certs in `/ssl/` on Home Assistant (e.g., `/ssl/ca.crt`). |
+| `mqtt_reject_unauthorized` | boolean | `true` | Reject connections if the broker certificate cannot be verified. Disable only when using a self-signed certificate without a CA file. |
+
+#### Example: external broker with self-signed certificate
+
+```yaml
+mqtt_host: "mqtt.example.com"
+mqtt_port: 8883
+mqtt_use_tls: true
+mqtt_ca_file: "/ssl/mqtt-ca.crt"
+mqtt_reject_unauthorized: true
+```
+
+#### Example: external broker with TLS, no certificate verification
+
+```yaml
+mqtt_host: "mqtt.example.com"
+mqtt_port: 8883
+mqtt_use_tls: true
+mqtt_reject_unauthorized: false
+```
+
 ### C-Bus Monitoring
 
 | Option | Type | Default | Description |

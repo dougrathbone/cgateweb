@@ -158,6 +158,17 @@ class ConfigLoader {
             config.mqttpassword = options.mqtt_password;
         }
 
+        // MQTT TLS settings
+        if (options.mqtt_use_tls) {
+            config.mqttUseTls = true;
+        }
+        if (options.mqtt_ca_file) {
+            config.mqttCaFile = options.mqtt_ca_file;
+        }
+        if (options.mqtt_reject_unauthorized === false) {
+            config.mqttRejectUnauthorized = false;
+        }
+
         // C-Bus monitoring settings
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
             config.getallnetapp = `${options.getall_networks[0]}/56`;

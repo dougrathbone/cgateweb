@@ -30,6 +30,21 @@ configuration:
     name: MQTT Password
     description: Auto-detected from the Mosquitto add-on. Only set this if you are
       using an external MQTT broker or need to override the credentials.
+  mqtt_use_tls:
+    name: Enable MQTT TLS
+    description: Connect to the MQTT broker using TLS (mqtts://). Enable this when
+      your broker requires an encrypted connection, typically on port 8883. Leave
+      disabled for the standard Mosquitto add-on.
+  mqtt_ca_file:
+    name: MQTT CA Certificate File
+    description: Path to a CA certificate file used to verify the MQTT broker's TLS
+      certificate. Required when your broker uses a self-signed certificate. Certs
+      are usually stored in /ssl/ on Home Assistant (e.g., /ssl/ca.crt).
+  mqtt_reject_unauthorized:
+    name: Verify MQTT TLS Certificate
+    description: Reject connections if the broker's TLS certificate cannot be
+      verified. Keep enabled for security. Disable only if you are using a
+      self-signed certificate without a CA file and understand the risks.
   getall_networks:
     name: C-Bus Networks to Monitor
     description: List of C-Bus network IDs to poll for device states. The default
