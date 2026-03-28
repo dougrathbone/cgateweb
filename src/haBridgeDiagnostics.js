@@ -107,7 +107,7 @@ class HaBridgeDiagnostics {
             if (fs.existsSync(CGATE_VERSION_FILE)) {
                 cgateVersion = fs.readFileSync(CGATE_VERSION_FILE, 'utf8').trim() || 'unknown';
             }
-        } catch (_) {
+        } catch {
             // version file unavailable (remote mode or pre-install)
         }
 
