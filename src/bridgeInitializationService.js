@@ -2,7 +2,8 @@ const HaDiscovery = require('./haDiscovery');
 const {
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
-    NEWLINE
+    NEWLINE,
+    DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
 
 class BridgeInitializationService {
@@ -42,7 +43,7 @@ class BridgeInitializationService {
                         `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
                     );
                 }
-            }, this.bridge.settings.getallperiod * 1000);
+            }, this.bridge.settings.getallperiod * 1000).unref();
         }
 
         if (!this.bridge.haDiscovery) {
@@ -73,7 +74,26 @@ class BridgeInitializationService {
     _resolveGetallNetworks() {
         const settings = this.bridge.settings;
         if (Array.isArray(settings.getall_networks) && settings.getall_networks.length > 0) {
-            return settings.getall_networks.map(n => `${n}/56`);
+            const appIds = new Set([DEFAULT_CBUS_APP_LIGHTING]);
+            const optionalAppSettings = [
+                'ha_discovery_cover_app_id',
+                'ha_discovery_hvac_app_id',
+                'ha_discovery_trigger_app_id',
+                'ha_discovery_switch_app_id',
+                'ha_discovery_relay_app_id'
+            ];
+            for (const key of optionalAppSettings) {
+                if (settings[key]) {
+                    appIds.add(String(settings[key]));
+                }
+            }
+            const results = [];
+            for (const network of settings.getall_networks) {
+                for (const appId of appIds) {
+                    results.push(`${network}/${appId}`);
+                }
+            }
+            return results;
         }
         if (settings.getallnetapp) {
             return [settings.getallnetapp];

@@ -60,10 +60,74 @@ describe('BridgeInitializationService', () => {
     });
 
     describe('_resolveGetallNetworks', () => {
-        it('returns netapp strings for getall_networks array', () => {
+        it('returns only lighting app when no optional apps are configured', () => {
             const { bridge } = makeBridge({ getall_networks: [254, 1] });
             const svc = new BridgeInitializationService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual(['254/56', '1/56']);
+        });
+
+        it('includes cover app for each network when ha_discovery_cover_app_id is set', () => {
+            const { bridge } = makeBridge({
+                getall_networks: [254],
+                ha_discovery_cover_app_id: '203'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            const result = svc._resolveGetallNetworks();
+            expect(result).toContain('254/56');
+            expect(result).toContain('254/203');
+            expect(result).toHaveLength(2);
+        });
+
+        it('includes HVAC app for each network when ha_discovery_hvac_app_id is set', () => {
+            const { bridge } = makeBridge({
+                getall_networks: [254],
+                ha_discovery_hvac_app_id: '201'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            const result = svc._resolveGetallNetworks();
+            expect(result).toContain('254/56');
+            expect(result).toContain('254/201');
+            expect(result).toHaveLength(2);
+        });
+
+        it('includes trigger, switch, and relay apps when configured', () => {
+            const { bridge } = makeBridge({
+                getall_networks: [254],
+                ha_discovery_trigger_app_id: '202',
+                ha_discovery_switch_app_id: '88',
+                ha_discovery_relay_app_id: '99'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            const result = svc._resolveGetallNetworks();
+            expect(result).toContain('254/56');
+            expect(result).toContain('254/202');
+            expect(result).toContain('254/88');
+            expect(result).toContain('254/99');
+            expect(result).toHaveLength(4);
+        });
+
+        it('deduplicates app IDs when two settings share the same app ID', () => {
+            const { bridge } = makeBridge({
+                getall_networks: [254],
+                ha_discovery_switch_app_id: '56'  // same as lighting app ID
+            });
+            const svc = new BridgeInitializationService(bridge);
+            const result = svc._resolveGetallNetworks();
+            expect(result).toEqual(['254/56']);
+        });
+
+        it('includes all configured apps for each network when multiple networks configured', () => {
+            const { bridge } = makeBridge({
+                getall_networks: [254, 1],
+                ha_discovery_cover_app_id: '203'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            const result = svc._resolveGetallNetworks();
+            expect(result).toContain('254/56');
+            expect(result).toContain('254/203');
+            expect(result).toContain('1/56');
+            expect(result).toContain('1/203');
+            expect(result).toHaveLength(4);
         });
 
         it('falls back to getallnetapp when getall_networks absent', () => {
