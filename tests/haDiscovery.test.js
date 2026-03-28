@@ -244,6 +244,7 @@ describe('HaDiscovery', () => {
             expect(payload.payload_stop).toBe('STOP');
             expect(payload.position_open).toBe(100);
             expect(payload.position_closed).toBe(0);
+            expect(payload.optimistic).toBe(false);
         });
 
         it('should publish cover config with correct device class', () => {

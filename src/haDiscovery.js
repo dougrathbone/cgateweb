@@ -423,7 +423,8 @@ class HaDiscovery {
                 stop_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_STOP}`,
                 payload_stop: MQTT_COMMAND_STOP,
                 position_open: 100,
-                position_closed: 0
+                position_closed: 0,
+                optimistic: false
             }),
             qos: 0,
             retain: true,
