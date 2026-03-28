@@ -258,6 +258,7 @@ td.source-cell {
 .badge-cover { background: #e7f5ff; color: #1971c2; }
 .badge-switch { background: #fff3bf; color: #e67700; }
 .badge-light { background: var(--surface-alt); color: var(--text-muted); }
+.badge-trigger { background: #f3d9fa; color: #862e9c; }
 td.actions-cell { white-space: nowrap; }
 
 .type-select {
@@ -346,6 +347,7 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
 @media (prefers-color-scheme: dark) {
   .badge-cover { background: #1b2838; color: #74c0fc; }
   .badge-switch { background: #2e2a1b; color: #ffa94d; }
+  .badge-trigger { background: #2e1b38; color: #da77f2; }
 }
 
 /* Batch selection */
@@ -462,6 +464,7 @@ th.cb-col, td.cb-col {
           <option value="light">Lights</option>
           <option value="cover">Covers</option>
           <option value="switch">Switches</option>
+          <option value="trigger">Triggers</option>
           <option value="excluded">Excluded</option>
         </select>
       </div>
@@ -502,6 +505,7 @@ th.cb-col, td.cb-col {
   let typeOverrides = {};
   let entityIds = {};
   let excludeList = [];
+  let triggerAppId = null;
   let dirtyLabels = {};
   let dirtyTypes = {};
   let dirtyEntityIds = {};
@@ -548,6 +552,7 @@ th.cb-col, td.cb-col {
       typeOverrides = data.type_overrides || {};
       entityIds = data.entity_ids || {};
       excludeList = data.exclude || [];
+      triggerAppId = data.trigger_app_id || null;
       dirtyLabels = {};
       dirtyTypes = {};
       dirtyEntityIds = {};
@@ -610,7 +615,7 @@ th.cb-col, td.cb-col {
 
     const mergedTypes = { ...typeOverrides, ...dirtyTypes };
     for (const k of Object.keys(mergedTypes)) {
-      if (mergedTypes[k] === null || mergedTypes[k] === '' || mergedTypes[k] === 'light') delete mergedTypes[k];
+      if (mergedTypes[k] === null || mergedTypes[k] === '' || mergedTypes[k] === 'light' || mergedTypes[k] === 'trigger') delete mergedTypes[k];
     }
 
     const mergedEids = { ...entityIds, ...dirtyEntityIds };
@@ -658,7 +663,14 @@ th.cb-col, td.cb-col {
     return all;
   }
 
+  function isTriggerGroup(addr) {
+    if (!triggerAppId) return false;
+    var parts = addr.split('/');
+    return parts.length === 3 && parts[1] === String(triggerAppId);
+  }
+
   function getType(addr) {
+    if (isTriggerGroup(addr)) return 'trigger';
     if (addr in dirtyTypes) return dirtyTypes[addr] || 'light';
     return typeOverrides[addr] || 'light';
   }
@@ -736,15 +748,22 @@ th.cb-col, td.cb-col {
         if (isSel) trClasses.push('selected');
         var trClass = trClasses.length ? ' class="' + trClasses.join(' ') + '"' : '';
 
+        var typeCell;
+        if (type === 'trigger') {
+          typeCell = '<td><span class="badge badge-trigger">trigger</span></td>';
+        } else {
+          typeCell = '<td><select class="type-select" data-type-key="' + esc(k) + '">' +
+            '<option value="light"' + (type === 'light' ? ' selected' : '') + '>light</option>' +
+            '<option value="cover"' + (type === 'cover' ? ' selected' : '') + '>cover</option>' +
+            '<option value="switch"' + (type === 'switch' ? ' selected' : '') + '>switch</option>' +
+          '</select></td>';
+        }
+
         return '<tr' + trClass + '>' +
           '<td class="cb-col"><input type="checkbox" class="select-cb" data-sel-key="' + esc(k) + '"' + (isSel ? ' checked' : '') + '></td>' +
           '<td class="addr">' + esc(k) + '</td>' +
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
-          '<td><select class="type-select" data-type-key="' + esc(k) + '">' +
-            '<option value="light"' + (type === 'light' ? ' selected' : '') + '>light</option>' +
-            '<option value="cover"' + (type === 'cover' ? ' selected' : '') + '>cover</option>' +
-            '<option value="switch"' + (type === 'switch' ? ' selected' : '') + '>switch</option>' +
-          '</select></td>' +
+          typeCell +
           '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
           '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
           '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +

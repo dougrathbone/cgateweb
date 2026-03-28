@@ -105,6 +105,41 @@ describe('WebServer', () => {
             expect(res.body.entity_ids).toBeUndefined();
             expect(res.body.exclude).toBeUndefined();
         });
+
+        it('should omit trigger_app_id when not configured', async () => {
+            const res = await request('GET', '/api/labels');
+            expect(res.status).toBe(200);
+            expect(res.body.trigger_app_id).toBeUndefined();
+        });
+
+        it('should include trigger_app_id when configured', async () => {
+            await server.close();
+            const triggerServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                triggerAppId: '202'
+            });
+            await triggerServer.start();
+            const triggerPort = triggerServer._server.address().port;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    const options = { hostname: '127.0.0.1', port: triggerPort, path: '/api/labels', method: 'GET' };
+                    const req = http.request(options, (r) => {
+                        let data = '';
+                        r.on('data', (c) => { data += c; });
+                        r.on('end', () => resolve({ status: r.statusCode, body: JSON.parse(data) }));
+                    });
+                    req.on('error', reject);
+                    req.end();
+                });
+                expect(res.status).toBe(200);
+                expect(res.body.trigger_app_id).toBe('202');
+            } finally {
+                await triggerServer.close();
+            }
+        });
     });
 
     describe('PUT /api/labels', () => {

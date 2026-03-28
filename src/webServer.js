@@ -29,12 +29,14 @@ class WebServer {
  * @param {boolean} [options.allowUnauthenticatedMutations=false] - Allow mutating requests without API key
  * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (empty disables cross-origin access)
  * @param {number} [options.maxMutationRequestsPerWindow=120] - Maximum mutating requests per minute per client
+ * @param {string|null} [options.triggerAppId] - C-Bus app ID configured as trigger groups (e.g. '202')
      */
     constructor(options = {}) {
         this.port = (options.port !== null && options.port !== undefined) ? options.port : 8080;
         this.bindHost = options.bindHost || '127.0.0.1';
         this.basePath = (options.basePath || '').replace(/\/+$/, '');
         this.labelLoader = options.labelLoader;
+        this.triggerAppId = options.triggerAppId || null;
         this.getStatus = options.getStatus || (() => ({}));
         this.apiKey = options.apiKey || null;
         this.allowUnauthenticatedMutations = options.allowUnauthenticatedMutations === true;
@@ -154,7 +156,8 @@ class WebServer {
             count: Object.keys(fullData.labels).length,
             ...(fullData.type_overrides && { type_overrides: fullData.type_overrides }),
             ...(fullData.entity_ids && { entity_ids: fullData.entity_ids }),
-            ...(fullData.exclude && { exclude: fullData.exclude })
+            ...(fullData.exclude && { exclude: fullData.exclude }),
+            ...(this.triggerAppId && { trigger_app_id: this.triggerAppId })
         });
     }
 
