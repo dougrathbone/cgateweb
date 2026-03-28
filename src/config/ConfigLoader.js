@@ -161,6 +161,7 @@ class ConfigLoader {
         // C-Bus monitoring settings
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
             config.getallnetapp = `${options.getall_networks[0]}/56`;
+            config.getall_networks = options.getall_networks;
         }
 
         if (options.getall_on_start) {

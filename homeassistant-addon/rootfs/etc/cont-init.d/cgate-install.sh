@@ -118,11 +118,15 @@ fi
 # The Schneider download is a zip-within-a-zip: the outer archive contains a
 # release notes PDF and an inner cgate-X.X.X_NNNN.zip with the actual files.
 # If cgate.jar is not yet visible, look for and extract any nested zip files.
+CGATE_VERSION=""
 NESTED_JAR=$(find "${WORK_DIR}/extract" -name 'cgate.jar' -type f | head -1)
 if [[ -z "${NESTED_JAR}" ]]; then
     bashio::log.info "cgate.jar not found at top level, checking for nested zip..."
     NESTED_ZIP=$(find "${WORK_DIR}/extract" -name '*.zip' -type f | head -1)
     if [[ -n "${NESTED_ZIP}" ]]; then
+        # Extract version from filename pattern: cgate-3.3.2_1855.zip -> 3.3.2_1855
+        NESTED_NAME=$(basename "${NESTED_ZIP}" .zip)
+        CGATE_VERSION="${NESTED_NAME#cgate-}"
         bashio::log.info "Extracting nested archive: $(basename "${NESTED_ZIP}")"
         if ! unzip -o "${NESTED_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
             bashio::log.error "Failed to extract nested zip: ${NESTED_ZIP}"
@@ -143,6 +147,12 @@ EXTRACTED_DIR=$(dirname "${EXTRACTED_JAR}")
 bashio::log.info "Found C-Gate installation in: ${EXTRACTED_DIR}"
 
 cp -r "${EXTRACTED_DIR}"/* "${CGATE_DIR}/"
+
+# Record installed version for diagnostics reporting
+if [[ -n "${CGATE_VERSION}" ]]; then
+    echo "${CGATE_VERSION}" > "${CGATE_DIR}/.version"
+    bashio::log.info "Recorded C-Gate version: ${CGATE_VERSION}"
+fi
 
 # Configure access.txt to allow local connections
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"

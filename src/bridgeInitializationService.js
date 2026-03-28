@@ -19,23 +19,29 @@ class BridgeInitializationService {
         this.bridge._lastInitTime = now;
         this.bridge.log('ALL CONNECTED - Initializing services...');
 
-        if (this.bridge.settings.getallnetapp && this.bridge.settings.getallonstart) {
-            this.bridge.log(`Getting all initial values for ${this.bridge.settings.getallnetapp}...`);
-            this.bridge.cgateCommandQueue.add(
-                `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${this.bridge.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-            );
+        const getallNetworks = this._resolveGetallNetworks();
+
+        if (getallNetworks.length > 0 && this.bridge.settings.getallonstart) {
+            this.bridge.log(`Getting all initial values for networks: ${getallNetworks.join(', ')}...`);
+            for (const netapp of getallNetworks) {
+                this.bridge.cgateCommandQueue.add(
+                    `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
+                );
+            }
         }
 
-        if (this.bridge.settings.getallnetapp && this.bridge.settings.getallperiod) {
+        if (getallNetworks.length > 0 && this.bridge.settings.getallperiod) {
             if (this.bridge.periodicGetAllInterval) {
                 clearInterval(this.bridge.periodicGetAllInterval);
             }
-            this.bridge.log(`Starting periodic 'get all' every ${this.bridge.settings.getallperiod} seconds.`);
+            this.bridge.log(`Starting periodic 'get all' every ${this.bridge.settings.getallperiod} seconds for networks: ${getallNetworks.join(', ')}.`);
             this.bridge.periodicGetAllInterval = setInterval(() => {
-                this.bridge.log(`Getting all periodic values for ${this.bridge.settings.getallnetapp}...`);
-                this.bridge.cgateCommandQueue.add(
-                    `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${this.bridge.settings.getallnetapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-                );
+                this.bridge.log(`Getting all periodic values for networks: ${getallNetworks.join(', ')}...`);
+                for (const netapp of getallNetworks) {
+                    this.bridge.cgateCommandQueue.add(
+                        `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
+                    );
+                }
             }, this.bridge.settings.getallperiod * 1000);
         }
 
@@ -62,6 +68,17 @@ class BridgeInitializationService {
         }
 
         this.bridge._updateBridgeReadiness('all-connected');
+    }
+
+    _resolveGetallNetworks() {
+        const settings = this.bridge.settings;
+        if (Array.isArray(settings.getall_networks) && settings.getall_networks.length > 0) {
+            return settings.getall_networks.map(n => `${n}/56`);
+        }
+        if (settings.getallnetapp) {
+            return [settings.getallnetapp];
+        }
+        return [];
     }
 
     stop() {

@@ -8,7 +8,7 @@ The only thing mocked is `/data/options.json`.
 ## Prerequisites
 
 - [Podman](https://podman.io/) + podman-compose (free, no Docker Desktop licence required)
-- A C-Gate Linux zip (upload mode only) — not needed for download mode
+- A C-Gate Linux zip (upload mode only, not needed for download mode)
 
 ### Install Podman (one-time)
 
@@ -20,7 +20,7 @@ podman machine start
 
 ## Quick Start
 
-### Managed mode — direct download (easiest)
+### Managed mode - direct download (easiest)
 
 Downloads C-Gate 3.3.2 automatically from Schneider Electric:
 
@@ -29,7 +29,7 @@ cp options-managed-download.json active-options.json
 podman compose up --build
 ```
 
-### Managed mode — zip upload
+### Managed mode - zip upload
 
 1. Obtain a C-Gate 3.x Linux zip from Schneider Electric and place it in:
    ```
@@ -92,6 +92,6 @@ Success path:
 | Symptom | Likely cause |
 |---|---|
 | `No .zip file found in /share/cgate` | Place C-Gate zip in `volumes/share/cgate/` |
-| `cgate.jar not found in extracted archive` | Wrong zip — must be the C-Gate Linux package |
+| `cgate.jar not found in extracted archive` | Wrong zip, must be the C-Gate Linux package |
 | C-Gate exits with code 1 in a loop | Check java version (`openjdk17-jre-headless` required) |
-| cgateweb fails to connect to MQTT | Check `mqtt_host` in options — use `mqtt` (service name) |
+| cgateweb fails to connect to MQTT | Check `mqtt_host` in options, use `mqtt` (service name) |

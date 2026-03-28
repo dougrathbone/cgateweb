@@ -1,5 +1,8 @@
+const fs = require('fs');
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS } = require('./constants');
+
+const CGATE_VERSION_FILE = '/data/cgate/.version';
 
 class HaBridgeDiagnostics {
     constructor(settings, publishFn, getStatusFn, logger = null) {
@@ -59,7 +62,8 @@ class HaBridgeDiagnostics {
             { key: 'event_connected', component: 'binary_sensor', name: 'Event Connection', icon: 'mdi:lan-connect' },
             { key: 'command_pool_healthy', component: 'sensor', name: 'Healthy Command Connections', icon: 'mdi:pool' },
             { key: 'command_queue_depth', component: 'sensor', name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out' },
-            { key: 'reconnect_indicator', component: 'sensor', name: 'Reconnect Indicator', icon: 'mdi:restart-alert' }
+            { key: 'reconnect_indicator', component: 'sensor', name: 'Reconnect Indicator', icon: 'mdi:restart-alert' },
+            { key: 'cgate_version', component: 'sensor', name: 'C-Gate Version', icon: 'mdi:tag-outline' }
         ];
 
         for (const entity of diagnostics) {
@@ -98,6 +102,15 @@ class HaBridgeDiagnostics {
         const pendingReconnects = Number(commandPool.pendingReconnects || 0);
 
         const reconnectIndicator = `event:${eventReconnectAttempts},pool:${pendingReconnects}`;
+        let cgateVersion = 'unknown';
+        try {
+            if (fs.existsSync(CGATE_VERSION_FILE)) {
+                cgateVersion = fs.readFileSync(CGATE_VERSION_FILE, 'utf8').trim() || 'unknown';
+            }
+        } catch (_) {
+            // version file unavailable (remote mode or pre-install)
+        }
+
         const values = {
             ready: status.ready ? 'ON' : 'OFF',
             lifecycle_state: status.lifecycle?.state || 'unknown',
@@ -105,7 +118,8 @@ class HaBridgeDiagnostics {
             event_connected: status.connections?.event ? 'ON' : 'OFF',
             command_pool_healthy: String(Number(commandPool.healthyConnections || 0)),
             command_queue_depth: String(Number(queueDepth)),
-            reconnect_indicator: reconnectIndicator
+            reconnect_indicator: reconnectIndicator,
+            cgate_version: cgateVersion
         };
 
         for (const [key, value] of Object.entries(values)) {
