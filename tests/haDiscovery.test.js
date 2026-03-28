@@ -1,7 +1,7 @@
 // tests/haDiscovery.test.js - Direct testing of HaDiscovery class
 
 const HaDiscovery = require('../src/haDiscovery');
-const { CGATE_CMD_TREEXML, NEWLINE, HA_MODEL_TRIGGER, HA_DEVICE_MANUFACTURER, HA_DEVICE_VIA } = require('../src/constants');
+const { CGATE_CMD_TREEXML, NEWLINE } = require('../src/constants');
 
 // Mock XML data for testing - matches actual C-Gate tree structure
 const MOCK_TREEXML_RESULT_NET254 = {
