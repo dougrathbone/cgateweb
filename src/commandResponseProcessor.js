@@ -28,11 +28,14 @@ class CommandResponseProcessor {
         this.eventPublisher = eventPublisher;
         this.haDiscovery = haDiscovery;
         this.onObjectStatus = onObjectStatus;
-        this.logger = logger || createLogger({ 
-            component: 'CommandResponseProcessor', 
+        this.logger = logger || createLogger({
+            component: 'CommandResponseProcessor',
             level: 'info',
-            enabled: true 
+            enabled: true
         });
+        // Optional handler called for every parsed response during network discovery.
+        // Set by BridgeInitializationService._discoverNetworks() and cleared when done.
+        this.networkDiscoveryHandler = null;
     }
 
     /**
@@ -109,6 +112,11 @@ class CommandResponseProcessor {
      * @param {string} statusData - Response data/payload
      */
     _processCommandResponse(responseCode, statusData) {
+        // Forward all responses to the network discovery handler if one is active.
+        if (this.networkDiscoveryHandler) {
+            this.networkDiscoveryHandler(responseCode, statusData);
+        }
+
         switch (responseCode) {
             case CGATE_RESPONSE_OBJECT_STATUS:
                 this._processCommandObjectStatus(statusData);
