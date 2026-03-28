@@ -94,13 +94,17 @@ function checkPrereqs() {
     }
     pass(`podman ${pv.stdout.trim().split('\n')[0]}`);
 
-    // podman machine running?
-    const pm = spawnSync('podman', ['machine', 'list', '--format', '{{.Running}}'], { encoding: 'utf8' });
-    if (!pm.stdout.includes('true')) {
-        fail('podman machine not running — start with: podman machine start');
-        process.exit(1);
+    // podman machine running? (macOS/Windows only — Linux runs containers natively)
+    if (process.platform !== 'linux') {
+        const pm = spawnSync('podman', ['machine', 'list', '--format', '{{.Running}}'], { encoding: 'utf8' });
+        if (!pm.stdout.includes('true')) {
+            fail('podman machine not running - start with: podman machine start');
+            process.exit(1);
+        }
+        pass('podman machine running');
+    } else {
+        pass('podman machine not required on Linux (native containers)');
     }
-    pass('podman machine running');
 
     // active-options.json present?
     const optFile = path.join(TEST_ENV_DIR, 'active-options.json');

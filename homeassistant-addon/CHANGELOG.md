@@ -5,6 +5,42 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- C-Gate version shown as a diagnostic entity in Home Assistant (populated automatically from managed-mode install)
+- Runtime status panel in the label editor now shows bridge version, uptime, lifecycle reason, and reconnect counts
+
+### Fixed
+- Multi-network support: `getall_networks` with more than one network now correctly polls all listed networks on startup and periodically, not just the first
+- Integration test now runs on Linux CI without a podman machine (Linux containers run natively)
+
+### Changed
+- CI workflow now includes an integration test job (managed mode, downloads C-Gate) running on push to main
+
+## [1.4.19] - 2026-03-28
+
+### Fixed
+- Managed mode: corrected C-Gate startup flags (`-s` only, removing invalid `-p`/`-e`/`-nogui` flags that caused an infinite restart loop)
+- Managed mode: updated default C-Gate download URL to current Schneider Electric location (old Clipsal CDN returned 404)
+- Managed mode: correctly handles the Schneider download package (outer zip contains a nested C-Gate zip that must be extracted separately)
+- Web server now binds to `0.0.0.0` in add-on mode, fixing 502 errors when accessing the label editor via HA Ingress
+- Bridge diagnostic entity names are now published correctly in MQTT discovery payloads
+- Runtime status panel timer is correctly cleared when navigating away from the label editor page
+
+### Added
+- Local Podman-based test environment for validating managed mode end-to-end without a real Home Assistant installation
+- Better error logging when a C-Gate download fails, including HTTP status code and 404-specific guidance
+- End-to-end integration test that validates the full managed-mode stack (C-Gate install, MQTT connectivity, bridge lifecycle)
+
+## [1.4.12] - 2026-03-10
+
+### Added
+- Bridge diagnostic entities published to Home Assistant via MQTT Discovery: ready state, lifecycle, MQTT/event connection status, command pool health, queue depth, and reconnect indicator
+
+### Performance
+- Reduced hot-path parsing overhead in line processor
+
 ## [1.4.8] - 2026-03-04
 
 ### Changed

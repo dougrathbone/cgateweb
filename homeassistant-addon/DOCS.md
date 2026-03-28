@@ -225,6 +225,7 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `cbus/read/bridge/diagnostics/command_pool_healthy/state`
 - `cbus/read/bridge/diagnostics/command_queue_depth/state`
 - `cbus/read/bridge/diagnostics/reconnect_indicator/state`
+- `cbus/read/bridge/diagnostics/cgate_version/state` (managed mode only)
 
 ## Device Discovery
 

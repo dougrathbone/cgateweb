@@ -35,4 +35,37 @@ jobs:
       run: npm run lint -- --max-warnings=0
 
     - name: Run unit tests
-      run: npm test -- --coverage # Use npm test script which should call jest 
+      run: npm test -- --coverage # Use npm test script which should call jest
+
+  integration:
+    runs-on: ubuntu-latest
+    # Only run on push to main branches (not on PRs) to avoid long waits in review
+    if: github.event_name == 'push'
+    # Network download of C-Gate can be slow; mark non-blocking so a flaky
+    # Schneider download does not gate merges
+    continue-on-error: true
+    timeout-minutes: 20
+    needs: build
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+
+    - name: Set up managed-download test options
+      run: cp test-env/options-managed-download.json test-env/active-options.json
+
+    - name: Run integration test (managed mode - downloads C-Gate)
+      run: node test-env/integration-test.js
+      timeout-minutes: 15

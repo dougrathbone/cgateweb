@@ -372,10 +372,14 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     </div>
     <div class="section-body" id="runtimeBody">
       <div class="diag-grid">
+        <div class="diag-item"><div class="diag-label">Version</div><div class="diag-value" id="diagVersion">-</div></div>
+        <div class="diag-item"><div class="diag-label">Uptime</div><div class="diag-value" id="diagUptime">-</div></div>
         <div class="diag-item"><div class="diag-label">Ready</div><div class="diag-value" id="diagReady">-</div></div>
         <div class="diag-item"><div class="diag-label">Lifecycle</div><div class="diag-value" id="diagLifecycle">-</div></div>
+        <div class="diag-item"><div class="diag-label">Reason</div><div class="diag-value" id="diagReason">-</div></div>
         <div class="diag-item"><div class="diag-label">MQTT</div><div class="diag-value" id="diagMqtt">-</div></div>
         <div class="diag-item"><div class="diag-label">Event</div><div class="diag-value" id="diagEvent">-</div></div>
+        <div class="diag-item"><div class="diag-label">Reconnects</div><div class="diag-value" id="diagReconnects">-</div></div>
         <div class="diag-item"><div class="diag-label">Cmd Pool Healthy</div><div class="diag-value" id="diagHealthy">-</div></div>
         <div class="diag-item"><div class="diag-label">Queue Depth</div><div class="diag-value" id="diagQueueDepth">-</div></div>
       </div>
@@ -493,24 +497,45 @@ button.small { padding: 2px 8px; font-size: 0.8rem; }
     }
   }
 
+  function formatUptime(seconds) {
+    var s = Math.floor(seconds);
+    var d = Math.floor(s / 86400); s -= d * 86400;
+    var h = Math.floor(s / 3600); s -= h * 3600;
+    var m = Math.floor(s / 60); s -= m * 60;
+    if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+    if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+  }
+
   async function loadRuntimeStatus() {
     try {
       var status = await api('/api/status');
+      var lc = status.lifecycle || {};
+      var pool = (status.connections && status.connections.commandPool) || {};
+      var eventReconnects = (status.connections && status.connections.eventReconnectAttempts) || 0;
+      var poolReconnects = pool.pendingReconnects || 0;
+      document.getElementById('diagVersion').textContent = status.version || '-';
+      document.getElementById('diagUptime').textContent = status.uptime != null ? formatUptime(status.uptime) : '-';
       document.getElementById('diagReady').textContent = status.ready ? 'yes' : 'no';
-      document.getElementById('diagLifecycle').textContent = (status.lifecycle && status.lifecycle.state) ? status.lifecycle.state : 'unknown';
+      document.getElementById('diagLifecycle').textContent = lc.state || 'unknown';
+      document.getElementById('diagReason').textContent = lc.reason || '-';
       document.getElementById('diagMqtt').textContent = status.connections && status.connections.mqtt ? 'connected' : 'disconnected';
       document.getElementById('diagEvent').textContent = status.connections && status.connections.event ? 'connected' : 'disconnected';
-      document.getElementById('diagHealthy').textContent = (status.connections && status.connections.commandPool)
-        ? String(status.connections.commandPool.healthyConnections || 0)
-        : '0';
+      document.getElementById('diagReconnects').textContent = 'event:' + eventReconnects + ' pool:' + poolReconnects;
+      document.getElementById('diagHealthy').textContent = String(pool.healthyConnections || 0);
       document.getElementById('diagQueueDepth').textContent = (status.metrics && status.metrics.commandQueue)
         ? String(status.metrics.commandQueue.depth || 0)
         : '0';
     } catch (_e) {
+      document.getElementById('diagVersion').textContent = '-';
+      document.getElementById('diagUptime').textContent = '-';
       document.getElementById('diagReady').textContent = 'unavailable';
       document.getElementById('diagLifecycle').textContent = 'unavailable';
+      document.getElementById('diagReason').textContent = '-';
       document.getElementById('diagMqtt').textContent = '-';
       document.getElementById('diagEvent').textContent = '-';
+      document.getElementById('diagReconnects').textContent = '-';
       document.getElementById('diagHealthy').textContent = '-';
       document.getElementById('diagQueueDepth').textContent = '-';
     }
