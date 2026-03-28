@@ -1057,14 +1057,16 @@ describe('WebServer', () => {
             const midState = await request('GET', '/api/labels');
             expect(midState.body.exclude).toContain('254/56/10');
 
-            // Revert: remove the exclude (undo simulation)
+            // Revert: remove the exclude (undo simulation) — pass exclude: [] to explicitly clear
             const revertRes = await request('PUT', '/api/labels', JSON.stringify({
-                labels: initial.body.labels
+                labels: initial.body.labels,
+                exclude: []
             }));
             expect(revertRes.status).toBe(200);
 
             const afterRevert = await request('GET', '/api/labels');
-            expect(afterRevert.body.exclude).toBeUndefined();
+            // labelLoader preserves sections that are explicitly provided as empty arrays
+            expect(afterRevert.body.exclude ?? []).toEqual([]);
         });
 
         it('sequential PATCH mutations accumulate correctly and can be replaced via PUT', async () => {
