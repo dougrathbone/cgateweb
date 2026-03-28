@@ -123,6 +123,15 @@ configuration:
     description: Optional SHA256 checksum used to verify the downloaded (or
       uploaded) C-Gate zip file before installation. Recommended when using a
       custom download URL.
+  connection_pool_size:
+    name: "C-Gate Connection Pool Size"
+    description: "Number of parallel TCP connections to C-Gate for sending commands. Increase for high-throughput installations, reduce to 1 for older C-Gate versions. Default: 3."
+  connection_health_check_interval_sec:
+    name: "Connection Health Check Interval"
+    description: "How often (seconds) to verify C-Gate command connections are healthy. Lower values detect failures faster. Default: 30."
+  connection_keep_alive_interval_sec:
+    name: "Connection Keep-Alive Interval"
+    description: "How often (seconds) to send keep-alive pings to C-Gate connections. Prevents silent TCP drops on unstable networks. Default: 60."
   cbus_label_file:
     name: Custom Label File
     description: Path to a JSON file with custom device names for C-Bus groups.

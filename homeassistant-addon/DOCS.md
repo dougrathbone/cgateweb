@@ -278,6 +278,16 @@ This add-on runs with `host_network: false`.
 
 If you expose `8080`, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`.
 
+## Advanced: Connection Pool
+
+These settings control the pool of TCP connections used to send commands to C-Gate. The defaults work well for most installations and do not need to be changed.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `connection_pool_size` | integer | `3` | Number of parallel TCP connections to C-Gate for sending commands. Increase for high-throughput installations; reduce to `1` for older C-Gate versions that do not handle concurrent connections well. |
+| `connection_health_check_interval_sec` | integer | `30` | How often (seconds) to verify that C-Gate command connections are healthy. Lower values detect failures faster at the cost of slightly more background traffic. |
+| `connection_keep_alive_interval_sec` | integer | `60` | How often (seconds) to send keep-alive pings to C-Gate connections. Reduce this value on unstable networks where silent TCP drops are observed. |
+
 ## Troubleshooting
 
 ### Add-on won't start
