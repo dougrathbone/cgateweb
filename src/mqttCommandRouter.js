@@ -9,6 +9,8 @@ const {
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
+    MQTT_CMD_TYPE_HVAC_SETPOINT,
+    MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -121,6 +123,12 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_STOP:
                 this._handleStop(command, topic);
+                break;
+            case MQTT_CMD_TYPE_HVAC_SETPOINT:
+                this._handleHvacSetpoint(command, payload, topic);
+                break;
+            case MQTT_CMD_TYPE_HVAC_MODE:
+                this._handleHvacMode(command, payload, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -357,6 +365,93 @@ class MqttCommandRouter extends EventEmitter {
         const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
         this._queueCommand(cgateCommand, 'critical');
         this.logger.debug(`Stopping cover: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
+    }
+
+    /**
+     * Handles HVAC temperature setpoint commands from Home Assistant.
+     *
+     * Converts a temperature value (°C) to a C-Bus level (0-255) and sends a
+     * RAMP command to the HVAC group address.
+     *
+     * Temperature encoding: level = round(temperature_celsius * 2)
+     *   25°C → level 50, 20°C → level 40, 0°C → level 0, 50°C → level 100
+     *
+     * TODO: Hardware validation required. This encoding is based on community
+     * reports for the C-Bus 5000CT2 thermostat series. Validate against real
+     * hardware before deployment.
+     *
+     * @param {CBusCommand} command - The setpoint command
+     * @param {string} payload - Temperature value as a string (e.g., "22.5")
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handleHvacSetpoint(command, payload, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`HVAC setpoint command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const tempCelsius = parseFloat(payload);
+        if (isNaN(tempCelsius)) {
+            this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
+            return;
+        }
+
+        // Clamp to valid C-Bus HVAC temperature range
+        const clampedTemp = Math.max(0, Math.min(50, tempCelsius));
+        // Convert to C-Bus level: 0.5°C resolution → level = temperature * 2
+        const cbusLevel = Math.max(0, Math.min(255, Math.round(clampedTemp * 2)));
+
+        const cbusPath = this._buildCGatePath(command);
+        const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${cbusLevel}${NEWLINE}`;
+        this._queueCommand(cgateCommand);
+        this.logger.debug(`HVAC setpoint: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} temp=${clampedTemp}°C level=${cbusLevel}`);
+    }
+
+    /**
+     * Handles HVAC mode commands from Home Assistant.
+     *
+     * Supported HA climate modes and their C-Gate equivalents:
+     *   'off'      → C-Gate OFF command
+     *   'auto'     → C-Gate ON command (thermostat controls mode automatically)
+     *   'cool'     → C-Gate ON command (TODO: hardware-specific command if available)
+     *   'heat'     → C-Gate ON command (TODO: hardware-specific command if available)
+     *   'fan_only' → C-Gate ON command (TODO: hardware-specific command if available)
+     *
+     * TODO: Hardware validation required. Full mode discrimination (cool vs heat vs
+     * fan_only) requires vendor-specific C-Gate extensions or additional group
+     * addresses that are not yet documented in publicly available C-Gate references.
+     * Currently all 'on' modes map to a simple ON command.
+     *
+     * @param {CBusCommand} command - The mode command
+     * @param {string} payload - Mode string (e.g., "off", "auto", "cool")
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handleHvacMode(command, payload, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`HVAC mode command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+        const mode = payload.toLowerCase();
+        let cgateCommand;
+
+        if (mode === 'off') {
+            cgateCommand = `${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`;
+        } else if (['auto', 'cool', 'heat', 'fan_only'].includes(mode)) {
+            // All active modes map to ON — the thermostat maintains its last setpoint.
+            // TODO: If the C-Bus hardware supports dedicated mode group addresses,
+            // extend this to send mode-specific RAMP values to additional group addresses.
+            cgateCommand = `${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`;
+        } else {
+            this.logger.warn(`Unknown HVAC mode "${payload}" on topic ${topic}`);
+            return;
+        }
+
+        this._queueCommand(cgateCommand);
+        this.logger.debug(`HVAC mode: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} mode=${mode}`);
     }
 
     /**

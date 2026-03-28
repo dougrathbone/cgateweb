@@ -5,6 +5,9 @@ const {
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
+    MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
+    MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -88,6 +91,8 @@ class EventPublisher {
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
+        const isHvac = this.settings.ha_discovery_hvac_app_id &&
+            application === String(this.settings.ha_discovery_hvac_app_id);
         
         // Calculate level percentage for Home Assistant
         const levelPercent = rawLevel !== null
@@ -128,6 +133,12 @@ class EventPublisher {
             return;
         }
 
+        // HVAC groups publish temperature/mode to dedicated climate topics
+        if (isHvac) {
+            this._publishHvacEvent(network, application, group, rawLevel, action, source);
+            return;
+        }
+
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`C-Bus Status ${source}: ${network}/${application}/${group} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
         }
@@ -156,6 +167,97 @@ class EventPublisher {
                 );
             }
         }
+    }
+
+    /**
+     * Convert a C-Bus level value (0-255) to a temperature in °C.
+     *
+     * C-Bus HVAC (Application 201) temperature encoding:
+     *   The C-Bus HVAC thermostat (5000CT2 series) encodes temperature using a
+     *   fixed-point scheme with 0.5°C resolution across a 0–50°C range:
+     *     temperature_celsius = level / 2
+     *   This gives: level 0 = 0.0°C, level 100 = 50.0°C, level 50 = 25.0°C
+     *
+     * TODO: Hardware validation required. This formula is based on community
+     * reports for the 5000CT2 thermostat. Other HVAC units on App 201 may use
+     * different encoding. Validate against real hardware before deployment.
+     *
+     * @param {number} level - C-Bus raw level (0-255)
+     * @returns {number} Temperature in degrees Celsius
+     * @private
+     */
+    _cbusLevelToTemperature(level) {
+        return level / 2;
+    }
+
+    /**
+     * Convert a temperature in °C to a C-Bus level value (0-255).
+     * Inverse of _cbusLevelToTemperature.
+     *
+     * @param {number} tempCelsius - Temperature in degrees Celsius
+     * @returns {number} C-Bus raw level (0-255), clamped to valid range
+     * @private
+     */
+    _temperatureToCbusLevel(tempCelsius) {
+        return Math.max(0, Math.min(255, Math.round(tempCelsius * 2)));
+    }
+
+    /**
+     * Publish HVAC events to climate-specific MQTT topics.
+     *
+     * When C-Gate reports a level change on an HVAC group address, we interpret it
+     * as both a current temperature reading and a setpoint update (the C-Bus HVAC
+     * thermostat reports both via the same group address in most implementations).
+     *
+     * Mode is not updated by standard level events — mode changes require separate
+     * C-Gate events that are not yet captured in this implementation.
+     *
+     * TODO: Hardware validation required for mode detection. If the hardware reports
+     * mode changes on a separate group address, this will need extending.
+     *
+     * @param {string} network - C-Bus network number
+     * @param {string} application - C-Bus application number
+     * @param {string} group - C-Bus group number
+     * @param {number|null} rawLevel - C-Bus level value (0-255), or null if not present
+     * @param {string} action - C-Gate action ('on', 'off', 'ramp', etc.)
+     * @param {string} source - Source identifier for logging
+     * @private
+     */
+    _publishHvacEvent(network, application, group, rawLevel, action, source) {
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
+
+        if (rawLevel !== null) {
+            const tempCelsius = this._cbusLevelToTemperature(rawLevel);
+            const tempStr = tempCelsius.toFixed(1);
+
+            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                this.logger.debug(`C-Bus HVAC ${source}: ${network}/${application}/${group} level=${rawLevel} temp=${tempStr}°C`);
+            }
+
+            // Publish current temperature reading
+            this._publishIfNeeded(
+                `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+                tempStr,
+                this.mqttOptions
+            );
+
+            // Publish setpoint (same value — C-Bus level represents the controlled setpoint)
+            this._publishIfNeeded(
+                `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+                tempStr,
+                this.mqttOptions
+            );
+        }
+
+        // Publish mode based on action: 'off' action maps to 'off', everything else to 'auto'
+        // TODO: Hardware validation — real HVAC units may report heat/cool/fan_only via
+        // dedicated group addresses or extended C-Gate event fields not yet handled here.
+        const mode = (action === 'off') ? 'off' : 'auto';
+        this._publishIfNeeded(
+            `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+            mode,
+            this.mqttOptions
+        );
     }
 
     /**

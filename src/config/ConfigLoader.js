@@ -215,6 +215,14 @@ class ConfigLoader {
             if (options.ha_discovery_trigger_app_id) {
                 config.ha_discovery_trigger_app_id = String(options.ha_discovery_trigger_app_id);
             }
+
+            if (options.ha_discovery_hvac_app_id) {
+                config.ha_discovery_hvac_app_id = String(options.ha_discovery_hvac_app_id);
+            }
+
+            if (options.ha_hvac_temperature_unit) {
+                config.ha_hvac_temperature_unit = options.ha_hvac_temperature_unit;
+            }
         }
 
         if (options.ha_bridge_diagnostics_enabled !== undefined && options.ha_bridge_diagnostics_enabled !== null) {
