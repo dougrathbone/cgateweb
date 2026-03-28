@@ -125,8 +125,11 @@ mqtt_reject_unauthorized: false
 | `ha_discovery_enabled` | boolean | `true` | Enable automatic device discovery |
 | `ha_discovery_prefix` | string | `homeassistant` | MQTT discovery topic prefix |
 | `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
-| `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters) |
-| `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional) |
+| `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters). Set to `203` (Enable Control) by default. Leave empty to disable. |
+| `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional). Leave empty to disable switch discovery. |
+| `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity plus a companion `button` entity. Leave empty to disable. |
+| `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for HVAC/climate zones. The standard C-Bus HVAC application is `201`. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
+| `ha_hvac_temperature_unit` | list | `C` | Temperature unit for HVAC climate entities: `C` for Celsius, `F` for Fahrenheit. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -243,6 +246,9 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `homeassistant/light/cgateweb_{network}_{app}_{group}/config` - Light discovery
 - `homeassistant/cover/cgateweb_{network}_{app}_{group}/config` - Cover discovery
 - `homeassistant/switch/cgateweb_{network}_{app}_{group}/config` - Switch discovery
+- `homeassistant/event/cgateweb_{network}_{app}_{group}/config` - Trigger group event discovery
+- `homeassistant/button/cgateweb_{network}_{app}_{group}/config` - Trigger group button discovery
+- `homeassistant/climate/cgateweb_{network}_{app}_{group}/config` - HVAC climate discovery
 - `homeassistant/sensor/cgateweb_bridge_*/config` - Bridge diagnostics discovery
 - `homeassistant/binary_sensor/cgateweb_bridge_*/config` - Bridge connectivity discovery
 
@@ -262,11 +268,42 @@ When `ha_discovery_enabled` is true, the add-on automatically:
 
 1. Scans configured C-Bus networks for devices
 2. Creates Home Assistant entities for:
-   - **Lights** (App 56): Dimmable lighting groups
+   - **Lights** (App 56): Dimmable lighting groups — always enabled
    - **Covers** (App 203 or configured): Blinds, shutters, garage doors
    - **Switches** (configurable app): Generic on/off devices
+   - **Triggers** (App 202 or configured): Keypads and scene buttons, exposed as HA `event` + `button` entity pairs — opt-in via `ha_discovery_trigger_app_id`
+   - **HVAC zones** (App 201 or configured): Heating/cooling zones as HA `climate` entities — opt-in via `ha_discovery_hvac_app_id`
 3. Updates device names from C-Gate labels
 4. Publishes discovery configuration to MQTT
+
+## C-Bus Application IDs
+
+C-Bus organises device functions into numbered **applications**. Each application defines the behaviour of a group of C-Bus group addresses (devices). Knowing the application ID for each device type lets you configure discovery correctly.
+
+| App ID | C-Bus Application | HA Entity Type | Discovery setting |
+|--------|-------------------|----------------|-------------------|
+| 56 | Lighting | `light` | Always enabled |
+| 201 | HVAC | `climate` | Opt-in via `ha_discovery_hvac_app_id` |
+| 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
+| 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
+| Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
+
+The app ID values above are the C-Bus standard defaults. Some installations use non-standard IDs — check your C-Bus Toolkit project if a device type is not being discovered.
+
+### Trigger groups note
+
+Each trigger group address is published as **two** Home Assistant entities:
+
+- An **`event`** entity that fires when the keypad button is pressed physically on the C-Bus network.
+- A **`button`** entity that allows Home Assistant to fire the scene programmatically.
+
+To enable trigger discovery, set `ha_discovery_trigger_app_id: 202` (or your actual trigger application ID).
+
+### HVAC note
+
+HVAC climate entities use a temperature encoding based on community reports: 0.5 °C resolution across a 0–50 °C range (or equivalent in Fahrenheit). **Hardware validation is strongly recommended** before relying on HVAC setpoints, as the exact encoding may vary between thermostat models. Do not change a setpoint until you have confirmed that the encoding matches your specific hardware.
+
+Set `ha_discovery_hvac_app_id: 201` to enable HVAC discovery. Use `ha_hvac_temperature_unit` to select `C` (Celsius, default) or `F` (Fahrenheit).
 
 ## Networking
 
