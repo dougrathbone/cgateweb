@@ -437,6 +437,14 @@ describe('MqttCommandRouter', () => {
 
             expect(queueSpy).not.toHaveBeenCalled();
         });
+
+        it('should send ON command when scene entity activates trigger group via switch topic with ON payload', () => {
+            // Scene entities use the /switch topic with ON payload to activate a C-Bus scene.
+            // This verifies that the existing switch handler correctly routes ON to C-Gate ON command.
+            router.routeMessage('cbus/write/254/202/1/switch', 'ON');
+
+            expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/202/1\n');
+        });
     });
 
     describe('Cover Stop Commands', () => {

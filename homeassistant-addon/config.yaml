@@ -141,6 +141,7 @@ schema:
   ha_discovery_cover_tilt_app_id: "int(1,255)?"
   ha_discovery_switch_app_id: "int(1,255)?"
   ha_discovery_trigger_app_id: "int(1,255)?"
+  ha_discovery_scene_enabled: "bool?"
   ha_discovery_hvac_app_id: "int(1,255)?"
   ha_hvac_temperature_unit: "list(C|F)?"
   ha_bridge_diagnostics_enabled: "bool"

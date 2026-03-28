@@ -88,6 +88,7 @@ const HA_MODEL_PIR = 'PIR Motion Sensor';
 const HA_MODEL_TRIGGER = 'Trigger Group';
 const HA_MODEL_HVAC = 'HVAC Zone (Air Conditioning)';
 const HA_COMPONENT_EVENT = 'event';
+const HA_COMPONENT_SCENE = 'scene';
 
 // HA Origin Info
 const HA_ORIGIN_NAME = 'cgateweb';
@@ -182,6 +183,7 @@ module.exports = {
     HA_MODEL_TRIGGER,
     HA_MODEL_HVAC,
     HA_COMPONENT_EVENT,
+    HA_COMPONENT_SCENE,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,

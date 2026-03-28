@@ -229,6 +229,10 @@ class ConfigLoader {
                 config.ha_discovery_trigger_app_id = String(options.ha_discovery_trigger_app_id);
             }
 
+            if (options.ha_discovery_scene_enabled !== undefined && options.ha_discovery_scene_enabled !== null) {
+                config.ha_discovery_scene_enabled = options.ha_discovery_scene_enabled !== false;
+            }
+
             if (options.ha_discovery_hvac_app_id) {
                 config.ha_discovery_hvac_app_id = String(options.ha_discovery_hvac_app_id);
             }

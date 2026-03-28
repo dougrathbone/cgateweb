@@ -48,6 +48,7 @@ const defaultSettings = {
     ha_discovery_relay_app_id: null,
     ha_discovery_pir_app_id: null,
     ha_discovery_trigger_app_id: null,
+    ha_discovery_scene_enabled: true,
     ha_discovery_hvac_app_id: null,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,

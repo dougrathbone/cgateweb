@@ -110,6 +110,12 @@ configuration:
     name: Trigger App ID
     description: C-Bus application ID for trigger groups (keypads, scenes). Default
       is 202. Leave empty to disable trigger discovery.
+  ha_discovery_scene_enabled:
+    name: Enable Scene Entities
+    description: Publish a Home Assistant scene entity for each C-Bus trigger group
+      in addition to the event and button entities. Scene entities appear in the HA
+      Scenes dashboard and can be activated from automations and scripts. Disable to
+      suppress scene entities while keeping event and button entities.
   ha_discovery_hvac_app_id:
     name: HVAC Application ID
     description: C-Bus application ID for HVAC/air conditioning zones. The standard

@@ -139,7 +139,8 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
 | `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters). Set to `203` (Enable Control) by default. Leave empty to disable. |
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional). Leave empty to disable switch discovery. |
-| `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity plus a companion `button` entity. Leave empty to disable. |
+| `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity, a companion `button` entity, and (when `ha_discovery_scene_enabled` is `true`) a `scene` entity. Leave empty to disable. |
+| `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity for each C-Bus trigger group in addition to the `event` and `button` entities. Set to `false` to suppress scene entities. |
 | `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for HVAC/climate zones. The standard C-Bus HVAC application is `201`. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
 | `ha_hvac_temperature_unit` | list | `C` | Temperature unit for HVAC climate entities: `C` for Celsius, `F` for Fahrenheit. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
@@ -260,6 +261,7 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `homeassistant/switch/cgateweb_{network}_{app}_{group}/config` - Switch discovery
 - `homeassistant/event/cgateweb_{network}_{app}_{group}/config` - Trigger group event discovery
 - `homeassistant/button/cgateweb_{network}_{app}_{group}/config` - Trigger group button discovery
+- `homeassistant/scene/cgateweb_{network}_{app}_{group}_scene/config` - Trigger group scene discovery
 - `homeassistant/climate/cgateweb_{network}_{app}_{group}/config` - HVAC climate discovery
 - `homeassistant/sensor/cgateweb_bridge_*/config` - Bridge diagnostics discovery
 - `homeassistant/binary_sensor/cgateweb_bridge_*/config` - Bridge connectivity discovery

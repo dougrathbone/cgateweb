@@ -4,6 +4,7 @@ const {
     HA_COMPONENT_CLIMATE,
     HA_COMPONENT_EVENT,
     HA_COMPONENT_BUTTON,
+    HA_COMPONENT_SCENE,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
     HA_MODEL_COVER,
@@ -113,6 +114,14 @@ function getDiscoveryConfig(type) {
             model: HA_MODEL_HVAC,
             isHvac: true,
             omitCommandTopic: true  // HVAC uses dedicated topic structure, not a single command_topic
+        },
+        scene: {
+            component: HA_COMPONENT_SCENE,
+            defaultType: 'Scene',
+            model: HA_MODEL_TRIGGER,
+            omitStateTopic: true,
+            omitCommandTopic: false,
+            isScene: true
         }
     };
     return configs[type];

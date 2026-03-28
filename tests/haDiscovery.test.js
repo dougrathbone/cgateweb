@@ -1319,4 +1319,176 @@ describe('HaDiscovery', () => {
             expect(payload.tilt_command_topic).toBe('cbus/write/254/204/6/tilt');
         });
     });
+
+    describe('Scene Entity Discovery (trigger groups)', () => {
+        const TRIGGER_TREE_DATA = {
+            Network: {
+                Interface: {
+                    Network: {
+                        NetworkNumber: '254',
+                        Unit: [{
+                            UnitAddress: '100',
+                            Application: [{
+                                ApplicationAddress: '202',
+                                Group: [
+                                    { GroupAddress: '1', Label: 'Entry Scene' },
+                                    { GroupAddress: '5', Label: 'Movie Mode' }
+                                ]
+                            }]
+                        }]
+                    }
+                }
+            }
+        };
+
+        beforeEach(() => {
+            mockSettings.ha_discovery_trigger_app_id = '202';
+            mockSettings.ha_discovery_cover_app_id = null;
+            mockSettings.ha_discovery_scene_enabled = true;
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+        });
+
+        it('should publish a scene entity for each trigger group', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/scene/cgateweb_254_202_1_scene/config',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should publish scene entity with correct component in the discovery topic path', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            // The component is encoded in the topic path — verify the topic is under /scene/
+            expect(sceneCall[0]).toMatch(/\/scene\//);
+        });
+
+        it('should publish scene entity with correct command_topic pointing to switch', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.command_topic).toBe('cbus/write/254/202/1/switch');
+        });
+
+        it('should publish scene entity with correct unique_id', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.unique_id).toBe('cgateweb_254_202_1_scene');
+        });
+
+        it('should publish scene entity with payload_on set to ON', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.payload_on).toBe('ON');
+        });
+
+        it('should link scene entity to the same device as the event entity', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.device.identifiers).toEqual(['cgateweb_254_202_1']);
+            expect(payload.device.name).toBe('Entry Scene');
+        });
+
+        it('should publish event, button, and scene entities for each trigger group', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const eventCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/event/') && c[0].endsWith('/config')
+            );
+            const buttonCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/button/') && c[0].endsWith('/config')
+            );
+            const sceneCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/scene/') && c[0].endsWith('/config')
+            );
+            // 2 trigger groups → 2 event + 2 button + 2 scene entities
+            expect(eventCalls.length).toBe(2);
+            expect(buttonCalls.length).toBe(2);
+            expect(sceneCalls.length).toBe(2);
+        });
+
+        it('should suppress scene entities when ha_discovery_scene_enabled is false', () => {
+            mockSettings.ha_discovery_scene_enabled = false;
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/scene/') && c[0].endsWith('/config')
+            );
+            expect(sceneCalls.length).toBe(0);
+
+            // But event and button entities should still be published
+            const eventCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/event/') && c[0].endsWith('/config')
+            );
+            const buttonCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/button/') && c[0].endsWith('/config')
+            );
+            expect(eventCalls.length).toBe(2);
+            expect(buttonCalls.length).toBe(2);
+        });
+
+        it('ha_discovery_scene_enabled default should be true', () => {
+            // Verify the default setting value
+            const { defaultSettings } = require('../src/defaultSettings');
+            expect(defaultSettings.ha_discovery_scene_enabled).toBe(true);
+        });
+
+        it('should include scene entity for second trigger group with correct command_topic', () => {
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_5_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.command_topic).toBe('cbus/write/254/202/5/switch');
+            expect(payload.unique_id).toBe('cgateweb_254_202_5_scene');
+            expect(payload.device.name).toBe('Movie Mode');
+        });
+
+        it('should apply entity_id suffix to scene object_id when entity ID is configured', () => {
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map([['254/202/1', 'entry_scene']]),
+                exclude: new Set()
+            });
+
+            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
+
+            const sceneCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
+            );
+            expect(sceneCall).toBeDefined();
+            const payload = JSON.parse(sceneCall[1]);
+            expect(payload.object_id).toBe('entry_scene_scene');
+        });
+    });
 });
