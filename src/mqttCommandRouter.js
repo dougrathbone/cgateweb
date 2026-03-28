@@ -9,6 +9,7 @@ const {
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
+    MQTT_CMD_TYPE_TRIGGER,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -121,6 +122,9 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_STOP:
                 this._handleStop(command, topic);
+                break;
+            case MQTT_CMD_TYPE_TRIGGER:
+                this._handleTrigger(command, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -357,6 +361,31 @@ class MqttCommandRouter extends EventEmitter {
         const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
         this._queueCommand(cgateCommand, 'critical');
         this.logger.debug(`Stopping cover: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
+    }
+
+    /**
+     * Handles trigger commands for C-Bus trigger groups.
+     * Fires the trigger at the specified level (default full level 255 for 'ON' payload).
+     * @param {CBusCommand} command - The trigger command
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handleTrigger(command, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`Trigger command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+        const level = command.getLevel();
+
+        if (level !== null && level !== undefined) {
+            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
+            this._queueCommand(cgateCommand);
+            this.logger.debug(`Firing trigger: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} at level ${level}`);
+        } else {
+            this.logger.warn(`Invalid trigger payload for topic ${topic}`);
+        }
     }
 
     /**

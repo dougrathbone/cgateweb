@@ -343,6 +343,67 @@ describe('HaDiscovery', () => {
             expect(payload.retain).toBeUndefined();
         });
 
+        it('should publish companion button entity for each trigger group', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/button/cgateweb_254_203_15_btn/config',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+        });
+
+        it('should publish button entity with correct command_topic and payload_press', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const buttonCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/button/cgateweb_254_203_15_btn/config'
+            );
+            expect(buttonCall).toBeDefined();
+            const payload = JSON.parse(buttonCall[1]);
+            expect(payload.command_topic).toBe('cbus/write/254/203/15/trigger');
+            expect(payload.payload_press).toBe('ON');
+            expect(payload.unique_id).toBe('cgateweb_254_203_15_btn');
+        });
+
+        it('should link button entity to the same device as the event entity', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const buttonCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/button/cgateweb_254_203_15_btn/config'
+            );
+            expect(buttonCall).toBeDefined();
+            const payload = JSON.parse(buttonCall[1]);
+            // Button device identifiers should match the event entity's unique_id
+            expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
+        });
+
+        it('should publish both event and button entities for each trigger group', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // There are 4 groups in app 203 — expect 4 event + 4 button entities
+            const eventCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/event/') && c[0].endsWith('/config')
+            );
+            const buttonCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/button/') && c[0].endsWith('/config')
+            );
+            expect(eventCalls.length).toBe(4);
+            expect(buttonCalls.length).toBe(4);
+        });
+
         it('should handle numeric ApplicationAddress from XML parsing', () => {
             const numericAppIdData = {
                 Network: {

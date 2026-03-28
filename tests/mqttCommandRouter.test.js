@@ -400,6 +400,45 @@ describe('MqttCommandRouter', () => {
         });
     });
 
+    describe('Trigger Commands', () => {
+        it('should handle ON trigger payload — ramp to full level (255)', () => {
+            router.routeMessage('cbus/write/254/202/1/trigger', 'ON');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
+        });
+
+        it('should handle numeric trigger payload — ramp to mapped level', () => {
+            // 50% of 255 = 128 (rounded)
+            router.routeMessage('cbus/write/254/202/1/trigger', '50');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 128\n');
+        });
+
+        it('should handle 0 trigger payload — ramp to level 0', () => {
+            router.routeMessage('cbus/write/254/202/1/trigger', '0');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 0\n');
+        });
+
+        it('should handle 100 trigger payload — ramp to full level (255)', () => {
+            router.routeMessage('cbus/write/254/202/1/trigger', '100');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
+        });
+
+        it('should default unknown trigger payload to full level', () => {
+            router.routeMessage('cbus/write/254/202/1/trigger', 'PRESS');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
+        });
+
+        it('should reject trigger command without device ID', () => {
+            router.routeMessage('cbus/write/254/202//trigger', 'ON');
+
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
+    });
+
     describe('Cover Stop Commands', () => {
         it('should handle stop command', () => {
             router.routeMessage('cbus/write/254/203/1/stop', 'STOP');

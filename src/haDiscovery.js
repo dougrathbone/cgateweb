@@ -14,10 +14,12 @@ const {
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
+    MQTT_CMD_TYPE_TRIGGER,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
     HA_COMPONENT_LIGHT,
+    HA_COMPONENT_BUTTON,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_VIA,
     HA_DEVICE_MANUFACTURER,
@@ -441,6 +443,45 @@ class HaDiscovery {
                 name: finalLabel,
                 manufacturer: HA_DEVICE_MANUFACTURER,
                 model: config.model,
+                via_device: HA_DEVICE_VIA
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
+            }
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this.discoveryCount++;
+
+        // For trigger groups, also publish a companion button entity so HA automations
+        // can fire the C-Bus trigger directly via the cbus/write/.../trigger topic.
+        if (config.isTrigger) {
+            this._publishTriggerButton(networkId, appId, groupId, finalLabel, labelSnapshot);
+        }
+    }
+
+    _publishTriggerButton(networkId, appId, groupId, label, labelSnapshot) {
+        const { entityIds } = labelSnapshot;
+        const labelKey = `${networkId}/${appId}/${groupId}`;
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}_btn`;
+        const entityId = entityIds.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && { object_id: `${entityId}_btn` }),
+            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
+            payload_press: MQTT_STATE_ON,
+            qos: 0,
+            retain: false,
+            device: {
+                identifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
+                name: label,
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: HA_MODEL_TRIGGER,
                 via_device: HA_DEVICE_VIA
             },
             origin: {

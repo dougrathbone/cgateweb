@@ -2,6 +2,7 @@ const {
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
     HA_COMPONENT_EVENT,
+    HA_COMPONENT_BUTTON,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
     HA_MODEL_COVER,
@@ -91,6 +92,15 @@ function getDiscoveryConfig(type) {
             },
             omitCommandTopic: true,
             isTrigger: true
+        },
+        trigger_button: {
+            component: HA_COMPONENT_BUTTON,
+            defaultType: 'Trigger',
+            model: HA_MODEL_TRIGGER,
+            payloads: {
+                payload_press: MQTT_STATE_ON
+            },
+            isTriggerButton: true
         }
     };
     return configs[type];

@@ -53,11 +53,13 @@ const MQTT_CMD_TYPE_SWITCH = 'switch';
 const MQTT_CMD_TYPE_RAMP = 'ramp';
 const MQTT_CMD_TYPE_POSITION = 'position';  // Set cover position (0-100%)
 const MQTT_CMD_TYPE_STOP = 'stop';          // Stop cover movement
+const MQTT_CMD_TYPE_TRIGGER = 'trigger';    // Fire a C-Bus trigger group
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
 const HA_COMPONENT_COVER = 'cover';
 const HA_COMPONENT_SWITCH = 'switch';
+const HA_COMPONENT_BUTTON = 'button';
 const HA_DISCOVERY_SUFFIX = 'config';
 
 // HA Device Classes
@@ -138,11 +140,13 @@ module.exports = {
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
+    MQTT_CMD_TYPE_TRIGGER,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
+    HA_COMPONENT_BUTTON,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,

@@ -1,12 +1,13 @@
 const { createLogger } = require('./logger');
-const { 
-    COMMAND_TOPIC_REGEX, 
-    MQTT_CMD_TYPE_GETALL, 
-    MQTT_CMD_TYPE_GETTREE, 
-    MQTT_CMD_TYPE_SWITCH, 
+const {
+    COMMAND_TOPIC_REGEX,
+    MQTT_CMD_TYPE_GETALL,
+    MQTT_CMD_TYPE_GETTREE,
+    MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
+    MQTT_CMD_TYPE_TRIGGER,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -84,12 +85,13 @@ class CBusCommand {
 
             // Validate command type
             const validCommandTypes = [
-                MQTT_CMD_TYPE_GETALL, 
-                MQTT_CMD_TYPE_GETTREE, 
-                MQTT_CMD_TYPE_SWITCH, 
+                MQTT_CMD_TYPE_GETALL,
+                MQTT_CMD_TYPE_GETTREE,
+                MQTT_CMD_TYPE_SWITCH,
                 MQTT_CMD_TYPE_RAMP,
                 MQTT_CMD_TYPE_POSITION,  // Cover position (0-100%)
-                MQTT_CMD_TYPE_STOP,       // Stop cover movement
+                MQTT_CMD_TYPE_STOP,      // Stop cover movement
+                MQTT_CMD_TYPE_TRIGGER,   // Fire a C-Bus trigger group
                 'setvalue'
             ];
             if (!validCommandTypes.includes(this._commandType)) {
@@ -123,6 +125,9 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_STOP:
                 // Stop command doesn't need payload - it just stops movement
+                break;
+            case MQTT_CMD_TYPE_TRIGGER:
+                this._parseTriggerPayload();
                 break;
             case MQTT_CMD_TYPE_GETALL:
             case MQTT_CMD_TYPE_GETTREE:
@@ -216,6 +221,28 @@ class CBusCommand {
         // Convert position percentage (0-100) to C-Gate level (0-255)
         // 0% (closed) = level 0, 100% (open) = level 255
         this._level = Math.round((clampedPosition / 100) * CGATE_LEVEL_MAX);
+    }
+
+    /**
+     * Parses trigger payload for firing a C-Bus trigger group.
+     * 'ON' fires at full level (255).
+     * A numeric value (0-100) fires with the mapped C-Gate level (0-255).
+     * @private
+     */
+    _parseTriggerPayload() {
+        const upperPayload = this._payload.toUpperCase();
+        if (upperPayload === MQTT_STATE_ON) {
+            this._level = CGATE_LEVEL_MAX;
+        } else {
+            const levelValue = parseFloat(this._payload);
+            if (!isNaN(levelValue)) {
+                const clamped = Math.max(0, Math.min(100, levelValue));
+                this._level = Math.round((clamped / 100) * CGATE_LEVEL_MAX);
+            } else {
+                // Default to full level for any unrecognised payload
+                this._level = CGATE_LEVEL_MAX;
+            }
+        }
     }
 
     isValid() {
