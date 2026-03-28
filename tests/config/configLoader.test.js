@@ -77,6 +77,7 @@ describe('ConfigLoader', () => {
             expect(config.mqttusername).toBe('testuser');
             expect(config.mqttpassword).toBe('testpass');
             expect(config.getallnetapp).toBe('254/56');
+            expect(config.getall_networks).toEqual([254, 255]);
             expect(config.getallonstart).toBe(true);
             expect(config.getallperiod).toBe(3600);
             expect(config.retainreads).toBe(true);
