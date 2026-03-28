@@ -896,6 +896,92 @@ describe('WebServer', () => {
         });
     });
 
+    describe('GET /api/labels/export.xml', () => {
+        it('returns 200 with Content-Type application/xml', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toMatch(/application\/xml/);
+        });
+
+        it('response contains XML declaration', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('<?xml version');
+        });
+
+        it('response contains <Project> root element', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('<Project>');
+            expect(res.body).toContain('</Project>');
+        });
+
+        it('response contains <Network address="254"> for labels in network 254', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('<Network address="254">');
+        });
+
+        it('response contains <Application address="56"> for lighting app', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('<Application address="56"');
+        });
+
+        it('response contains <Group> elements for known devices', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('<Group address="10" description="Kitchen"');
+            expect(res.body).toContain('<Group address="11" description="Living Room"');
+        });
+
+        it('groups are sorted numerically by address within application', async () => {
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                source: 'test',
+                labels: {
+                    '254/56/20': 'Bedroom',
+                    '254/56/3': 'Hall',
+                    '254/56/10': 'Kitchen'
+                }
+            }));
+            labelLoader.load();
+            const res = await request('GET', '/api/labels/export.xml');
+            const hallIdx = res.body.indexOf('address="3"');
+            const kitchenIdx = res.body.indexOf('address="10"');
+            const bedroomIdx = res.body.indexOf('address="20"');
+            expect(hallIdx).toBeLessThan(kitchenIdx);
+            expect(kitchenIdx).toBeLessThan(bedroomIdx);
+        });
+
+        it('empty labels dataset returns a valid empty <Project></Project>', async () => {
+            fs.writeFileSync(labelFile, JSON.stringify({ version: 1, source: 'test', labels: {} }));
+            labelLoader.load();
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.status).toBe(200);
+            expect(res.body).toContain('<Project>');
+            expect(res.body).toContain('</Project>');
+            expect(res.body).not.toContain('<Network');
+        });
+
+        it('XML is well-formed (parseable by xml2js)', async () => {
+            const { parseString } = require('xml2js');
+            const res = await request('GET', '/api/labels/export.xml');
+            await new Promise((resolve, reject) => {
+                parseString(res.body, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        });
+
+        it('uses known app name descriptions (Lighting for app 56)', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.body).toContain('description="Lighting"');
+        });
+
+        it('includes Content-Disposition attachment header for browser download', async () => {
+            const res = await request('GET', '/api/labels/export.xml');
+            expect(res.headers['content-disposition']).toMatch(/attachment/);
+            expect(res.headers['content-disposition']).toMatch(/cbus_labels\.xml/);
+        });
+    });
+
     describe('Path traversal guard', () => {
         it('sends 403 when resolved filePath escapes static dir', () => {
             const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });

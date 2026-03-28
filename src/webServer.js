@@ -7,6 +7,13 @@ const CbusProjectParser = require('./cbusProjectParser');
 const STATIC_DIR = path.join(__dirname, '..', 'public');
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
+const CBUS_APP_NAMES = {
+    56: 'Lighting',
+    201: 'HVAC',
+    202: 'Trigger Groups',
+    203: 'Blinds'
+};
+
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
@@ -130,6 +137,9 @@ class WebServer {
             }
             if (urlPath === '/api/labels/import' && req.method === 'POST') {
                 return await this._handleImportLabels(req, res);
+            }
+            if (urlPath === '/api/labels/export.xml' && req.method === 'GET') {
+                return this._handleExportLabelsXml(req, res);
             }
             if (urlPath === '/api/status' && req.method === 'GET') {
                 return this._handleGetStatus(req, res);
@@ -286,6 +296,56 @@ class WebServer {
         } catch (err) {
             this._sendJSON(res, 400, { error: `Import failed: ${err.message}` });
         }
+    }
+
+    _handleExportLabelsXml(_req, res) {
+        const labels = this.labelLoader.getLabelsObject();
+
+        // Group labels by network -> app -> groups
+        const networks = new Map();
+        for (const [key, label] of Object.entries(labels)) {
+            const parts = key.split('/');
+            if (parts.length !== 3) continue;
+            const [net, app, group] = parts;
+            if (!networks.has(net)) networks.set(net, new Map());
+            const apps = networks.get(net);
+            if (!apps.has(app)) apps.set(app, new Map());
+            apps.get(app).set(group, label);
+        }
+
+        const escapeXml = (str) => String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+
+        const lines = ['<?xml version="1.0" encoding="UTF-8"?>', '<Project>'];
+
+        for (const [netAddr, apps] of [...networks.entries()].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+            lines.push(`  <Network address="${escapeXml(netAddr)}">`);
+
+            for (const [appAddr, groups] of [...apps.entries()].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+                const appName = CBUS_APP_NAMES[Number(appAddr)] || `Application ${appAddr}`;
+                lines.push(`    <Application address="${escapeXml(appAddr)}" description="${escapeXml(appName)}">`);
+
+                for (const [groupAddr, groupLabel] of [...groups.entries()].sort((a, b) => Number(a[0]) - Number(b[0]))) {
+                    lines.push(`      <Group address="${escapeXml(groupAddr)}" description="${escapeXml(groupLabel)}" />`);
+                }
+
+                lines.push('    </Application>');
+            }
+
+            lines.push('  </Network>');
+        }
+
+        lines.push('</Project>');
+        const xml = lines.join('\n');
+
+        res.writeHead(200, {
+            'Content-Type': 'application/xml; charset=utf-8',
+            'Content-Disposition': 'attachment; filename="cbus_labels.xml"'
+        });
+        res.end(xml);
     }
 
     _handleGetStatus(_req, res) {

@@ -494,6 +494,7 @@ th.cb-col, td.cb-col {
       </div>
       <div style="margin-top:10px">
         <button id="downloadBackupBtn">&#11015; Download backup</button>
+        <button id="exportXmlBtn" style="margin-left:8px">&#11015; Export project XML</button>
       </div>
       <div class="import-preview" id="importPreview"></div>
     </div>
@@ -1271,6 +1272,16 @@ th.cb-col, td.cb-col {
     } catch (e) {
       showToast('Download failed: ' + e.message, true);
     }
+  });
+
+  // --- Export project XML ---
+  document.getElementById('exportXmlBtn').addEventListener('click', function() {
+    var a = document.createElement('a');
+    a.href = API_BASE + '/api/labels/export.xml';
+    a.download = 'cbus_labels.xml';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   });
 
   // --- Section toggle ---
