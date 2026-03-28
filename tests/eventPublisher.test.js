@@ -854,4 +854,104 @@ describe('EventPublisher', () => {
             expect(stats.dedupEvicted).toBeGreaterThan(0);
         });
     });
+
+    describe('Trigger group publishing', () => {
+        let triggerPublisher;
+
+        beforeEach(() => {
+            const triggerSettings = {
+                ...mockSettings,
+                ha_discovery_pir_app_id: null,
+                ha_discovery_trigger_app_id: '205'
+            };
+            triggerPublisher = new EventPublisher({
+                settings: triggerSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+        });
+
+        it('should publish trigger event with JSON event payload to event topic', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '205',
+                getGroup: () => '1',
+                getLevel: () => 255,
+                getAction: () => 'on'
+            };
+
+            triggerPublisher.publishEvent(mockEvent, '(Test)');
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/1/event',
+                JSON.stringify({ event_type: 'trigger', level: 255 }),
+                { ...mockMqttOptions, retain: false }
+            );
+        });
+
+        it('should publish trigger event without level when level is null', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '205',
+                getGroup: () => '2',
+                getLevel: () => null,
+                getAction: () => 'on'
+            };
+
+            triggerPublisher.publishEvent(mockEvent, '(Test)');
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/2/event',
+                JSON.stringify({ event_type: 'trigger' }),
+                { ...mockMqttOptions, retain: false }
+            );
+        });
+
+        it('should not publish state or level topics for trigger events', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '205',
+                getGroup: () => '3',
+                getLevel: () => 128,
+                getAction: () => 'on'
+            };
+
+            triggerPublisher.publishEvent(mockEvent);
+
+            // Only the event topic - no state, level, or position
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            const topic = mockPublishFn.mock.calls[0][0];
+            expect(topic).toBe('cbus/read/254/205/3/event');
+            expect(topic).not.toContain('/state');
+            expect(topic).not.toContain('/level');
+            expect(topic).not.toContain('/position');
+        });
+
+        it('should not treat non-trigger app events as trigger events', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56', // lighting app
+                getGroup: () => '1',
+                getLevel: () => 255,
+                getAction: () => 'on'
+            };
+
+            triggerPublisher.publishEvent(mockEvent);
+
+            // Should publish state and level (not event topic)
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                expect.stringContaining('/event'),
+                expect.anything(),
+                expect.anything()
+            );
+        });
+    });
 });

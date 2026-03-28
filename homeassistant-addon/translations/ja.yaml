@@ -73,6 +73,10 @@ configuration:
   ha_discovery_switch_app_id:
     name: スイッチアプリケーション ID
     description: スイッチとして扱う C-Bus アプリケーション ID。スイッチの検出を 無効にするには空のままにしてください。
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate モード
     description: C-Gate の提供方法。"remote" はネットワーク上の別の場所で動作して いる C-Gate

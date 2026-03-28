@@ -2,6 +2,7 @@ const packageJson = require('../package.json');
 
 // === C-Bus System ===
 const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
+const DEFAULT_CBUS_APP_TRIGGER = '202'; // C-Bus application ID for trigger groups (keypads, scenes)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -30,6 +31,7 @@ const MQTT_TOPIC_PREFIX_WRITE = `${MQTT_TOPIC_PREFIX_CBUS}/write`;
 const MQTT_TOPIC_SUFFIX_STATE = 'state';
 const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
+const MQTT_TOPIC_SUFFIX_EVENT = 'event';        // Trigger group event
 const MQTT_TOPIC_SUFFIX_TREE = 'tree';
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
@@ -70,6 +72,8 @@ const HA_MODEL_COVER = 'Enable Control Group (Cover)';
 const HA_MODEL_SWITCH = 'Enable Control Group (Switch)';
 const HA_MODEL_RELAY = 'Enable Control Group (Relay)';
 const HA_MODEL_PIR = 'PIR Motion Sensor';
+const HA_MODEL_TRIGGER = 'Trigger Group';
+const HA_COMPONENT_EVENT = 'event';
 
 // HA Origin Info
 const HA_ORIGIN_NAME = 'cgateweb';
@@ -85,8 +89,9 @@ const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
 
 // Export all constants - maintain compatibility with destructuring imports
 module.exports = {
-    // C-Bus System  
+    // C-Bus System
     DEFAULT_CBUS_APP_LIGHTING,
+    DEFAULT_CBUS_APP_TRIGGER,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -115,6 +120,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_TREE,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
@@ -147,6 +153,8 @@ module.exports = {
     HA_MODEL_SWITCH,
     HA_MODEL_RELAY,
     HA_MODEL_PIR,
+    HA_MODEL_TRIGGER,
+    HA_COMPONENT_EVENT,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,

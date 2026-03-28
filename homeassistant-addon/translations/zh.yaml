@@ -60,6 +60,10 @@ configuration:
   ha_discovery_switch_app_id:
     name: 开关应用程序 ID
     description: 作为开关处理的 C-Bus 应用程序 ID。留空以禁用开关发现。
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate 模式
     description: C-Gate 的提供方式。"remote" 连接到网络上其他位置运行的 C-Gate 服务器。"managed"

@@ -93,6 +93,10 @@ configuration:
     name: Schakelaar Applicatie-ID
     description: C-Bus applicatie-ID om als schakelaars te behandelen. Laat leeg om
       schakelaar-detectie uit te schakelen.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate Modus
     description: Hoe C-Gate wordt aangeboden. "remote" maakt verbinding met een

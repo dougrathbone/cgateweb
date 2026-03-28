@@ -94,6 +94,10 @@ configuration:
     name: ID приложения для выключателей
     description: ID приложения C-Bus, которое следует рассматривать как выключатели.
       Оставьте пустым, чтобы отключить обнаружение выключателей.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: Режим C-Gate
     description: Способ предоставления C-Gate. "remote" подключается к серверу

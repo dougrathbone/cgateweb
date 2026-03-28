@@ -90,6 +90,10 @@ configuration:
     name: Applikations-ID för strömbrytare
     description: C-Bus applikations-ID att behandla som strömbrytare. Lämna tomt för
       att inaktivera identifiering av strömbrytare.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate läge
     description: Hur C-Gate tillhandahålls. "remote" ansluter till en C-Gate server

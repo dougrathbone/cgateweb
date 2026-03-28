@@ -92,6 +92,10 @@ configuration:
     name: ID застосунку для вимикачів
     description: ID застосунку C-Bus, який слід розглядати як вимикачі. Залиште
       порожнім, щоб вимкнути виявлення вимикачів.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: Режим C-Gate
     description: Спосіб надання C-Gate. "remote" підключається до сервера C-Gate, що

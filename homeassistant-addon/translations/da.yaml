@@ -90,6 +90,10 @@ configuration:
     name: Applikations-ID for kontakter
     description: C-Bus applikations-ID der skal behandles som kontakter. Lad stå
       tomt for at deaktivere opdagelse af kontakter.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate tilstand
     description: Hvordan C-Gate leveres. "remote" forbinder til en C-Gate server der

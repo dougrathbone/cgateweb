@@ -131,6 +131,7 @@ schema:
   ha_discovery_networks: ["int(1,255)"]
   ha_discovery_cover_app_id: "int(1,255)?"
   ha_discovery_switch_app_id: "int(1,255)?"
+  ha_discovery_trigger_app_id: "int(1,255)?"
   ha_bridge_diagnostics_enabled: "bool"
   ha_bridge_diagnostics_interval_sec: "int(10,3600)?"
   # Connection pool settings (advanced)

@@ -1,12 +1,14 @@
 const {
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
+    HA_COMPONENT_EVENT,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
     HA_MODEL_COVER,
     HA_MODEL_SWITCH,
     HA_MODEL_RELAY,
     HA_MODEL_PIR,
+    HA_MODEL_TRIGGER,
     MQTT_STATE_ON,
     MQTT_STATE_OFF
 } = require('./constants');
@@ -24,6 +26,9 @@ function getDiscoveryTypeForApp(settings, appAddress) {
     }
     if (settings.ha_discovery_pir_app_id && appStr === String(settings.ha_discovery_pir_app_id)) {
         return 'pir';
+    }
+    if (settings.ha_discovery_trigger_app_id && appStr === String(settings.ha_discovery_trigger_app_id)) {
+        return 'trigger';
     }
     return null;
 }
@@ -76,6 +81,16 @@ function getDiscoveryConfig(type) {
                 payload_off: MQTT_STATE_OFF
             },
             omitCommandTopic: true
+        },
+        trigger: {
+            component: HA_COMPONENT_EVENT,
+            defaultType: 'Trigger',
+            model: HA_MODEL_TRIGGER,
+            payloads: {
+                event_types: ['trigger']
+            },
+            omitCommandTopic: true,
+            isTrigger: true
         }
     };
     return configs[type];

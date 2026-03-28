@@ -89,6 +89,10 @@ configuration:
     name: ID aplikacji przełączników
     description: ID aplikacji C-Bus traktowane jako przełączniki. Pozostaw puste,
       aby wyłączyć wykrywanie przełączników.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: Tryb C-Gate
     description: Sposób udostępniania C-Gate. „remote" łączy się z serwerem C-Gate
