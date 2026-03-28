@@ -1,0 +1,8 @@
+# Active options file — developer-specific, not committed
+active-options.json
+
+# Runtime data volume (C-Gate installs here during testing)
+volumes/data/
+
+# C-Gate zip files — cannot redistribute, must be obtained from Schneider Electric
+volumes/share/cgate/*.zip

@@ -1,0 +1,55 @@
+version: "3.8"
+
+# Local test environment for the cgateweb Home Assistant add-on.
+# Simulates the HA Supervisor environment without requiring a real HA instance.
+# The HA base image ships with bashio and s6-overlay, so all addon scripts run normally.
+# The only thing we mock is /data/options.json, which HA Supervisor normally writes.
+#
+# Usage:
+#   1. Copy a C-Gate .zip into ./volumes/share/cgate/  (for upload mode)
+#   2. Choose an options file:  cp options-managed-upload.json active-options.json
+#   3. docker compose up --build
+#   4. docker compose logs -f addon
+
+services:
+  addon:
+    build:
+      context: ../homeassistant-addon
+      dockerfile: Dockerfile
+      args:
+        BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.19
+        BUILD_ARCH: amd64
+        BUILD_DATE: "2026-01-01T00:00:00Z"
+        BUILD_REF: "local-test"
+        BUILD_VERSION: "dev"
+    volumes:
+      # Mock the options.json that HA Supervisor normally writes
+      - ./active-options.json:/data/options.json:ro
+      # Persistent data directory (C-Gate installs here)
+      - ./volumes/data:/data
+      # Share directory (drop C-Gate zip here for upload mode)
+      - ./volumes/share/cgate:/share/cgate
+    environment:
+      - TZ=Australia/Sydney
+    networks:
+      - addon-net
+    depends_on:
+      - mqtt
+    # s6-overlay needs these capabilities
+    cap_add:
+      - SYS_PTRACE
+    # Allow s6 init to work
+    init: false
+
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    ports:
+      - "1883:1883"
+    networks:
+      - addon-net
+
+networks:
+  addon-net:
+    driver: bridge
