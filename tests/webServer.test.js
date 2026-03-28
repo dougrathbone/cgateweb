@@ -4,6 +4,7 @@ const path = require('path');
 const os = require('os');
 const WebServer = require('../src/webServer');
 const LabelLoader = require('../src/labelLoader');
+const CbusProjectParser = require('../src/cbusProjectParser');
 
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
@@ -495,6 +496,346 @@ describe('WebServer', () => {
             expect(directServer._isRateLimited(ipB)).toBe(false);
             expect(directServer._mutationRequestLog.has('192.168.1.10')).toBe(false);
             expect(directServer._mutationRequestLog.has('192.168.1.11')).toBe(true);
+        });
+    });
+
+    describe('Constructor options', () => {
+        it('accepts allowedOrigins as a comma-separated string', () => {
+            const s = new WebServer({
+                labelLoader,
+                allowedOrigins: 'https://a.local, https://b.local',
+                getStatus: () => ({})
+            });
+            expect(s.allowedOrigins).toEqual(['https://a.local', 'https://b.local']);
+        });
+
+        it('sets allowedOrigins to null for empty string', () => {
+            const s = new WebServer({ labelLoader, allowedOrigins: '', getStatus: () => ({}) });
+            expect(s.allowedOrigins).toBeNull();
+        });
+    });
+
+    describe('Static file serving', () => {
+        it('returns 200 and falls back to index.html for unknown SPA routes', async () => {
+            const res = await request('GET', '/some-nonexistent-route');
+            // SPA fallback: index.html exists, so should get 200 text/html
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toContain('text/html');
+        });
+
+        it('returns 404 when SPA fallback index.html does not exist', () => {
+            const fakeRes = { writeHead: jest.fn(), end: jest.fn(), setHeader: jest.fn(), pipe: jest.fn() };
+            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+
+            const existsSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(false);
+            directServer._serveStatic('/no-such-file.json', fakeRes);
+            existsSpy.mockRestore();
+
+            expect(fakeRes.writeHead).toHaveBeenCalledWith(404);
+            expect(fakeRes.end).toHaveBeenCalledWith('Not Found');
+        });
+    });
+
+    describe('Error handling', () => {
+        it('returns 500 when PUT /api/labels labelLoader.save throws', async () => {
+            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full'); });
+            const res = await request('PUT', '/api/labels', JSON.stringify({ labels: { '254/56/1': 'Test' } }));
+            expect(res.status).toBe(500);
+            expect(res.body.error).toContain('disk full');
+        });
+
+        it('returns 500 when PATCH /api/labels labelLoader.save throws', async () => {
+            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full'); });
+            const res = await request('PATCH', '/api/labels', JSON.stringify({ '254/56/1': 'Test' }));
+            expect(res.status).toBe(500);
+            expect(res.body.error).toContain('disk full');
+        });
+
+        it('returns 400 when PATCH body is null JSON', async () => {
+            const res = await request('PATCH', '/api/labels', 'null');
+            expect(res.status).toBe(400);
+        });
+
+        it('returns 400 when PATCH body is malformed JSON', async () => {
+            const res = await request('PATCH', '/api/labels', '{bad json}');
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Invalid JSON');
+        });
+    });
+
+    describe('POST /api/labels/import', () => {
+        let parseSpy;
+
+        beforeEach(() => {
+            parseSpy = jest.spyOn(CbusProjectParser.prototype, 'parse').mockResolvedValue({
+                labels: { '254/56/1': 'Imported Light' },
+                networks: [254],
+                stats: { total: 1 }
+            });
+        });
+
+        afterEach(() => {
+            parseSpy.mockRestore();
+        });
+
+        it('imports labels from raw body', async () => {
+            const res = await new Promise((resolve, reject) => {
+                const body = Buffer.from('<xml>fake</xml>');
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.imported).toBe(1);
+            expect(res.body.saved).toBe(true);
+        });
+
+        it('merges imported labels with existing when merge=true', async () => {
+            const res = await new Promise((resolve, reject) => {
+                const body = Buffer.from('<xml>fake</xml>');
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import?merge=true',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(200);
+            // merged: existing 2 labels + 1 imported (they may overlap, but total >= 1)
+            expect(res.body.merged).toBe(true);
+            expect(res.body.total).toBeGreaterThanOrEqual(1);
+        });
+
+        it('returns 400 when parse throws', async () => {
+            parseSpy.mockRejectedValueOnce(new Error('bad file'));
+            const res = await new Promise((resolve, reject) => {
+                const body = Buffer.from('garbage');
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(400);
+            expect(res.body.error).toContain('bad file');
+        });
+
+        it('returns 400 when no body is sent', async () => {
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': 0 }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            expect(res.status).toBe(400);
+        });
+
+        it('imports labels from multipart/form-data upload', async () => {
+            const fileContent = Buffer.from('<xml>fake</xml>');
+            const boundary = 'TestBoundary123';
+            const body = Buffer.concat([
+                Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="labels.xml"\r\n\r\n`),
+                fileContent,
+                Buffer.from(`\r\n--${boundary}--\r\n`)
+            ]);
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.imported).toBe(1);
+        });
+
+        it('returns 400 for multipart with no file part', async () => {
+            const boundary = 'TestBoundary456';
+            // No Content-Disposition with filename
+            const body = Buffer.from(
+                `--${boundary}\r\nContent-Disposition: form-data; name="notafile"\r\n\r\nhello\r\n--${boundary}--\r\n`
+            );
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    describe('_readBody size limit', () => {
+        it('resolves null and destroys the request when body exceeds 10MB', async () => {
+            const directServer = new WebServer({ labelLoader, allowUnauthenticatedMutations: true, getStatus: () => ({}) });
+            const EventEmitter = require('events');
+            const mockReq = new EventEmitter();
+            mockReq.destroy = jest.fn();
+
+            const resultPromise = directServer._readBody(mockReq);
+            const bigChunk = Buffer.alloc(11 * 1024 * 1024);
+            mockReq.emit('data', bigChunk);
+
+            const result = await resultPromise;
+            expect(result).toBeNull();
+            expect(mockReq.destroy).toHaveBeenCalled();
+        });
+
+        it('resolves null for _readBodyRaw when body exceeds 10MB', async () => {
+            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            const EventEmitter = require('events');
+            const mockReq = new EventEmitter();
+            mockReq.destroy = jest.fn();
+
+            const resultPromise = directServer._readBodyRaw(mockReq);
+            mockReq.emit('data', Buffer.alloc(11 * 1024 * 1024));
+
+            const result = await resultPromise;
+            expect(result).toBeNull();
+            expect(mockReq.destroy).toHaveBeenCalled();
+        });
+    });
+
+    describe('Server startup error', () => {
+        it('rejects when server emits an error event during start', async () => {
+            const badServer = new WebServer({ port: 0, labelLoader, getStatus: () => ({}) });
+            // Start once to occupy the port
+            await badServer.start();
+            const occupiedPort = badServer._server.address().port;
+
+            const dupServer = new WebServer({ port: occupiedPort, labelLoader, getStatus: () => ({}) });
+            await expect(dupServer.start()).rejects.toThrow();
+            await badServer.close();
+        });
+    });
+
+    describe('Request error handler (catch block)', () => {
+        it('returns 500 when _handleRequest throws unexpectedly', async () => {
+            jest.spyOn(server, '_handleGetStatus').mockImplementationOnce(() => { throw new Error('boom'); });
+            const res = await request('GET', '/api/status');
+            expect(res.status).toBe(500);
+            expect(res.body.error).toBe('Internal server error');
+        });
+    });
+
+    describe('PATCH empty body', () => {
+        it('returns 400 when PATCH body is empty', async () => {
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Content-Length': 0 }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            expect(res.status).toBe(400);
+        });
+    });
+
+    describe('_pruneMutationRequestLog partial prune', () => {
+        it('updates the log entry when some timestamps are stale but others are fresh', () => {
+            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            // Seed the log with a mix of old and new timestamps
+            directServer._mutationRequestLog.set('10.0.0.1', [100, 200, 5000]);
+            directServer._pruneMutationRequestLog(1000); // window starts at 1000
+            // 100 and 200 are evicted; 5000 remains
+            expect(directServer._mutationRequestLog.get('10.0.0.1')).toEqual([5000]);
+        });
+    });
+
+    describe('Path traversal guard', () => {
+        it('sends 403 when resolved filePath escapes static dir', () => {
+            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
+
+            // Inject a path that path.join resolves to a location outside STATIC_DIR
+            const origJoin = path.join;
+            jest.spyOn(path, 'join').mockImplementationOnce(() => '/etc/passwd');
+            directServer._serveStatic('/anything', fakeRes);
+            path.join = origJoin;
+
+            expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
+            expect(fakeRes.end).toHaveBeenCalledWith('Forbidden');
         });
     });
 });
