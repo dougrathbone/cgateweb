@@ -446,7 +446,7 @@ class CgateConnectionPool extends EventEmitter {
         
         this.healthCheckTimer = setInterval(() => {
             this._performHealthCheck();
-        }, this.healthCheckInterval);
+        }, this.healthCheckInterval).unref();
         
         this.logger.info(`Health monitoring started: checking every ${this.healthCheckInterval}ms`);
     }
@@ -463,8 +463,8 @@ class CgateConnectionPool extends EventEmitter {
         
         this.keepAliveTimer = setInterval(() => {
             this._sendKeepAlive();
-        }, this.keepAliveInterval);
-        
+        }, this.keepAliveInterval).unref();
+
         this.logger.info(`Keep-alive started: pinging every ${this.keepAliveInterval}ms`);
     }
     

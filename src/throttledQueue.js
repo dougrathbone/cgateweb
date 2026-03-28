@@ -126,7 +126,7 @@ class ThrottledQueue {
         this._timer = setTimeout(() => {
             this._timer = null;
             this._process();
-        }, delay);
+        }, delay).unref();
     }
 
     _clearTimer() {

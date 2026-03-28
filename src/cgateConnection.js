@@ -287,7 +287,7 @@ class CgateConnection extends EventEmitter {
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
             this.connect();
-        }, delay);
+        }, delay).unref();
     }
 
     _startKeepAlive() {
@@ -297,7 +297,7 @@ class CgateConnection extends EventEmitter {
 
         this.keepAliveTimer = setInterval(() => {
             this._sendKeepAlive();
-        }, this.keepAliveInterval);
+        }, this.keepAliveInterval).unref();
 
         this.logger.debug(`Event keep-alive started: pinging every ${this.keepAliveInterval}ms`);
     }

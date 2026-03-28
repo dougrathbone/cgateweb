@@ -25,7 +25,7 @@ class HaBridgeDiagnostics {
         }
         this._intervalId = setInterval(() => {
             this.publishNow('interval');
-        }, intervalSeconds * 1000);
+        }, intervalSeconds * 1000).unref();
     }
 
     stop() {

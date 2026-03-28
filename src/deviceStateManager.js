@@ -135,7 +135,7 @@ class DeviceStateManager {
         const timeoutHandle = setTimeout(() => {
             cleanup.call(this);
             this.logger.warn(`Timeout waiting for level response from ${address}`);
-        }, timeout);
+        }, timeout).unref();
 
         this.activeOperations.set(address, { handler: levelHandler, timeoutHandle });
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);

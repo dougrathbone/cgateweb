@@ -297,7 +297,7 @@ class MqttCommandRouter extends EventEmitter {
         const timeoutHandle = setTimeout(() => {
             cleanup.call(this);
             this.logger.warn(`Timeout waiting for level response from ${levelAddress} during ${actionName}`);
-        }, 5000);
+        }, 5000).unref();
 
         this._pendingRelativeLevels.set(levelAddress, { handler: levelHandler, timeoutHandle });
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
