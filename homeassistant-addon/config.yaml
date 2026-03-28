@@ -48,6 +48,9 @@ options:
   cgate_install_source: "download"
   cgate_download_sha256: ""
 
+  # Network auto-discovery
+  auto_discover_networks: true
+
   # C-Bus monitoring settings
   getall_networks:
     - 254
@@ -109,6 +112,9 @@ schema:
   mqtt_port: "int(1,65535)?"
   mqtt_username: "str?"
   mqtt_password: "password?"
+
+  # Network auto-discovery
+  auto_discover_networks: "bool"
 
   # C-Bus monitoring settings
   getall_networks: ["int(1,255)"]

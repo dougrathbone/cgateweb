@@ -97,11 +97,23 @@ mqtt_reject_unauthorized: false
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `getall_networks` | list | `[254]` | List of C-Bus network IDs to monitor |
+| `auto_discover_networks` | boolean | `true` | Automatically discover C-Bus network IDs from C-Gate on connect |
+| `getall_networks` | list | `[254]` | List of C-Bus network IDs to monitor (overrides auto-discovery) |
 | `getall_on_start` | boolean | `true` | Request all device states on startup |
 | `getall_period` | integer | `3600` | How often to request all states (seconds) |
 | `retain_reads` | boolean | `false` | Set MQTT retain flag for state messages |
 | `message_interval` | integer | `200` | Delay between C-Gate commands (milliseconds) |
+
+#### Network auto-discovery
+
+When `auto_discover_networks` is `true` (the default), the add-on queries `tree //PROJECT` on connect and parses the response to find all C-Bus network IDs. The discovered networks are used for device polling and HA Discovery unless you have explicitly configured `getall_networks` or `ha_discovery_networks`.
+
+This means most users do not need to set `getall_networks` or `ha_discovery_networks` at all — the add-on finds your networks automatically.
+
+Disable auto-discovery (`auto_discover_networks: false`) if:
+- You want to restrict polling/discovery to a specific subset of networks
+- Your C-Gate version does not support the `tree` command
+- You observe unexpected behaviour caused by auto-discovery picking up networks you do not want monitored
 
 ### Logging
 

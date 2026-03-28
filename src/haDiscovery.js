@@ -105,15 +105,21 @@ class HaDiscovery {
         }
     }
 
-    trigger() {
+    trigger(discoveredNetworks = null) {
         if (!this.settings.ha_discovery_enabled) {
             return;
         }
 
         this.logger.info(`HA Discovery enabled, querying network trees...`);
         let networksToDiscover = this.settings.ha_discovery_networks;
-        
-        // If specific networks aren't configured, attempt to use the network 
+
+        // If no networks explicitly configured, fall back to auto-discovered networks
+        if ((!networksToDiscover || networksToDiscover.length === 0) && discoveredNetworks && discoveredNetworks.length > 0) {
+            this.logger.info(`No HA discovery networks configured, using auto-discovered networks: [${discoveredNetworks.join(', ')}]`);
+            networksToDiscover = discoveredNetworks;
+        }
+
+        // If specific networks aren't configured, attempt to use the network
         // from the getallnetapp setting (if specified).
         if (networksToDiscover.length === 0 && this.settings.getallnetapp) {
             const networkIdMatch = String(this.settings.getallnetapp).match(/^(\d+)/);

@@ -169,6 +169,15 @@ class ConfigLoader {
             config.mqttRejectUnauthorized = false;
         }
 
+        // Network auto-discovery setting
+        config.autoDiscoverNetworks = options.auto_discover_networks !== undefined
+            ? options.auto_discover_networks === true
+            : true;
+
+        // Track whether getall_networks and ha_discovery_networks were explicitly configured
+        config._getall_networks_explicit = !!(options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0);
+        config._ha_discovery_networks_explicit = !!(options.ha_discovery_networks && Array.isArray(options.ha_discovery_networks) && options.ha_discovery_networks.length > 0);
+
         // C-Bus monitoring settings
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
             config.getallnetapp = `${options.getall_networks[0]}/56`;

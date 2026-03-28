@@ -45,6 +45,12 @@ configuration:
     description: Reject connections if the broker's TLS certificate cannot be
       verified. Keep enabled for security. Disable only if you are using a
       self-signed certificate without a CA file and understand the risks.
+  auto_discover_networks:
+    name: Auto-Discover C-Bus Networks
+    description: Automatically discover C-Bus network IDs from C-Gate on connect by
+      querying the project tree. When enabled, discovered networks are used for polling
+      and HA Discovery unless overridden by explicit network configuration. Disable if
+      auto-discovery causes issues or you want to restrict monitoring to specific networks.
   getall_networks:
     name: C-Bus Networks to Monitor
     description: List of C-Bus network IDs to poll for device states. The default

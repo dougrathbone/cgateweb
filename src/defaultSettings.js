@@ -38,6 +38,7 @@ const defaultSettings = {
     eventPublishDedupMaxEntries: 5000,
     topicCacheMaxEntries: 5000,
     eventPublishCoalesce: false,
+    auto_discover_networks: true,
     ha_discovery_enabled: false,
     ha_discovery_prefix: 'homeassistant',
     ha_discovery_networks: [],
