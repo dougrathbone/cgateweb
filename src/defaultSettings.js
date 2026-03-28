@@ -31,6 +31,7 @@ const defaultSettings = {
     connectionPoolSize: 3,
     healthCheckInterval: 30000,
     keepAliveInterval: 60000,
+    eventConnectionKeepAliveInterval: 60000,
     connectionTimeout: 5000,
     maxRetries: 3,
     eventPublishDedupWindowMs: 0,

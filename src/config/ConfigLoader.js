@@ -234,6 +234,7 @@ class ConfigLoader {
         }
         if (options.connection_keep_alive_interval_sec !== undefined) {
             config.keepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
+            config.eventConnectionKeepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
         }
 
         // Label file: use explicit setting, or auto-detect from common addon paths
