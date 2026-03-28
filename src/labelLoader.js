@@ -18,6 +18,7 @@ class LabelLoader extends EventEmitter {
         this._typeOverrides = new Map();
         this._entityIds = new Map();
         this._exclude = new Set();
+        this._areas = new Map();
         this._watcher = null;
         this._debounceTimer = null;
         this._lastSaveTime = 0;
@@ -72,10 +73,18 @@ class LabelLoader extends EventEmitter {
                 }
             }
 
+            this._areas = new Map();
+            if (data.areas && typeof data.areas === 'object') {
+                for (const [key, value] of Object.entries(data.areas)) {
+                    this._areas.set(key, value);
+                }
+            }
+
             const extras = [];
             if (this._typeOverrides.size > 0) extras.push(`${this._typeOverrides.size} type overrides`);
             if (this._entityIds.size > 0) extras.push(`${this._entityIds.size} entity IDs`);
             if (this._exclude.size > 0) extras.push(`${this._exclude.size} excluded`);
+            if (this._areas.size > 0) extras.push(`${this._areas.size} areas`);
             const extrasStr = extras.length > 0 ? `, ${extras.join(', ')}` : '';
             this.logger.info(`Loaded ${this._labels.size} labels from ${this.filePath}${extrasStr} (source: ${data.source || 'unknown'})`);
             return this._labels;
@@ -118,6 +127,9 @@ class LabelLoader extends EventEmitter {
         if (!fileData.exclude && this._exclude.size > 0) {
             fileData.exclude = Array.from(this._exclude);
         }
+        if (!fileData.areas && this._areas.size > 0) {
+            fileData.areas = Object.fromEntries(this._areas);
+        }
 
         const dir = path.dirname(this.filePath);
         if (!fs.existsSync(dir)) {
@@ -140,6 +152,9 @@ class LabelLoader extends EventEmitter {
         }
         if (fileData.exclude) {
             this._exclude = new Set(fileData.exclude);
+        }
+        if (fileData.areas) {
+            this._areas = new Map(Object.entries(fileData.areas));
         }
 
         this.logger.info(`Saved ${this._labels.size} labels to ${this.filePath}`);
@@ -171,7 +186,7 @@ class LabelLoader extends EventEmitter {
                 if (this._debounceTimer) clearTimeout(this._debounceTimer);
                 this._debounceTimer = setTimeout(() => {
                     this._onFileChanged();
-                }, DEBOUNCE_MS);
+                }, DEBOUNCE_MS).unref();
             });
 
             this._watcher.on('error', (err) => {
@@ -228,6 +243,13 @@ class LabelLoader extends EventEmitter {
     }
 
     /**
+     * @returns {Map<string, string>} Area assignments (address -> area name for HA suggested_area)
+     */
+    getAreas() {
+        return this._areas;
+    }
+
+    /**
      * @returns {Object} All label data as a single object for passing to HaDiscovery
      */
     getLabelData() {
@@ -235,7 +257,8 @@ class LabelLoader extends EventEmitter {
             labels: this._labels,
             typeOverrides: this._typeOverrides,
             entityIds: this._entityIds,
-            exclude: this._exclude
+            exclude: this._exclude,
+            areas: this._areas
         };
     }
 
@@ -264,6 +287,9 @@ class LabelLoader extends EventEmitter {
         if (this._exclude.size > 0) {
             data.exclude = Array.from(this._exclude);
         }
+        if (this._areas.size > 0) {
+            data.areas = Object.fromEntries(this._areas);
+        }
         return data;
     }
 
@@ -272,6 +298,7 @@ class LabelLoader extends EventEmitter {
         this._typeOverrides = new Map();
         this._entityIds = new Map();
         this._exclude = new Set();
+        this._areas = new Map();
     }
 
     _onFileChanged() {

@@ -157,6 +157,7 @@ class WebServer {
             ...(fullData.type_overrides && { type_overrides: fullData.type_overrides }),
             ...(fullData.entity_ids && { entity_ids: fullData.entity_ids }),
             ...(fullData.exclude && { exclude: fullData.exclude }),
+            ...(fullData.areas && { areas: fullData.areas }),
             ...(this.triggerAppId && { trigger_app_id: this.triggerAppId })
         });
     }
@@ -186,6 +187,7 @@ class WebServer {
             if (data.type_overrides) fileData.type_overrides = data.type_overrides;
             if (data.entity_ids) fileData.entity_ids = data.entity_ids;
             if (data.exclude) fileData.exclude = data.exclude;
+            if (data.areas) fileData.areas = data.areas;
 
             this.labelLoader.save(fileData);
             const fullData = this.labelLoader.getFullData();

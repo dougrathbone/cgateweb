@@ -87,16 +87,19 @@ class HaDiscovery {
             this.typeOverrides = new Map();
             this.entityIds = new Map();
             this.exclude = new Set();
+            this.areas = new Map();
         } else if (labelData && typeof labelData === 'object') {
             this.labelMap = labelData.labels || new Map();
             this.typeOverrides = labelData.typeOverrides || new Map();
             this.entityIds = labelData.entityIds || new Map();
             this.exclude = labelData.exclude || new Set();
+            this.areas = labelData.areas || new Map();
         } else {
             this.labelMap = new Map();
             this.typeOverrides = new Map();
             this.entityIds = new Map();
             this.exclude = new Set();
+            this.areas = new Map();
         }
     }
 
@@ -231,7 +234,8 @@ class HaDiscovery {
             labelMap: this.labelMap,
             typeOverrides: this.typeOverrides,
             entityIds: this.entityIds,
-            exclude: this.exclude
+            exclude: this.exclude,
+            areas: this.areas
         };
 
         let units = networkData.Unit || [];
@@ -336,7 +340,7 @@ class HaDiscovery {
     }
 
     _processLightingGroups(networkId, appId, groups, labelSnapshot) {
-        const { labelMap, typeOverrides, entityIds, exclude } = labelSnapshot;
+        const { labelMap, typeOverrides, entityIds, exclude, areas } = labelSnapshot;
         const groupArray = Array.isArray(groups) ? groups : [groups];
         
         groupArray.forEach(group => {
@@ -380,9 +384,10 @@ class HaDiscovery {
             else this.labelStats.fallback++;
             const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
             const entityId = entityIds.get(labelKey);
+            const area = areas && areas.get(labelKey);
             const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
-            const payload = { 
+            const payload = {
                 name: null,
                 unique_id: uniqueId,
                 ...(entityId && { object_id: entityId }),
@@ -398,14 +403,15 @@ class HaDiscovery {
                 brightness_value_template: '{{ value }}',
                 qos: 0,
                 retain: true,
-                device: { 
+                device: {
                     identifiers: [uniqueId],
                     name: finalLabel,
                     manufacturer: HA_DEVICE_MANUFACTURER,
                     model: HA_MODEL_LIGHTING,
-                    via_device: HA_DEVICE_VIA
+                    via_device: HA_DEVICE_VIA,
+                    ...(area && { suggested_area: area })
                 },
-                origin: { 
+                origin: {
                     name: HA_ORIGIN_NAME,
                     sw_version: HA_ORIGIN_SW_VERSION,
                     support_url: HA_ORIGIN_SUPPORT_URL
@@ -462,7 +468,7 @@ class HaDiscovery {
      * @private
      */
     _createHvacDiscovery(networkId, appId, groupId, groupLabel, labelSnapshot) {
-        const { labelMap, entityIds, exclude } = labelSnapshot;
+        const { labelMap, entityIds, exclude, areas } = labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 
         if (exclude.has(labelKey)) {
@@ -478,6 +484,7 @@ class HaDiscovery {
 
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
         const entityId = entityIds.get(labelKey);
+        const area = areas && areas.get(labelKey);
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
         const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
@@ -520,7 +527,8 @@ class HaDiscovery {
                 name: finalLabel,
                 manufacturer: HA_DEVICE_MANUFACTURER,
                 model: 'HVAC Zone (Air Conditioning)',
-                via_device: HA_DEVICE_VIA
+                via_device: HA_DEVICE_VIA,
+                ...(area && { suggested_area: area })
             },
             origin: {
                 name: HA_ORIGIN_NAME,
@@ -534,7 +542,7 @@ class HaDiscovery {
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config, labelSnapshot) {
-        const { labelMap, entityIds, exclude } = labelSnapshot;
+        const { labelMap, entityIds, exclude, areas } = labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 
         if (exclude.has(labelKey)) {
@@ -549,8 +557,9 @@ class HaDiscovery {
         else this.labelStats.fallback++;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
         const entityId = entityIds.get(labelKey);
+        const area = areas && areas.get(labelKey);
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-        
+
         // HA event entities use a dedicated event topic (not state topic) and must not be retained
         const stateTopic = config.isTrigger
             ? `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_EVENT}`
@@ -580,7 +589,8 @@ class HaDiscovery {
                 name: finalLabel,
                 manufacturer: HA_DEVICE_MANUFACTURER,
                 model: config.model,
-                via_device: HA_DEVICE_VIA
+                via_device: HA_DEVICE_VIA,
+                ...(area && { suggested_area: area })
             },
             origin: {
                 name: HA_ORIGIN_NAME,

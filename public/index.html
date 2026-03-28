@@ -504,11 +504,13 @@ th.cb-col, td.cb-col {
   let labels = {};
   let typeOverrides = {};
   let entityIds = {};
+  let areas = {};
   let excludeList = [];
   let triggerAppId = null;
   let dirtyLabels = {};
   let dirtyTypes = {};
   let dirtyEntityIds = {};
+  let dirtyAreas = {};
   let dirtyExcludes = {};
   let sortCol = 'address';
   let sortDir = 1;
@@ -542,6 +544,7 @@ th.cb-col, td.cb-col {
     return Object.keys(dirtyLabels).length > 0 ||
            Object.keys(dirtyTypes).length > 0 ||
            Object.keys(dirtyEntityIds).length > 0 ||
+           Object.keys(dirtyAreas).length > 0 ||
            Object.keys(dirtyExcludes).length > 0;
   }
 
@@ -551,11 +554,13 @@ th.cb-col, td.cb-col {
       labels = data.labels || {};
       typeOverrides = data.type_overrides || {};
       entityIds = data.entity_ids || {};
+      areas = data.areas || {};
       excludeList = data.exclude || [];
       triggerAppId = data.trigger_app_id || null;
       dirtyLabels = {};
       dirtyTypes = {};
       dirtyEntityIds = {};
+      dirtyAreas = {};
       dirtyExcludes = {};
       render();
     } catch (e) {
@@ -623,6 +628,11 @@ th.cb-col, td.cb-col {
       if (mergedEids[k] === null || mergedEids[k] === '') delete mergedEids[k];
     }
 
+    const mergedAreas = { ...areas, ...dirtyAreas };
+    for (const k of Object.keys(mergedAreas)) {
+      if (mergedAreas[k] === null || mergedAreas[k] === '') delete mergedAreas[k];
+    }
+
     let mergedExcludes = [...excludeList];
     for (const [k, v] of Object.entries(dirtyExcludes)) {
       if (v && !mergedExcludes.includes(k)) mergedExcludes.push(k);
@@ -633,6 +643,7 @@ th.cb-col, td.cb-col {
       const payload = { labels: mergedLabels };
       if (Object.keys(mergedTypes).length > 0) payload.type_overrides = mergedTypes;
       if (Object.keys(mergedEids).length > 0) payload.entity_ids = mergedEids;
+      if (Object.keys(mergedAreas).length > 0) payload.areas = mergedAreas;
       if (mergedExcludes.length > 0) payload.exclude = mergedExcludes;
 
       const data = await api('/api/labels', {
@@ -642,10 +653,12 @@ th.cb-col, td.cb-col {
       labels = data.labels || mergedLabels;
       typeOverrides = mergedTypes;
       entityIds = mergedEids;
+      areas = mergedAreas;
       excludeList = mergedExcludes;
       dirtyLabels = {};
       dirtyTypes = {};
       dirtyEntityIds = {};
+      dirtyAreas = {};
       dirtyExcludes = {};
       render();
       showToast('Saved (' + data.count + ' labels). HA Discovery will update shortly.');
@@ -678,6 +691,11 @@ th.cb-col, td.cb-col {
   function getEntityId(addr) {
     if (addr in dirtyEntityIds) return dirtyEntityIds[addr] || '';
     return entityIds[addr] || '';
+  }
+
+  function getArea(addr) {
+    if (addr in dirtyAreas) return dirtyAreas[addr] || '';
+    return areas[addr] || '';
   }
 
   function isExcluded(addr) {
