@@ -1058,4 +1058,164 @@ describe('HaDiscovery', () => {
             expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_11/config')).toBe(true);
         });
     });
+
+    describe('suggested_area in discovery payloads', () => {
+        it('should include suggested_area in light device payload when area is set', () => {
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(),
+                areas: new Map([['254/56/10', 'Kitchen']])
+            });
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const lightCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(lightCall).toBeDefined();
+            const payload = JSON.parse(lightCall[1]);
+            expect(payload.device.suggested_area).toBe('Kitchen');
+        });
+
+        it('should not include suggested_area in light device payload when area is not set', () => {
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(),
+                areas: new Map()
+            });
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const lightCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(lightCall).toBeDefined();
+            const payload = JSON.parse(lightCall[1]);
+            expect(payload.device.suggested_area).toBeUndefined();
+        });
+
+        it('should include suggested_area in cover device payload when area is set', () => {
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(),
+                areas: new Map([['254/203/15', 'Lounge']])
+            });
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.device.suggested_area).toBe('Lounge');
+        });
+
+        it('should not include suggested_area in cover device payload when area is not set', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.device.suggested_area).toBeUndefined();
+        });
+
+        it('should include suggested_area in HVAC device payload when area is set', () => {
+            const hvacTreeData = {
+                Network: {
+                    Interface: {
+                        Network: {
+                            NetworkNumber: '254',
+                            Unit: [{
+                                UnitAddress: '100',
+                                Application: [{
+                                    ApplicationAddress: '201',
+                                    Group: [{ GroupAddress: '5', Label: 'Main Zone' }]
+                                }]
+                            }]
+                        }
+                    }
+                }
+            };
+
+            mockSettings.ha_discovery_hvac_app_id = '201';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(),
+                areas: new Map([['254/201/5', 'Office']])
+            });
+
+            haDiscovery._publishDiscoveryFromTree('254', hvacTreeData);
+
+            const hvacCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/climate/cgateweb_254_201_5/config'
+            );
+            expect(hvacCall).toBeDefined();
+            const payload = JSON.parse(hvacCall[1]);
+            expect(payload.device.suggested_area).toBe('Office');
+        });
+
+        it('should not include suggested_area in HVAC device payload when area is not set', () => {
+            const hvacTreeData = {
+                Network: {
+                    Interface: {
+                        Network: {
+                            NetworkNumber: '254',
+                            Unit: [{
+                                UnitAddress: '100',
+                                Application: [{
+                                    ApplicationAddress: '201',
+                                    Group: [{ GroupAddress: '5', Label: 'Main Zone' }]
+                                }]
+                            }]
+                        }
+                    }
+                }
+            };
+
+            mockSettings.ha_discovery_hvac_app_id = '201';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', hvacTreeData);
+
+            const hvacCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/climate/cgateweb_254_201_5/config'
+            );
+            expect(hvacCall).toBeDefined();
+            const payload = JSON.parse(hvacCall[1]);
+            expect(payload.device.suggested_area).toBeUndefined();
+        });
+
+        it('should apply areas from initial labelData passed to constructor', () => {
+            const labelData = {
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(),
+                areas: new Map([['254/56/11', 'Living Room']])
+            };
+            const discovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+
+            discovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const lightCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_11/config'
+            );
+            expect(lightCall).toBeDefined();
+            const payload = JSON.parse(lightCall[1]);
+            expect(payload.device.suggested_area).toBe('Living Room');
+        });
+    });
 });

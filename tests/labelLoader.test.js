@@ -278,6 +278,94 @@ describe('LabelLoader', () => {
             expect(loader.getEntityIds().get('254/56/4')).toBe('mainbedroom');
             expect(loader.getExcludeSet().has('254/56/255')).toBe(true);
         });
+
+        it('should load areas from file', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom', '254/56/10': 'Kitchen Light' },
+                areas: { '254/56/4': 'Main Bedroom', '254/56/10': 'Kitchen' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getAreas().get('254/56/4')).toBe('Main Bedroom');
+            expect(loader.getAreas().get('254/56/10')).toBe('Kitchen');
+            expect(loader.getAreas().size).toBe(2);
+        });
+
+        it('should return empty areas map when areas section is missing', () => {
+            const data = { version: 1, labels: { '254/56/4': 'Test' } };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            expect(loader.getAreas().size).toBe(0);
+        });
+
+        it('should include areas in getLabelData()', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                areas: { '254/56/4': 'Master Suite' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+            const ld = loader.getLabelData();
+
+            expect(ld.areas).toBeInstanceOf(Map);
+            expect(ld.areas.get('254/56/4')).toBe('Master Suite');
+        });
+
+        it('should save areas to labels.json', () => {
+            const loader = new LabelLoader(labelFile);
+            loader.save({
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                areas: { '254/56/4': 'Upstairs' }
+            });
+
+            const saved = JSON.parse(fs.readFileSync(labelFile, 'utf8'));
+            expect(saved.areas).toEqual({ '254/56/4': 'Upstairs' });
+        });
+
+        it('should preserve areas through save() when only labels are passed', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                areas: { '254/56/4': 'Upstairs' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+
+            // Save only labels — areas should be preserved
+            loader.save({ '254/56/4': 'Updated Name' });
+
+            const saved = JSON.parse(fs.readFileSync(labelFile, 'utf8'));
+            expect(saved.labels['254/56/4']).toBe('Updated Name');
+            expect(saved.areas).toEqual({ '254/56/4': 'Upstairs' });
+        });
+
+        it('should include areas in getFullData()', () => {
+            const data = {
+                version: 1,
+                labels: { '254/56/4': 'Main Bedroom' },
+                areas: { '254/56/4': 'Upstairs' }
+            };
+            fs.writeFileSync(labelFile, JSON.stringify(data));
+
+            const loader = new LabelLoader(labelFile);
+            loader.load();
+            const full = loader.getFullData();
+
+            expect(full.areas).toEqual({ '254/56/4': 'Upstairs' });
+        });
     });
 
     describe('watch / hot-reload', () => {
