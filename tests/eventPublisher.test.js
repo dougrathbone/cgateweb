@@ -1042,4 +1042,137 @@ describe('EventPublisher', () => {
             );
         });
     });
+
+    describe('Tilt App Events', () => {
+        let tiltPublisher;
+
+        beforeEach(() => {
+            tiltPublisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    ha_discovery_cover_tilt_app_id: '204'
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+        });
+
+        it('should publish tilt event to the tilt topic with correct 0-100 value', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '204',
+                getGroup: () => '5',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            // 128 / 255 * 100 = ~50%
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/204/5/tilt',
+                '50',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish tilt=100 for full-level event', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '204',
+                getGroup: () => '5',
+                getLevel: () => 255,
+                getAction: () => 'on'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/204/5/tilt',
+                '100',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish tilt=0 for off event', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '204',
+                getGroup: () => '5',
+                getLevel: () => 0,
+                getAction: () => 'off'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/204/5/tilt',
+                '0',
+                mockMqttOptions
+            );
+        });
+
+        it('should NOT publish state, level, or position topics for tilt app events', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '204',
+                getGroup: () => '5',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            const topic = mockPublishFn.mock.calls[0][0];
+            expect(topic).not.toContain('/state');
+            expect(topic).not.toContain('/level');
+            expect(topic).not.toContain('/position');
+        });
+
+        it('should not treat non-tilt-app events as tilt events', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '203', // cover app, not tilt app
+                getGroup: () => '5',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            // Cover app event — should publish state, level, position (not tilt)
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                expect.stringContaining('/tilt'),
+                expect.anything(),
+                expect.anything()
+            );
+        });
+
+        it('should infer 100% tilt when no level and action is on', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '204',
+                getGroup: () => '5',
+                getLevel: () => null,
+                getAction: () => 'on'
+            };
+
+            tiltPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/204/5/tilt',
+                '100',
+                mockMqttOptions
+            );
+        });
+    });
 });

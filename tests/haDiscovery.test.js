@@ -1218,4 +1218,105 @@ describe('HaDiscovery', () => {
             expect(payload.device.suggested_area).toBe('Living Room');
         });
     });
+
+    describe('Cover Tilt Discovery', () => {
+        const tiltTreeData = {
+            Network: {
+                Interface: {
+                    Network: {
+                        NetworkNumber: '254',
+                        Unit: [{
+                            UnitAddress: '100',
+                            Application: [
+                                {
+                                    ApplicationAddress: '203',
+                                    Group: [
+                                        { GroupAddress: '5', Label: 'Blind 1' },
+                                        { GroupAddress: '6', Label: 'Blind 2' }
+                                    ]
+                                },
+                                {
+                                    ApplicationAddress: '204',
+                                    Group: [
+                                        { GroupAddress: '5', Label: 'Tilt Group 5' },
+                                        { GroupAddress: '6', Label: 'Tilt Group 6' }
+                                    ]
+                                }
+                            ]
+                        }]
+                    }
+                }
+            }
+        };
+
+        it('should include tilt topics in cover discovery payload when tilt app is configured', () => {
+            mockSettings.ha_discovery_cover_app_id = '203';
+            mockSettings.ha_discovery_cover_tilt_app_id = '204';
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+
+            haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_5/config'
+            );
+            expect(coverCall).toBeDefined();
+
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.tilt_status_topic).toBe('cbus/read/254/204/5/tilt');
+            expect(payload.tilt_command_topic).toBe('cbus/write/254/204/5/tilt');
+            expect(payload.tilt_min).toBe(0);
+            expect(payload.tilt_max).toBe(100);
+            expect(payload.tilt_optimistic).toBe(false);
+        });
+
+        it('should NOT include tilt topics in cover discovery payload when tilt app is not configured', () => {
+            mockSettings.ha_discovery_cover_app_id = '203';
+            mockSettings.ha_discovery_cover_tilt_app_id = null;
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+
+            haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_5/config'
+            );
+            expect(coverCall).toBeDefined();
+
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.tilt_status_topic).toBeUndefined();
+            expect(payload.tilt_command_topic).toBeUndefined();
+            expect(payload.tilt_min).toBeUndefined();
+            expect(payload.tilt_max).toBeUndefined();
+        });
+
+        it('should not publish standalone discovery entities for tilt app groups', () => {
+            mockSettings.ha_discovery_cover_app_id = '203';
+            mockSettings.ha_discovery_cover_tilt_app_id = '204';
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+
+            haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
+
+            // Tilt app groups must NOT produce standalone entities
+            const tiltCoverCall = mockPublishFn.mock.calls.find(
+                call => typeof call[0] === 'string' && call[0].includes('cgateweb_254_204_')
+            );
+            expect(tiltCoverCall).toBeUndefined();
+        });
+
+        it('should include tilt topics for group 6 (paired by group number)', () => {
+            mockSettings.ha_discovery_cover_app_id = '203';
+            mockSettings.ha_discovery_cover_tilt_app_id = '204';
+            haDiscovery = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn);
+
+            haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_6/config'
+            );
+            expect(coverCall).toBeDefined();
+
+            const payload = JSON.parse(coverCall[1]);
+            expect(payload.tilt_status_topic).toBe('cbus/read/254/204/6/tilt');
+            expect(payload.tilt_command_topic).toBe('cbus/write/254/204/6/tilt');
+        });
+    });
 });

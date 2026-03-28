@@ -42,6 +42,7 @@ const defaultSettings = {
     ha_discovery_prefix: 'homeassistant',
     ha_discovery_networks: [],
     ha_discovery_cover_app_id: '203',
+    ha_discovery_cover_tilt_app_id: null,
     ha_discovery_switch_app_id: null,
     ha_discovery_relay_app_id: null,
     ha_discovery_pir_app_id: null,

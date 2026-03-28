@@ -91,6 +91,11 @@ configuration:
     description: C-Bus application ID to treat as covers (blinds, shutters, garage
       doors). Common value is 203 (Enable Control). Leave empty to disable cover
       discovery.
+  ha_discovery_cover_tilt_app_id:
+    name: Cover Tilt Application ID
+    description: C-Bus application ID for venetian/louvre blind tilt angle control.
+      Groups in this application are paired by group number with covers in the Cover
+      Application. Leave empty to disable tilt control.
   ha_discovery_switch_app_id:
     name: Switch Application ID
     description: C-Bus application ID to treat as switches. Leave empty to disable
