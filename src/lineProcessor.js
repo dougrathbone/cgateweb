@@ -40,11 +40,7 @@ class LineProcessor {
             // Preserve existing semantics for re-entrant callbacks (e.g. close()).
             this._buffer = buffer.slice(searchStart);
 
-            try {
-                this._processLine(rawLine);
-            } catch (error) {
-                throw error;
-            }
+            this._processLine(rawLine);
 
             delimiterIndex = buffer.indexOf(delimiter, searchStart);
         }
