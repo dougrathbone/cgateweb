@@ -415,6 +415,29 @@ th.cb-col, td.cb-col {
   background: var(--border);
   margin: 0 4px;
 }
+
+/* Pagination */
+.pagination-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+}
+.pagination-info {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.pagination-bar button { padding: 4px 10px; font-size: 0.8rem; }
+.page-size-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
 </style>
 </head>
 <body>
@@ -469,6 +492,9 @@ th.cb-col, td.cb-col {
         <button class="primary" id="confirmImport">Import Labels</button>
         <button id="cancelImport">Cancel</button>
       </div>
+      <div style="margin-top:10px">
+        <button id="downloadBackupBtn">&#11015; Download backup</button>
+      </div>
       <div class="import-preview" id="importPreview"></div>
     </div>
   </div>
@@ -489,6 +515,9 @@ th.cb-col, td.cb-col {
           <option value="excluded">Excluded</option>
         </select>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap" id="tableActionsBar">
+        <button id="autoFillAreasBtn" title="Pre-fill area for all rows where area is empty and label contains a recognisable room word">&#10024; Auto-fill areas</button>
+      </div>
       <div class="bulk-toolbar" id="bulkToolbar">
         <span class="bulk-count" id="bulkCount">0 selected</span>
         <div class="bulk-sep"></div>
@@ -503,6 +532,20 @@ th.cb-col, td.cb-col {
         <button id="bulkClear">Clear selection</button>
       </div>
       <div id="tableContainer"></div>
+      <div class="pagination-bar" id="paginationBar">
+        <button id="prevPageBtn">&#8592; Prev</button>
+        <button id="nextPageBtn">Next &#8594;</button>
+        <span class="pagination-info" id="paginationInfo"></span>
+        <label style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          Per page:
+          <select class="page-size-select" id="pageSizeSelect">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="0">All</option>
+          </select>
+        </label>
+      </div>
       <div class="add-row">
         <input type="text" id="addAddress" placeholder="network/app/group" style="width:160px">
         <input type="text" id="addLabel" placeholder="Label name" style="flex:1">
@@ -540,6 +583,28 @@ th.cb-col, td.cb-col {
   let selectedKeys = new Set();
   let lastClickedKey = null;
   let lastFilteredKeys = [];
+
+  // Pagination state
+  var currentPage = 0;
+  var pageSize = parseInt(localStorage.getItem('labelEditorPageSize') || '50', 10);
+
+  // Room word list for area auto-suggest
+  var ROOM_WORDS = ['office', 'lounge', 'kitchen', 'bedroom', 'bathroom', 'garage', 'laundry',
+    'dining', 'living', 'entry', 'hall', 'stair', 'study', 'theatre', 'theater',
+    'alfresco', 'patio', 'balcony', 'cellar', 'basement', 'attic', 'gym', 'media',
+    'library', 'nursery', 'guest'];
+
+  function guessArea(label) {
+    if (!label) return null;
+    var words = label.toLowerCase().split(/[\s_\-\/]+/);
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      if (ROOM_WORDS.indexOf(w) !== -1) {
+        return w.charAt(0).toUpperCase() + w.slice(1);
+      }
+    }
+    return null;
+  }
 
   function clearStatusRefreshTimer() {
     if (statusRefreshTimer !== null) {
@@ -769,13 +834,37 @@ th.cb-col, td.cb-col {
     }
     updateBulkToolbar();
 
+    // Pagination: clamp currentPage to valid range
+    var totalFiltered = filtered.length;
+    var effectivePageSize = pageSize > 0 ? pageSize : totalFiltered;
+    var totalPages = effectivePageSize > 0 ? Math.max(1, Math.ceil(totalFiltered / effectivePageSize)) : 1;
+    if (currentPage >= totalPages) currentPage = totalPages - 1;
+    if (currentPage < 0) currentPage = 0;
+
+    var pageStart = currentPage * effectivePageSize;
+    var pageEnd = pageSize > 0 ? Math.min(pageStart + effectivePageSize, totalFiltered) : totalFiltered;
+    var pageKeys = filtered.slice(pageStart, pageEnd);
+
+    // Update pagination bar
+    var paginationInfo = document.getElementById('paginationInfo');
+    if (totalFiltered === 0) {
+      paginationInfo.textContent = 'No devices';
+    } else {
+      paginationInfo.textContent = 'Showing ' + (pageStart + 1) + '\u2013' + pageEnd + ' of ' + totalFiltered + ' devices';
+    }
+    document.getElementById('prevPageBtn').disabled = currentPage === 0;
+    document.getElementById('nextPageBtn').disabled = currentPage >= totalPages - 1;
+    // Sync page size selector
+    var pageSizeSelect = document.getElementById('pageSizeSelect');
+    pageSizeSelect.value = String(pageSize);
+
     var container = document.getElementById('tableContainer');
-    if (filtered.length === 0) {
+    if (totalFiltered === 0) {
       container.innerHTML = '<div class="empty-state"><p>No labels found</p><p>Import a Clipsal project file or add labels manually below.</p></div>';
     } else {
-      var allVisibleSelected = filtered.length > 0 && filtered.every(function(k) { return selectedKeys.has(k); });
+      var allVisibleSelected = pageKeys.length > 0 && pageKeys.every(function(k) { return selectedKeys.has(k); });
 
-      var rows = filtered.map(function(k) {
+      var rows = pageKeys.map(function(k) {
         var val = all[k];
         var type = getType(k);
         var eid = getEntityId(k);
@@ -800,13 +889,25 @@ th.cb-col, td.cb-col {
           '</select></td>';
         }
 
+        // Area cell: show placeholder suggestion if no area is set
+        var areaPlaceholder = !area ? guessArea(val) : null;
+        var areaAttr = areaPlaceholder ? ' data-area-placeholder="' + esc(areaPlaceholder) + '"' : '';
+        var areaContent;
+        if (area) {
+          areaContent = esc(area);
+        } else if (areaPlaceholder) {
+          areaContent = '<span style="color:var(--text-muted);font-style:italic">' + esc(areaPlaceholder) + '?</span>';
+        } else {
+          areaContent = '<span style="color:var(--text-muted);font-style:italic">none</span>';
+        }
+
         return '<tr' + trClass + '>' +
           '<td class="cb-col"><input type="checkbox" class="select-cb" data-sel-key="' + esc(k) + '"' + (isSel ? ' checked' : '') + '></td>' +
           '<td class="addr">' + esc(k) + '</td>' +
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
           typeCell +
           '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
-          '<td style="min-width:80px;max-width:130px"><span class="area-display' + (area ? ' has-value' : '') + '" data-area-key="' + esc(k) + '">' + (area ? esc(area) : '<span style="color:var(--text-muted);font-style:italic">none</span>') + '</span></td>' +
+          '<td style="min-width:80px;max-width:130px"><span class="area-display' + (area ? ' has-value' : '') + '" data-area-key="' + esc(k) + '"' + areaAttr + '>' + areaContent + '</span></td>' +
           '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
           '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +
           '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
@@ -978,10 +1079,11 @@ th.cb-col, td.cb-col {
     if (areaDisplay) {
       var areaKey = areaDisplay.dataset.areaKey;
       var currentArea = getArea(areaKey);
+      var suggestedArea = areaDisplay.dataset.areaPlaceholder || null;
       var areaInput = document.createElement('input');
       areaInput.className = 'area-input';
       areaInput.value = currentArea;
-      areaInput.placeholder = 'e.g. Office';
+      areaInput.placeholder = suggestedArea ? suggestedArea + ' (suggested)' : 'e.g. Office';
       areaDisplay.replaceWith(areaInput);
       areaInput.focus();
       areaInput.select();
@@ -1061,8 +1163,8 @@ th.cb-col, td.cb-col {
   });
 
   // --- Search & filter ---
-  document.getElementById('searchInput').addEventListener('input', render);
-  document.getElementById('typeFilter').addEventListener('change', render);
+  document.getElementById('searchInput').addEventListener('input', function() { currentPage = 0; render(); });
+  document.getElementById('typeFilter').addEventListener('change', function() { currentPage = 0; render(); });
 
   // --- Save ---
   document.getElementById('saveBtn').addEventListener('click', saveLabels);
@@ -1116,6 +1218,59 @@ th.cb-col, td.cb-col {
     selectedKeys.clear();
     lastClickedKey = null;
     render();
+  });
+
+  // --- Auto-fill areas ---
+  document.getElementById('autoFillAreasBtn').addEventListener('click', function() {
+    var all = getAllLabels();
+    var filled = 0;
+    Object.keys(all).forEach(function(k) {
+      if (getArea(k)) return; // already has area
+      var suggestion = guessArea(all[k]);
+      if (suggestion) {
+        dirtyAreas[k] = suggestion;
+        filled++;
+      }
+    });
+    if (filled > 0) {
+      render();
+      showToast('Auto-filled areas for ' + filled + ' device' + (filled === 1 ? '' : 's') + '. Review and save.');
+    } else {
+      showToast('No new area suggestions found.', false);
+    }
+  });
+
+  // --- Pagination ---
+  document.getElementById('prevPageBtn').addEventListener('click', function() {
+    if (currentPage > 0) { currentPage--; render(); }
+  });
+  document.getElementById('nextPageBtn').addEventListener('click', function() {
+    currentPage++; render();
+  });
+  document.getElementById('pageSizeSelect').addEventListener('change', function() {
+    pageSize = parseInt(this.value, 10);
+    localStorage.setItem('labelEditorPageSize', String(pageSize));
+    currentPage = 0;
+    render();
+  });
+
+  // --- Download backup ---
+  document.getElementById('downloadBackupBtn').addEventListener('click', async function() {
+    try {
+      var res = await fetch(API_BASE + '/api/labels');
+      var data = await res.json();
+      var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'labels.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      showToast('Download failed: ' + e.message, true);
+    }
   });
 
   // --- Section toggle ---

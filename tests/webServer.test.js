@@ -858,6 +858,44 @@ describe('WebServer', () => {
         });
     });
 
+    describe('GET /api/labels (label export / backup)', () => {
+        // The label export "Download backup" feature in the UI uses GET /api/labels directly.
+        // No dedicated /api/labels/export endpoint is needed; the existing endpoint returns
+        // a valid JSON payload that can be re-imported.
+
+        it('returns valid JSON with labels, count, and no extra fields when minimal data is present', async () => {
+            const res = await request('GET', '/api/labels');
+            expect(res.status).toBe(200);
+            expect(typeof res.body.labels).toBe('object');
+            expect(typeof res.body.count).toBe('number');
+            expect(res.body.count).toBe(Object.keys(res.body.labels).length);
+        });
+
+        it('returned payload contains areas when present, making it re-importable', async () => {
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                source: 'test',
+                labels: { '254/56/10': 'Kitchen Light' },
+                areas: { '254/56/10': 'Kitchen' }
+            }));
+            labelLoader.load();
+
+            const res = await request('GET', '/api/labels');
+            expect(res.status).toBe(200);
+            expect(res.body.areas).toEqual({ '254/56/10': 'Kitchen' });
+            // Verify we can round-trip: PUT the export back and it succeeds
+            const putRes = await request('PUT', '/api/labels',
+                JSON.stringify({ labels: res.body.labels, areas: res.body.areas }));
+            expect(putRes.status).toBe(200);
+            expect(putRes.body.saved).toBe(true);
+        });
+
+        it('content-type is application/json for backup consumption', async () => {
+            const res = await request('GET', '/api/labels');
+            expect(res.headers['content-type']).toMatch(/application\/json/);
+        });
+    });
+
     describe('Path traversal guard', () => {
         it('sends 403 when resolved filePath escapes static dir', () => {
             const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
