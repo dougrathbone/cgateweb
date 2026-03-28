@@ -1,6 +1,6 @@
 {
   "name": "cgateweb",
-  "version": "1.4.21",
+  "version": "1.4.22",
   "description": "Node.js bridge connecting Clipsal C-Bus automation systems to MQTT for Home Assistant integration",
   "keywords": [
     "cbus",
@@ -59,6 +59,7 @@
     "check-setup": "node -e \"const { validateSetup } = require('./src/settingsValidator'); let settings; try { settings = require('./settings.js'); } catch(e) { settings = {}; } const result = validateSetup(settings); if (result.isFirstTime) { console.log(result.message); process.exit(1); } if (result.issues.length > 0) { console.log('Issues:', result.issues.join(', ')); } if (result.recommendations.length > 0) { console.log('Recommendations:', result.recommendations.join(', ')); } console.log(result.isValid ? 'Setup looks good!' : 'Please address the issues above');\""
   },
   "jest": {
+    "testPathIgnorePatterns": ["/node_modules/", "/.claude/"],
     "collectCoverageFrom": [
       "src/**/*.js",
       "index.js",

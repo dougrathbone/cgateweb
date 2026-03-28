@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.22] - 2026-03-28
+
+### Added
+- C-Bus trigger group support (App 202): trigger events now published as Home Assistant `event` entities, enabling automations from keypads and scenes
+- Connection pool tuning settings in addon UI: `connection_pool_size`, `connection_health_check_interval_sec`, `connection_keep_alive_interval_sec`
+- Label editor batch operations: multi-select rows with checkboxes, bulk type assignment (light/cover/switch), bulk exclude/include, Shift+click range selection
+- Integration test now validates HA MQTT Discovery message format and required fields
+
+### Fixed
+- Cover entities now use `optimistic: false` in discovery payload so Home Assistant waits for confirmed position feedback before updating UI state
+
 ## [1.4.21] - 2026-03-28
 
 ### Added
