@@ -242,6 +242,27 @@ td.label-cell { position: relative; }
 }
 .eid-display:hover { background: rgba(34, 139, 230, 0.08); }
 .eid-display.has-value { color: var(--text); }
+.area-display {
+  cursor: text;
+  padding: 2px 4px;
+  border-radius: 3px;
+  min-height: 1.5em;
+  display: block;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.area-display:hover { background: rgba(34, 139, 230, 0.08); }
+.area-display.has-value { color: var(--text); }
+.area-input {
+  width: 100%;
+  padding: 2px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: inherit;
+}
 td.source-cell {
   font-size: 0.8rem;
   color: var(--text-muted);
@@ -458,7 +479,7 @@ th.cb-col, td.cb-col {
     </div>
     <div class="section-body" id="labelsBody">
       <div class="toolbar">
-        <input type="text" class="search-input" id="searchInput" placeholder="Search by address, label, or entity ID...">
+        <input type="text" class="search-input" id="searchInput" placeholder="Search by address, label, entity ID, or area...">
         <select class="filter-select" id="typeFilter">
           <option value="">All types</option>
           <option value="light">Lights</option>
@@ -715,7 +736,8 @@ th.cb-col, td.cb-col {
       if (!search) return true;
       return k.toLowerCase().includes(search) ||
              (all[k] || '').toLowerCase().includes(search) ||
-             getEntityId(k).toLowerCase().includes(search);
+             getEntityId(k).toLowerCase().includes(search) ||
+             getArea(k).toLowerCase().includes(search);
     });
 
     filtered.sort(function(a, b) {
@@ -757,8 +779,9 @@ th.cb-col, td.cb-col {
         var val = all[k];
         var type = getType(k);
         var eid = getEntityId(k);
+        var area = getArea(k);
         var excl = isExcluded(k);
-        var rowDirty = (k in dirtyLabels) || (k in dirtyTypes) || (k in dirtyEntityIds) || (k in dirtyExcludes);
+        var rowDirty = (k in dirtyLabels) || (k in dirtyTypes) || (k in dirtyEntityIds) || (k in dirtyAreas) || (k in dirtyExcludes);
         var isSel = selectedKeys.has(k);
 
         var trClasses = [];
@@ -783,6 +806,7 @@ th.cb-col, td.cb-col {
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
           typeCell +
           '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
+          '<td style="min-width:80px;max-width:130px"><span class="area-display' + (area ? ' has-value' : '') + '" data-area-key="' + esc(k) + '">' + (area ? esc(area) : '<span style="color:var(--text-muted);font-style:italic">none</span>') + '</span></td>' +
           '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
           '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +
           '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
@@ -796,6 +820,7 @@ th.cb-col, td.cb-col {
         '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
         '<th data-sort="type">Type' + sortArrow('type') + '</th>' +
         '<th data-sort="entity_id">Entity ID' + sortArrow('entity_id') + '</th>' +
+        '<th class="no-sort" style="min-width:80px;max-width:130px">Area</th>' +
         '<th class="no-sort">Excl</th>' +
         '<th class="no-sort"></th>' +
         '<th class="no-sort"></th>' +
@@ -948,6 +973,36 @@ th.cb-col, td.cb-col {
       return;
     }
 
+    // Inline area editing
+    var areaDisplay = e.target.closest('.area-display');
+    if (areaDisplay) {
+      var areaKey = areaDisplay.dataset.areaKey;
+      var currentArea = getArea(areaKey);
+      var areaInput = document.createElement('input');
+      areaInput.className = 'area-input';
+      areaInput.value = currentArea;
+      areaInput.placeholder = 'e.g. Office';
+      areaDisplay.replaceWith(areaInput);
+      areaInput.focus();
+      areaInput.select();
+
+      function commitArea() {
+        var newVal = areaInput.value.trim();
+        if (newVal !== (areas[areaKey] || '')) {
+          dirtyAreas[areaKey] = newVal || null;
+        } else {
+          delete dirtyAreas[areaKey];
+        }
+        render();
+      }
+      areaInput.addEventListener('blur', commitArea);
+      areaInput.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); commitArea(); }
+        if (ev.key === 'Escape') { delete dirtyAreas[areaKey]; render(); }
+      });
+      return;
+    }
+
     // Delete button
     var delBtn = e.target.closest('[data-delete]');
     if (delBtn) {
@@ -959,6 +1014,7 @@ th.cb-col, td.cb-col {
       }
       delete dirtyTypes[delKey];
       delete dirtyEntityIds[delKey];
+      delete dirtyAreas[delKey];
       delete dirtyExcludes[delKey];
       render();
       return;
