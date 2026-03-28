@@ -939,4 +939,123 @@ describe('HaDiscovery', () => {
             expect(payload.object_id).toBe('extra_blind');
         });
     });
+
+    describe('Stale Discovery Cleanup', () => {
+        beforeEach(() => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
+                callback(null, MOCK_TREEXML_RESULT_NET254);
+            });
+        });
+
+        it('should not send any cleanup messages on first run (no prior published topics)', () => {
+            // Fresh instance — _publishedTopics is empty
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // All publishes should have non-empty payloads (no stale cleanup)
+            const emptyPayloadCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/config') && c[1] === ''
+            );
+            expect(emptyPayloadCalls).toHaveLength(0);
+        });
+
+        it('should clear a discovery topic when the device is excluded on second run', () => {
+            // First run: device 254/56/10 is included
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Verify the topic was published normally in run 1
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
+
+            // Second run: device 254/56/10 is now excluded
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/56/10'])
+            });
+            mockPublishFn.mockClear();
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // The previously-published light topic should be cleared with an empty payload
+            const staleCleanupCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config' && c[1] === ''
+            );
+            expect(staleCleanupCall).toBeDefined();
+            expect(staleCleanupCall[2]).toEqual({ retain: true, qos: 0 });
+
+            // The topic should no longer be tracked as published
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(false);
+        });
+
+        it('should clear the old light topic when a device changes type from light to cover across runs', () => {
+            // First run: device 254/56/10 published as a light
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
+
+            // Second run: device 254/56/10 now has a type override to cover
+            haDiscovery.updateLabels({
+                labels: new Map([['254/56/10', 'Kitchen Blind']]),
+                typeOverrides: new Map([['254/56/10', 'cover']]),
+                entityIds: new Map(),
+                exclude: new Set()
+            });
+            mockPublishFn.mockClear();
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // The old light topic must be cleared
+            const lightCleanupCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config' && c[1] === ''
+            );
+            expect(lightCleanupCall).toBeDefined();
+
+            // The new cover topic must be published
+            const coverCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config' && c[1] !== ''
+            );
+            expect(coverCall).toBeDefined();
+
+            // Session tracking should reflect the new state
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(false);
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/cover/cgateweb_254_56_10/config')).toBe(true);
+        });
+
+        it('should not clear topics from other networks when running for a specific network', () => {
+            // Simulate a previously published topic for network 200
+            haDiscovery._publishedTopics.add('testhomeassistant/light/cgateweb_200_56_5/config');
+
+            // Run discovery for network 254 only
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // The network-200 topic must NOT be cleared
+            const network200Cleanup = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_200_56_5/config' && c[1] === ''
+            );
+            expect(network200Cleanup).toBeUndefined();
+
+            // The network-200 topic should still be in the published set
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_200_56_5/config')).toBe(true);
+        });
+
+        it('should update _publishedTopics to reflect the new set of topics after each run', () => {
+            // First run
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            const topicsAfterRun1 = new Set(haDiscovery._publishedTopics);
+            expect(topicsAfterRun1.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
+
+            // Second run with a device excluded
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/56/10'])
+            });
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // The excluded device should be removed from tracking
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(false);
+            // Other devices should still be tracked
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_11/config')).toBe(true);
+        });
+    });
 });
