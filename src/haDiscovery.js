@@ -45,7 +45,7 @@ class HaDiscovery {
         this._publish = publishFn;
         this._sendCommand = sendCommandFn;
         this._applyLabelData(labelData);
-        
+
         this.pendingTreeNetworks = [];
         this.activeTreeSession = null;
         this.treeBufferParts = [];
@@ -53,6 +53,9 @@ class HaDiscovery {
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
         this.logger = createLogger({ component: 'HaDiscovery' });
+        // Tracks all discovery config topics published in this session so that
+        // stale retained messages can be cleared when devices are excluded or change type.
+        this._publishedTopics = new Set();
     }
 
     /**
@@ -206,7 +209,7 @@ class HaDiscovery {
     _publishDiscoveryFromTree(networkId, treeData) {
         this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
         const startTime = Date.now();
-        
+
         const networkData = findNetworkData(networkId, treeData);
         if (!networkData) {
              this.logger.warn(`TreeXML for network ${networkId}: could not find network data. Top-level keys: ${JSON.stringify(Object.keys(treeData || {}))}`);
@@ -226,7 +229,7 @@ class HaDiscovery {
         if (!Array.isArray(units)) {
             units = [units];
         }
-        
+
         const lightingAppId = DEFAULT_CBUS_APP_LIGHTING;
         const coverAppId = this.settings.ha_discovery_cover_app_id;
         const switchAppId = this.settings.ha_discovery_switch_app_id;
@@ -236,6 +239,10 @@ class HaDiscovery {
         const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
+
+        // Track which discovery config topics are published in this run so that
+        // stale topics (from excluded or type-changed devices) can be cleared.
+        this._currentRunTopics = new Set();
 
         // C-Gate TREEXML returns two formats depending on version/path:
         //   Structured: unit.Application = [{ ApplicationAddress, Group: [{GroupAddress, Label}] }]
@@ -261,6 +268,28 @@ class HaDiscovery {
         // C-Gate's flat TREEXML format omits groups not assigned to specific units,
         // but labels.json may define groups that are valid and controllable.
         this._supplementFromLabels(networkId, lightingAppId, groupsByApp, labelSnapshot);
+
+        // Clear any previously published discovery topics for this network that were
+        // not republished in this run (device excluded or type changed since last run).
+        const networkUniqueIdPrefix = `cgateweb_${networkId}_`;
+        for (const topic of this._publishedTopics) {
+            if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
+                this.logger.debug(`Clearing stale discovery topic: ${topic}`);
+                this._publish(topic, '', { retain: true, qos: 0 });
+            }
+        }
+
+        // Merge the current run's topics into the session-wide set and remove
+        // any stale topics that were just cleared.
+        for (const topic of this._publishedTopics) {
+            if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
+                this._publishedTopics.delete(topic);
+            }
+        }
+        for (const topic of this._currentRunTopics) {
+            this._publishedTopics.add(topic);
+        }
+        this._currentRunTopics = null;
 
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
@@ -320,10 +349,14 @@ class HaDiscovery {
                 if (config) {
                     this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
                     this._createDiscovery(networkId, appId, groupId, group.Label, config, labelSnapshot);
-                    // Remove any stale retained light config for this group
+                    // Remove any stale retained light config for this group.
+                    // This covers the case where the type changes within the same session
+                    // (e.g. first run saw it as a light; this run sees the type override).
                     const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
                     const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
                     this._publish(staleTopic, '', { retain: true, qos: 0 });
+                    // Ensure the stale light topic is not retained in _publishedTopics
+                    this._publishedTopics.delete(staleTopic);
                     return;
                 }
                 this.logger.warn(`Unknown type override "${typeOverride}" for ${labelKey}, falling back to light`);
@@ -370,6 +403,7 @@ class HaDiscovery {
             };
 
             this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+            if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
             this.discoveryCount++;
         });
     }
@@ -451,6 +485,7 @@ class HaDiscovery {
         };
 
         this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
         this.discoveryCount++;
     }
 
