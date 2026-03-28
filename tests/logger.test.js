@@ -159,10 +159,10 @@ describe('Logger', () => {
             testLogger.setLevel('error');
             expect(testLogger.level).toBe('error');
             expect(testLogger.currentLevel).toBe(0);
-            
+
             testLogger.info('info message');
             expect(consoleLogSpy).not.toHaveBeenCalled();
-            
+
             testLogger.error('error message');
             expect(consoleErrorSpy).toHaveBeenCalled();
         });
@@ -170,11 +170,136 @@ describe('Logger', () => {
         it('should ignore invalid level in setLevel', () => {
             const originalLevel = testLogger.level;
             const originalCurrentLevel = testLogger.currentLevel;
-            
+
             testLogger.setLevel('invalid');
-            
+
             expect(testLogger.level).toBe(originalLevel);
             expect(testLogger.currentLevel).toBe(originalCurrentLevel);
+        });
+    });
+
+    describe('trace level', () => {
+        it('should use console.debug for trace level', () => {
+            const traceLogger = new Logger({ component: 'test', level: 'trace', enabled: true });
+            traceLogger.trace('trace message');
+            expect(consoleDebugSpy).toHaveBeenCalled();
+        });
+
+        it('should not log trace when level is above trace', () => {
+            const infoLogger = new Logger({ component: 'test', level: 'info', enabled: true });
+            infoLogger.trace('trace message');
+            expect(consoleDebugSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('time and timeEnd', () => {
+        let consoleTimeSpy;
+        let consoleTimeEndSpy;
+
+        beforeEach(() => {
+            consoleTimeSpy = jest.spyOn(console, 'time').mockImplementation();
+            consoleTimeEndSpy = jest.spyOn(console, 'timeEnd').mockImplementation();
+        });
+
+        it('should call console.time in development environment', () => {
+            const devLogger = new Logger({ component: 'test' });
+            devLogger.isDevelopment = true;
+            devLogger.time('myTimer');
+            expect(consoleTimeSpy).toHaveBeenCalledWith('[test] myTimer');
+        });
+
+        it('should call console.timeEnd in development environment', () => {
+            const devLogger = new Logger({ component: 'test' });
+            devLogger.isDevelopment = true;
+            devLogger.timeEnd('myTimer');
+            expect(consoleTimeEndSpy).toHaveBeenCalledWith('[test] myTimer');
+        });
+
+        it('should not call console.time in production environment', () => {
+            const prodLogger = new Logger({ component: 'test' });
+            prodLogger.isDevelopment = false;
+            prodLogger.time('myTimer');
+            expect(consoleTimeSpy).not.toHaveBeenCalled();
+        });
+
+        it('should not call console.timeEnd in production environment', () => {
+            const prodLogger = new Logger({ component: 'test' });
+            prodLogger.isDevelopment = false;
+            prodLogger.timeEnd('myTimer');
+            expect(consoleTimeEndSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('_determineLogLevel', () => {
+        const originalEnv = process.env;
+
+        afterEach(() => {
+            process.env = originalEnv;
+        });
+
+        it('should use LOG_LEVEL environment variable when set to a valid level', () => {
+            process.env = { ...originalEnv, LOG_LEVEL: 'error', NODE_ENV: 'production' };
+            const envLogger = new Logger();
+            expect(envLogger.level).toBe('error');
+        });
+
+        it('should ignore LOG_LEVEL environment variable when set to an invalid level', () => {
+            process.env = { ...originalEnv, LOG_LEVEL: 'invalid', NODE_ENV: 'production' };
+            const envLogger = new Logger();
+            expect(envLogger.level).toBe('info');
+        });
+
+        it('should default to info when NODE_ENV is not development or test', () => {
+            process.env = { ...originalEnv, NODE_ENV: 'production', LOG_LEVEL: undefined };
+            delete process.env.LOG_LEVEL;
+            const prodLogger = new Logger();
+            expect(prodLogger.level).toBe('info');
+        });
+    });
+
+    describe('Color formatting', () => {
+        it('should apply color codes when enableColors is true', () => {
+            const colorLogger = new Logger({ component: 'test', level: 'debug', enabled: true });
+            colorLogger.enableColors = true;
+            colorLogger.enableVerbose = true;
+
+            colorLogger.error('colored error');
+            const errorCall = consoleErrorSpy.mock.calls[0][0];
+            expect(errorCall).toContain('\x1b[31m'); // Red for ERROR
+
+            colorLogger.warn('colored warn');
+            const warnCall = consoleWarnSpy.mock.calls[0][0];
+            expect(warnCall).toContain('\x1b[33m'); // Yellow for WARN
+
+            colorLogger.info('colored info');
+            const infoCall = consoleLogSpy.mock.calls[0][0];
+            expect(infoCall).toContain('\x1b[36m'); // Cyan for INFO
+
+            colorLogger.debug('colored debug');
+            const debugCall = consoleDebugSpy.mock.calls[0][0];
+            expect(debugCall).toContain('\x1b[90m'); // Gray for DEBUG
+        });
+
+        it('should apply reset code after color when enableColors is true', () => {
+            const colorLogger = new Logger({ component: 'test', level: 'info', enabled: true });
+            colorLogger.enableColors = true;
+            colorLogger.enableVerbose = false;
+
+            colorLogger.info('colored info');
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).toContain('\x1b[0m'); // Reset code
+        });
+    });
+
+    describe('Compact metadata formatting', () => {
+        it('should use compact JSON format when enableVerbose is false', () => {
+            const prodLogger = new Logger({ component: 'test', level: 'info', enabled: true });
+            prodLogger.enableVerbose = false;
+
+            prodLogger.info('test message', { key: 'value' });
+            const call = consoleLogSpy.mock.calls[0][0];
+            // Compact format: single line JSON appended with a space
+            expect(call).toContain('{"key":"value"}');
         });
     });
 });

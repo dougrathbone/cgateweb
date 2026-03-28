@@ -234,6 +234,100 @@ describe('SettingsValidator', () => {
         });
     });
 
+    describe('validateSetup', () => {
+        it('should return isFirstTime true for empty settings object', () => {
+            const result = validator.validateSetup({});
+            expect(result.isFirstTime).toBe(true);
+            expect(result.message).toContain('No configuration found');
+        });
+
+        it('should return isFirstTime true for null/undefined settings', () => {
+            const result = validator.validateSetup(null);
+            expect(result.isFirstTime).toBe(true);
+        });
+
+        it('should return isFirstTime false for non-empty settings', () => {
+            const result = validator.validateSetup(validSettings);
+            expect(result.isFirstTime).toBe(false);
+        });
+
+        it('should add recommendation when cbusip is placeholder', () => {
+            const settings = { ...validSettings, cbusip: 'your-cgate-ip' };
+            const result = validator.validateSetup(settings);
+            expect(result.recommendations).toContain('Update cbusip to match your actual C-Gate server IP address');
+        });
+
+        it('should add recommendation when cbusip is missing', () => {
+            const settings = { ...validSettings };
+            delete settings.cbusip;
+            const result = validator.validateSetup(settings);
+            expect(result.recommendations).toContain('Update cbusip to match your actual C-Gate server IP address');
+        });
+
+        it('should add recommendation when cbusname is CLIPSAL', () => {
+            const settings = { ...validSettings, cbusname: 'CLIPSAL' };
+            const result = validator.validateSetup(settings);
+            expect(result.recommendations).toContain('Update cbusname to match your actual C-Bus project name');
+        });
+
+        it('should add recommendation when mqtt is localhost in production', () => {
+            const originalEnv = process.env.NODE_ENV;
+            process.env.NODE_ENV = 'production';
+            try {
+                const settings = { ...validSettings, mqtt: 'localhost:1883' };
+                const result = validator.validateSetup(settings);
+                expect(result.recommendations).toContain('Consider updating MQTT broker address for production deployment');
+            } finally {
+                process.env.NODE_ENV = originalEnv;
+            }
+        });
+
+        it('should add issue when MQTT auth is missing in production', () => {
+            const originalEnv = process.env.NODE_ENV;
+            process.env.NODE_ENV = 'production';
+            try {
+                const settings = { ...validSettings, mqtt: 'broker.example.com:1883' };
+                delete settings.mqttusername;
+                delete settings.mqttpassword;
+                const result = validator.validateSetup(settings);
+                expect(result.issues).toContain('MQTT authentication is recommended for production environments');
+                expect(result.isValid).toBe(false);
+            } finally {
+                process.env.NODE_ENV = originalEnv;
+            }
+        });
+
+        it('should return isValid true when no issues in production', () => {
+            const originalEnv = process.env.NODE_ENV;
+            process.env.NODE_ENV = 'production';
+            try {
+                const settings = {
+                    ...validSettings,
+                    mqtt: 'broker.example.com:1883',
+                    mqttusername: 'user',
+                    mqttpassword: 'pass'
+                };
+                const result = validator.validateSetup(settings);
+                expect(result.isValid).toBe(true);
+            } finally {
+                process.env.NODE_ENV = originalEnv;
+            }
+        });
+
+        it('should return empty issues and recommendations for clean non-production settings', () => {
+            const originalEnv = process.env.NODE_ENV;
+            process.env.NODE_ENV = 'test';
+            try {
+                const result = validator.validateSetup(validSettings);
+                expect(result.isFirstTime).toBe(false);
+                expect(result.issues).toEqual([]);
+                expect(result.isValid).toBe(true);
+            } finally {
+                process.env.NODE_ENV = originalEnv;
+            }
+        });
+    });
+
     describe('exitOnError behavior', () => {
         it('should not exit when exitOnError is false', () => {
             const noExitValidator = new SettingsValidator({ exitOnError: false });
@@ -308,10 +402,24 @@ describe('Module exports', () => {
         it('should create validator with custom options', () => {
             const customValidator = createValidator({ exitOnError: false });
             expect(customValidator).toBeInstanceOf(SettingsValidator);
-            
+
             const invalidSettings = { ...validSettings, mqtt: null };
             const result = customValidator.validate(invalidSettings);
             expect(result).toBe(false);
+        });
+    });
+
+    describe('validateSetup function', () => {
+        it('should be exported and callable', () => {
+            const { validateSetup } = require('../src/settingsValidator');
+            expect(typeof validateSetup).toBe('function');
+        });
+
+        it('should return isFirstTime when no settings provided', () => {
+            const { validateSetup } = require('../src/settingsValidator');
+            const result = validateSetup({});
+            expect(result.isFirstTime).toBe(true);
+            expect(result.message).toBeDefined();
         });
     });
 });
