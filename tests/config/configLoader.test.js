@@ -919,4 +919,310 @@ describe('ConfigLoader', () => {
             expect(config._environment.type).toBe('default');
         });
     });
+
+    describe('getDefaultConfig() public method', () => {
+        test('should return same result as _getDefaultConfig()', () => {
+            const result = configLoader.getDefaultConfig();
+
+            expect(result.cbusip).toBe('127.0.0.1');
+            expect(result.cbuscommandport).toBe(20023);
+            expect(result.cbuseventport).toBe(20025);
+            expect(result.cbusname).toBe('HOME');
+            expect(result.mqtt).toBe('127.0.0.1:1883');
+            expect(result.messageinterval).toBe(200);
+            expect(result.logging).toBe(false);
+            expect(result.ha_discovery_enabled).toBe(false);
+            expect(result._environment.type).toBe('default');
+        });
+    });
+
+    describe('load() - Addon Config optional fields', () => {
+        const baseAddonOptions = {
+            cgate_host: '192.168.1.100',
+            mqtt_host: 'core-mosquitto'
+        };
+
+        beforeEach(() => {
+            mockEnvironmentDetector.detect.mockReturnValue({
+                type: 'addon',
+                isAddon: true,
+                isStandalone: false,
+                optionsPath: '/data/options.json',
+                dataPath: '/data',
+                configPath: '/config'
+            });
+        });
+
+        test('should set cbus_label_file from explicit options.cbus_label_file', () => {
+            const options = { ...baseAddonOptions, cbus_label_file: '/config/my-labels.json' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/config/my-labels.json');
+        });
+
+        test('should set web_port when provided in addon options', () => {
+            const options = { ...baseAddonOptions, web_port: 8080 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_port).toBe(8080);
+        });
+
+        test('should not set web_port when not provided in addon options', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            expect(config.web_port).toBeUndefined();
+        });
+
+        test('should set web_api_key when provided in addon options', () => {
+            const options = { ...baseAddonOptions, web_api_key: 'secret-key-123' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_api_key).toBe('secret-key-123');
+        });
+
+        test('should not set web_api_key when not provided in addon options', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            expect(config.web_api_key).toBeUndefined();
+        });
+
+        test('should set web_allow_unauthenticated_mutations to true when provided as true', () => {
+            const options = { ...baseAddonOptions, web_allow_unauthenticated_mutations: true };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_allow_unauthenticated_mutations).toBe(true);
+        });
+
+        test('should set web_allow_unauthenticated_mutations to false when provided as false', () => {
+            const options = { ...baseAddonOptions, web_allow_unauthenticated_mutations: false };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_allow_unauthenticated_mutations).toBe(false);
+        });
+
+        test('should filter and set web_allowed_origins when provided', () => {
+            const options = { ...baseAddonOptions, web_allowed_origins: ['http://192.168.1.10', '', '  ', 'http://ha.local'] };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_allowed_origins).toEqual(['http://192.168.1.10', 'http://ha.local']);
+        });
+
+        test('should set web_mutation_rate_limit_per_minute when provided', () => {
+            const options = { ...baseAddonOptions, web_mutation_rate_limit_per_minute: 60 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.web_mutation_rate_limit_per_minute).toBe(60);
+        });
+
+        test('should auto-detect label file when cbus_label_file not set and a path exists', () => {
+            fs.existsSync.mockImplementation((p) => {
+                // Options file exists, and /config/cgateweb-labels.json auto-detected path exists
+                if (p === '/data/options.json') return true;
+                if (p === '/config/cgateweb-labels.json') return true;
+                return false;
+            });
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
+        });
+    });
+
+    describe('_convertSettingsToStandardFormat() - eventPublishCoalesce', () => {
+        test('should convert eventPublishCoalesce string "true" to boolean true', () => {
+            const settings = {
+                cbusip: '10.0.0.1',
+                mqtt: '10.0.0.1:1883',
+                eventPublishCoalesce: 'true'
+            };
+
+            const result = configLoader._convertSettingsToStandardFormat(settings);
+
+            expect(result.eventPublishCoalesce).toBe(true);
+        });
+
+        test('should convert eventPublishCoalesce string "false" to boolean false', () => {
+            const settings = {
+                cbusip: '10.0.0.1',
+                mqtt: '10.0.0.1:1883',
+                eventPublishCoalesce: 'false'
+            };
+
+            const result = configLoader._convertSettingsToStandardFormat(settings);
+
+            expect(result.eventPublishCoalesce).toBe(false);
+        });
+
+        test('should leave non-string eventPublishCoalesce unchanged', () => {
+            const settings = { eventPublishCoalesce: true };
+            const result = configLoader._convertSettingsToStandardFormat(settings);
+            expect(result.eventPublishCoalesce).toBe(true);
+        });
+
+        test('should convert getallonstart string "true" to boolean true via direct call', () => {
+            const result = configLoader._convertSettingsToStandardFormat({ getallonstart: 'true' });
+            expect(result.getallonstart).toBe(true);
+        });
+
+        test('should convert retainreads string "false" to boolean false via direct call', () => {
+            const result = configLoader._convertSettingsToStandardFormat({ retainreads: 'false' });
+            expect(result.retainreads).toBe(false);
+        });
+
+        test('should convert logging string "true" to boolean true via direct call', () => {
+            const result = configLoader._convertSettingsToStandardFormat({ logging: 'true' });
+            expect(result.logging).toBe(true);
+        });
+
+        test('should convert ha_discovery_enabled string "true" to boolean true via direct call', () => {
+            const result = configLoader._convertSettingsToStandardFormat({ ha_discovery_enabled: 'true' });
+            expect(result.ha_discovery_enabled).toBe(true);
+        });
+    });
+
+    describe('detectMqttConfig - non-200 status', () => {
+        test('should return null when Supervisor API returns non-200 status', async () => {
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+
+            const mockReq = {
+                on: jest.fn(),
+                setTimeout: jest.fn()
+            };
+
+            const mockHttp = {
+                get: jest.fn((url, options, callback) => {
+                    const res = {
+                        statusCode: 403,
+                        on: jest.fn((event, handler) => {
+                            if (event === 'data') {
+                                handler('Forbidden');
+                            }
+                            if (event === 'end') {
+                                handler();
+                            }
+                        })
+                    };
+                    callback(res);
+                    return mockReq;
+                })
+            };
+
+            const loader = new ConfigLoader({ httpGet: mockHttp });
+            EnvironmentDetector.mockImplementation(() => mockEnvironmentDetector);
+
+            const result = await loader.detectMqttConfig();
+            expect(result).toBeNull();
+
+            delete process.env.SUPERVISOR_TOKEN;
+        });
+    });
+
+    describe('validation - warning thresholds', () => {
+        beforeEach(() => {
+            mockEnvironmentDetector.detect.mockReturnValue({
+                type: 'addon',
+                isAddon: true,
+                optionsPath: '/data/options.json'
+            });
+        });
+
+        test('should warn when messageinterval is below minimum', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                messageinterval: 5 // below 10
+            };
+
+            // Should not throw - just warn
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when messageinterval is above maximum', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                messageinterval: 15000 // above 10000
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when commandMinIntervalMs is out of range', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                commandMinIntervalMs: 5000 // above 1000
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when commandMinIntervalMs is above maximum', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                commandMinIntervalMs: 2000 // above 1000
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when eventPublishDedupWindowMs is out of range', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                eventPublishDedupWindowMs: 90000 // above 60000
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when eventPublishDedupMaxEntries is below minimum', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                eventPublishDedupMaxEntries: 50 // below 100
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
+        test('should warn when topicCacheMaxEntries is below minimum', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                topicCacheMaxEntries: 10 // below 100
+            };
+
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+    });
 });

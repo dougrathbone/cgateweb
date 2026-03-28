@@ -303,5 +303,142 @@ describe('HAIntegration', () => {
             // Console methods should remain unchanged
             expect(console.log).toBe(originalLog);
         });
+
+        test('overridden console.log strips ISO timestamp prefix and calls original', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            // Install a spy as "original" console.log before optimizeLogging captures it
+            const spyLog = jest.fn();
+            const savedLog = console.log;
+            console.log = spyLog;
+
+            haIntegration.optimizeLogging();
+            // Now console.log is the override; spyLog is the "original" it captured
+
+            console.log('2024-03-28T12:00:00.000Z INFO test message');
+            expect(spyLog).toHaveBeenCalledWith('INFO test message');
+
+            console.log = savedLog;
+        });
+
+        test('overridden console.log passes through message without timestamp', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyLog = jest.fn();
+            const savedLog = console.log;
+            console.log = spyLog;
+
+            haIntegration.optimizeLogging();
+
+            console.log('no timestamp here');
+            expect(spyLog).toHaveBeenCalledWith('no timestamp here');
+
+            console.log = savedLog;
+        });
+
+        test('overridden console.warn strips ISO timestamp prefix and calls original', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyWarn = jest.fn();
+            const savedWarn = console.warn;
+            console.warn = spyWarn;
+
+            haIntegration.optimizeLogging();
+
+            console.warn('2024-03-28T12:00:00.000Z WARN something bad');
+            expect(spyWarn).toHaveBeenCalledWith('WARN something bad');
+
+            console.warn = savedWarn;
+        });
+
+        test('overridden console.warn passes through message without timestamp', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyWarn = jest.fn();
+            const savedWarn = console.warn;
+            console.warn = spyWarn;
+
+            haIntegration.optimizeLogging();
+
+            console.warn('plain warning');
+            expect(spyWarn).toHaveBeenCalledWith('plain warning');
+
+            console.warn = savedWarn;
+        });
+
+        test('overridden console.error strips ISO timestamp prefix and calls original', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyError = jest.fn();
+            const savedError = console.error;
+            console.error = spyError;
+
+            haIntegration.optimizeLogging();
+
+            console.error('2024-03-28T12:00:00.000Z ERROR something failed');
+            expect(spyError).toHaveBeenCalledWith('ERROR something failed');
+
+            console.error = savedError;
+        });
+
+        test('overridden console.error passes through message without timestamp', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyError = jest.fn();
+            const savedError = console.error;
+            console.error = spyError;
+
+            haIntegration.optimizeLogging();
+
+            console.error('plain error message');
+            expect(spyError).toHaveBeenCalledWith('plain error message');
+
+            console.error = savedError;
+        });
+
+        test('overridden console.debug strips ISO timestamp prefix and calls original', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyDebug = jest.fn();
+            const savedDebug = console.debug;
+            console.debug = spyDebug;
+
+            haIntegration.optimizeLogging();
+
+            console.debug('2024-03-28T12:00:00.000Z DEBUG verbose info');
+            expect(spyDebug).toHaveBeenCalledWith('DEBUG verbose info');
+
+            console.debug = savedDebug;
+        });
+
+        test('overridden console.debug passes through message without timestamp', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyDebug = jest.fn();
+            const savedDebug = console.debug;
+            console.debug = spyDebug;
+
+            haIntegration.optimizeLogging();
+
+            console.debug('plain debug message');
+            expect(spyDebug).toHaveBeenCalledWith('plain debug message');
+
+            console.debug = savedDebug;
+        });
+
+        test('overridden console.log joins multiple args before stripping timestamp', () => {
+            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
+
+            const spyLog = jest.fn();
+            const savedLog = console.log;
+            console.log = spyLog;
+
+            haIntegration.optimizeLogging();
+
+            console.log('2024-03-28T12:00:00.000Z', 'INFO', 'multi-arg message');
+            expect(spyLog).toHaveBeenCalledWith('INFO multi-arg message');
+
+            console.log = savedLog;
+        });
     });
 });
