@@ -997,4 +997,149 @@ describe('WebServer', () => {
             expect(fakeRes.end).toHaveBeenCalledWith('Forbidden');
         });
     });
+
+    describe('Label mutation round-trip (undo/redo simulation)', () => {
+        it('GET after PUT returns updated labels matching what was saved', async () => {
+            // Simulate a save mutation then verify retrieval matches
+            const saveRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Lounge Light', '254/56/20': 'Bedroom Light' },
+                type_overrides: { '254/56/20': 'switch' }
+            }));
+            expect(saveRes.status).toBe(200);
+            expect(saveRes.body.saved).toBe(true);
+
+            const getRes = await request('GET', '/api/labels');
+            expect(getRes.status).toBe(200);
+            expect(getRes.body.labels['254/56/10']).toBe('Lounge Light');
+            expect(getRes.body.labels['254/56/20']).toBe('Bedroom Light');
+            expect(getRes.body.type_overrides['254/56/20']).toBe('switch');
+        });
+
+        it('re-saving original labels after a mutation restores the previous state', async () => {
+            // Step 1: capture the initial server state (analogous to snapshot before mutation)
+            const before = await request('GET', '/api/labels');
+            expect(before.status).toBe(200);
+
+            // Step 2: mutate labels (the "dirty" operation)
+            const mutateRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Changed Label' }
+            }));
+            expect(mutateRes.status).toBe(200);
+            expect(mutateRes.body.labels['254/56/10']).toBe('Changed Label');
+
+            // Step 3: "undo" — re-save the original snapshot
+            const undoRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: before.body.labels,
+                type_overrides: before.body.type_overrides,
+                entity_ids: before.body.entity_ids,
+                areas: before.body.areas,
+                exclude: before.body.exclude
+            }));
+            expect(undoRes.status).toBe(200);
+
+            // Step 4: verify the state matches the original snapshot
+            const afterUndo = await request('GET', '/api/labels');
+            expect(afterUndo.body.labels).toEqual(before.body.labels);
+        });
+
+        it('applying then reverting excludes produces original exclude list', async () => {
+            // Initial: no excludes
+            const initial = await request('GET', '/api/labels');
+            expect(initial.body.exclude).toBeUndefined();
+
+            // Exclude a key
+            const withExclude = await request('PUT', '/api/labels', JSON.stringify({
+                labels: initial.body.labels,
+                exclude: ['254/56/10']
+            }));
+            expect(withExclude.status).toBe(200);
+
+            const midState = await request('GET', '/api/labels');
+            expect(midState.body.exclude).toContain('254/56/10');
+
+            // Revert: remove the exclude (undo simulation)
+            const revertRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: initial.body.labels
+            }));
+            expect(revertRes.status).toBe(200);
+
+            const afterRevert = await request('GET', '/api/labels');
+            expect(afterRevert.body.exclude).toBeUndefined();
+        });
+
+        it('sequential PATCH mutations accumulate correctly and can be replaced via PUT', async () => {
+            // PATCH 1: add a new label
+            const patch1 = await request('PATCH', '/api/labels',
+                JSON.stringify({ '254/56/30': 'Study Light' }));
+            expect(patch1.status).toBe(200);
+            expect(patch1.body.labels['254/56/30']).toBe('Study Light');
+
+            // PATCH 2: update an existing label
+            const patch2 = await request('PATCH', '/api/labels',
+                JSON.stringify({ '254/56/10': 'Renamed Kitchen' }));
+            expect(patch2.status).toBe(200);
+            expect(patch2.body.labels['254/56/10']).toBe('Renamed Kitchen');
+            expect(patch2.body.labels['254/56/30']).toBe('Study Light');
+
+            // Simulate undo by restoring via PUT to the state before patch1
+            const restore = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Kitchen', '254/56/11': 'Living Room' }
+            }));
+            expect(restore.status).toBe(200);
+
+            const final = await request('GET', '/api/labels');
+            expect(final.body.labels['254/56/10']).toBe('Kitchen');
+            expect(final.body.labels['254/56/30']).toBeUndefined();
+        });
+
+        it('type_overrides and entity_ids round-trip without data loss', async () => {
+            const payload = {
+                labels: { '254/56/10': 'Kitchen Blind', '254/56/11': 'Garden Pump' },
+                type_overrides: { '254/56/10': 'cover', '254/56/11': 'switch' },
+                entity_ids: { '254/56/10': 'kitchen_blind', '254/56/11': 'garden_pump' },
+                areas: { '254/56/10': 'Kitchen', '254/56/11': 'Garden' },
+                exclude: ['254/56/99']
+            };
+
+            const saveRes = await request('PUT', '/api/labels', JSON.stringify(payload));
+            expect(saveRes.status).toBe(200);
+
+            const getRes = await request('GET', '/api/labels');
+            expect(getRes.body.type_overrides).toEqual(payload.type_overrides);
+            expect(getRes.body.entity_ids).toEqual(payload.entity_ids);
+            expect(getRes.body.areas).toEqual(payload.areas);
+            expect(getRes.body.exclude).toEqual(payload.exclude);
+
+            // Re-PUT the fetched payload (simulating redo or save after undo)
+            const redoRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: getRes.body.labels,
+                type_overrides: getRes.body.type_overrides,
+                entity_ids: getRes.body.entity_ids,
+                areas: getRes.body.areas,
+                exclude: getRes.body.exclude
+            }));
+            expect(redoRes.status).toBe(200);
+            expect(redoRes.body.saved).toBe(true);
+
+            const afterRedo = await request('GET', '/api/labels');
+            expect(afterRedo.body.labels).toEqual(payload.labels);
+            expect(afterRedo.body.type_overrides).toEqual(payload.type_overrides);
+        });
+
+        it('removing a label via PUT null removal and re-adding via PATCH restores it', async () => {
+            // Remove a label by omitting it in PUT
+            const removeRes = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/11': 'Living Room' }
+            }));
+            expect(removeRes.status).toBe(200);
+            expect(removeRes.body.labels['254/56/10']).toBeUndefined();
+
+            // Re-add via PATCH (simulate redo restoring the label)
+            const readdRes = await request('PATCH', '/api/labels',
+                JSON.stringify({ '254/56/10': 'Kitchen' }));
+            expect(readdRes.status).toBe(200);
+            expect(readdRes.body.labels['254/56/10']).toBe('Kitchen');
+            expect(readdRes.body.labels['254/56/11']).toBe('Living Room');
+        });
+    });
 });
