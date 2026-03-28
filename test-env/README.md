@@ -7,46 +7,52 @@ The only thing mocked is `/data/options.json`.
 
 ## Prerequisites
 
-- Docker + Docker Compose
-- A C-Gate Linux zip (for upload mode) — see below
+- [Podman](https://podman.io/) + podman-compose (free, no Docker Desktop licence required)
+- A C-Gate Linux zip (upload mode only) — not needed for download mode
+
+### Install Podman (one-time)
+
+```bash
+brew install podman podman-compose
+podman machine init
+podman machine start
+```
 
 ## Quick Start
 
-### Managed mode — zip upload (recommended for testing)
+### Managed mode — direct download (easiest)
+
+Downloads C-Gate 3.3.2 automatically from Schneider Electric:
+
+```bash
+cp options-managed-download.json active-options.json
+podman compose up --build
+```
+
+### Managed mode — zip upload
 
 1. Obtain a C-Gate 3.x Linux zip from Schneider Electric and place it in:
    ```
    test-env/volumes/share/cgate/<filename>.zip
    ```
 
-2. Activate the upload options file:
-   ```bash
+2. ```bash
    cp options-managed-upload.json active-options.json
+   podman compose up --build
    ```
-
-3. Build and start:
-   ```bash
-   docker compose up --build
-   ```
-
-4. Watch logs:
-   ```bash
-   docker compose logs -f addon
-   ```
-
-### Managed mode — direct download
-
-```bash
-cp options-managed-download.json active-options.json
-docker compose up --build
-```
 
 ### Remote mode (cgateweb only, external C-Gate)
 
 Edit `options-remote.json` to set `cgate_host` to your C-Gate server IP, then:
 ```bash
 cp options-remote.json active-options.json
-docker compose up --build
+podman compose up --build
+```
+
+## Watch logs
+
+```bash
+podman compose logs -f addon
 ```
 
 ## Resetting the install
@@ -54,7 +60,7 @@ docker compose up --build
 C-Gate is installed into `volumes/data/cgate/`. To force a fresh install:
 ```bash
 rm -rf volumes/data/cgate
-docker compose restart addon
+podman compose restart addon
 ```
 
 ## Monitoring MQTT
@@ -66,7 +72,7 @@ mosquitto_sub -h localhost -p 1883 -t '#' -v
 
 Or exec into the addon container:
 ```bash
-docker compose exec addon sh
+podman compose exec addon sh
 ```
 
 ## What to look for in logs (managed mode)

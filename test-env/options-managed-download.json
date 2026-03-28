@@ -1,7 +1,7 @@
 {
   "cgate_mode": "managed",
   "cgate_install_source": "download",
-  "cgate_download_url": "https://updates.clipsal.com/ClipsalSoftwareDownload/mainsite/cis/technical/downloads/C-Gate3_Linux.zip",
+  "cgate_download_url": "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2",
   "cgate_download_sha256": "",
   "cgate_host": "127.0.0.1",
   "cgate_port": 20023,

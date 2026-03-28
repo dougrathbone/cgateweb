@@ -1,21 +1,35 @@
-version: "3.8"
+name: cgateweb-test
 
 # Local test environment for the cgateweb Home Assistant add-on.
 # Simulates the HA Supervisor environment without requiring a real HA instance.
 # The HA base image ships with bashio and s6-overlay, so all addon scripts run normally.
 # The only thing we mock is /data/options.json, which HA Supervisor normally writes.
 #
+# Requires: podman + podman-compose  (brew install podman podman-compose)
+# Initialise once:  podman machine init && podman machine start
+#
 # Usage:
-#   1. Copy a C-Gate .zip into ./volumes/share/cgate/  (for upload mode)
-#   2. Choose an options file:  cp options-managed-upload.json active-options.json
-#   3. docker compose up --build
-#   4. docker compose logs -f addon
+#   1. Choose an options file:  cp options-managed-download.json active-options.json
+#      (or copy options-managed-upload.json and drop a C-Gate zip in volumes/share/cgate/)
+#   2. podman compose up --build
+#   3. podman compose logs -f addon
 
 services:
+  supervisor:
+    image: python:3.12-alpine
+    command: python /server.py
+    volumes:
+      - ./mock-supervisor/server.py:/server.py:ro
+      - ./active-options.json:/data/options.json:ro
+    networks:
+      addon-net:
+        aliases:
+          - supervisor
+
   addon:
     build:
-      context: ../homeassistant-addon
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: test-env/Dockerfile
       args:
         BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.19
         BUILD_ARCH: amd64
@@ -31,15 +45,15 @@ services:
       - ./volumes/share/cgate:/share/cgate
     environment:
       - TZ=Australia/Sydney
+      - SUPERVISOR_TOKEN=mock-token
     networks:
       - addon-net
     depends_on:
       - mqtt
+      - supervisor
     # s6-overlay needs these capabilities
     cap_add:
       - SYS_PTRACE
-    # Allow s6 init to work
-    init: false
 
   mqtt:
     image: eclipse-mosquitto:2.0
