@@ -1,6 +1,7 @@
 const {
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
+    HA_COMPONENT_CLIMATE,
     HA_COMPONENT_EVENT,
     HA_COMPONENT_BUTTON,
     HA_DEVICE_CLASS_SHUTTER,
@@ -10,6 +11,7 @@ const {
     HA_MODEL_RELAY,
     HA_MODEL_PIR,
     HA_MODEL_TRIGGER,
+    HA_MODEL_HVAC,
     MQTT_STATE_ON,
     MQTT_STATE_OFF
 } = require('./constants');
@@ -30,6 +32,9 @@ function getDiscoveryTypeForApp(settings, appAddress) {
     }
     if (settings.ha_discovery_trigger_app_id && appStr === String(settings.ha_discovery_trigger_app_id)) {
         return 'trigger';
+    }
+    if (settings.ha_discovery_hvac_app_id && appStr === String(settings.ha_discovery_hvac_app_id)) {
+        return 'hvac';
     }
     return null;
 }
@@ -101,6 +106,13 @@ function getDiscoveryConfig(type) {
                 payload_press: MQTT_STATE_ON
             },
             isTriggerButton: true
+        },
+        hvac: {
+            component: HA_COMPONENT_CLIMATE,
+            defaultType: 'HVAC Zone',
+            model: HA_MODEL_HVAC,
+            isHvac: true,
+            omitCommandTopic: true  // HVAC uses dedicated topic structure, not a single command_topic
         }
     };
     return configs[type];

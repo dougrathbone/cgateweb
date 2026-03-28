@@ -3,6 +3,7 @@ const packageJson = require('../package.json');
 // === C-Bus System ===
 const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
 const DEFAULT_CBUS_APP_TRIGGER = '202'; // C-Bus application ID for trigger groups (keypads, scenes)
+const DEFAULT_CBUS_APP_HVAC = '201';    // C-Bus application ID for HVAC/Air Conditioning
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -33,6 +34,11 @@ const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
 const MQTT_TOPIC_SUFFIX_EVENT = 'event';        // Trigger group event
 const MQTT_TOPIC_SUFFIX_TREE = 'tree';
+// HVAC topic suffixes
+const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP = 'current_temperature'; // Current temperature reading
+const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target temperature setpoint
+const MQTT_TOPIC_SUFFIX_HVAC_MODE = 'mode';                        // HVAC operating mode
+const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan speed/mode
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 
@@ -53,13 +59,16 @@ const MQTT_CMD_TYPE_SWITCH = 'switch';
 const MQTT_CMD_TYPE_RAMP = 'ramp';
 const MQTT_CMD_TYPE_POSITION = 'position';  // Set cover position (0-100%)
 const MQTT_CMD_TYPE_STOP = 'stop';          // Stop cover movement
-const MQTT_CMD_TYPE_TRIGGER = 'trigger';    // Fire a C-Bus trigger group
+const MQTT_CMD_TYPE_TRIGGER = 'trigger';          // Fire a C-Bus trigger group
+const MQTT_CMD_TYPE_HVAC_SETPOINT = 'setpoint';  // Set HVAC target temperature
+const MQTT_CMD_TYPE_HVAC_MODE = 'hvacmode';      // Set HVAC operating mode
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
 const HA_COMPONENT_COVER = 'cover';
 const HA_COMPONENT_SWITCH = 'switch';
 const HA_COMPONENT_BUTTON = 'button';
+const HA_COMPONENT_CLIMATE = 'climate';
 const HA_DISCOVERY_SUFFIX = 'config';
 
 // HA Device Classes
@@ -75,6 +84,7 @@ const HA_MODEL_SWITCH = 'Enable Control Group (Switch)';
 const HA_MODEL_RELAY = 'Enable Control Group (Relay)';
 const HA_MODEL_PIR = 'PIR Motion Sensor';
 const HA_MODEL_TRIGGER = 'Trigger Group';
+const HA_MODEL_HVAC = 'HVAC Zone (Air Conditioning)';
 const HA_COMPONENT_EVENT = 'event';
 
 // HA Origin Info
@@ -94,6 +104,7 @@ module.exports = {
     // C-Bus System
     DEFAULT_CBUS_APP_LIGHTING,
     DEFAULT_CBUS_APP_TRIGGER,
+    DEFAULT_CBUS_APP_HVAC,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -124,6 +135,10 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_TREE,
+    MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
+    MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
+    MQTT_TOPIC_SUFFIX_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_PAYLOAD_STATUS_ONLINE,
@@ -141,12 +156,15 @@ module.exports = {
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
+    MQTT_CMD_TYPE_HVAC_SETPOINT,
+    MQTT_CMD_TYPE_HVAC_MODE,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
     HA_COMPONENT_BUTTON,
+    HA_COMPONENT_CLIMATE,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
@@ -158,6 +176,7 @@ module.exports = {
     HA_MODEL_RELAY,
     HA_MODEL_PIR,
     HA_MODEL_TRIGGER,
+    HA_MODEL_HVAC,
     HA_COMPONENT_EVENT,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,

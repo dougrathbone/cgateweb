@@ -99,6 +99,16 @@ configuration:
     name: Trigger App ID
     description: C-Bus application ID for trigger groups (keypads, scenes). Default
       is 202. Leave empty to disable trigger discovery.
+  ha_discovery_hvac_app_id:
+    name: HVAC Application ID
+    description: C-Bus application ID for HVAC/air conditioning zones. The standard
+      C-Bus HVAC application is 201. Each group address in this application will be
+      exposed as a Home Assistant climate entity. Leave empty to disable HVAC
+      discovery.
+  ha_hvac_temperature_unit:
+    name: HVAC Temperature Unit
+    description: Temperature unit for HVAC climate entities. Use C for Celsius (default)
+      or F for Fahrenheit.
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: Publish bridge health entities (ready state, connection status,

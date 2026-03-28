@@ -8,6 +8,8 @@ const {
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
+    MQTT_CMD_TYPE_HVAC_SETPOINT,
+    MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
@@ -89,9 +91,11 @@ class CBusCommand {
                 MQTT_CMD_TYPE_GETTREE,
                 MQTT_CMD_TYPE_SWITCH,
                 MQTT_CMD_TYPE_RAMP,
-                MQTT_CMD_TYPE_POSITION,  // Cover position (0-100%)
-                MQTT_CMD_TYPE_STOP,      // Stop cover movement
-                MQTT_CMD_TYPE_TRIGGER,   // Fire a C-Bus trigger group
+                MQTT_CMD_TYPE_POSITION,       // Cover position (0-100%)
+                MQTT_CMD_TYPE_STOP,           // Stop cover movement
+                MQTT_CMD_TYPE_TRIGGER,        // Fire a C-Bus trigger group
+                MQTT_CMD_TYPE_HVAC_SETPOINT,  // HVAC temperature setpoint
+                MQTT_CMD_TYPE_HVAC_MODE,      // HVAC operating mode
                 'setvalue'
             ];
             if (!validCommandTypes.includes(this._commandType)) {
@@ -128,6 +132,10 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_TRIGGER:
                 this._parseTriggerPayload();
+                break;
+            case MQTT_CMD_TYPE_HVAC_SETPOINT:
+            case MQTT_CMD_TYPE_HVAC_MODE:
+                // HVAC commands: payload is used as-is by the command router
                 break;
             case MQTT_CMD_TYPE_GETALL:
             case MQTT_CMD_TYPE_GETTREE:

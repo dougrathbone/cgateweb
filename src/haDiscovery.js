@@ -10,16 +10,22 @@ const {
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
+    MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
+    MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
+    MQTT_CMD_TYPE_HVAC_SETPOINT,
+    MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
+    HA_COMPONENT_CLIMATE,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_VIA,
     HA_DEVICE_MANUFACTURER,
@@ -239,7 +245,8 @@ class HaDiscovery {
         const relayAppId = this.settings.ha_discovery_relay_app_id;
         const pirAppId = this.settings.ha_discovery_pir_app_id;
         const triggerAppId = this.settings.ha_discovery_trigger_app_id;
-        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId].filter(Boolean).map(String);
+        const hvacAppId = this.settings.ha_discovery_hvac_app_id;
+        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId, hvacAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
 
@@ -413,7 +420,7 @@ class HaDiscovery {
 
     _processEnableControlGroups(networkId, appAddress, groups, labelSnapshot) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
-        
+
         // Determine the discovery type based on application address
         const discoveryType = getDiscoveryTypeForApp(this.settings, appAddress);
         if (!discoveryType) {
@@ -427,8 +434,103 @@ class HaDiscovery {
                 return;
             }
 
-            this._createDiscovery(networkId, appAddress, groupId, group.Label, getDiscoveryConfig(discoveryType), labelSnapshot);
+            if (discoveryType === 'hvac') {
+                this._createHvacDiscovery(networkId, appAddress, groupId, group.Label, labelSnapshot);
+            } else {
+                this._createDiscovery(networkId, appAddress, groupId, group.Label, getDiscoveryConfig(discoveryType), labelSnapshot);
+            }
         });
+    }
+
+    /**
+     * Publish a Home Assistant climate entity discovery payload for an HVAC group.
+     *
+     * C-Bus HVAC (Application 201) protocol notes:
+     *   - Each HVAC zone maps to one C-Bus group address.
+     *   - Level 0-255 is used for the temperature setpoint (0.5°C resolution, 0-50°C range):
+     *       raw_value = round(temperature_celsius * 2)  →  0°C = 0, 25°C = 50, 50°C = 100
+     *   - The current temperature is reported back via the same group address as a status level.
+     *   - Mode and fan control are not exposed via standard C-Gate level commands in the
+     *     simplified implementation. Full mode/fan support would require vendor-specific
+     *     C-Gate extensions or additional group addresses per zone.
+     *
+     * TODO: Hardware validation required. The temperature encoding formula above is based on
+     * community reports and the C-Bus HVAC thermostat (5000CT2) documentation. Actual
+     * devices may use different group address layouts or encoding. Test against real hardware
+     * before relying on setpoint commands.
+     *
+     * @private
+     */
+    _createHvacDiscovery(networkId, appId, groupId, groupLabel, labelSnapshot) {
+        const { labelMap, entityIds, exclude } = labelSnapshot;
+        const labelKey = `${networkId}/${appId}/${groupId}`;
+
+        if (exclude.has(labelKey)) {
+            this.logger.debug(`Excluding HVAC group ${labelKey} from discovery`);
+            return;
+        }
+
+        const customLabel = labelMap.get(labelKey);
+        const finalLabel = customLabel || groupLabel || `CBus HVAC Zone ${networkId}/${appId}/${groupId}`;
+        if (customLabel) this.labelStats.custom++;
+        else if (groupLabel) this.labelStats.treexml++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const entityId = entityIds.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
+
+        // Topic layout for this HVAC group
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}`;
+        const writeBase = `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}`;
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && { object_id: entityId }),
+
+            // Current temperature: reported by C-Gate as a status level on this group.
+            // Template converts 0-255 C-Bus level to 0-50°C (0.5°C resolution):
+            //   temperature = level / 255 * 50   (approximation; see TODO above)
+            current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+
+            // Target temperature setpoint — command and state topics
+            temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
+            temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+
+            // Mode control topics
+            mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
+            mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+
+            // Supported modes — based on typical C-Bus HVAC thermostat capabilities.
+            // TODO: Hardware validation — some units may only support a subset of these.
+            modes: ['off', 'auto', 'cool', 'heat', 'fan_only'],
+
+            temperature_unit: temperatureUnit,
+            min_temp: 0,
+            max_temp: 50,
+            temp_step: 0.5,
+
+            qos: 0,
+            retain: true,
+            device: {
+                identifiers: [uniqueId],
+                name: finalLabel,
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: 'HVAC Zone (Air Conditioning)',
+                via_device: HA_DEVICE_VIA
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
+            }
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this.discoveryCount++;
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config, labelSnapshot) {
