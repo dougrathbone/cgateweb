@@ -711,5 +711,147 @@ describe('EventPublisher', () => {
             const stats = publisher.getStats();
             expect(stats.coalesced).toBeGreaterThan(0);
         });
+
+        it('should handle _flushCoalesceBuffer with empty buffer gracefully', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishCoalesce: true
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            // Calling flush on an empty buffer should not publish anything
+            publisher._flushCoalesceBuffer();
+            expect(mockPublishFn).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('topic cache eviction', () => {
+        it('should evict oldest entry when topic cache is full', () => {
+            // topicCacheMaxEntries has a minimum of 100 in the constructor
+            const maxEntries = 100;
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    topicCacheMaxEntries: maxEntries
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            // Fill the cache to its limit
+            for (let i = 0; i < maxEntries; i++) {
+                publisher._getTopicsForAddress('254', '56', String(i));
+            }
+
+            let stats = publisher.getStats();
+            expect(stats.topicCacheSize).toBe(maxEntries);
+            expect(stats.topicCacheMiss).toBe(maxEntries);
+
+            // Adding one more entry should evict the oldest and keep size at max
+            publisher._getTopicsForAddress('254', '56', String(maxEntries));
+
+            stats = publisher.getStats();
+            expect(stats.topicCacheSize).toBe(maxEntries);
+            expect(stats.topicCacheMiss).toBe(maxEntries + 1);
+        });
+    });
+
+    describe('dedup cache pruning', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it('should prune expired entries when cache exceeds max size', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 100,
+                    eventPublishDedupMaxEntries: 100
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            // Publish 100 unique entries to fill the cache
+            for (let i = 0; i < 100; i++) {
+                const mockEvent = {
+                    isValid: () => true,
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => String(i),
+                    getLevel: () => 128,
+                    getAction: () => 'ramp'
+                };
+                publisher.publishEvent(mockEvent);
+            }
+
+            // Advance time so existing entries expire
+            jest.advanceTimersByTime(200);
+
+            // Publishing one more entry (unique group) triggers pruning of expired entries
+            const triggerEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '200',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+            publisher.publishEvent(triggerEvent);
+
+            const stats = publisher.getStats();
+            expect(stats.dedupEvicted).toBeGreaterThan(0);
+        });
+
+        it('should enforce max size by evicting oldest entries when expiry pass is insufficient', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 60000,
+                    eventPublishDedupMaxEntries: 100
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            // Publish 100 unique entries to fill the cache (none expire due to long window)
+            for (let i = 0; i < 100; i++) {
+                const mockEvent = {
+                    isValid: () => true,
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => String(i),
+                    getLevel: () => 128,
+                    getAction: () => 'ramp'
+                };
+                publisher.publishEvent(mockEvent);
+            }
+
+            // Publishing one more unique entry triggers the second-pass eviction
+            const triggerEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '200',
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+            publisher.publishEvent(triggerEvent);
+
+            const stats = publisher.getStats();
+            // The second pass (while loop) must have evicted at least one entry
+            expect(stats.dedupEvicted).toBeGreaterThan(0);
+        });
     });
 });
