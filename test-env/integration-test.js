@@ -309,7 +309,82 @@ async function runTests() {
     );
 
     // ------------------------------------------------------------------
-    // 6. Stability check — watch for 10s, no reconnects
+    // 6. HA MQTT Discovery validation
+    // ------------------------------------------------------------------
+    section('HA MQTT Discovery');
+    info('Collecting discovery messages for 5s...');
+
+    const discoveryMessages = new Map(); // topic → parsed payload
+
+    const discoveryReceived = await collectMqtt(['homeassistant/#'], 5000);
+    for (const [topic, payloadStr] of Object.entries(discoveryReceived)) {
+        if (topic.startsWith('homeassistant/')) {
+            try {
+                discoveryMessages.set(topic, JSON.parse(payloadStr));
+            } catch {
+                // ignore non-JSON (e.g. empty retained cleanup payloads)
+            }
+        }
+    }
+
+    if (discoveryMessages.size === 0) {
+        info('No HA discovery messages received — C-Gate may have no devices configured (fresh install). Skipping format assertions.');
+        pass('HA discovery: no messages (soft pass — fresh C-Gate)');
+        passed++;
+    } else {
+        info(`Received ${discoveryMessages.size} discovery message(s). Validating format...`);
+
+        let lightCount = 0;
+        let formatErrors = 0;
+
+        for (const [topic, payload] of discoveryMessages) {
+            // Required fields present in every discovery payload
+            const hasUniqueId = 'unique_id' in payload;
+            const hasName    = 'name' in payload;   // value may be null — that is valid
+            const hasDevice  = payload.device && typeof payload.device === 'object';
+
+            if (!hasUniqueId || !hasName || !hasDevice) {
+                fail(`Discovery payload missing required fields on ${topic}  →  unique_id:${hasUniqueId} name:${hasName} device:${hasDevice}`);
+                formatErrors++;
+                failed++;
+                continue;
+            }
+
+            // Detect light entities (topic: homeassistant/light/<id>/config)
+            const lightTopicMatch = topic.match(/^homeassistant\/light\/([^/]+)\/config$/);
+            if (lightTopicMatch) {
+                lightCount++;
+
+                // Validate state_topic follows cbus/read/{network}/56/{group}/state
+                const stateTopic = payload.state_topic || '';
+                const stateTopicValid = /^cbus\/read\/\w+\/56\/\w+\/state$/.test(stateTopic);
+                if (!stateTopicValid) {
+                    fail(`Light entity ${lightTopicMatch[1]} has unexpected state_topic: ${stateTopic}`);
+                    formatErrors++;
+                    failed++;
+                } else {
+                    info(`  light ${lightTopicMatch[1]}: state_topic=${stateTopic}`);
+                }
+            }
+        }
+
+        assert(
+            'all discovery payloads have required fields (unique_id, name, device)',
+            formatErrors === 0,
+            `${formatErrors} payload(s) failed format validation`
+        );
+
+        assert(
+            `at least one light entity discovered (found ${lightCount})`,
+            lightCount > 0,
+            'expected App 56 lights; C-Gate may have no devices configured'
+        );
+
+        info(`Discovery summary: ${discoveryMessages.size} total, ${lightCount} light(s)`);
+    }
+
+    // ------------------------------------------------------------------
+    // 7. Stability check — watch for 10s, no reconnects
     // ------------------------------------------------------------------
     section(`Stability check (${STABLE_WINDOW / 1000}s window)`);
     info('Monitoring for unexpected reconnections...');
