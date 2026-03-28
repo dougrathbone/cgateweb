@@ -90,6 +90,7 @@ describe('ConfigLoader', () => {
             expect(config.ha_discovery_switch_app_id).toBe('201');
             expect(config.ha_bridge_diagnostics_enabled).toBe(true);
             expect(config.ha_bridge_diagnostics_interval_sec).toBe(45);
+            expect(config.web_bind_host).toBe('0.0.0.0');
             expect(config._environment.type).toBe('addon');
         });
 
@@ -113,6 +114,21 @@ describe('ConfigLoader', () => {
             expect(config.log_level).toBe('info');
             expect(config.logging).toBe(true);
             expect(config.cgate_mode).toBe('remote');
+        });
+
+        test('should bind web server to 0.0.0.0 in addon mode for HA ingress', () => {
+            // Regression test: web server was binding to 127.0.0.1 in addon mode,
+            // causing 502 Bad Gateway because the HA ingress proxy connects from
+            // outside the container loopback interface.
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                cgate_host: '192.168.1.100',
+                mqtt_host: 'core-mosquitto'
+            }));
+
+            const config = configLoader.load();
+
+            expect(config.web_bind_host).toBe('0.0.0.0');
         });
 
         test('should map bridge diagnostics options when disabled', () => {

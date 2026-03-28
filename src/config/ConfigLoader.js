@@ -226,6 +226,9 @@ class ConfigLoader {
         if (options.web_port) {
             config.web_port = options.web_port;
         }
+        // In addon mode the HA ingress proxy connects from outside the container's
+        // loopback interface, so the web server must bind to all interfaces.
+        config.web_bind_host = '0.0.0.0';
         if (options.web_api_key) {
             config.web_api_key = options.web_api_key;
         }
