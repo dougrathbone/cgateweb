@@ -371,6 +371,52 @@ describe('ConfigLoader', () => {
 
             expect(config.mqtt).toBe('core-mosquitto:1883');
         });
+
+        test('should map connection_pool_size to connectionPoolSize', () => {
+            const options = { ...mockAddonOptions, connection_pool_size: 1 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.connectionPoolSize).toBe(1);
+        });
+
+        test('should map connection_health_check_interval_sec to healthCheckInterval in milliseconds', () => {
+            const options = { ...mockAddonOptions, connection_health_check_interval_sec: 15 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.healthCheckInterval).toBe(15000);
+        });
+
+        test('should map connection_keep_alive_interval_sec to keepAliveInterval in milliseconds', () => {
+            const options = { ...mockAddonOptions, connection_keep_alive_interval_sec: 120 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.keepAliveInterval).toBe(120000);
+        });
+
+        test('should not set connection pool settings when options are not provided', () => {
+            const options = { ...mockAddonOptions };
+            delete options.connection_pool_size;
+            delete options.connection_health_check_interval_sec;
+            delete options.connection_keep_alive_interval_sec;
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.connectionPoolSize).toBeUndefined();
+            expect(config.healthCheckInterval).toBeUndefined();
+            expect(config.keepAliveInterval).toBeUndefined();
+        });
     });
 
     describe('load() - Standalone Configuration', () => {

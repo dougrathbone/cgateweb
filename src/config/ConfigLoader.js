@@ -221,6 +221,17 @@ class ConfigLoader {
             config.ha_bridge_diagnostics_interval_sec = options.ha_bridge_diagnostics_interval_sec;
         }
 
+        // Connection pool settings (advanced)
+        if (options.connection_pool_size !== undefined) {
+            config.connectionPoolSize = options.connection_pool_size;
+        }
+        if (options.connection_health_check_interval_sec !== undefined) {
+            config.healthCheckInterval = options.connection_health_check_interval_sec * 1000;
+        }
+        if (options.connection_keep_alive_interval_sec !== undefined) {
+            config.keepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
+        }
+
         // Label file: use explicit setting, or auto-detect from common addon paths
         if (options.cbus_label_file) {
             config.cbus_label_file = options.cbus_label_file;
