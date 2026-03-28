@@ -320,6 +320,8 @@ button.primary:hover { background: var(--primary-hover); }
 button.danger { color: var(--danger); }
 button.danger:hover { background: var(--danger-bg); }
 button.small { padding: 2px 8px; font-size: 0.8rem; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:disabled:hover { background: var(--surface); }
 
 .toast {
   position: fixed;
@@ -445,6 +447,8 @@ th.cb-col, td.cb-col {
   <header>
     <h1>C-Bus Label Editor</h1>
     <div class="header-actions">
+      <button id="undoBtn" disabled title="Undo (Ctrl/Cmd+Z)">Undo (0)</button>
+      <button id="redoBtn" disabled title="Redo (Ctrl/Cmd+Shift+Z)">Redo (0)</button>
       <button class="primary" id="saveBtn" disabled>Save Labels</button>
     </div>
   </header>
@@ -584,6 +588,11 @@ th.cb-col, td.cb-col {
   let lastClickedKey = null;
   let lastFilteredKeys = [];
 
+  // Undo/redo history stack
+  var history = [];
+  var historyIndex = -1;
+  var HISTORY_MAX = 50;
+
   // Pagination state
   var currentPage = 0;
   var pageSize = parseInt(localStorage.getItem('labelEditorPageSize') || '50', 10);
@@ -604,6 +613,76 @@ th.cb-col, td.cb-col {
       }
     }
     return null;
+  }
+
+  // --- Undo/redo ---
+  function buildSnapshot(description) {
+    return {
+      description: description,
+      labels: JSON.parse(JSON.stringify(labels)),
+      typeOverrides: JSON.parse(JSON.stringify(typeOverrides)),
+      entityIds: JSON.parse(JSON.stringify(entityIds)),
+      areas: JSON.parse(JSON.stringify(areas)),
+      excludeList: JSON.parse(JSON.stringify(excludeList)),
+      dirtyLabels: JSON.parse(JSON.stringify(dirtyLabels)),
+      dirtyTypes: JSON.parse(JSON.stringify(dirtyTypes)),
+      dirtyEntityIds: JSON.parse(JSON.stringify(dirtyEntityIds)),
+      dirtyAreas: JSON.parse(JSON.stringify(dirtyAreas)),
+      dirtyExcludes: JSON.parse(JSON.stringify(dirtyExcludes))
+    };
+  }
+
+  function pushHistory(description) {
+    // Trim any forward history above current index
+    history = history.slice(0, historyIndex + 1);
+    history.push(buildSnapshot(description));
+    if (history.length > HISTORY_MAX) history.shift();
+    historyIndex = history.length - 1;
+    updateUndoRedoButtons();
+  }
+
+  function restoreSnapshot(snapshot) {
+    labels = JSON.parse(JSON.stringify(snapshot.labels));
+    typeOverrides = JSON.parse(JSON.stringify(snapshot.typeOverrides));
+    entityIds = JSON.parse(JSON.stringify(snapshot.entityIds));
+    areas = JSON.parse(JSON.stringify(snapshot.areas));
+    excludeList = JSON.parse(JSON.stringify(snapshot.excludeList));
+    dirtyLabels = JSON.parse(JSON.stringify(snapshot.dirtyLabels));
+    dirtyTypes = JSON.parse(JSON.stringify(snapshot.dirtyTypes));
+    dirtyEntityIds = JSON.parse(JSON.stringify(snapshot.dirtyEntityIds));
+    dirtyAreas = JSON.parse(JSON.stringify(snapshot.dirtyAreas));
+    dirtyExcludes = JSON.parse(JSON.stringify(snapshot.dirtyExcludes));
+  }
+
+  function undo() {
+    if (historyIndex <= 0) return;
+    historyIndex--;
+    var snapshot = history[historyIndex];
+    restoreSnapshot(snapshot);
+    render();
+    updateUndoRedoButtons();
+    showToast('Undone: ' + (history[historyIndex + 1] ? history[historyIndex + 1].description : 'change'));
+  }
+
+  function redo() {
+    if (historyIndex >= history.length - 1) return;
+    historyIndex++;
+    var snapshot = history[historyIndex];
+    restoreSnapshot(snapshot);
+    render();
+    updateUndoRedoButtons();
+    showToast('Redone: ' + snapshot.description);
+  }
+
+  function updateUndoRedoButtons() {
+    var undoSteps = historyIndex > 0 ? historyIndex : 0;
+    var redoSteps = history.length - 1 - historyIndex;
+    var undoBtn = document.getElementById('undoBtn');
+    var redoBtn = document.getElementById('redoBtn');
+    undoBtn.disabled = undoSteps === 0;
+    undoBtn.textContent = 'Undo (' + undoSteps + ')';
+    redoBtn.disabled = redoSteps === 0;
+    redoBtn.textContent = 'Redo (' + redoSteps + ')';
   }
 
   function clearStatusRefreshTimer() {
@@ -648,6 +727,12 @@ th.cb-col, td.cb-col {
       dirtyEntityIds = {};
       dirtyAreas = {};
       dirtyExcludes = {};
+      // Reset history and push initial snapshot
+      history = [];
+      historyIndex = -1;
+      history.push(buildSnapshot('Loaded'));
+      historyIndex = 0;
+      updateUndoRedoButtons();
       render();
     } catch (e) {
       showToast('Failed to load labels: ' + e.message, true);
@@ -699,6 +784,7 @@ th.cb-col, td.cb-col {
   }
 
   async function saveLabels() {
+    pushHistory('Save labels');
     const mergedLabels = { ...labels, ...dirtyLabels };
     for (const k of Object.keys(mergedLabels)) {
       if (mergedLabels[k] === null) delete mergedLabels[k];
@@ -746,6 +832,11 @@ th.cb-col, td.cb-col {
       dirtyEntityIds = {};
       dirtyAreas = {};
       dirtyExcludes = {};
+      // Update the top-of-stack snapshot to reflect post-save clean state
+      if (history.length > 0) {
+        history[historyIndex] = buildSnapshot('Saved');
+        updateUndoRedoButtons();
+      }
       render();
       showToast('Saved (' + data.count + ' labels). HA Discovery will update shortly.');
     } catch (e) {
@@ -1028,6 +1119,7 @@ th.cb-col, td.cb-col {
       function commitLabel() {
         var newVal = input.value.trim();
         if (newVal !== (labels[key] || '')) {
+          pushHistory('Edit label');
           dirtyLabels[key] = newVal;
         } else {
           delete dirtyLabels[key];
@@ -1060,6 +1152,7 @@ th.cb-col, td.cb-col {
       function commitEid() {
         var newVal = eidInput.value.trim();
         if (newVal !== (entityIds[eidKey] || '')) {
+          pushHistory('Edit entity ID');
           dirtyEntityIds[eidKey] = newVal || null;
         } else {
           delete dirtyEntityIds[eidKey];
@@ -1091,6 +1184,7 @@ th.cb-col, td.cb-col {
       function commitArea() {
         var newVal = areaInput.value.trim();
         if (newVal !== (areas[areaKey] || '')) {
+          pushHistory('Edit area');
           dirtyAreas[areaKey] = newVal || null;
         } else {
           delete dirtyAreas[areaKey];
@@ -1109,6 +1203,7 @@ th.cb-col, td.cb-col {
     var delBtn = e.target.closest('[data-delete]');
     if (delBtn) {
       var delKey = delBtn.dataset.delete;
+      pushHistory('Remove row');
       if (delKey in labels) {
         dirtyLabels[delKey] = null;
       } else {
@@ -1139,6 +1234,7 @@ th.cb-col, td.cb-col {
       var key = typeSelect.dataset.typeKey;
       var newType = typeSelect.value;
       var origType = typeOverrides[key] || 'light';
+      pushHistory('Change type');
       if (newType !== origType) {
         dirtyTypes[key] = newType === 'light' ? null : newType;
       } else {
@@ -1153,6 +1249,7 @@ th.cb-col, td.cb-col {
       var exclKey = exclCb.dataset.exclKey;
       var checked = exclCb.checked;
       var origExcl = excludeList.includes(exclKey);
+      pushHistory(checked ? 'Exclude device' : 'Include device');
       if (checked !== origExcl) {
         dirtyExcludes[exclKey] = checked;
       } else {
@@ -1176,6 +1273,7 @@ th.cb-col, td.cb-col {
     var type = document.getElementById('addType').value;
     if (!addr || !label) return showToast('Both address and label are required', true);
     if (!/^\d+\/\d+\/\d+$/.test(addr)) return showToast('Address must be in format: network/app/group (e.g. 254/56/10)', true);
+    pushHistory('Add row');
     dirtyLabels[addr] = label;
     if (type) dirtyTypes[addr] = type;
     document.getElementById('addAddress').value = '';
@@ -1186,6 +1284,7 @@ th.cb-col, td.cb-col {
 
   // --- Bulk actions ---
   function applyBulkType(type) {
+    pushHistory('Bulk set type: ' + type);
     selectedKeys.forEach(function(k) {
       var origType = typeOverrides[k] || 'light';
       if (type !== origType) {
@@ -1198,6 +1297,7 @@ th.cb-col, td.cb-col {
   }
 
   function applyBulkExclude(exclude) {
+    pushHistory(exclude ? 'Bulk exclude' : 'Bulk include');
     selectedKeys.forEach(function(k) {
       var origExcl = excludeList.includes(k);
       if (exclude !== origExcl) {
@@ -1224,15 +1324,18 @@ th.cb-col, td.cb-col {
   document.getElementById('autoFillAreasBtn').addEventListener('click', function() {
     var all = getAllLabels();
     var filled = 0;
+    // Count how many would be filled before pushing history
     Object.keys(all).forEach(function(k) {
-      if (getArea(k)) return; // already has area
-      var suggestion = guessArea(all[k]);
-      if (suggestion) {
-        dirtyAreas[k] = suggestion;
-        filled++;
-      }
+      if (getArea(k)) return;
+      if (guessArea(all[k])) filled++;
     });
     if (filled > 0) {
+      pushHistory('Auto-fill areas');
+      Object.keys(all).forEach(function(k) {
+        if (getArea(k)) return;
+        var suggestion = guessArea(all[k]);
+        if (suggestion) dirtyAreas[k] = suggestion;
+      });
       render();
       showToast('Auto-filled areas for ' + filled + ' device' + (filled === 1 ? '' : 's') + '. Review and save.');
     } else {
@@ -1326,6 +1429,7 @@ th.cb-col, td.cb-col {
       pendingImport = null;
       document.getElementById('importOptions').style.display = 'none';
       document.getElementById('importPreview').style.display = 'none';
+      // loadLabels resets history; the import is a server-side mutation so we reload fresh
       await loadLabels();
     } catch (e) {
       showToast('Import failed: ' + e.message, true);
@@ -1338,11 +1442,30 @@ th.cb-col, td.cb-col {
     document.getElementById('importPreview').style.display = 'none';
   });
 
-  // Keyboard shortcut: Ctrl/Cmd+S to save
+  // --- Undo/Redo buttons ---
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+
+  // Keyboard shortcuts: Ctrl/Cmd+S to save, Ctrl/Cmd+Z to undo, Ctrl/Cmd+Shift+Z or Ctrl+Y to redo
   document.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {
       e.preventDefault();
       if (isDirty()) saveLabels();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    if (e.ctrlKey && !e.metaKey && e.key === 'y') {
+      e.preventDefault();
+      redo();
     }
   });
 
