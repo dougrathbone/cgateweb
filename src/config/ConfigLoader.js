@@ -207,6 +207,10 @@ class ConfigLoader {
             if (options.ha_discovery_cover_app_id) {
                 config.ha_discovery_cover_app_id = String(options.ha_discovery_cover_app_id);
             }
+
+            if (options.ha_discovery_cover_tilt_app_id) {
+                config.ha_discovery_cover_tilt_app_id = String(options.ha_discovery_cover_tilt_app_id);
+            }
             
             if (options.ha_discovery_switch_app_id) {
                 config.ha_discovery_switch_app_id = String(options.ha_discovery_switch_app_id);

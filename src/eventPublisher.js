@@ -4,6 +4,7 @@ const {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
@@ -93,6 +94,8 @@ class EventPublisher {
         const isCover = isCoverApp || isCoverOverride;
         const isHvac = this.settings.ha_discovery_hvac_app_id &&
             application === String(this.settings.ha_discovery_hvac_app_id);
+        const isTiltApp = this.settings.ha_discovery_cover_tilt_app_id &&
+            application === String(this.settings.ha_discovery_cover_tilt_app_id);
         
         // Calculate level percentage for Home Assistant
         const levelPercent = rawLevel !== null
@@ -136,6 +139,24 @@ class EventPublisher {
         // HVAC groups publish temperature/mode to dedicated climate topics
         if (isHvac) {
             this._publishHvacEvent(network, application, group, rawLevel, action, source);
+            return;
+        }
+
+        // Tilt app groups publish tilt angle to the tilt topic only (0-100%)
+        if (isTiltApp) {
+            const tiltPercent = rawLevel !== null
+                ? Math.round(rawLevel / CGATE_LEVEL_MAX * 100)
+                : (actionIsOn ? 100 : 0);
+
+            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                this.logger.debug(`C-Bus Tilt ${source}: ${network}/${application}/${group} ${tiltPercent}%`);
+            }
+
+            this._publishIfNeeded(
+                `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}/${MQTT_TOPIC_SUFFIX_TILT}`,
+                tiltPercent.toString(),
+                this.mqttOptions
+            );
             return;
         }
 

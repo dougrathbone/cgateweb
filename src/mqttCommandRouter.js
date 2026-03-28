@@ -8,6 +8,7 @@ const {
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_TILT,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,
@@ -121,6 +122,9 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_POSITION:
                 this._handlePosition(command, topic);
+                break;
+            case MQTT_CMD_TYPE_TILT:
+                this._handleTilt(command, topic);
                 break;
             case MQTT_CMD_TYPE_STOP:
                 this._handleStop(command, topic);
@@ -347,6 +351,33 @@ class MqttCommandRouter extends EventEmitter {
             this.logger.debug(`Setting cover position: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
         } else {
             this.logger.warn(`Invalid position value for topic ${topic}`);
+        }
+    }
+
+    /**
+     * Handles cover tilt commands (set tilt angle 0-100%).
+     * Uses RAMP command to set the tilt level.
+     * @param {CBusCommand} command - The tilt command
+     * @param {string} topic - Original topic for error logging
+     * @private
+     */
+    _handleTilt(command, topic) {
+        if (!command.getGroup()) {
+            this.logger.warn(`Tilt command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+        const level = command.getLevel();
+
+        if (level !== null) {
+            // Use RAMP command to set tilt angle
+            // Level is already converted from percentage (0-100) to C-Gate level (0-255)
+            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
+            this._queueCommand(cgateCommand, 'interactive');
+            this.logger.debug(`Setting cover tilt: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
+        } else {
+            this.logger.warn(`Invalid tilt value for topic ${topic}`);
         }
     }
 

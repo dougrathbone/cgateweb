@@ -9,6 +9,7 @@ const {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
@@ -16,6 +17,7 @@ const {
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_TILT,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,
@@ -250,7 +252,8 @@ class HaDiscovery {
         const pirAppId = this.settings.ha_discovery_pir_app_id;
         const triggerAppId = this.settings.ha_discovery_trigger_app_id;
         const hvacAppId = this.settings.ha_discovery_hvac_app_id;
-        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId, hvacAppId].filter(Boolean).map(String);
+        const tiltAppId = this.settings.ha_discovery_cover_tilt_app_id;
+        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId, hvacAppId, tiltAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
 
@@ -427,6 +430,12 @@ class HaDiscovery {
     _processEnableControlGroups(networkId, appAddress, groups, labelSnapshot) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
 
+        // Tilt app groups are not standalone entities — they enrich cover discovery only
+        const tiltAppId = this.settings.ha_discovery_cover_tilt_app_id;
+        if (tiltAppId && String(appAddress) === String(tiltAppId)) {
+            return;
+        }
+
         // Determine the discovery type based on application address
         const discoveryType = getDiscoveryTypeForApp(this.settings, appAddress);
         if (!discoveryType) {
@@ -580,6 +589,13 @@ class HaDiscovery {
                 position_open: 100,
                 position_closed: 0,
                 optimistic: false
+            }),
+            ...(config.positionSupport && this.settings.ha_discovery_cover_tilt_app_id && {
+                tilt_status_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_TOPIC_SUFFIX_TILT}`,
+                tilt_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_CMD_TYPE_TILT}`,
+                tilt_min: 0,
+                tilt_max: 100,
+                tilt_optimistic: false
             }),
             qos: 0,
             ...(config.isTrigger ? {} : { retain: true }),

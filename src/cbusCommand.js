@@ -6,6 +6,7 @@ const {
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_TILT,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,
@@ -92,6 +93,7 @@ class CBusCommand {
                 MQTT_CMD_TYPE_SWITCH,
                 MQTT_CMD_TYPE_RAMP,
                 MQTT_CMD_TYPE_POSITION,       // Cover position (0-100%)
+                MQTT_CMD_TYPE_TILT,           // Cover tilt angle (0-100%)
                 MQTT_CMD_TYPE_STOP,           // Stop cover movement
                 MQTT_CMD_TYPE_TRIGGER,        // Fire a C-Bus trigger group
                 MQTT_CMD_TYPE_HVAC_SETPOINT,  // HVAC temperature setpoint
@@ -126,6 +128,9 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_POSITION:
                 this._parsePositionPayload();
+                break;
+            case MQTT_CMD_TYPE_TILT:
+                this._parseTiltPayload();
                 break;
             case MQTT_CMD_TYPE_STOP:
                 // Stop command doesn't need payload - it just stops movement
@@ -229,6 +234,25 @@ class CBusCommand {
         // Convert position percentage (0-100) to C-Gate level (0-255)
         // 0% (closed) = level 0, 100% (open) = level 255
         this._level = Math.round((clampedPosition / 100) * CGATE_LEVEL_MAX);
+    }
+
+    /**
+     * Parses tilt payload for cover tilt angle control.
+     * Tilt is specified as a percentage (0-100) where:
+     * - 0 = fully closed/flat
+     * - 100 = fully open/angled
+     *
+     * For C-Bus Enable Control, this maps to level values (0-255)
+     * @private
+     */
+    _parseTiltPayload() {
+        const tiltValue = parseFloat(this._payload);
+        if (isNaN(tiltValue)) {
+            return;
+        }
+
+        const clampedTilt = Math.max(0, Math.min(100, tiltValue));
+        this._level = Math.round((clampedTilt / 100) * CGATE_LEVEL_MAX);
     }
 
     /**

@@ -32,6 +32,7 @@ const MQTT_TOPIC_PREFIX_WRITE = `${MQTT_TOPIC_PREFIX_CBUS}/write`;
 const MQTT_TOPIC_SUFFIX_STATE = 'state';
 const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
+const MQTT_TOPIC_SUFFIX_TILT = 'tilt';          // Cover tilt angle (0-100%)
 const MQTT_TOPIC_SUFFIX_EVENT = 'event';        // Trigger group event
 const MQTT_TOPIC_SUFFIX_TREE = 'tree';
 // HVAC topic suffixes
@@ -58,6 +59,7 @@ const MQTT_CMD_TYPE_GETTREE = 'gettree';
 const MQTT_CMD_TYPE_SWITCH = 'switch';
 const MQTT_CMD_TYPE_RAMP = 'ramp';
 const MQTT_CMD_TYPE_POSITION = 'position';  // Set cover position (0-100%)
+const MQTT_CMD_TYPE_TILT = 'tilt';          // Set cover tilt angle (0-100%)
 const MQTT_CMD_TYPE_STOP = 'stop';          // Stop cover movement
 const MQTT_CMD_TYPE_TRIGGER = 'trigger';          // Fire a C-Bus trigger group
 const MQTT_CMD_TYPE_HVAC_SETPOINT = 'setpoint';  // Set HVAC target temperature
@@ -133,6 +135,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_TREE,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
@@ -154,6 +157,7 @@ module.exports = {
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
+    MQTT_CMD_TYPE_TILT,
     MQTT_CMD_TYPE_STOP,
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,

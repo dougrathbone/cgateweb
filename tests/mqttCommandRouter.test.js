@@ -454,7 +454,39 @@ describe('MqttCommandRouter', () => {
 
         it('should reject stop command without device ID', () => {
             router.routeMessage('cbus/write/254/203//stop', 'STOP');
-            
+
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('Cover Tilt Commands', () => {
+        it('should handle tilt command — 50% maps to C-Gate level 128', () => {
+            router.routeMessage('cbus/write/254/204/5/tilt', '50');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 128\n', { priority: 'interactive' });
+        });
+
+        it('should handle tilt command — 0% maps to C-Gate level 0', () => {
+            router.routeMessage('cbus/write/254/204/5/tilt', '0');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 0\n', { priority: 'interactive' });
+        });
+
+        it('should handle tilt command — 100% maps to C-Gate level 255', () => {
+            router.routeMessage('cbus/write/254/204/5/tilt', '100');
+
+            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 255\n', { priority: 'interactive' });
+        });
+
+        it('should reject tilt command without device ID', () => {
+            router.routeMessage('cbus/write/254/204//tilt', '50');
+
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
+
+        it('should reject tilt command with invalid (non-numeric) payload', () => {
+            router.routeMessage('cbus/write/254/204/5/tilt', 'invalid');
+
             expect(queueSpy).not.toHaveBeenCalled();
         });
     });
