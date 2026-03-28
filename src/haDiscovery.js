@@ -9,6 +9,7 @@ const {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
@@ -226,12 +227,13 @@ class HaDiscovery {
             units = [units];
         }
         
-        const lightingAppId = DEFAULT_CBUS_APP_LIGHTING; 
+        const lightingAppId = DEFAULT_CBUS_APP_LIGHTING;
         const coverAppId = this.settings.ha_discovery_cover_app_id;
         const switchAppId = this.settings.ha_discovery_switch_app_id;
         const relayAppId = this.settings.ha_discovery_relay_app_id;
         const pirAppId = this.settings.ha_discovery_pir_app_id;
-        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId].filter(Boolean).map(String);
+        const triggerAppId = this.settings.ha_discovery_trigger_app_id;
+        const targetApps = [lightingAppId, coverAppId, switchAppId, relayAppId, pirAppId, triggerAppId].filter(Boolean).map(String);
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
 
@@ -410,11 +412,16 @@ class HaDiscovery {
         const entityId = entityIds.get(labelKey);
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         
-        const payload = { 
+        // HA event entities use a dedicated event topic (not state topic) and must not be retained
+        const stateTopic = config.isTrigger
+            ? `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_EVENT}`
+            : `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`;
+
+        const payload = {
             name: null,
             unique_id: uniqueId,
             ...(entityId && { object_id: entityId }),
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            state_topic: stateTopic,
             ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
             ...(config.positionSupport && {
@@ -426,16 +433,16 @@ class HaDiscovery {
                 position_closed: 0
             }),
             qos: 0,
-            retain: true,
+            ...(config.isTrigger ? {} : { retain: true }),
             ...(config.deviceClass && { device_class: config.deviceClass }),
-            device: { 
+            device: {
                 identifiers: [uniqueId],
                 name: finalLabel,
                 manufacturer: HA_DEVICE_MANUFACTURER,
                 model: config.model,
                 via_device: HA_DEVICE_VIA
             },
-            origin: { 
+            origin: {
                 name: HA_ORIGIN_NAME,
                 sw_version: HA_ORIGIN_SW_VERSION,
                 support_url: HA_ORIGIN_SUPPORT_URL

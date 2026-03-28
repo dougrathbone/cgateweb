@@ -211,6 +211,10 @@ class ConfigLoader {
             if (options.ha_discovery_switch_app_id) {
                 config.ha_discovery_switch_app_id = String(options.ha_discovery_switch_app_id);
             }
+
+            if (options.ha_discovery_trigger_app_id) {
+                config.ha_discovery_trigger_app_id = String(options.ha_discovery_trigger_app_id);
+            }
         }
 
         if (options.ha_bridge_diagnostics_enabled !== undefined && options.ha_bridge_diagnostics_enabled !== null) {

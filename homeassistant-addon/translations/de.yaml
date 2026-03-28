@@ -92,6 +92,10 @@ configuration:
     name: Schalter-Anwendungs-ID
     description: C-Bus Anwendungs-ID, die als Schalter behandelt werden soll. Leer
       lassen, um die Schaltererkennung zu deaktivieren.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate Modus
     description: Wie C-Gate bereitgestellt wird. „remote" verbindet sich mit einem

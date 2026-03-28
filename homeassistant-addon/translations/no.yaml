@@ -87,6 +87,10 @@ configuration:
     name: Applikasjons-ID for bryter
     description: C-Bus applikasjons-ID som skal behandles som brytere. La stå tomt
       for å deaktivere oppdagelse av brytere.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate modus
     description: Hvordan C-Gate tilbys. «remote» kobler til en C-Gate server som

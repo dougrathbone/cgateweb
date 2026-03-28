@@ -95,6 +95,10 @@ configuration:
     name: Switch Application ID
     description: C-Bus application ID to treat as switches. Leave empty to disable
       switch discovery.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: Publish bridge health entities (ready state, connection status,

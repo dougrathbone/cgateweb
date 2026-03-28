@@ -4,6 +4,7 @@ const {
     MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
+    MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -83,6 +84,7 @@ class EventPublisher {
 
         const topics = this._getTopicsForAddress(network, application, group);
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
+        const isTrigger = application === this.settings.ha_discovery_trigger_app_id;
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
@@ -107,6 +109,25 @@ class EventPublisher {
                 : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         }
        
+        // Trigger groups publish as HA event entities - never retain
+        if (isTrigger) {
+            const eventPayload = rawLevel !== null
+                ? JSON.stringify({ event_type: 'trigger', level: rawLevel })
+                : JSON.stringify({ event_type: 'trigger' });
+
+            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                this.logger.debug(`C-Bus Trigger ${source}: ${network}/${application}/${group}` + (rawLevel !== null ? ` level=${rawLevel}` : ''));
+            }
+
+            // Trigger events must not be retained - always publish with retain: false
+            this._publishIfNeeded(
+                topics.event,
+                eventPayload,
+                { ...this.mqttOptions, retain: false }
+            );
+            return;
+        }
+
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`C-Bus Status ${source}: ${network}/${application}/${group} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
         }
@@ -114,23 +135,23 @@ class EventPublisher {
         // Publish state message directly (no throttle)
         this._publishIfNeeded(
             topics.state,
-            state, 
+            state,
             this.mqttOptions
         );
-        
+
         // Publish level/position message for non-PIR sensors
         if (!isPirSensor) {
             this._publishIfNeeded(
                 topics.level,
-                levelPercent.toString(), 
+                levelPercent.toString(),
                 this.mqttOptions
             );
-            
+
             // Also publish position for covers (same value, different topic for HA cover entity)
             if (isCover) {
                 this._publishIfNeeded(
                     topics.position,
-                    levelPercent.toString(), 
+                    levelPercent.toString(),
                     this.mqttOptions
                 );
             }
@@ -215,7 +236,8 @@ class EventPublisher {
         const topics = {
             state: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
             level: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
-            position: `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`
+            position: `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+            event: `${topicBase}/${MQTT_TOPIC_SUFFIX_EVENT}`
         };
 
         if (this._topicCache.size >= this.topicCacheMaxEntries) {

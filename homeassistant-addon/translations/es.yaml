@@ -94,6 +94,10 @@ configuration:
     name: ID de aplicación para interruptores
     description: ID de aplicación C-Bus para tratar como interruptores. Dejar vacío
       para desactivar el descubrimiento de interruptores.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: Modo de C-Gate
     description: Cómo se proporciona C-Gate. "remote" se conecta a un servidor

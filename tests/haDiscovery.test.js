@@ -307,7 +307,7 @@ describe('HaDiscovery', () => {
         it('should publish RELAY configs when relay app ID is configured', () => {
             mockSettings.ha_discovery_relay_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
-            
+
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
             // Check that relay configs were published
@@ -316,6 +316,30 @@ describe('HaDiscovery', () => {
                 expect.stringContaining('"device_class":"outlet"'),
                 { retain: true, qos: 0 }
             );
+        });
+
+        it('should publish TRIGGER (event) configs when trigger app ID is configured', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Check that event entity configs were published
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'testhomeassistant/event/cgateweb_254_203_15/config',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
+
+            // Verify event entity payload structure
+            const eventCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/event/cgateweb_254_203_15/config'
+            );
+            expect(eventCall).toBeDefined();
+            const payload = JSON.parse(eventCall[1]);
+            expect(payload.event_types).toEqual(['trigger']);
+            expect(payload.state_topic).toBe('cbus/read/254/203/15/event');
+            expect(payload.retain).toBeUndefined();
         });
 
         it('should handle numeric ApplicationAddress from XML parsing', () => {

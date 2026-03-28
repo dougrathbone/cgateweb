@@ -85,6 +85,10 @@ configuration:
     name: ID aplikace pro spínače
     description: ID aplikace C-Bus zpracovávané jako spínače. Ponechte prázdné pro
       vypnutí objevování spínačů.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: Režim C-Gate
     description: Jak je C-Gate poskytován. „remote" se připojí k serveru C-Gate

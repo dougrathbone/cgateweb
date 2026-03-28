@@ -69,6 +69,10 @@ configuration:
   ha_discovery_switch_app_id:
     name: 스위치 애플리케이션 ID
     description: 스위치로 처리할 C-Bus 애플리케이션 ID. 스위치 검색을 비활성화하려면 비워 두세요.
+  ha_discovery_trigger_app_id:
+    name: Trigger App ID
+    description: C-Bus application ID for trigger groups (keypads, scenes). Default
+      is 202. Leave empty to disable trigger discovery.
   cgate_mode:
     name: C-Gate 모드
     description: C-Gate 제공 방식. "remote"는 네트워크의 다른 곳에서 실행 중인 C-Gate 서버에 연결합니다.

@@ -1114,6 +1114,29 @@ describe('ConfigLoader', () => {
 
             expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
         });
+
+        test('should map ha_discovery_trigger_app_id as string when provided', () => {
+            const options = {
+                ...baseAddonOptions,
+                ha_discovery_enabled: true,
+                ha_discovery_trigger_app_id: 202
+            };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.ha_discovery_trigger_app_id).toBe('202');
+        });
+
+        test('should not set ha_discovery_trigger_app_id when not provided', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            expect(config.ha_discovery_trigger_app_id).toBeUndefined();
+        });
     });
 
     describe('_convertSettingsToStandardFormat() - eventPublishCoalesce', () => {
