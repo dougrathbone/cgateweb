@@ -19,6 +19,7 @@ const defaultSettings = {
     getallnetapp: null,
     getallonstart: false,
     getallperiod: null,
+    getall_app_periods: {},
     mqttusername: null,
     mqttpassword: null,
     mqttUseTls: false,

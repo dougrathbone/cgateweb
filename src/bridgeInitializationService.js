@@ -11,6 +11,7 @@ class BridgeInitializationService {
     constructor(bridge) {
         this.bridge = bridge;
         this.logger = createLogger({ component: 'BridgeInitializationService' });
+        this._perAppTimers = new Map();
     }
 
     async handleAllConnected() {
@@ -38,19 +39,8 @@ class BridgeInitializationService {
             }
         }
 
-        if (getallNetworks.length > 0 && this.bridge.settings.getallperiod) {
-            if (this.bridge.periodicGetAllInterval) {
-                clearInterval(this.bridge.periodicGetAllInterval);
-            }
-            this.bridge.log(`Starting periodic 'get all' every ${this.bridge.settings.getallperiod} seconds for networks: ${getallNetworks.join(', ')}.`);
-            this.bridge.periodicGetAllInterval = setInterval(() => {
-                this.bridge.log(`Getting all periodic values for networks: ${getallNetworks.join(', ')}...`);
-                for (const netapp of getallNetworks) {
-                    this.bridge.cgateCommandQueue.add(
-                        `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-                    );
-                }
-            }, this.bridge.settings.getallperiod * 1000).unref();
+        if (getallNetworks.length > 0 && (this.bridge.settings.getallperiod || this.bridge.settings.getall_app_periods)) {
+            this._scheduleAllGetalls(getallNetworks);
         }
 
         if (!this.bridge.haDiscovery) {
@@ -76,6 +66,65 @@ class BridgeInitializationService {
         }
 
         this.bridge._updateBridgeReadiness('all-connected');
+    }
+
+    /**
+     * Returns the poll interval in milliseconds for a given app ID.
+     * Checks getall_app_periods[appId] first, falls back to getallperiod.
+     * Returns 0 if the app should not be polled.
+     */
+    _getIntervalForApp(appId) {
+        const appPeriods = this.bridge.settings.getall_app_periods;
+        const key = String(appId);
+        if (appPeriods && Object.prototype.hasOwnProperty.call(appPeriods, key)) {
+            return appPeriods[key] * 1000;
+        }
+        return (this.bridge.settings.getallperiod || 0) * 1000;
+    }
+
+    /**
+     * Schedules a recurring poll for a specific network/app path.
+     * Replaces any existing timer for that path.
+     */
+    _scheduleGetallForApp(networkAppPath, intervalMs) {
+        if (this._perAppTimers.has(networkAppPath)) {
+            clearInterval(this._perAppTimers.get(networkAppPath));
+            this._perAppTimers.delete(networkAppPath);
+        }
+        if (!intervalMs) {
+            return;
+        }
+        this.bridge.log(`Starting periodic 'get all' for ${networkAppPath} every ${intervalMs / 1000} seconds.`);
+        const handle = setInterval(() => {
+            this.bridge.log(`Getting all periodic values for ${networkAppPath}...`);
+            this.bridge.cgateCommandQueue.add(
+                `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${networkAppPath}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
+            );
+        }, intervalMs).unref();
+        this._perAppTimers.set(networkAppPath, handle);
+    }
+
+    /**
+     * Schedules per-app timers for all unique network×app combinations.
+     * Stops existing timers first. Apps with interval=0 are skipped.
+     */
+    _scheduleAllGetalls(getallNetworks) {
+        // Clear old single-interval timer (backwards-compat)
+        if (this.bridge.periodicGetAllInterval) {
+            clearInterval(this.bridge.periodicGetAllInterval);
+            this.bridge.periodicGetAllInterval = null;
+        }
+        // Clear existing per-app timers
+        for (const handle of this._perAppTimers.values()) {
+            clearInterval(handle);
+        }
+        this._perAppTimers.clear();
+
+        for (const netapp of getallNetworks) {
+            const appId = netapp.split('/')[1];
+            const intervalMs = this._getIntervalForApp(appId);
+            this._scheduleGetallForApp(netapp, intervalMs);
+        }
     }
 
     /**
@@ -201,6 +250,11 @@ class BridgeInitializationService {
             clearInterval(this.bridge.periodicGetAllInterval);
             this.bridge.periodicGetAllInterval = null;
         }
+
+        for (const handle of this._perAppTimers.values()) {
+            clearInterval(handle);
+        }
+        this._perAppTimers.clear();
 
         if (this.bridge._onLabelsChanged) {
             this.bridge.labelLoader.removeListener('labels-changed', this.bridge._onLabelsChanged);

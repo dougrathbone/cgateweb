@@ -192,6 +192,14 @@ class ConfigLoader {
             config.getallperiod = options.getall_period;
         }
 
+        if (options.getall_app_periods && typeof options.getall_app_periods === 'object' && !Array.isArray(options.getall_app_periods)) {
+            const periods = {};
+            for (const [key, value] of Object.entries(options.getall_app_periods)) {
+                periods[String(key)] = value;
+            }
+            config.getall_app_periods = periods;
+        }
+
         if (options.retain_reads) {
             config.retainreads = true;
         }
