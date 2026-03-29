@@ -339,7 +339,7 @@ describe('BridgeInitializationService', () => {
             expect(commandQueueAdd).not.toHaveBeenCalled();
         });
 
-        it('sets up periodic getall interval for multiple networks', async () => {
+        it('sets up periodic getall timers for multiple networks', async () => {
             const { bridge, commandQueueAdd } = makeBridge({
                 getallonstart: false,
                 getallperiod: 3600,
@@ -347,17 +347,17 @@ describe('BridgeInitializationService', () => {
             });
             const svc = new BridgeInitializationService(bridge);
             await svc.handleAllConnected();
-            expect(bridge.periodicGetAllInterval).not.toBeNull();
+            expect(svc._perAppTimers.size).toBe(2);
 
             jest.advanceTimersByTime(3600 * 1000);
             expect(commandQueueAdd).toHaveBeenCalledTimes(2);
             expect(commandQueueAdd.mock.calls[0][0]).toContain('254/56');
             expect(commandQueueAdd.mock.calls[1][0]).toContain('1/56');
 
-            clearInterval(bridge.periodicGetAllInterval);
+            svc.stop();
         });
 
-        it('clears previous periodic interval before setting a new one', async () => {
+        it('clears previous periodic interval (legacy) before setting new per-app timers', async () => {
             const { bridge } = makeBridge({
                 getallonstart: false,
                 getallperiod: 3600,
@@ -367,8 +367,10 @@ describe('BridgeInitializationService', () => {
             bridge.periodicGetAllInterval = oldInterval;
             const svc = new BridgeInitializationService(bridge);
             await svc.handleAllConnected();
-            expect(bridge.periodicGetAllInterval).not.toBe(oldInterval);
-            clearInterval(bridge.periodicGetAllInterval);
+            // Legacy interval cleared, new per-app timers created
+            expect(bridge.periodicGetAllInterval).toBeNull();
+            expect(svc._perAppTimers.size).toBe(1);
+            svc.stop();
         });
 
         it('initializes HaDiscovery and sets up labels listener on first call', async () => {
@@ -465,14 +467,157 @@ describe('BridgeInitializationService', () => {
         });
     });
 
+    describe('_getIntervalForApp', () => {
+        it('returns global default * 1000 when no per-app override is set', () => {
+            const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: {} });
+            const svc = new BridgeInitializationService(bridge);
+            expect(svc._getIntervalForApp('56')).toBe(3600000);
+        });
+
+        it('returns per-app override * 1000 when set for the given app ID', () => {
+            const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: { '201': 300 } });
+            const svc = new BridgeInitializationService(bridge);
+            expect(svc._getIntervalForApp('201')).toBe(300000);
+        });
+
+        it('returns 0 (skip) when app is explicitly set to 0', () => {
+            const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: { '56': 0 } });
+            const svc = new BridgeInitializationService(bridge);
+            expect(svc._getIntervalForApp('56')).toBe(0);
+        });
+
+        it('falls back to global default when app not present in getall_app_periods', () => {
+            const { bridge } = makeBridge({ getallperiod: 120, getall_app_periods: { '201': 60 } });
+            const svc = new BridgeInitializationService(bridge);
+            expect(svc._getIntervalForApp('56')).toBe(120000);
+        });
+
+        it('returns 0 when neither getallperiod nor getall_app_periods is set', () => {
+            const { bridge } = makeBridge({ getallperiod: 0, getall_app_periods: {} });
+            const svc = new BridgeInitializationService(bridge);
+            expect(svc._getIntervalForApp('56')).toBe(0);
+        });
+    });
+
+    describe('_scheduleAllGetalls', () => {
+        it('creates separate timers for each network×app combination', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: {},
+                getall_networks: [254, 1],
+                ha_discovery_cover_app_id: '203'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+            // 2 networks × 2 apps (56 + 203) = 4 timers
+            expect(svc._perAppTimers.size).toBe(4);
+            expect(svc._perAppTimers.has('254/56')).toBe(true);
+            expect(svc._perAppTimers.has('254/203')).toBe(true);
+            expect(svc._perAppTimers.has('1/56')).toBe(true);
+            expect(svc._perAppTimers.has('1/203')).toBe(true);
+
+            svc.stop();
+        });
+
+        it('does not create a timer for an app with interval 0', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: { '56': 0 },
+                getall_networks: [254]
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+            expect(svc._perAppTimers.has('254/56')).toBe(false);
+            svc.stop();
+        });
+
+        it('timers call getall with the correct network/app path', async () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: {},
+                getall_networks: [254]
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            jest.advanceTimersByTime(3600 * 1000);
+            expect(commandQueueAdd).toHaveBeenCalledTimes(1);
+            expect(commandQueueAdd.mock.calls[0][0]).toContain('//HOME/254/56/*');
+            svc.stop();
+        });
+
+        it('fires per-app timers at different rates when intervals differ', async () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: { '201': 300 },
+                getall_networks: [254],
+                ha_discovery_hvac_app_id: '201'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            // After 5 minutes: app 201 fires once, app 56 has not fired yet
+            jest.advanceTimersByTime(300 * 1000);
+            const hvacCalls = commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/201/*'));
+            const lightCalls = commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'));
+            expect(hvacCalls).toHaveLength(1);
+            expect(lightCalls).toHaveLength(0);
+
+            // After 1 hour: lighting app also fires
+            jest.advanceTimersByTime(3300 * 1000);
+            const lightCallsAfter = commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'));
+            expect(lightCallsAfter).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('clears existing per-app timers when _scheduleAllGetalls is called again', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: {},
+                getall_networks: [254]
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+            const firstTimer = svc._perAppTimers.get('254/56');
+            expect(firstTimer).toBeDefined();
+
+            // Trigger a second initialization
+            bridge._lastInitTime = 0;
+            await svc.handleAllConnected();
+            const secondTimer = svc._perAppTimers.get('254/56');
+            // Timer handle should be a new one (old was cleared and replaced)
+            expect(secondTimer).toBeDefined();
+            svc.stop();
+        });
+    });
+
     describe('stop', () => {
         it('clears periodic interval on stop', async () => {
             const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });
             const svc = new BridgeInitializationService(bridge);
             await svc.handleAllConnected();
-            expect(bridge.periodicGetAllInterval).not.toBeNull();
             svc.stop();
             expect(bridge.periodicGetAllInterval).toBeNull();
+        });
+
+        it('clears all per-app timers on stop', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_app_periods: { '201': 300 },
+                getall_networks: [254],
+                ha_discovery_hvac_app_id: '201'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+            expect(svc._perAppTimers.size).toBeGreaterThan(0);
+            svc.stop();
+            expect(svc._perAppTimers.size).toBe(0);
         });
 
         it('removes labels-changed listener on stop', async () => {

@@ -418,8 +418,8 @@ describe('CgateWebBridge', () => {
 
                 bridge._handleAllConnected();
 
-                expect(bridge.periodicGetAllInterval).not.toBeNull();
-                
+                expect(bridge.initializationService._perAppTimers.size).toBeGreaterThan(0);
+
                 // Test that periodic execution works
                 const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
                 jest.advanceTimersByTime(5000);
