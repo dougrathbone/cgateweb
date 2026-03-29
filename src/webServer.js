@@ -44,6 +44,8 @@ class WebServer {
         this.basePath = (options.basePath || '').replace(/\/+$/, '');
         this.labelLoader = options.labelLoader;
         this.triggerAppId = options.triggerAppId || null;
+        this.eventStream = options.eventStream || null;
+        this._sseKeepaliveMs = options._sseKeepaliveMs || 15000;
         this.getStatus = options.getStatus || (() => ({}));
         this.apiKey = options.apiKey || null;
         this.allowUnauthenticatedMutations = options.allowUnauthenticatedMutations === true;
@@ -149,6 +151,9 @@ class WebServer {
             }
             if (urlPath === '/readyz' && req.method === 'GET') {
                 return this._handleReady(req, res);
+            }
+            if (urlPath === '/api/events/stream' && req.method === 'GET') {
+                return this._handleEventStream(req, res);
             }
 
             // Static files
@@ -375,6 +380,50 @@ class WebServer {
         this._sendJSON(res, isReady ? 200 : 503, {
             ready: isReady,
             lifecycle: status.lifecycle || { state: 'unknown' }
+        });
+    }
+
+    _handleEventStream(req, res) {
+        res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
+        });
+
+        // Flush headers immediately so the client knows the connection is open
+        if (res.flushHeaders) res.flushHeaders();
+
+        // Replay recent events first
+        if (this.eventStream) {
+            const recent = this.eventStream.getRecent();
+            for (const entry of recent) {
+                res.write(`data: ${JSON.stringify(entry)}\n\n`);
+            }
+        }
+
+        // Listener for new events
+        const listener = (entry) => {
+            res.write(`data: ${JSON.stringify(entry)}\n\n`);
+        };
+
+        if (this.eventStream) {
+            this.eventStream.subscribe(listener);
+        }
+
+        // Keepalive comment every 15 seconds to prevent proxy timeouts
+        const keepaliveMs = this._sseKeepaliveMs || 15000;
+        const keepaliveInterval = setInterval(() => {
+            res.write(': keepalive\n\n');
+        }, keepaliveMs);
+        keepaliveInterval.unref();
+
+        // Clean up on client disconnect
+        req.on('close', () => {
+            clearInterval(keepaliveInterval);
+            if (this.eventStream) {
+                this.eventStream.unsubscribe(listener);
+            }
         });
     }
 

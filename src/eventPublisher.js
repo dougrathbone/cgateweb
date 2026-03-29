@@ -42,6 +42,7 @@ class EventPublisher {
         this.mqttOptions = options.mqttOptions;
         this.labelLoader = options.labelLoader || null;
         this.coverRampTracker = options.coverRampTracker || null;
+        this.onEventLog = options.onEventLog || null;
         this.eventPublishDedupWindowMs = Math.max(0, Number(this.settings.eventPublishDedupWindowMs) || 0);
         this.eventPublishDedupMaxEntries = Math.max(100, Number(this.settings.eventPublishDedupMaxEntries) || 5000);
         this.topicCacheMaxEntries = Math.max(100, Number(this.settings.topicCacheMaxEntries) || 5000);
@@ -125,6 +126,23 @@ class EventPublisher {
                 : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         }
        
+        // Emit event log entry for live event stream (before any early returns)
+        if (this.onEventLog) {
+            const action = event.getAction();
+            let eventType = 'update';
+            if (action === 'ramp') eventType = 'ramp';
+            else if (action === 'on') eventType = 'on';
+            else if (action === 'off') eventType = 'off';
+            this.onEventLog({
+                ts: Date.now(),
+                network: network,
+                app: application,
+                group: group,
+                level: rawLevel !== null ? rawLevel : (actionIsOn ? 255 : 0),
+                type: eventType
+            });
+        }
+
         // Trigger groups publish as HA event entities - never retain
         if (isTrigger) {
             const eventPayload = rawLevel !== null

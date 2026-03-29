@@ -440,6 +440,92 @@ th.cb-col, td.cb-col {
   color: var(--text);
   font-size: 0.85rem;
 }
+
+/* Live Events panel */
+.event-log-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.event-log-toolbar input[type=text] {
+  flex: 1;
+  min-width: 160px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.event-badge {
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: center;
+}
+.event-log-table-wrap {
+  overflow-x: auto;
+  max-height: 340px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.event-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.event-log-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-alt);
+  padding: 5px 8px;
+  text-align: left;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.event-log-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.event-log-table tr:last-child td { border-bottom: none; }
+.event-log-table tr:hover td { background: var(--surface-alt); cursor: pointer; }
+.event-bar-cell { min-width: 80px; }
+.event-bar-bg {
+  background: var(--border);
+  border-radius: 3px;
+  height: 6px;
+  width: 100%;
+  overflow: hidden;
+}
+.event-bar-fill {
+  background: var(--primary);
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.2s;
+}
+@keyframes event-flash {
+  0%   { background-color: color-mix(in srgb, var(--primary) 20%, transparent); }
+  100% { background-color: transparent; }
+}
+.event-log-table tr.new-event td {
+  animation: event-flash 1s ease-out forwards;
+}
+.event-log-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 20px;
+  font-size: 0.85rem;
+}
 </style>
 </head>
 <body>
@@ -560,6 +646,35 @@ th.cb-col, td.cb-col {
           <option value="switch">switch</option>
         </select>
         <button id="addBtn">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-header" data-section="events">
+      <h2><span class="chevron" id="eventsChevron">&#9654;</span> Live Events</h2>
+    </div>
+    <div class="section-body collapsed" id="eventsBody">
+      <div class="event-log-toolbar">
+        <button id="eventToggleBtn">&#9654; Live</button>
+        <button id="eventClearBtn">Clear</button>
+        <span class="event-badge" id="eventCountBadge">0</span>
+        <input type="text" id="eventFilterInput" placeholder="Filter by address or label...">
+      </div>
+      <div class="event-log-table-wrap" id="eventLogTableWrap">
+        <div class="event-log-empty" id="eventLogEmpty">No events yet. Start an action on a C-Bus device to see events here.</div>
+        <table class="event-log-table" id="eventLogTable" style="display:none">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Address</th>
+              <th>Label</th>
+              <th>Level</th>
+              <th class="event-bar-cell">Bar</th>
+            </tr>
+          </thead>
+          <tbody id="eventLogBody"></tbody>
+        </table>
       </div>
     </div>
   </div>
@@ -1479,6 +1594,186 @@ th.cb-col, td.cb-col {
       redo();
     }
   });
+
+  // --- Live Events panel ---
+  (function() {
+    var eventRows = [];        // buffered display rows (max 200)
+    var eventCount = 0;        // total received this session
+    var eventLive = true;      // streaming active
+    var eventFilter = '';
+    var eventSource = null;
+    var EVENT_MAX = 200;
+    var RECONNECT_DELAY = 3000;
+
+    // Persist collapsed state
+    var eventsCollapsed = localStorage.getItem('eventsCollapsed') !== 'false';
+    var eventsBody = document.getElementById('eventsBody');
+    var eventsChevron = document.getElementById('eventsChevron');
+    if (eventsCollapsed) {
+      eventsBody.classList.add('collapsed');
+    } else {
+      eventsChevron.classList.add('open');
+    }
+
+    document.querySelector('.section-header[data-section="events"]').addEventListener('click', function() {
+      eventsBody.classList.toggle('collapsed');
+      eventsChevron.classList.toggle('open');
+      eventsCollapsed = eventsBody.classList.contains('collapsed');
+      localStorage.setItem('eventsCollapsed', eventsCollapsed ? 'true' : 'false');
+    });
+
+    function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function formatTime(ts) {
+      var d = new Date(ts);
+      return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+    }
+
+    function getLabelForAddress(addrKey) {
+      return (labels && labels[addrKey]) ? labels[addrKey] : '';
+    }
+
+    function eventMatchesFilter(row) {
+      if (!eventFilter) return true;
+      var f = eventFilter.toLowerCase();
+      if (row.addr.toLowerCase().indexOf(f) !== -1) return true;
+      var lbl = getLabelForAddress(row.addr).toLowerCase();
+      if (lbl && lbl.indexOf(f) !== -1) return true;
+      return false;
+    }
+
+    function renderEventLog() {
+      var tbody = document.getElementById('eventLogBody');
+      var table = document.getElementById('eventLogTable');
+      var empty = document.getElementById('eventLogEmpty');
+      var filtered = eventRows.filter(eventMatchesFilter);
+      if (filtered.length === 0) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        empty.textContent = eventRows.length === 0
+          ? 'No events yet. Start an action on a C-Bus device to see events here.'
+          : 'No events match the current filter.';
+        return;
+      }
+      table.style.display = '';
+      empty.style.display = 'none';
+      var html = '';
+      for (var i = 0; i < filtered.length; i++) {
+        var row = filtered[i];
+        var lbl = getLabelForAddress(row.addr);
+        var pct = Math.round(row.level / 255 * 100);
+        html += '<tr data-addr="' + row.addr + '">' +
+          '<td>' + row.time + '</td>' +
+          '<td>' + row.addr + '</td>' +
+          '<td>' + (lbl ? lbl : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+          '<td>' + row.level + ' (' + pct + '%)</td>' +
+          '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>' +
+          '</tr>';
+      }
+      tbody.innerHTML = html;
+
+      // Flash the most-recent row
+      if (filtered.length > 0) {
+        var rows = tbody.querySelectorAll('tr');
+        var last = rows[rows.length - 1];
+        if (last) {
+          last.classList.remove('new-event');
+          // Force reflow so animation restarts
+          void last.offsetWidth;
+          last.classList.add('new-event');
+        }
+      }
+
+      // Click row to filter label table
+      tbody.querySelectorAll('tr').forEach(function(tr) {
+        tr.addEventListener('click', function() {
+          var addr = tr.getAttribute('data-addr');
+          if (addr) {
+            var si = document.getElementById('searchInput');
+            var tf = document.getElementById('typeFilter');
+            if (si) { si.value = addr; si.dispatchEvent(new Event('input')); }
+            if (tf) { tf.value = ''; tf.dispatchEvent(new Event('change')); }
+          }
+        });
+      });
+    }
+
+    function appendEventRow(event) {
+      eventCount++;
+      document.getElementById('eventCountBadge').textContent = eventCount;
+
+      var row = {
+        ts: event.ts,
+        time: formatTime(event.ts),
+        addr: event.network + '/' + event.app + '/' + event.group,
+        level: typeof event.level === 'number' ? event.level : 0,
+        type: event.type || 'update'
+      };
+      eventRows.push(row);
+      if (eventRows.length > EVENT_MAX) {
+        eventRows.shift();
+      }
+
+      if (eventLive) {
+        renderEventLog();
+        // Auto-scroll to bottom
+        var wrap = document.getElementById('eventLogTableWrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      }
+    }
+
+    function connectEventSource() {
+      if (eventSource) {
+        eventSource.close();
+        eventSource = null;
+      }
+      eventSource = new EventSource(API_BASE + '/api/events/stream');
+      eventSource.onmessage = function(e) {
+        try {
+          var event = JSON.parse(e.data);
+          appendEventRow(event);
+        } catch (_) { /* ignore parse errors */ }
+      };
+      eventSource.onerror = function() {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        setTimeout(connectEventSource, RECONNECT_DELAY);
+      };
+    }
+
+    // Toggle live/paused
+    document.getElementById('eventToggleBtn').addEventListener('click', function() {
+      eventLive = !eventLive;
+      var btn = document.getElementById('eventToggleBtn');
+      if (eventLive) {
+        btn.textContent = '\u25B6 Live';
+        renderEventLog();
+        var wrap = document.getElementById('eventLogTableWrap');
+        if (wrap) wrap.scrollTop = wrap.scrollHeight;
+      } else {
+        btn.textContent = '\u23F8 Paused';
+      }
+    });
+
+    // Clear
+    document.getElementById('eventClearBtn').addEventListener('click', function() {
+      eventRows = [];
+      eventCount = 0;
+      document.getElementById('eventCountBadge').textContent = '0';
+      renderEventLog();
+    });
+
+    // Filter input
+    document.getElementById('eventFilterInput').addEventListener('input', function() {
+      eventFilter = this.value.trim();
+      renderEventLog();
+    });
+
+    // Start SSE connection
+    connectEventSource();
+  })();
 
   // Init
   window.addEventListener('pagehide', clearStatusRefreshTimer);

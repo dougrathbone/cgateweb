@@ -1144,4 +1144,293 @@ describe('WebServer', () => {
             expect(readdRes.body.labels['254/56/11']).toBe('Living Room');
         });
     });
+
+    describe('GET /api/events/stream (SSE)', () => {
+        /**
+         * Helper that opens an SSE connection and collects data.
+         * Returns { lines, res, destroy } where destroy() closes the connection.
+         */
+        function openSSE(ssePort, path = '/api/events/stream') {
+            return new Promise((resolve, reject) => {
+                const options = {
+                    hostname: '127.0.0.1',
+                    port: ssePort,
+                    path,
+                    method: 'GET',
+                    headers: { Accept: 'text/event-stream' }
+                };
+                const req = http.request(options, (res) => {
+                    const lines = [];
+                    res.on('data', (chunk) => {
+                        lines.push(...chunk.toString().split('\n').filter(Boolean));
+                    });
+                    resolve({ lines, res, destroy: () => req.destroy() });
+                });
+                req.on('error', (e) => {
+                    // Ignore ECONNRESET from destroy()
+                    if (e.code !== 'ECONNRESET') reject(e);
+                });
+                req.end();
+            });
+        }
+
+        it('returns 200 with Content-Type text/event-stream', async () => {
+            const { res, destroy } = await openSSE(port);
+            expect(res.statusCode).toBe(200);
+            expect(res.headers['content-type']).toBe('text/event-stream');
+            destroy();
+        });
+
+        it('sends data: prefixed JSON lines for recent events on connect', async () => {
+            // Build a server with an eventStream that has buffered recent events
+            const sampleEvent = { ts: 1000, network: '254', app: '56', group: '5', level: 128, type: 'update' };
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => [sampleEvent]
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const { lines, destroy } = await openSSE(ssePort);
+            // Give response a tick to flush
+            await new Promise((r) => setTimeout(r, 50));
+            destroy();
+            await sseServer.close();
+
+            const dataLines = lines.filter((l) => l.startsWith('data:'));
+            expect(dataLines.length).toBeGreaterThanOrEqual(1);
+            const parsed = JSON.parse(dataLines[0].slice('data:'.length).trim());
+            expect(parsed).toMatchObject({ ts: 1000, network: '254', app: '56', group: '5' });
+        });
+
+        it('SSE client receives new events pushed after connecting', (done) => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            sseServer.start().then(() => {
+                const ssePort = sseServer._server.address().port;
+                const received = [];
+                const req = http.request(
+                    { hostname: '127.0.0.1', port: ssePort, path: '/api/events/stream', method: 'GET' },
+                    (res) => {
+                        res.on('data', (chunk) => {
+                            received.push(...chunk.toString().split('\n').filter(Boolean));
+                        });
+
+                        // After connection is open, push a live event
+                        setTimeout(() => {
+                            const liveEvent = { ts: 2000, network: '254', app: '56', group: '10', level: 255, type: 'on' };
+                            for (const fn of listeners) fn(liveEvent);
+
+                            setTimeout(() => {
+                                req.destroy();
+                                sseServer.close().then(() => {
+                                    const dataLines = received.filter((l) => l.startsWith('data:'));
+                                    expect(dataLines.length).toBeGreaterThanOrEqual(1);
+                                    const parsed = JSON.parse(dataLines[dataLines.length - 1].slice('data:'.length).trim());
+                                    expect(parsed).toMatchObject({ ts: 2000, group: '10', level: 255 });
+                                    done();
+                                }).catch(done);
+                            }, 50);
+                        }, 30);
+                    }
+                );
+                req.on('error', (e) => { if (e.code !== 'ECONNRESET') done(e); });
+                req.end();
+            }).catch(done);
+        }, 10000);
+
+        it('disconnect cleans up the listener (no memory leak)', async () => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const { destroy } = await openSSE(ssePort);
+            await new Promise((r) => setTimeout(r, 30));
+            expect(listeners.size).toBe(1);
+
+            // Disconnect the SSE client
+            destroy();
+            await new Promise((r) => setTimeout(r, 80));
+            expect(listeners.size).toBe(0);
+
+            await sseServer.close();
+        });
+
+        it('works without an eventStream (no crash, returns 200)', async () => {
+            const plainServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true
+                // no eventStream
+            });
+            await plainServer.start();
+            const plainPort = plainServer._server.address().port;
+
+            const { res, destroy } = await openSSE(plainPort);
+            expect(res.statusCode).toBe(200);
+            expect(res.headers['content-type']).toBe('text/event-stream');
+            destroy();
+            await plainServer.close();
+        });
+
+        it('multiple simultaneous SSE clients each receive events', async () => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const client1Lines = [];
+            const client2Lines = [];
+
+            const makeClient = (lines) => new Promise((resolve, reject) => {
+                const req = http.request(
+                    { hostname: '127.0.0.1', port: ssePort, path: '/api/events/stream', method: 'GET' },
+                    (res) => {
+                        res.on('data', (chunk) => {
+                            lines.push(...chunk.toString().split('\n').filter(Boolean));
+                        });
+                        resolve(req);
+                    }
+                );
+                req.on('error', (e) => { if (e.code !== 'ECONNRESET') reject(e); });
+                req.end();
+            });
+
+            const req1 = await makeClient(client1Lines);
+            const req2 = await makeClient(client2Lines);
+
+            await new Promise((r) => setTimeout(r, 30));
+            expect(listeners.size).toBe(2);
+
+            // Broadcast an event to all listeners
+            const broadcastEvent = { ts: 3000, network: '254', app: '56', group: '7', level: 64, type: 'ramp' };
+            for (const fn of listeners) fn(broadcastEvent);
+
+            await new Promise((r) => setTimeout(r, 50));
+            req1.destroy();
+            req2.destroy();
+            await sseServer.close();
+
+            const c1data = client1Lines.filter((l) => l.startsWith('data:'));
+            const c2data = client2Lines.filter((l) => l.startsWith('data:'));
+            expect(c1data.length).toBeGreaterThanOrEqual(1);
+            expect(c2data.length).toBeGreaterThanOrEqual(1);
+
+            const p1 = JSON.parse(c1data[c1data.length - 1].slice('data:'.length).trim());
+            const p2 = JSON.parse(c2data[c2data.length - 1].slice('data:'.length).trim());
+            expect(p1).toMatchObject({ ts: 3000, group: '7' });
+            expect(p2).toMatchObject({ ts: 3000, group: '7' });
+        });
+
+        it('keepalive comment is sent at interval', (done) => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            // Use a very short keepalive interval for the test
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream,
+                _sseKeepaliveMs: 80
+            });
+            sseServer.start().then(() => {
+                const ssePort = sseServer._server.address().port;
+                const received = [];
+                const req = http.request(
+                    { hostname: '127.0.0.1', port: ssePort, path: '/api/events/stream', method: 'GET' },
+                    (res) => {
+                        res.on('data', (chunk) => {
+                            received.push(chunk.toString());
+                        });
+                        // Wait long enough for at least one keepalive
+                        setTimeout(() => {
+                            req.destroy();
+                            sseServer.close().then(() => {
+                                const combined = received.join('');
+                                expect(combined).toContain(': keepalive');
+                                done();
+                            }).catch(done);
+                        }, 200);
+                    }
+                );
+                req.on('error', (e) => { if (e.code !== 'ECONNRESET') done(e); });
+                req.end();
+            }).catch(done);
+        }, 10000);
+
+        it('filter/search on client side does not affect SSE server-side streaming', async () => {
+            // The SSE endpoint streams all events without filtering;
+            // filtering is purely a client-side concern.
+            const events = [
+                { ts: 100, network: '254', app: '56', group: '1', level: 100, type: 'on' },
+                { ts: 200, network: '254', app: '56', group: '2', level: 50, type: 'update' }
+            ];
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => events
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const { lines, destroy } = await openSSE(ssePort);
+            await new Promise((r) => setTimeout(r, 50));
+            destroy();
+            await sseServer.close();
+
+            // All buffered events should be sent; no server-side filtering
+            const dataLines = lines.filter((l) => l.startsWith('data:'));
+            expect(dataLines.length).toBeGreaterThanOrEqual(2);
+        });
+    });
 });
