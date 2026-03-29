@@ -81,6 +81,10 @@ options:
   ha_bridge_diagnostics_enabled: true
   ha_bridge_diagnostics_interval_sec: 60
 
+  stale_device_detection_enabled: true
+  stale_device_threshold_hours: 24
+  stale_device_check_interval_sec: 3600
+
   # Connection pool settings (advanced)
   connection_pool_size: 3
   connection_health_check_interval_sec: 30
@@ -153,6 +157,9 @@ schema:
   ha_hvac_temperature_unit: "list(C|F)?"
   ha_bridge_diagnostics_enabled: "bool"
   ha_bridge_diagnostics_interval_sec: "int(10,3600)?"
+  stale_device_detection_enabled: "bool"
+  stale_device_threshold_hours: "int(1,720)?"
+  stale_device_check_interval_sec: "int(60,86400)?"
   # Connection pool settings (advanced)
   connection_pool_size: "int(1,10)?"
   connection_health_check_interval_sec: "int(5,300)?"

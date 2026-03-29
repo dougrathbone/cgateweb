@@ -277,6 +277,10 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `cbus/read/bridge/diagnostics/reconnect_indicator/state`
 - `cbus/read/bridge/diagnostics/cgate_version/state` (managed mode only)
 
+### Stale Device Topics (Published by add-on)
+- `cbus/bridge/stale_devices` — integer count of stale devices
+- `cbus/bridge/stale_devices_detail` — JSON attributes with per-device details
+
 ## Device Discovery
 
 When `ha_discovery_enabled` is true, the add-on automatically:
@@ -329,6 +333,20 @@ This add-on runs with `host_network: false`.
 - Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
 
 If you expose `8080`, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`.
+
+## Stale Device Detection
+
+When enabled, the bridge periodically scans all C-Bus devices that have reported at least one state change and flags any whose last update is older than the configured threshold. Results are published as a Home Assistant `sensor` diagnostic entity called **C-Bus Stale Devices**.
+
+Only devices that have reported at least once are checked. Groups that have never sent an event (e.g. genuinely unused addresses) are not flagged.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `stale_device_detection_enabled` | bool | `true` | Enable or disable stale device scanning. |
+| `stale_device_threshold_hours` | integer | `24` | Hours without a state update before a device is considered stale. Valid range: 1–720. |
+| `stale_device_check_interval_sec` | integer | `3600` | How often (seconds) to run the scan and update the sensor. Valid range: 60–86400. |
+
+The sensor state is the count of stale devices (e.g. `3`). A JSON attributes payload is published to `cbus/bridge/stale_devices_detail` with a list of affected devices, their labels, last-seen timestamps, and how many hours ago they last reported.
 
 ## Advanced: Connection Pool
 

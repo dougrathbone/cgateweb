@@ -12,6 +12,7 @@ const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
 const WebServer = require('./webServer');
 const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
+const StaleDeviceDetector = require('./staleDeviceDetector');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 
@@ -178,6 +179,13 @@ class CgateWebBridge {
             () => this._getBridgeStatus(),
             this.logger
         );
+        this.staleDeviceDetector = new StaleDeviceDetector({
+            deviceStateManager: this.deviceStateManager,
+            mqttClient: { publish: (topic, payload, opts) => this.mqttManager.publish(topic, payload, opts) },
+            settings: this.settings,
+            labelLoader: this.labelLoader,
+            logger: this.logger
+        });
 
         this.initializationService = new BridgeInitializationService(this);
         this._setupEventHandlers();
@@ -254,6 +262,7 @@ class CgateWebBridge {
         await this.connectionManager.start();
         this.haBridgeDiagnostics.start();
         this.haBridgeDiagnostics.publishNow('startup');
+        this.staleDeviceDetector.start();
         this._updateBridgeReadiness('startup-complete');
         
         return this;
@@ -275,6 +284,7 @@ class CgateWebBridge {
         
         this.initializationService.stop();
         this.haBridgeDiagnostics.stop();
+        this.staleDeviceDetector.stop();
 
         // Stop web server
         await this.webServer.close();

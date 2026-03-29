@@ -436,4 +436,91 @@ describe('DeviceStateManager', () => {
             expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', 128);
         });
     });
+
+    describe('lastSeen tracking', () => {
+        it('updateLevelFromEvent records lastSeen timestamp', () => {
+            const before = Date.now();
+            const mockEvent = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 7,
+                getLevel: () => 128,
+                getAction: () => 'ramp'
+            };
+            stateManager.updateLevelFromEvent(mockEvent);
+            const after = Date.now();
+
+            const ts = stateManager.getLastSeen(254, 56, 7);
+            expect(ts).toBeGreaterThanOrEqual(before);
+            expect(ts).toBeLessThanOrEqual(after);
+        });
+
+        it('getLastSeen returns stored timestamp', () => {
+            const mockEvent = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 8,
+                getLevel: () => null,
+                getAction: () => 'on'
+            };
+            stateManager.updateLevelFromEvent(mockEvent);
+            expect(stateManager.getLastSeen(254, 56, 8)).toBeDefined();
+        });
+
+        it('getLastSeen returns undefined for unseen device', () => {
+            expect(stateManager.getLastSeen(254, 56, 99)).toBeUndefined();
+        });
+
+        it('getAllLastSeen returns a Map with all entries', () => {
+            const mockEvent1 = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 10,
+                getLevel: () => 100,
+                getAction: () => 'ramp'
+            };
+            const mockEvent2 = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 11,
+                getLevel: () => null,
+                getAction: () => 'off'
+            };
+            stateManager.updateLevelFromEvent(mockEvent1);
+            stateManager.updateLevelFromEvent(mockEvent2);
+
+            const map = stateManager.getAllLastSeen();
+            expect(map).toBeInstanceOf(Map);
+            expect(map.has('254/56/10')).toBe(true);
+            expect(map.has('254/56/11')).toBe(true);
+        });
+
+        it('getAllLastSeen returns a copy (mutations do not affect internal state)', () => {
+            const mockEvent = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 12,
+                getLevel: () => 50,
+                getAction: () => 'ramp'
+            };
+            stateManager.updateLevelFromEvent(mockEvent);
+
+            const map = stateManager.getAllLastSeen();
+            map.set('254/56/99', 12345);
+
+            expect(stateManager.getLastSeen(254, 56, 99)).toBeUndefined();
+        });
+
+        it('lastSeen is not recorded for PIR sensor events', () => {
+            const mockEvent = {
+                getApplication: () => 36, // PIR app
+                getNetwork: () => 254,
+                getGroup: () => 5,
+                getLevel: () => null,
+                getAction: () => 'on'
+            };
+            stateManager.updateLevelFromEvent(mockEvent);
+            expect(stateManager.getLastSeen(254, 36, 5)).toBeUndefined();
+        });
+    });
 });

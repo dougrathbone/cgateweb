@@ -138,6 +138,20 @@ configuration:
     name: Diagnostics Update Interval (seconds)
     description: How often bridge diagnostic entity states are refreshed. Lower
       values update faster but increase MQTT traffic.
+  stale_device_detection_enabled:
+    name: Enable Stale Device Detection
+    description: Periodically check whether any C-Bus devices have stopped reporting
+      state changes and publish a warning sensor to Home Assistant. Only devices
+      that have reported at least once are checked.
+  stale_device_threshold_hours:
+    name: Stale Device Threshold (hours)
+    description: Number of hours without a state update before a device is considered
+      stale. Default is 24 hours. Valid range is 1 to 720 hours (30 days).
+  stale_device_check_interval_sec:
+    name: Stale Device Check Interval (seconds)
+    description: How often (in seconds) to scan for stale devices and update the
+      Home Assistant sensor. Default is 3600 seconds (1 hour). Valid range is
+      60 to 86400 seconds.
   cgate_mode:
     name: C-Gate Mode
     description: How C-Gate is provided. "remote" connects to a C-Gate server

@@ -268,6 +268,18 @@ class ConfigLoader {
             config.ha_bridge_diagnostics_interval_sec = options.ha_bridge_diagnostics_interval_sec;
         }
 
+        if (options.stale_device_detection_enabled !== undefined && options.stale_device_detection_enabled !== null) {
+            config.stale_device_detection_enabled = options.stale_device_detection_enabled === true;
+        }
+
+        if (options.stale_device_threshold_hours !== undefined && options.stale_device_threshold_hours !== null) {
+            config.stale_device_threshold_hours = options.stale_device_threshold_hours;
+        }
+
+        if (options.stale_device_check_interval_sec !== undefined && options.stale_device_check_interval_sec !== null) {
+            config.stale_device_check_interval_sec = options.stale_device_check_interval_sec;
+        }
+
         // Connection pool settings (advanced)
         if (options.connection_pool_size !== undefined) {
             config.connectionPoolSize = options.connection_pool_size;

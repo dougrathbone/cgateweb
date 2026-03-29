@@ -55,6 +55,9 @@ class DeviceStateManager {
 
         // Store last-known level for each device address (network/app/group → 0-255)
         this._deviceLevels = new Map();
+
+        // Track last-seen timestamp per device address (network/app/group → ms since epoch)
+        this._lastSeen = new Map();
     }
 
     /**
@@ -111,9 +114,33 @@ class DeviceStateManager {
             this.logger.debug(`Level update: ${simpleAddr} = ${levelValue}`);
             // Store latest known level so callers can retrieve it synchronously
             this._deviceLevels.set(simpleAddr, levelValue);
+            // Record when this device was last seen (for stale device detection)
+            this._lastSeen.set(simpleAddr, Date.now());
             // Emit internal level event for relative ramp operations (increase/decrease)
             this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
         }
+    }
+
+    /**
+     * Returns the last-seen timestamp (ms since epoch) for the given address, or
+     * `undefined` when no event has been received yet.
+     *
+     * @param {string|number} network     - C-Bus network number
+     * @param {string|number} application - C-Bus application number
+     * @param {string|number} group       - C-Bus group number
+     * @returns {number|undefined}
+     */
+    getLastSeen(network, application, group) {
+        return this._lastSeen.get(`${network}/${application}/${group}`);
+    }
+
+    /**
+     * Returns a copy of the internal last-seen Map (key → timestamp ms).
+     *
+     * @returns {Map<string, number>}
+     */
+    getAllLastSeen() {
+        return new Map(this._lastSeen);
     }
 
     /**
@@ -218,6 +245,7 @@ class DeviceStateManager {
     shutdown() {
         this.clearAllOperations();
         this._deviceLevels.clear();
+        this._lastSeen.clear();
         this.internalEventEmitter.removeAllListeners();
         this.logger.debug('Device state manager shut down');
     }
