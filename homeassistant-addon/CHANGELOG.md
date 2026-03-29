@@ -105,17 +105,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.19] - 2026-03-28
 
 ### Fixed
-- Managed mode: corrected C-Gate startup flags (`-s` only, removing invalid `-p`/`-e`/`-nogui` flags that caused an infinite restart loop)
-- Managed mode: updated default C-Gate download URL to current Schneider Electric location (old Clipsal CDN returned 404)
-- Managed mode: correctly handles the Schneider download package (outer zip contains a nested C-Gate zip that must be extracted separately)
-- Web server now binds to `0.0.0.0` in add-on mode, fixing 502 errors when accessing the label editor via HA Ingress
+- Multi-network support: `getall_networks` with more than one network now correctly polls all listed networks on startup and periodically, not just the first
 - Bridge diagnostic entity names are now published correctly in MQTT discovery payloads
 - Runtime status panel timer is correctly cleared when navigating away from the label editor page
 
+### Changed
+- CI workflow now includes an integration test job (managed mode, downloads C-Gate) running on push to main
+- Integration test now runs on Linux CI without a podman machine (Linux containers run natively)
+
+## [1.4.18] - 2026-03-28
+
+### Fixed
+- Corrected CI coverage threshold for `cgateConnectionPool` to match actual coverage (37.5%)
+
+## [1.4.17] - 2026-03-28
+
+### Fixed
+- Removed no-useless-catch lint error in `lineProcessor`
+
+## [1.4.16] - 2026-03-28
+
+### Fixed
+- Web server now binds to `0.0.0.0` in add-on mode, fixing 502 errors when accessing the label editor via HA Ingress; standalone mode retains `127.0.0.1` default; regression test added
+
+## [1.4.15] - 2026-03-28
+
 ### Added
-- Local Podman-based test environment for validating managed mode end-to-end without a real Home Assistant installation
+- End-to-end integration test (`test-env/integration-test.js`) validating the full managed-mode stack: C-Gate install, C-Gate start, MQTT readiness, C-Gate connectivity, bridge lifecycle, and a 10-second stability window
+
+## [1.4.14] - 2026-03-28
+
+### Fixed
+- Managed mode: correctly handles the Schneider Electric download package (outer zip contains a nested C-Gate zip that must be extracted separately)
+- Managed mode: updated default C-Gate download URL from dead Clipsal CDN to `download.se.com` (V3.3.2, publicly accessible)
 - Better error logging when a C-Gate download fails, including HTTP status code and 404-specific guidance
-- End-to-end integration test that validates the full managed-mode stack (C-Gate install, MQTT connectivity, bridge lifecycle)
+- `test-env` updated with Dockerfile, mock HA Supervisor HTTP API, and podman-compose instructions
+
+## [1.4.13] - 2026-03-28
+
+### Fixed
+- Managed mode: corrected C-Gate startup flags (`-s` only, removing invalid `-p`/`-e`/`-nogui` flags that caused an infinite restart loop)
+- `cgate-install.sh` now writes `CommandInterface.port` and `EventInterface.port` into `C-GateConfig.txt` during installation so custom ports take effect
+
+### Added
+- Local test environment (`test-env/`) with docker-compose, Mosquitto broker config, and options templates (managed-upload, managed-download, remote) for validating managed mode without a real HA Supervisor
 
 ## [1.4.12] - 2026-03-10
 
@@ -124,6 +157,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Performance
 - Reduced hot-path parsing overhead in line processor
+
+## [1.4.11] - 2026-03-04
+
+### Fixed
+- Interactive command priority propagation: explicit interactive queue requests are no longer downgraded to standard priority
+
+### Added
+- Router regression coverage for command priority handling
+
+## [1.4.10] - 2026-03-04
+
+### Changed
+- Version alignment: Home Assistant add-on version synced with application version for phase 1 performance release
+
+## [1.4.9] - 2026-03-04
+
+### Changed
+- Version alignment: Home Assistant add-on version synced with application version for performance improvements release
 
 ## [1.4.8] - 2026-03-04
 
