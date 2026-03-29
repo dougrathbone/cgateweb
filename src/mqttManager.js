@@ -73,7 +73,7 @@ class MqttManager extends EventEmitter {
         this.client.on('connect', () => this._handleConnect());
         this.client.on('close', () => this._handleClose());
         this.client.on('error', (err) => this._handleError(err));
-        this.client.on('message', (topic, message) => this._handleMessage(topic, message));
+        this.client.on('message', (topic, message, packet) => this._handleMessage(topic, message, packet));
         
         return this;
     }
@@ -270,7 +270,14 @@ class MqttManager extends EventEmitter {
         this.emit('error', err);
     }
 
-    _handleMessage(topic, message) {
+    _handleMessage(topic, message, packet) {
+        // Ignore retained messages on write topics — they are stale commands from a previous
+        // session replayed by the broker on subscribe, and executing them would send unexpected
+        // commands to C-Gate (e.g. turning off lights that are currently on).
+        if (packet && packet.retain && topic.startsWith(MQTT_TOPIC_PREFIX_WRITE)) {
+            this.logger.debug(`Ignoring retained write command on reconnect: ${topic}`);
+            return;
+        }
         const payload = message.toString();
         this.emit('message', topic, payload);
     }

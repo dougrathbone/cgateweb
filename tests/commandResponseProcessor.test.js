@@ -324,19 +324,27 @@ describe('CommandResponseProcessor', () => {
 
     describe('_processCommandErrorResponse', () => {
         it('should log error with appropriate hint for known error codes', () => {
-            const testCases = [
+            const errorCases = [
                 { code: '400', hint: '(Bad Request/Syntax Error)' },
-                { code: '401', hint: '(Unauthorized - Check Credentials/Permissions)' },
-                { code: '404', hint: '(Not Found - Check Object Path)' },
                 { code: '406', hint: '(Not Acceptable - Invalid Parameter Value)' },
                 { code: '500', hint: '(Internal Server Error)' },
                 { code: '503', hint: '(Service Unavailable)' }
             ];
+            const warnCases = [
+                { code: '401', hint: '(Object Not Found or Unauthorized)' },
+                { code: '404', hint: '(Not Found - Check Object Path)' }
+            ];
 
-            testCases.forEach(({ code, hint }) => {
+            errorCases.forEach(({ code, hint }) => {
                 processor._processCommandErrorResponse(code, 'Error details');
-                
                 expect(mockLogger.error).toHaveBeenCalledWith(
+                    expect.stringContaining(`C-Gate Command Error ${code}: ${hint} - Error details`)
+                );
+            });
+
+            warnCases.forEach(({ code, hint }) => {
+                processor._processCommandErrorResponse(code, 'Error details');
+                expect(mockLogger.warn).toHaveBeenCalledWith(
                     expect.stringContaining(`C-Gate Command Error ${code}: ${hint} - Error details`)
                 );
             });
@@ -344,7 +352,7 @@ describe('CommandResponseProcessor', () => {
 
         it('should log error without hint for unknown error codes', () => {
             processor._processCommandErrorResponse('499', 'Unknown error');
-            
+
             expect(mockLogger.error).toHaveBeenCalledWith(
                 expect.stringContaining('C-Gate Command Error 499: - Unknown error')
             );
@@ -352,16 +360,16 @@ describe('CommandResponseProcessor', () => {
 
         it('should handle empty status data', () => {
             processor._processCommandErrorResponse('404', '');
-            
-            expect(mockLogger.error).toHaveBeenCalledWith(
+
+            expect(mockLogger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('No details provided')
             );
         });
 
         it('should handle null status data', () => {
             processor._processCommandErrorResponse('404', null);
-            
-            expect(mockLogger.error).toHaveBeenCalledWith(
+
+            expect(mockLogger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('No details provided')
             );
         });

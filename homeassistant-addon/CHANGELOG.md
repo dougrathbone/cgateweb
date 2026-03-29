@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.30] - 2026-03-29
+
+### Fixed
+- **Devices turning off on bridge restart**: the bridge was executing stale retained write commands replayed by the MQTT broker on reconnect (e.g. `cbus/write/254/56/5/ramp -> OFF`). Retained messages on write topics are now silently ignored on subscribe — only fresh commands from HA automations/UI are executed
+- C-Gate 401/404 errors for getall on unconfigured apps (e.g. cover app 203 when no covers exist) now log as WARN instead of ERROR; 401 hint text corrected from "Unauthorized" to "Object Not Found or Unauthorized"
+
 ## [1.4.29] - 2026-03-29
 
 ### Added

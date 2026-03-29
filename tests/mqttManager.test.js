@@ -445,10 +445,43 @@ describe('MqttManager', () => {
                 const emitSpy = jest.spyOn(mqttManager, 'emit');
                 const topic = 'test/topic';
                 const payload = Buffer.from('test payload');
-                
+
                 mockClient.emit('message', topic, payload);
-                
+
                 expect(emitSpy).toHaveBeenCalledWith('message', topic, 'test payload');
+            });
+
+            it('should ignore retained messages on write topics', () => {
+                const emitSpy = jest.spyOn(mqttManager, 'emit');
+                const topic = 'cbus/write/254/56/5/ramp';
+                const payload = Buffer.from('OFF');
+                const packet = { retain: true };
+
+                mockClient.emit('message', topic, payload, packet);
+
+                expect(emitSpy).not.toHaveBeenCalledWith('message', topic, 'OFF');
+            });
+
+            it('should process non-retained messages on write topics normally', () => {
+                const emitSpy = jest.spyOn(mqttManager, 'emit');
+                const topic = 'cbus/write/254/56/5/switch';
+                const payload = Buffer.from('ON');
+                const packet = { retain: false };
+
+                mockClient.emit('message', topic, payload, packet);
+
+                expect(emitSpy).toHaveBeenCalledWith('message', topic, 'ON');
+            });
+
+            it('should process retained messages on non-write topics normally', () => {
+                const emitSpy = jest.spyOn(mqttManager, 'emit');
+                const topic = 'cbus/read/254/56/5/state';
+                const payload = Buffer.from('ON');
+                const packet = { retain: true };
+
+                mockClient.emit('message', topic, payload, packet);
+
+                expect(emitSpy).toHaveBeenCalledWith('message', topic, 'ON');
             });
         });
     });

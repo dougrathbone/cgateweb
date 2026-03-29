@@ -180,17 +180,23 @@ class CommandResponseProcessor {
         const baseMessage = `C-Gate Command Error ${responseCode}:`;
         let hint = '';
 
+        let isWarn = false;
         switch (responseCode) {
             case '400': hint = ' (Bad Request/Syntax Error)'; break;
-            case '401': hint = ' (Unauthorized - Check Credentials/Permissions)'; break;
-            case '404': hint = ' (Not Found - Check Object Path)'; break;
+            case '401': hint = ' (Object Not Found or Unauthorized)'; isWarn = true; break;
+            case '404': hint = ' (Not Found - Check Object Path)'; isWarn = true; break;
             case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
             case '500': hint = ' (Internal Server Error)'; break;
             case '503': hint = ' (Service Unavailable)'; break;
         }
 
         const detail = statusData ? statusData : 'No details provided';
-        this.logger.error(`${baseMessage}${hint} - ${detail}`);
+        const message = `${baseMessage}${hint} - ${detail}`;
+        if (isWarn) {
+            this.logger.warn(message);
+        } else {
+            this.logger.error(message);
+        }
     }
 }
 
