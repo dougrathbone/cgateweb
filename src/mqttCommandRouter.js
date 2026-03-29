@@ -1,8 +1,12 @@
 const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
+const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
+    MQTT_TOPIC_PREFIX_READ,
+    MQTT_TOPIC_SUFFIX_LEVEL,
+    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
     MQTT_CMD_TYPE_SWITCH,
@@ -17,7 +21,6 @@ const {
     MQTT_STATE_OFF,
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
-    MQTT_TOPIC_SUFFIX_LEVEL,
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
@@ -47,28 +50,48 @@ const {
 class MqttCommandRouter extends EventEmitter {
     /**
      * Creates a new MQTT command router.
-     * 
-     * @param {Object} options - Configuration options
-     * @param {string} options.cbusname - C-Gate project name
-     * @param {boolean} options.ha_discovery_enabled - Whether HA discovery is enabled
+     *
+     * @param {Object}       options - Configuration options
+     * @param {string}       options.cbusname - C-Gate project name
+     * @param {boolean}      options.ha_discovery_enabled - Whether HA discovery is enabled
      * @param {EventEmitter} options.internalEventEmitter - Internal event emitter for level tracking
-     * @param {Object} options.cgateCommandQueue - Queue for sending commands to C-Gate
+     * @param {Object}       options.cgateCommandQueue - Queue for sending commands to C-Gate
+     * @param {Object}       [options.deviceStateManager] - DeviceStateManager for reading current levels
+     * @param {Object}       [options.mqttClient] - MQTT client for publishing interpolated positions
+     * @param {Object}       [options.settings] - Application settings (cover_ramp_duration_ms etc.)
+     * @param {Object}       [options.coverRampTracker] - Shared CoverRampTracker instance (optional)
      */
     constructor(options) {
         super();
-        
+
         this.cbusname = options.cbusname;
         this.haDiscoveryEnabled = options.ha_discovery_enabled;
         this.internalEventEmitter = options.internalEventEmitter;
         this.cgateCommandQueue = options.cgateCommandQueue;
-        
+        this.deviceStateManager = options.deviceStateManager || null;
+        this.mqttClient = options.mqttClient || null;
+        this.settings = options.settings || {};
+
+        // Use shared tracker if provided, otherwise create a private one
+        this._coverRampTracker = options.coverRampTracker || new CoverRampTracker();
+
         // Track pending relative level operations to prevent duplicate handlers per address
         this._pendingRelativeLevels = new Map();
-        
-        this.logger = createLogger({ 
+
+        this.logger = createLogger({
             component: 'MqttCommandRouter',
             level: 'info'
         });
+    }
+
+    /**
+     * Returns the CoverRampTracker used by this router.
+     * Callers (e.g. EventPublisher wiring) can use this to share the same tracker instance.
+     *
+     * @returns {CoverRampTracker}
+     */
+    get coverRampTracker() {
+        return this._coverRampTracker;
     }
 
     /**
@@ -329,7 +352,8 @@ class MqttCommandRouter extends EventEmitter {
 
     /**
      * Handles cover position commands (set position 0-100%).
-     * Uses RAMP command to set the position level.
+     * Uses RAMP command to set the position level and starts interpolated
+     * position updates so Home Assistant shows smooth progress.
      * @param {CBusCommand} command - The position command
      * @param {string} topic - Original topic for error logging
      * @private
@@ -342,13 +366,20 @@ class MqttCommandRouter extends EventEmitter {
 
         const cbusPath = this._buildCGatePath(command);
         const level = command.getLevel();
-        
+
         if (level !== null) {
             // Use RAMP command to set cover position
             // Level is already converted from percentage (0-100) to C-Gate level (0-255)
             const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
             this._queueCommand(cgateCommand, 'interactive');
-            this.logger.debug(`Setting cover position: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
+
+            const network = command.getNetwork();
+            const application = command.getApplication();
+            const group = command.getGroup();
+            this.logger.debug(`Setting cover position: ${network}/${application}/${group} to level ${level}`);
+
+            // Start interpolated position updates so HA shows smooth movement
+            this._startCoverRamp(network, application, group, level, null);
         } else {
             this.logger.warn(`Invalid position value for topic ${topic}`);
         }
@@ -384,6 +415,7 @@ class MqttCommandRouter extends EventEmitter {
     /**
      * Handles stop commands for covers/blinds.
      * Uses TERMINATERAMP to stop any in-progress movement.
+     * Also cancels any active interpolated position ramp.
      * @param {CBusCommand} command - The stop command
      * @param {string} topic - Original topic for error logging
      * @private
@@ -395,11 +427,63 @@ class MqttCommandRouter extends EventEmitter {
         }
 
         const cbusPath = this._buildCGatePath(command);
-        
+        const network = command.getNetwork();
+        const application = command.getApplication();
+        const group = command.getGroup();
+
         // TERMINATERAMP stops any in-progress ramp operation, effectively stopping the cover
         const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
         this._queueCommand(cgateCommand, 'critical');
-        this.logger.debug(`Stopping cover: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
+        this.logger.debug(`Stopping cover: ${network}/${application}/${group}`);
+
+        // Cancel any interpolated ramp so estimated positions stop being published
+        const key = `${network}/${application}/${group}`;
+        this._coverRampTracker.cancelRamp(key);
+    }
+
+    /**
+     * Starts a cover ramp tracker entry to publish interpolated position values.
+     *
+     * Reads the current level from deviceStateManager, then starts a
+     * CoverRampTracker ramp that publishes estimated position and level every
+     * 500 ms until the ramp completes or is cancelled.
+     *
+     * @param {string}      network     - C-Bus network number
+     * @param {string}      application - C-Bus application number
+     * @param {string}      group       - C-Bus group number
+     * @param {number}      targetLevel - Target C-Bus level (0–255)
+     * @param {number|null} durationMs  - Ramp duration in ms, or null to use default setting
+     * @private
+     */
+    _startCoverRamp(network, application, group, targetLevel, durationMs) {
+        if (!this.mqttClient) {
+            return;
+        }
+
+        const key = `${network}/${application}/${group}`;
+        const startLevel = (this.deviceStateManager && this.deviceStateManager.getLevel(network, application, group)) || 0;
+        const duration = durationMs !== null && durationMs !== undefined
+            ? durationMs
+            : (this.settings.cover_ramp_duration_ms || 5000);
+
+        const mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
+        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
+
+        this._coverRampTracker.startRamp(key, startLevel, targetLevel, duration, (level) => {
+            const positionPercent = Math.round(level / CGATE_LEVEL_MAX * 100);
+            this.mqttClient.publish(
+                `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+                String(positionPercent),
+                mqttOptions
+            );
+            this.mqttClient.publish(
+                `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
+                String(positionPercent),
+                mqttOptions
+            );
+        });
+
+        this.logger.debug(`Cover ramp started: ${key} from ${startLevel} to ${targetLevel} over ${duration}ms`);
     }
 
     /**

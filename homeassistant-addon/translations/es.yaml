@@ -131,3 +131,6 @@ configuration:
     name: Diagnostics Update Interval (seconds)
     description: How often bridge diagnostic entity states are refreshed. Lower
       values update faster but increase MQTT traffic.
+  cover_ramp_duration_sec:
+    name: "Cover Ramp Duration (seconds)"
+    description: "How long (in seconds) a cover position command is expected to take to complete. The bridge publishes estimated intermediate positions during this window so Home Assistant shows smooth movement. Default: 5."

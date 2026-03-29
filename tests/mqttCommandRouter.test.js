@@ -498,4 +498,113 @@ describe('MqttCommandRouter', () => {
             expect(queueSpy).not.toHaveBeenCalled();
         });
     });
+
+    describe('Cover Ramp Interpolation', () => {
+        let mockMqttClient;
+        let mockDeviceStateManager;
+        let rampRouter;
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+
+            mockMqttClient = { publish: jest.fn() };
+            mockDeviceStateManager = {
+                getLevel: jest.fn().mockReturnValue(undefined)
+            };
+
+            rampRouter = new MqttCommandRouter({
+                cbusname: 'TestProject',
+                ha_discovery_enabled: true,
+                internalEventEmitter: mockInternalEmitter,
+                cgateCommandQueue: mockQueue,
+                mqttClient: mockMqttClient,
+                deviceStateManager: mockDeviceStateManager,
+                settings: {
+                    ha_discovery_cover_app_id: '203',
+                    cover_ramp_duration_ms: 2000,
+                    retainreads: false
+                }
+            });
+        });
+
+        afterEach(() => {
+            rampRouter.coverRampTracker.cancelAll();
+            jest.useRealTimers();
+        });
+
+        it('starts a ramp tracker entry when a position command is sent to a cover app', () => {
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '100');
+
+            expect(rampRouter.coverRampTracker.isRamping('254/203/1')).toBe(true);
+        });
+
+        it('publishes interpolated position values during the ramp', () => {
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '100');
+
+            jest.advanceTimersByTime(500);
+
+            expect(mockMqttClient.publish).toHaveBeenCalled();
+            const positionCall = mockMqttClient.publish.mock.calls.find(
+                (c) => c[0] === 'cbus/read/254/203/1/position'
+            );
+            expect(positionCall).toBeDefined();
+        });
+
+        it('uses the known start level from deviceStateManager when calculating interpolation', () => {
+            // Simulate device currently at 50% (level 128)
+            mockDeviceStateManager.getLevel.mockReturnValue(128);
+
+            // Command to move to 100% (level 255)
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '100');
+
+            // At 500ms = 25% of 2000ms duration: level ≈ 128 + (255-128)*0.25 = 160
+            jest.advanceTimersByTime(500);
+
+            const positionCalls = mockMqttClient.publish.mock.calls.filter(
+                (c) => c[0] === 'cbus/read/254/203/1/position'
+            );
+            expect(positionCalls.length).toBeGreaterThan(0);
+            // 160/255*100 = ~63%
+            const publishedValue = parseInt(positionCalls[0][1], 10);
+            expect(publishedValue).toBeGreaterThan(50);
+            expect(publishedValue).toBeLessThan(100);
+        });
+
+        it('cancels the ramp tracker when a stop command is received', () => {
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '100');
+            expect(rampRouter.coverRampTracker.isRamping('254/203/1')).toBe(true);
+
+            rampRouter.routeMessage('cbus/write/254/203/1/stop', 'STOP');
+            expect(rampRouter.coverRampTracker.isRamping('254/203/1')).toBe(false);
+        });
+
+        it('replaces an existing ramp when a new position command arrives for the same cover', () => {
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '100');
+            expect(rampRouter.coverRampTracker.isRamping('254/203/1')).toBe(true);
+
+            // New position command mid-ramp
+            rampRouter.routeMessage('cbus/write/254/203/1/position', '0');
+            // Should still be ramping (new ramp replaced old one)
+            expect(rampRouter.coverRampTracker.isRamping('254/203/1')).toBe(true);
+        });
+
+        it('does not start a ramp when mqttClient is not configured', () => {
+            const noClientRouter = new MqttCommandRouter({
+                cbusname: 'TestProject',
+                ha_discovery_enabled: false,
+                internalEventEmitter: mockInternalEmitter,
+                cgateCommandQueue: mockQueue,
+                settings: { ha_discovery_cover_app_id: '203' }
+            });
+
+            noClientRouter.routeMessage('cbus/write/254/203/1/position', '50');
+            expect(noClientRouter.coverRampTracker.isRamping('254/203/1')).toBe(false);
+            noClientRouter.coverRampTracker.cancelAll();
+        });
+
+        it('exposes coverRampTracker getter for external wiring', () => {
+            expect(rampRouter.coverRampTracker).toBeDefined();
+            expect(typeof rampRouter.coverRampTracker.startRamp).toBe('function');
+        });
+    });
 });

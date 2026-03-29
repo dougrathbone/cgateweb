@@ -262,6 +262,11 @@ class ConfigLoader {
             config.eventConnectionKeepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
         }
 
+        // Cover ramp interpolation duration
+        if (options.cover_ramp_duration_sec !== undefined && options.cover_ramp_duration_sec !== null) {
+            config.cover_ramp_duration_ms = options.cover_ramp_duration_sec * 1000;
+        }
+
         // Label file: use explicit setting, or auto-detect from common addon paths
         if (options.cbus_label_file) {
             config.cbus_label_file = options.cbus_label_file;

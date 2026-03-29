@@ -48,10 +48,13 @@ class DeviceStateManager {
         
         // Internal event emitter for coordinating state between components
         this.internalEventEmitter = new EventEmitter();
-        
+
         // Track active relative level operations to prevent conflicts
         // Maps address -> { handler, timeoutHandle } for proper cleanup on cancel
         this.activeOperations = new Map();
+
+        // Store last-known level for each device address (network/app/group → 0-255)
+        this._deviceLevels = new Map();
     }
 
     /**
@@ -61,6 +64,19 @@ class DeviceStateManager {
      */
     getEventEmitter() {
         return this.internalEventEmitter;
+    }
+
+    /**
+     * Returns the last-known C-Bus level (0–255) for the given address, or
+     * `undefined` when no level has been received yet.
+     *
+     * @param {string} network     - C-Bus network number
+     * @param {string} application - C-Bus application number
+     * @param {string} group       - C-Bus group number
+     * @returns {number|undefined}
+     */
+    getLevel(network, application, group) {
+        return this._deviceLevels.get(`${network}/${application}/${group}`);
     }
 
     /**
@@ -93,6 +109,8 @@ class DeviceStateManager {
 
         if (levelValue !== null) {
             this.logger.debug(`Level update: ${simpleAddr} = ${levelValue}`);
+            // Store latest known level so callers can retrieve it synchronously
+            this._deviceLevels.set(simpleAddr, levelValue);
             // Emit internal level event for relative ramp operations (increase/decrease)
             this.internalEventEmitter.emit(MQTT_TOPIC_SUFFIX_LEVEL, simpleAddr, levelValue);
         }
@@ -194,11 +212,12 @@ class DeviceStateManager {
 
     /**
      * Shuts down the device state manager.
-     * 
+     *
      * Cleans up all active operations and removes event listeners.
      */
     shutdown() {
         this.clearAllOperations();
+        this._deviceLevels.clear();
         this.internalEventEmitter.removeAllListeners();
         this.logger.debug('Device state manager shut down');
     }

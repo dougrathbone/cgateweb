@@ -110,7 +110,10 @@ class CgateWebBridge {
             cbusname: this.settings.cbusname,
             ha_discovery_enabled: this.settings.ha_discovery_enabled,
             internalEventEmitter: this.deviceStateManager.getEventEmitter(),
-            cgateCommandQueue: this.cgateCommandQueue
+            cgateCommandQueue: this.cgateCommandQueue,
+            deviceStateManager: this.deviceStateManager,
+            mqttClient: { publish: (topic, payload, opts) => this.mqttManager.publish(topic, payload, opts) },
+            settings: this.settings
         });
 
         // Per-connection line processors to prevent data interleaving across pool connections.
@@ -143,7 +146,8 @@ class CgateWebBridge {
             publishFn: (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
             mqttOptions: this._mqttOptions,
             labelLoader: this.labelLoader,
-            logger: this.logger
+            logger: this.logger,
+            coverRampTracker: this.mqttCommandRouter.coverRampTracker
         });
 
         // Command response processor for handling C-Gate command responses

@@ -163,6 +163,9 @@ configuration:
   connection_keep_alive_interval_sec:
     name: "Connection Keep-Alive Interval"
     description: "How often (seconds) to send keep-alive pings to C-Gate connections. Prevents silent TCP drops on unstable networks. Default: 60."
+  cover_ramp_duration_sec:
+    name: "Cover Ramp Duration (seconds)"
+    description: "How long (in seconds) a cover position command is expected to take to complete. The bridge publishes estimated intermediate positions during this window so Home Assistant shows smooth movement. Default: 5."
   cbus_label_file:
     name: Custom Label File
     description: Path to a JSON file with custom device names for C-Bus groups.

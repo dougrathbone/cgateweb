@@ -85,6 +85,9 @@ options:
   connection_health_check_interval_sec: 30
   connection_keep_alive_interval_sec: 60
 
+  # Cover ramp interpolation duration (seconds)
+  cover_ramp_duration_sec: 5
+
   # Label file for custom device names (auto-detected if not set)
   cbus_label_file: ""
   web_api_key: ""
@@ -150,6 +153,7 @@ schema:
   connection_pool_size: "int(1,10)?"
   connection_health_check_interval_sec: "int(5,300)?"
   connection_keep_alive_interval_sec: "int(10,600)?"
+  cover_ramp_duration_sec: "int(1,300)?"
   cbus_label_file: "str?"
   web_api_key: "password?"
   web_allow_unauthenticated_mutations: "bool"

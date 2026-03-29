@@ -27,19 +27,21 @@ const {
 class EventPublisher {
     /**
      * Creates a new EventPublisher instance.
-     * 
-     * @param {Object} options - Configuration options
-     * @param {Object} options.settings - Bridge settings containing PIR sensor config
+     *
+     * @param {Object}   options - Configuration options
+     * @param {Object}   options.settings - Bridge settings containing PIR sensor config
      * @param {Function} options.publishFn - Direct MQTT publish function: (topic, payload, options) => void
-     * @param {Object} options.mqttOptions - MQTT publishing options (retain, qos, etc.)
-     * @param {Object} [options.labelLoader] - Optional LabelLoader for type override awareness
-     * @param {Object} [options.logger] - Optional logger instance
+     * @param {Object}   options.mqttOptions - MQTT publishing options (retain, qos, etc.)
+     * @param {Object}   [options.labelLoader] - Optional LabelLoader for type override awareness
+     * @param {Object}   [options.logger] - Optional logger instance
+     * @param {Object}   [options.coverRampTracker] - Optional CoverRampTracker to cancel on real events
      */
     constructor(options) {
         this.settings = options.settings;
         this.publishFn = options.publishFn;
         this.mqttOptions = options.mqttOptions;
         this.labelLoader = options.labelLoader || null;
+        this.coverRampTracker = options.coverRampTracker || null;
         this.eventPublishDedupWindowMs = Math.max(0, Number(this.settings.eventPublishDedupWindowMs) || 0);
         this.eventPublishDedupMaxEntries = Math.max(100, Number(this.settings.eventPublishDedupMaxEntries) || 5000);
         this.topicCacheMaxEntries = Math.max(100, Number(this.settings.topicCacheMaxEntries) || 5000);
@@ -92,6 +94,12 @@ class EventPublisher {
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
+
+        // Cancel any active interpolated ramp for this cover address so the real
+        // C-Gate event value takes over immediately without further estimated updates.
+        if (isCover && this.coverRampTracker) {
+            this.coverRampTracker.cancelRamp(`${network}/${application}/${group}`);
+        }
         const isHvac = this.settings.ha_discovery_hvac_app_id &&
             application === String(this.settings.ha_discovery_hvac_app_id);
         const isTiltApp = this.settings.ha_discovery_cover_tilt_app_id &&
