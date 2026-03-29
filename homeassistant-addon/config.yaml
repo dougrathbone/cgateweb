@@ -56,7 +56,7 @@ options:
     - 254
   getall_on_start: true
   getall_period: 3600
-  getall_app_periods: {}
+  getall_app_periods: []
 
   # MQTT TLS settings (for external brokers with SSL/TLS)
   mqtt_use_tls: false
@@ -125,7 +125,8 @@ schema:
   getall_on_start: "bool"
   getall_period: "int(60,86400)"
   getall_app_periods:
-    "str": "int(0,86400)"
+    - app_id: "str"
+      period_sec: "int(0,86400)"
 
   # MQTT TLS settings
   mqtt_use_tls: "bool"

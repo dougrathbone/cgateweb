@@ -69,8 +69,8 @@ configuration:
       provide fresher state but increase network traffic to C-Gate.
   getall_app_periods:
     name: Per-app poll intervals
-    description: Override poll interval per C-Bus application ID (seconds). Use app
-      ID as key (e.g. '201' for HVAC). Set 0 to disable polling for that app.
+    description: Override poll interval per C-Bus application ID. Each entry has
+      app_id (e.g. "201" for HVAC) and period_sec (seconds, 0 to disable).
   retain_reads:
     name: Retain MQTT State Messages
     description: Set the MQTT retain flag on state messages. When enabled, new MQTT

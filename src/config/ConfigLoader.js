@@ -192,7 +192,17 @@ class ConfigLoader {
             config.getallperiod = options.getall_period;
         }
 
-        if (options.getall_app_periods && typeof options.getall_app_periods === 'object' && !Array.isArray(options.getall_app_periods)) {
+        if (Array.isArray(options.getall_app_periods) && options.getall_app_periods.length > 0) {
+            // HA addon format: [{app_id: "56", period_sec: 3600}, ...]
+            const periods = {};
+            for (const entry of options.getall_app_periods) {
+                if (entry.app_id !== null && entry.app_id !== undefined && entry.period_sec !== null && entry.period_sec !== undefined) {
+                    periods[String(entry.app_id)] = entry.period_sec;
+                }
+            }
+            config.getall_app_periods = periods;
+        } else if (options.getall_app_periods && typeof options.getall_app_periods === 'object' && !Array.isArray(options.getall_app_periods)) {
+            // standalone settings.js format: {"56": 3600, ...}
             const periods = {};
             for (const [key, value] of Object.entries(options.getall_app_periods)) {
                 periods[String(key)] = value;
