@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.29] - 2026-03-29
+
+### Added
+- Real-time C-Bus event log in the label editor: a collapsible "Live Events" panel streams events via SSE (`GET /api/events/stream`), showing address, resolved label, level, and a visual bar; click any row to filter the main table to that device; pause/clear controls; auto-reconnects on disconnect; state persisted in localStorage
+- Stale device detection: tracks last-seen timestamp per device; after `stale_device_threshold_hours` (default 24h) without an update, a HA `sensor` entity (`C-Bus Stale Devices`) shows the count with JSON attributes listing addresses, labels, and hours-since-last-seen; configurable via `stale_device_detection_enabled`, `stale_device_threshold_hours`, `stale_device_check_interval_sec`
+
 ## [1.4.28] - 2026-03-29
 
 ### Added
