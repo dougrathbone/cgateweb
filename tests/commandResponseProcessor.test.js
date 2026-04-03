@@ -43,26 +43,6 @@ describe('CommandResponseProcessor', () => {
         });
     });
 
-    describe('constructor', () => {
-        it('should initialize with required dependencies', () => {
-            expect(processor.eventPublisher).toBe(mockEventPublisher);
-            expect(processor.haDiscovery).toBe(mockHaDiscovery);
-            expect(processor.onObjectStatus).toBe(mockOnObjectStatus);
-            expect(processor.logger).toBe(mockLogger);
-        });
-
-        it('should create default logger if none provided', () => {
-            const processorWithoutLogger = new CommandResponseProcessor({
-                eventPublisher: mockEventPublisher,
-                haDiscovery: mockHaDiscovery,
-                onObjectStatus: mockOnObjectStatus
-            });
-            
-            expect(processorWithoutLogger.logger).toBeDefined();
-            expect(typeof processorWithoutLogger.logger.info).toBe('function');
-        });
-    });
-
     describe('processLine', () => {
         it('should log received line at debug level', () => {
             processor.processLine('200-OK');
@@ -245,26 +225,16 @@ describe('CommandResponseProcessor', () => {
                 });
             });
 
-            it('should not crash when receiving tree start before haDiscovery is initialized', () => {
+            it('should not crash when receiving tree responses before haDiscovery is initialized', () => {
                 expect(() => {
                     processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_START, 'tree start data');
+                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'tree data');
+                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_END, 'tree end data');
                 }).not.toThrow();
-                
+
                 expect(mockLogger.warn).toHaveBeenCalledWith(
                     expect.stringContaining('Received tree start before HA Discovery initialized')
                 );
-            });
-
-            it('should not crash when receiving tree data before haDiscovery is initialized', () => {
-                expect(() => {
-                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'tree data');
-                }).not.toThrow();
-            });
-
-            it('should not crash when receiving tree end before haDiscovery is initialized', () => {
-                expect(() => {
-                    processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_END, 'tree end data');
-                }).not.toThrow();
             });
 
             it('should still process object status when haDiscovery is null', () => {

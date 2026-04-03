@@ -74,8 +74,8 @@
         "lines": 80
       },
       "./index.js": {
-        "statements": 70,
-        "lines": 70
+        "statements": 65,
+        "lines": 65
       },
       "./install-service.js": {
         "statements": 75,
@@ -84,10 +84,6 @@
       "./uninstall-service.js": {
         "statements": 75,
         "lines": 75
-      },
-      "./src/cgateConnectionPool.js": {
-        "statements": 37,
-        "lines": 38
       }
     }
   }

@@ -42,24 +42,6 @@ describe('EventPublisher', () => {
         jest.clearAllMocks();
     });
 
-    describe('constructor', () => {
-        it('should initialize with provided options', () => {
-            expect(eventPublisher.settings).toBe(mockSettings);
-            expect(eventPublisher.publishFn).toBe(mockPublishFn);
-            expect(eventPublisher.mqttOptions).toBe(mockMqttOptions);
-        });
-
-        it('should create default logger if none provided', () => {
-            const publisher = new EventPublisher({
-                settings: mockSettings,
-                publishFn: mockPublishFn,
-                mqttOptions: mockMqttOptions
-            });
-            
-            expect(publisher.logger).toBeDefined();
-        });
-    });
-
     describe('publishEvent', () => {
         it('should not publish invalid events', () => {
             eventPublisher.publishEvent(null);

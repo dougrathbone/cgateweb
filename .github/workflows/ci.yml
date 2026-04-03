@@ -4,48 +4,58 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ "main", "master" ] # Adjust branches as needed
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ] # Adjust branches as needed
+    branches: [ "main", "master" ]
 
 jobs:
-  build:
-
+  test:
+    name: Lint, Test & Coverage
     runs-on: ubuntu-latest
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x] # Specify Node versions to test against
-        # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
+        node-version: [18.x, 20.x]
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: Use Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
-        
+
     - name: Install dependencies
-      run: npm ci # Use npm ci for cleaner installs in CI
-      
-    - name: Run lint
+      run: npm ci
+
+    - name: Lint
       run: npm run lint -- --max-warnings=0
 
-    - name: Run unit tests
-      run: npm test -- --coverage # Use npm test script which should call jest
+    - name: Unit tests with coverage
+      run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
+      # Jest enforces the thresholds defined in package.json (≥80% statements/lines globally).
+      # PRs that drop coverage below those thresholds will fail here.
+
+    - name: Upload coverage report
+      if: matrix.node-version == '20.x'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage/lcov.info
+        retention-days: 7
 
   integration:
+    name: Integration test (C-Gate)
     runs-on: ubuntu-latest
-    # Only run on push to main branches (not on PRs) to avoid long waits in review
+    # Only run on push to main branches — not on PRs — to avoid long waits during review.
     if: github.event_name == 'push'
     # Network download of C-Gate can be slow; mark non-blocking so a flaky
-    # Schneider download does not gate merges
+    # Schneider download does not gate merges.
     continue-on-error: true
     timeout-minutes: 20
-    needs: build
+    needs: test
 
     steps:
     - name: Checkout repository

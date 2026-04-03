@@ -334,27 +334,16 @@ describe('MqttCommandRouter', () => {
     });
 
     describe('_queueCommand() Priority Handling', () => {
-        it('should preserve interactive priority when explicitly provided', () => {
-            router._queueCommand('RAMP //TestProject/254/203/1 128\n', 'interactive');
-
-            expect(queueSpy).toHaveBeenCalledWith(
-                'RAMP //TestProject/254/203/1 128\n',
-                { priority: 'interactive' }
-            );
-        });
-
-        it('should pass through critical priority', () => {
-            router._queueCommand('TERMINATERAMP //TestProject/254/203/1\n', 'critical');
-
-            expect(queueSpy).toHaveBeenCalledWith(
-                'TERMINATERAMP //TestProject/254/203/1\n',
-                { priority: 'critical' }
-            );
+        it.each([
+            ['interactive', 'RAMP //TestProject/254/203/1 128\n'],
+            ['critical', 'TERMINATERAMP //TestProject/254/203/1\n'],
+        ])('should pass through %s priority', (priority, cmd) => {
+            router._queueCommand(cmd, priority);
+            expect(queueSpy).toHaveBeenCalledWith(cmd, { priority });
         });
 
         it('should use bare queue add when priority is omitted', () => {
             router._queueCommand('GET //TestProject/254/56/* level\n');
-
             expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
         });
     });
@@ -401,35 +390,13 @@ describe('MqttCommandRouter', () => {
     });
 
     describe('Trigger Commands', () => {
-        it('should handle ON trigger payload — ramp to full level (255)', () => {
-            router.routeMessage('cbus/write/254/202/1/trigger', 'ON');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
-        });
-
-        it('should handle numeric trigger payload — ramp to mapped level', () => {
-            // 50% of 255 = 128 (rounded)
-            router.routeMessage('cbus/write/254/202/1/trigger', '50');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 128\n');
-        });
-
-        it('should handle 0 trigger payload — ramp to level 0', () => {
-            router.routeMessage('cbus/write/254/202/1/trigger', '0');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 0\n');
-        });
-
-        it('should handle 100 trigger payload — ramp to full level (255)', () => {
-            router.routeMessage('cbus/write/254/202/1/trigger', '100');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
-        });
-
-        it('should default unknown trigger payload to full level', () => {
-            router.routeMessage('cbus/write/254/202/1/trigger', 'PRESS');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/202/1 255\n');
+        it.each([
+            ['ON', 255], ['100', 255], ['PRESS', 255],
+            ['50', 128],
+            ['0', 0],
+        ])('should map trigger payload %s to C-Gate level %i', (payload, level) => {
+            router.routeMessage('cbus/write/254/202/1/trigger', payload);
+            expect(queueSpy).toHaveBeenCalledWith(`RAMP //TestProject/254/202/1 ${level}\n`);
         });
 
         it('should reject trigger command without device ID', () => {
@@ -468,22 +435,11 @@ describe('MqttCommandRouter', () => {
     });
 
     describe('Cover Tilt Commands', () => {
-        it('should handle tilt command — 50% maps to C-Gate level 128', () => {
-            router.routeMessage('cbus/write/254/204/5/tilt', '50');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 128\n', { priority: 'interactive' });
-        });
-
-        it('should handle tilt command — 0% maps to C-Gate level 0', () => {
-            router.routeMessage('cbus/write/254/204/5/tilt', '0');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 0\n', { priority: 'interactive' });
-        });
-
-        it('should handle tilt command — 100% maps to C-Gate level 255', () => {
-            router.routeMessage('cbus/write/254/204/5/tilt', '100');
-
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/204/5 255\n', { priority: 'interactive' });
+        it.each([
+            ['0', 0], ['50', 128], ['100', 255],
+        ])('should map tilt %s%% to C-Gate level %i', (pct, level) => {
+            router.routeMessage('cbus/write/254/204/5/tilt', pct);
+            expect(queueSpy).toHaveBeenCalledWith(`RAMP //TestProject/254/204/5 ${level}\n`, { priority: 'interactive' });
         });
 
         it('should reject tilt command without device ID', () => {
