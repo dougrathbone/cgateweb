@@ -86,6 +86,29 @@ class CBusCommand {
             this._group = match[3] !== undefined ? match[3] : null;
             this._commandType = match[4] !== undefined ? match[4] : null;
 
+            // Validate address ranges
+            const net = parseInt(this._network, 10);
+            const app = parseInt(this._application, 10);
+            const grp = parseInt(this._group, 10);
+            if (this._network !== null && (isNaN(net) || net < 0 || net > 254)) {
+                this._logger.warn(`Invalid C-Bus network address: ${this._network} (expected 0-254)`);
+                this._isValid = false;
+                this._parsed = true;
+                return;
+            }
+            if (this._application !== null && this._application !== '' && (isNaN(app) || app < 0 || app > 255)) {
+                this._logger.warn(`Invalid C-Bus application address: ${this._application} (expected 0-255)`);
+                this._isValid = false;
+                this._parsed = true;
+                return;
+            }
+            if (this._group !== null && this._group !== '' && (isNaN(grp) || grp < 0 || grp > 255)) {
+                this._logger.warn(`Invalid C-Bus group address: ${this._group} (expected 0-255)`);
+                this._isValid = false;
+                this._parsed = true;
+                return;
+            }
+
             // Validate command type
             const validCommandTypes = [
                 MQTT_CMD_TYPE_GETALL,

@@ -1,5 +1,7 @@
 const { NEWLINE } = require('./constants');
 
+const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB — no valid C-Gate line approaches this
+
 /**
  * A lightweight line processor optimized for hot-path socket data.
  */
@@ -27,6 +29,11 @@ class LineProcessor {
 
         this.lineProcessor = lineProcessor;
         this._buffer += Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
+
+        // Prevent unbounded buffer growth from malformed data without newlines
+        if (this._buffer.length > MAX_BUFFER_SIZE) {
+            this._buffer = this._buffer.slice(-MAX_BUFFER_SIZE);
+        }
 
         const buffer = this._buffer;
         const delimiter = this.options.delimiter;

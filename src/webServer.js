@@ -507,7 +507,10 @@ class WebServer {
         const windowStart = now - this.rateLimitWindowMs;
         this._pruneMutationRequestLog(windowStart);
         const inWindow = this._mutationRequestLog.get(source) || [];
-        inWindow.push(now);
+        // Cap array size to prevent memory exhaustion from rapid requests
+        if (inWindow.length <= this.maxMutationRequestsPerWindow * 2) {
+            inWindow.push(now);
+        }
         this._mutationRequestLog.set(source, inWindow);
         return inWindow.length > this.maxMutationRequestsPerWindow;
     }
@@ -527,37 +530,41 @@ class WebServer {
 
     _readBody(req) {
         return new Promise((resolve) => {
+            let resolved = false;
+            const done = (val) => { if (!resolved) { resolved = true; resolve(val); } };
             const chunks = [];
             let size = 0;
             req.on('data', (chunk) => {
                 size += chunk.length;
                 if (size > MAX_BODY_SIZE) {
                     req.destroy();
-                    resolve(null);
+                    done(null);
                     return;
                 }
                 chunks.push(chunk);
             });
-            req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-            req.on('error', () => resolve(null));
+            req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
+            req.on('error', () => done(null));
         });
     }
 
     _readBodyRaw(req) {
         return new Promise((resolve) => {
+            let resolved = false;
+            const done = (val) => { if (!resolved) { resolved = true; resolve(val); } };
             const chunks = [];
             let size = 0;
             req.on('data', (chunk) => {
                 size += chunk.length;
                 if (size > MAX_BODY_SIZE) {
                     req.destroy();
-                    resolve(null);
+                    done(null);
                     return;
                 }
                 chunks.push(chunk);
             });
-            req.on('end', () => resolve(Buffer.concat(chunks)));
-            req.on('error', () => resolve(null));
+            req.on('end', () => done(Buffer.concat(chunks)));
+            req.on('error', () => done(null));
         });
     }
 
