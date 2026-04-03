@@ -207,10 +207,15 @@ class HaDiscovery {
         this.logger.info(`Starting XML parsing for network ${networkForTree}...`);
         const startTime = Date.now();
 
-        parseString(treeXmlData, { explicitArray: false }, (err, result) => { 
+        parseString(treeXmlData, { explicitArray: false }, (err, result) => {
             const duration = Date.now() - startTime;
             if (err) {
-                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms): ${err.message || err}`);
+                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms): ${err.message || err}`, {
+                    xmlLength: treeXmlData.length,
+                    xmlPreview: treeXmlData.slice(0, 200),
+                    line: err.line,
+                    column: err.column
+                });
             } else {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
                 
@@ -304,8 +309,9 @@ class HaDiscovery {
         }
 
         // Merge the current run's topics into the session-wide set and remove
-        // any stale topics that were just cleared.
-        for (const topic of this._publishedTopics) {
+        // any stale topics that were just cleared. Snapshot the set first to avoid
+        // deleting from a collection during iteration.
+        for (const topic of [...this._publishedTopics]) {
             if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
                 this._publishedTopics.delete(topic);
             }
