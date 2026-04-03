@@ -136,8 +136,8 @@ class LabelLoader extends EventEmitter {
             fs.mkdirSync(dir, { recursive: true });
         }
 
-        this._lastSaveTime = Date.now();
         fs.writeFileSync(this.filePath, JSON.stringify(fileData, null, 2) + '\n', 'utf8');
+        this._lastSaveTime = Date.now();
 
         this._labels = new Map();
         for (const [key, value] of Object.entries(fileData.labels)) {
@@ -175,9 +175,8 @@ class LabelLoader extends EventEmitter {
             return;
         }
 
-        try {
         const SELF_WRITE_GRACE_MS = 1000;
-
+        try {
             this._watcher = fs.watch(dir, (eventType, filename) => {
                 if (filename !== basename) return;
                 // Ignore events caused by our own save() within the grace period

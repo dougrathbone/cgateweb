@@ -144,11 +144,10 @@ if (require.main === module || (require.main && require.main.filename === __file
 const CBusEvent = require('./src/cbusEvent');
 const CBusCommand = require('./src/cbusCommand');
 
-module.exports = { 
-    main, 
-    defaultSettings, 
-    CgateWebBridge, 
-    CBusEvent, 
-    CBusCommand, 
-    settings: defaultSettings  // Alias for backward compatibility
+module.exports = {
+    main,
+    defaultSettings,
+    CgateWebBridge,
+    CBusEvent,
+    CBusCommand
 };

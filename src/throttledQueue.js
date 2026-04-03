@@ -34,6 +34,7 @@ class ThrottledQueue {
         this._canProcessFn = typeof options.canProcessFn === 'function' ? options.canProcessFn : null;
         this._retryWhenBlockedMs = Math.max(10, options.retryWhenBlockedMs || Math.min(this._intervalMs, 200));
         this._droppedCount = 0;
+        this._onDrop = typeof options.onDrop === 'function' ? options.onDrop : null;
         this._logger = createLogger({ component: 'ThrottledQueue' });
     }
 
@@ -158,6 +159,7 @@ class ThrottledQueue {
                 this._droppedCount++;
                 if (this._droppedCount === 1 || this._droppedCount % 100 === 0) {
                     this._logger.warn(`${this._name} queue full (max ${this._maxSize}), dropping ${priority} items (${this._droppedCount} total dropped)`);
+                    this._onDrop?.(this._droppedCount, priority, this._maxSize);
                 }
                 return;
             }
