@@ -26,7 +26,8 @@ class CommandResponseProcessor {
      */
     constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, logger }) {
         this.eventPublisher = eventPublisher;
-        this.haDiscovery = haDiscovery;
+        this._haDiscovery = haDiscovery || null;
+        this._pendingTreeMessages = [];
         this.onObjectStatus = onObjectStatus;
         this.onCommandError = onCommandError || null;
         this.logger = logger || createLogger({
@@ -37,6 +38,23 @@ class CommandResponseProcessor {
         // Optional handler called for every parsed response during network discovery.
         // Set by BridgeInitializationService._discoverNetworks() and cleared when done.
         this.networkDiscoveryHandler = null;
+    }
+
+    get haDiscovery() {
+        return this._haDiscovery;
+    }
+
+    set haDiscovery(value) {
+        this._haDiscovery = value;
+        if (value && this._pendingTreeMessages.length > 0) {
+            this.logger.info(`Replaying ${this._pendingTreeMessages.length} buffered tree response(s) after HA Discovery initialized`);
+            for (const { code, data } of this._pendingTreeMessages) {
+                if (code === CGATE_RESPONSE_TREE_START) value.handleTreeStart(data);
+                else if (code === CGATE_RESPONSE_TREE_DATA) value.handleTreeData(data);
+                else if (code === CGATE_RESPONSE_TREE_END) value.handleTreeEnd(data);
+            }
+            this._pendingTreeMessages = [];
+        }
     }
 
     /**
@@ -120,25 +138,26 @@ class CommandResponseProcessor {
                 this._processCommandObjectStatus(statusData);
                 break;
             case CGATE_RESPONSE_TREE_START:
-                // Guard against race condition: haDiscovery may not be initialized yet
-                // if tree responses arrive before _handleAllConnected() runs
-                if (this.haDiscovery) {
-                    this.haDiscovery.handleTreeStart(statusData);
+                if (this._haDiscovery) {
+                    this._haDiscovery.handleTreeStart(statusData);
                 } else {
-                    this.logger.warn(`Received tree start before HA Discovery initialized, ignoring`);
+                    this.logger.debug(`Buffering tree start (HA Discovery not yet initialized)`);
+                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_START, data: statusData });
                 }
                 break;
             case CGATE_RESPONSE_TREE_DATA:
-                if (this.haDiscovery) {
-                    this.haDiscovery.handleTreeData(statusData);
+                if (this._haDiscovery) {
+                    this._haDiscovery.handleTreeData(statusData);
+                } else {
+                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_DATA, data: statusData });
                 }
-                // Silently ignore tree data if haDiscovery not ready (start already warned)
                 break;
             case CGATE_RESPONSE_TREE_END:
-                if (this.haDiscovery) {
-                    this.haDiscovery.handleTreeEnd(statusData);
+                if (this._haDiscovery) {
+                    this._haDiscovery.handleTreeEnd(statusData);
+                } else {
+                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_END, data: statusData });
                 }
-                // Silently ignore tree end if haDiscovery not ready (start already warned)
                 break;
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {

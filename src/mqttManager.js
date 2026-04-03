@@ -39,6 +39,7 @@ class MqttManager extends EventEmitter {
         this.settings = settings;
         this.client = null;
         this.connected = false;
+        this._connecting = false;
         this._intentionalDisconnect = false;
         this._bridgeReady = false;
         this._lastStatusPayload = null;
@@ -56,29 +57,35 @@ class MqttManager extends EventEmitter {
      * @throws {Error} When connection fails or broker is unreachable
      */
     connect() {
+        if (this._connecting) {
+            this.logger.info(`MQTT connection already in progress, skipping`);
+            return this;
+        }
         if (this.client) {
             this.logger.info(`MQTT client already exists. Disconnecting first.`);
             this.disconnect();
         }
 
+        this._connecting = true;
         this._intentionalDisconnect = false;
 
         const mqttUrl = this._buildMqttUrl();
         const connectOptions = this._buildConnectOptions();
 
         this.logger.info(`Connecting to MQTT Broker: ${mqttUrl}`);
-        
+
         this.client = mqtt.connect(mqttUrl, connectOptions);
-        
+
         this.client.on('connect', () => this._handleConnect());
         this.client.on('close', () => this._handleClose());
         this.client.on('error', (err) => this._handleError(err));
         this.client.on('message', (topic, message, packet) => this._handleMessage(topic, message, packet));
-        
+
         return this;
     }
 
     disconnect() {
+        this._connecting = false;
         this._intentionalDisconnect = true;
         this._bridgeReady = false;
         if (this.client) {
@@ -170,14 +177,21 @@ class MqttManager extends EventEmitter {
         // TLS options for mqtts:// connections
         if (this.settings.mqttCaFile || this.settings.mqttCertFile || this.settings.mqttKeyFile) {
             const fs = require('fs');
+            const readCertFile = (filePath, label) => {
+                try {
+                    return fs.readFileSync(filePath);
+                } catch (e) {
+                    throw new Error(`Failed to read MQTT TLS ${label} file "${filePath}": ${e.message}`);
+                }
+            };
             if (this.settings.mqttCaFile) {
-                options.ca = fs.readFileSync(this.settings.mqttCaFile);
+                options.ca = readCertFile(this.settings.mqttCaFile, 'CA certificate');
             }
             if (this.settings.mqttCertFile) {
-                options.cert = fs.readFileSync(this.settings.mqttCertFile);
+                options.cert = readCertFile(this.settings.mqttCertFile, 'client certificate');
             }
             if (this.settings.mqttKeyFile) {
-                options.key = fs.readFileSync(this.settings.mqttKeyFile);
+                options.key = readCertFile(this.settings.mqttKeyFile, 'private key');
             }
         }
 
@@ -189,6 +203,7 @@ class MqttManager extends EventEmitter {
     }
 
     _handleConnect() {
+        this._connecting = false;
         this.connected = true;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
 

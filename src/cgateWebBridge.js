@@ -91,7 +91,14 @@ class CgateWebBridge {
         const queueOptions = {
             maxSize: this.settings.maxQueueSize || 1000,
             getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
-            canProcessFn: () => this._canProcessCommandQueue()
+            canProcessFn: () => this._canProcessCommandQueue(),
+            onDrop: (droppedCount, priority, maxSize) => {
+                this.mqttManager.publish(
+                    'hello/cgateweb/warnings',
+                    `C-Gate command queue full (max ${maxSize}), ${droppedCount} command(s) dropped`,
+                    { retain: false }
+                );
+            }
         };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
@@ -307,7 +314,14 @@ class CgateWebBridge {
         this.log(`Stopping cgateweb bridge...`);
         this._setLifecycleState('stopping', 'shutdown');
         this._updateBridgeReadiness('shutdown');
-        
+
+        // Remove all bridge-level event listeners before stopping subsystems
+        // to prevent callbacks firing into a partially-stopped bridge during teardown
+        this.connectionManager.removeAllListeners();
+        this.commandConnectionPool.removeAllListeners();
+        this.eventConnection.removeAllListeners();
+        this.mqttManager.removeAllListeners();
+
         this.initializationService.stop();
         this.haBridgeDiagnostics.stop();
         this.staleDeviceDetector.stop();
@@ -325,7 +339,10 @@ class CgateWebBridge {
         this.commandLineProcessors.clear();
         this.eventLineProcessor.close();
 
-        // Shut down device state manager
+        // Shut down event publisher, command router, and device state manager
+        this.eventPublisher.shutdown();
+        this.mqttCommandRouter.shutdown();
+        this.mqttCommandRouter.coverRampTracker.cancelAll();
         this.deviceStateManager.shutdown();
 
         // Disconnect all connections via connection manager
@@ -348,7 +365,11 @@ class CgateWebBridge {
             this.commandLineProcessors.set(key, processor);
         }
         processor.processData(data, (line) => {
-            this.commandResponseProcessor.processLine(line);
+            try {
+                this.commandResponseProcessor.processLine(line);
+            } catch (e) {
+                this.error(`Error processing command data line:`, e, `Line: ${line}`);
+            }
         });
     }
 

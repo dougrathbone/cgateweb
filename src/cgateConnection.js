@@ -116,7 +116,7 @@ class CgateConnection extends EventEmitter {
         }
 
         const drained = await this._waitForDrain();
-        if (!drained) {
+        if (!drained || !this.connected || !this.socket || this.socket.destroyed) {
             return false;
         }
         return this.send(data);
