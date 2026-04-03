@@ -353,7 +353,16 @@ class CgateConnectionPool extends EventEmitter {
         setTimeout(async () => {
             this.pendingReconnects.delete(index);
             if (this.isShuttingDown) return;
-            
+
+            // Clean up old connection before creating replacement
+            const oldConn = this.connections[index];
+            if (oldConn) {
+                oldConn.removeAllListeners?.();
+                if (oldConn.socket && !oldConn.socket.destroyed) {
+                    try { oldConn.socket.destroy(); } catch (_) { /* ignore */ }
+                }
+            }
+
             try {
                 await this._createConnection(index);
                 this.retryCounts[index] = 0;

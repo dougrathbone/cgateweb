@@ -62,6 +62,9 @@ class ConnectionManager extends EventEmitter {
             this.logger.info('Command connection pool started');
             this._checkAllConnected();
         });
+        this.commandConnectionPool.on('connectionAdded', () => {
+            this._checkAllConnected();
+        });
         this.commandConnectionPool.on('allConnectionsUnhealthy', () => {
             this.logger.warn('All command connections unhealthy');
             this.allConnected = false;
