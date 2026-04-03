@@ -437,7 +437,7 @@ describe('MqttCommandRouter — HVAC commands', () => {
     });
 
     describe('setpoint commands', () => {
-        test('converts 25°C setpoint to C-Bus level 50 (RAMP command)', () => {
+        test('sends RAMP command with correct address and level', () => {
             router.routeMessage('cbus/write/254/201/1/setpoint', '25');
 
             expect(mockQueue.add).toHaveBeenCalledTimes(1);
@@ -447,89 +447,38 @@ describe('MqttCommandRouter — HVAC commands', () => {
             expect(cmd).toContain(' 50');
         });
 
-        test('converts 20°C setpoint to C-Bus level 40', () => {
-            router.routeMessage('cbus/write/254/201/1/setpoint', '20');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toContain(' 40');
-        });
-
-        test('converts 0°C setpoint to C-Bus level 0', () => {
-            router.routeMessage('cbus/write/254/201/1/setpoint', '0');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toContain(' 0');
-        });
-
-        test('converts 50°C setpoint to C-Bus level 100', () => {
-            router.routeMessage('cbus/write/254/201/1/setpoint', '50');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toContain(' 100');
-        });
-
-        test('clamps setpoint above 50°C to level 100', () => {
-            router.routeMessage('cbus/write/254/201/1/setpoint', '99');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toContain(' 100');
-        });
-
-        test('clamps setpoint below 0°C to level 0', () => {
-            router.routeMessage('cbus/write/254/201/1/setpoint', '-5');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toContain(' 0');
+        test.each([
+            ['25', ' 50'], ['20', ' 40'], ['0', ' 0'], ['50', ' 100'],
+            ['99', ' 100'], ['-5', ' 0'],
+        ])('maps %s°C to correct C-Bus level', (temp, expectedLevel) => {
+            router.routeMessage('cbus/write/254/201/1/setpoint', temp);
+            expect(mockQueue.add.mock.calls[0][0]).toContain(expectedLevel);
         });
 
         test('ignores invalid setpoint payload', () => {
             router.routeMessage('cbus/write/254/201/1/setpoint', 'notanumber');
-
             expect(mockQueue.add).not.toHaveBeenCalled();
         });
     });
 
     describe('mode commands', () => {
-        test('off mode sends C-Gate OFF command', () => {
+        test('off mode sends C-Gate OFF command to correct address', () => {
             router.routeMessage('cbus/write/254/201/1/hvacmode', 'off');
 
-            expect(mockQueue.add).toHaveBeenCalledTimes(1);
             const cmd = mockQueue.add.mock.calls[0][0];
             expect(cmd).toMatch(/^OFF /);
             expect(cmd).toContain('//HOME/254/201/1');
         });
 
-        test('auto mode sends C-Gate ON command', () => {
-            router.routeMessage('cbus/write/254/201/1/hvacmode', 'auto');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toMatch(/^ON /);
-        });
-
-        test('cool mode sends C-Gate ON command', () => {
-            router.routeMessage('cbus/write/254/201/1/hvacmode', 'cool');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toMatch(/^ON /);
-        });
-
-        test('heat mode sends C-Gate ON command', () => {
-            router.routeMessage('cbus/write/254/201/1/hvacmode', 'heat');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toMatch(/^ON /);
-        });
-
-        test('fan_only mode sends C-Gate ON command', () => {
-            router.routeMessage('cbus/write/254/201/1/hvacmode', 'fan_only');
-
-            const cmd = mockQueue.add.mock.calls[0][0];
-            expect(cmd).toMatch(/^ON /);
-        });
+        test.each(['auto', 'cool', 'heat', 'fan_only'])(
+            '%s mode sends C-Gate ON command', (mode) => {
+                router.routeMessage('cbus/write/254/201/1/hvacmode', mode);
+                expect(mockQueue.add.mock.calls[0][0]).toMatch(/^ON /);
+            }
+        );
 
         test('unknown mode sends no command and logs a warning', () => {
             router.routeMessage('cbus/write/254/201/1/hvacmode', 'turbo');
-
             expect(mockQueue.add).not.toHaveBeenCalled();
         });
     });

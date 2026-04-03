@@ -85,9 +85,6 @@ class CommandResponseProcessor {
             }
         }
         
-        // C-Gate response codes are 3-digit numbers starting with 1-6 (like HTTP status codes).
-        // Non-matching lines (e.g., C-Gate v3.6.0 timestamp-prefixed notifications) are
-        // harmless and logged at debug to avoid alarming users.
         if (!this._isValidResponseCode(responseCode)) {
              this.logger.debug(`Skipping non-response line: ${line}`);
              return null; 

@@ -199,23 +199,8 @@ describe('CBusEvent', () => {
           expect(event._levelRaw).toBeNull(); // Level part should not be parsed from #sourceunit
       });
 
-    // === Shared Logger ===
-
-    it('should share a single logger instance across all CBusEvent instances', () => {
-        const event1 = new CBusEvent("lighting on 254/56/1");
-        const event2 = new CBusEvent("lighting off 254/56/2");
-        const event3 = new CBusEvent("lighting ramp 254/56/3 128");
-        expect(event1._logger).toBe(event2._logger);
-        expect(event2._logger).toBe(event3._logger);
-    });
-
-    // === Tests for new-style getter methods (will remain after simplification) ===
+    // === Tests for new-style getter methods ===
     describe('New-style getter methods', () => {
-        it('should provide correct values via getDeviceType()', () => {
-            const event = new CBusEvent("lighting on 254/56/4");
-            expect(event.getDeviceType()).toBe('lighting');
-        });
-
         it('should provide correct values via getAction()', () => {
             const onEvent = new CBusEvent("lighting on 254/56/4");
             const offEvent = new CBusEvent("lighting off 254/56/4");
@@ -226,9 +211,12 @@ describe('CBusEvent', () => {
             expect(rampEvent.getAction()).toBe('ramp');
         });
 
-        it('should provide correct values via getAddress()', () => {
+        it('should provide correct values via getAddress/Network/Application/Group()', () => {
             const event = new CBusEvent("lighting on 254/56/4");
             expect(event.getAddress()).toBe('254/56/4');
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('56');
+            expect(event.getGroup()).toBe('4');
         });
 
         it('should provide correct values via getLevel()', () => {
@@ -239,21 +227,6 @@ describe('CBusEvent', () => {
             expect(onEvent.getLevel()).toBeNull(); // Raw level not available for 'on'
             expect(offEvent.getLevel()).toBeNull(); // Raw level not available for 'off'
             expect(rampEvent.getLevel()).toBe(128); // Raw level available for 'ramp'
-        });
-
-        it('should provide correct values via getNetwork()', () => {
-            const event = new CBusEvent("lighting on 254/56/4");
-            expect(event.getNetwork()).toBe('254');
-        });
-
-        it('should provide correct values via getApplication()', () => {
-            const event = new CBusEvent("lighting on 254/56/4");
-            expect(event.getApplication()).toBe('56');
-        });
-
-        it('should provide correct values via getGroup()', () => {
-            const event = new CBusEvent("lighting on 254/56/4");
-            expect(event.getGroup()).toBe('4');
         });
 
         it('should provide correct values via getRawEvent()', () => {

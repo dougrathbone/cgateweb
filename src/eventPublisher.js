@@ -15,15 +15,6 @@ const {
     CGATE_LEVEL_MAX
 } = require('./constants');
 
-/**
- * Handles publishing C-Bus events to MQTT topics.
- * 
- * This class is responsible for:
- * - Converting C-Bus events to MQTT messages
- * - Handling special logic for PIR sensors vs lighting devices
- * - Managing MQTT topic construction and payload formatting
- * - Publishing messages directly to MQTT (no throttle queue)
- */
 class EventPublisher {
     /**
      * Creates a new EventPublisher instance.
@@ -390,10 +381,7 @@ class EventPublisher {
         };
 
         if (this._topicCache.size >= this.topicCacheMaxEntries) {
-            const oldestKey = this._topicCache.keys().next().value;
-            if (oldestKey !== undefined) {
-                this._topicCache.delete(oldestKey);
-            }
+            this._topicCache.delete(this._topicCache.keys().next().value);
         }
         this._topicCache.set(key, topics);
         this._publishStats.topicCacheMiss += 1;
