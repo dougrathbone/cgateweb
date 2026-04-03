@@ -93,7 +93,14 @@ async function main() {
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGUSR1', () => {
         console.log('[INFO] Received SIGUSR1, reloading configuration...');
-        // TODO: Implement configuration reload
+        try {
+            const reloaded = configLoader.load();
+            const newSettings = { ...defaultSettings, ...reloaded };
+            bridge.reloadSettings(newSettings);
+            console.log('[INFO] Configuration reloaded successfully');
+        } catch (error) {
+            console.error(`[ERROR] Failed to reload configuration: ${error.message}`);
+        }
     });
     
     // Handle uncaught exceptions

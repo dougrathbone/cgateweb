@@ -75,7 +75,7 @@ options:
   ha_discovery_prefix: "homeassistant"
   ha_discovery_networks:
     - 254
-  ha_discovery_cover_app_id: 203
+
   ha_hvac_temperature_unit: "C"
 
   ha_bridge_diagnostics_enabled: true

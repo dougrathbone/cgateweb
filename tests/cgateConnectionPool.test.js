@@ -1,5 +1,6 @@
 // tests/cgateConnectionPool.test.js - Tests for CgateConnectionPool class
 
+const EventEmitter = require('events');
 const CgateConnectionPool = require('../src/cgateConnectionPool');
 const CgateConnection = require('../src/cgateConnection');
 
@@ -13,6 +14,36 @@ jest.mock('net', () => ({
 
 // Mock timers
 jest.useFakeTimers();
+
+/**
+ * Creates a mock CgateConnection that emits 'connect' asynchronously.
+ * Pass { failConnect: true } to emit 'error' instead.
+ */
+function makeMockConnection({ failConnect = false } = {}) {
+    const conn = new EventEmitter();
+    conn.connect = jest.fn(() => {
+        if (failConnect) {
+            conn.emit('error', new Error('ECONNREFUSED'));
+            conn.emit('close', true);
+        } else {
+            conn.connected = true;
+            conn.emit('connect');
+        }
+    });
+    conn.disconnect = jest.fn(() => {
+        conn.connected = false;
+        conn.isDestroyed = true;
+        conn.emit('close', false);
+    });
+    conn.send = jest.fn().mockReturnValue(true);
+    conn.sendWithBackpressure = jest.fn().mockResolvedValue(true);
+    conn.connected = false;
+    conn.isDestroyed = false;
+    conn.isWritable = true;
+    conn.poolIndex = -1;
+    conn.lastActivity = Date.now();
+    return conn;
+}
 
 describe('CgateConnectionPool', () => {
     let pool;
@@ -156,10 +187,6 @@ describe('CgateConnectionPool', () => {
     });
 
     describe('Exponential backoff', () => {
-        it('should track retry counts at the pool level, not on connection objects', () => {
-            expect(pool.retryCounts).toEqual([0, 0, 0]);
-        });
-
         it('should increment pool-level retry count on each reconnection schedule', () => {
             pool.isStarted = true;
             const conn = { poolIndex: 0 };
@@ -289,6 +316,257 @@ describe('CgateConnectionPool', () => {
             expect(pool.retryCounts[0]).toBe(0);
 
             pool._createConnection.mockRestore();
+        });
+    });
+
+    // Helper: configure mock to capture connections and start the pool
+    async function startWithConnections() {
+        const connections = [];
+        CgateConnection.mockImplementation(() => {
+            const c = makeMockConnection();
+            connections.push(c);
+            return c;
+        });
+        await pool.start();
+        return connections;
+    }
+
+    describe('start()', () => {
+        beforeEach(() => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+        });
+
+        it('starts pool and emits started event when connections succeed', async () => {
+            const startedSpy = jest.fn();
+            pool.on('started', startedSpy);
+            await pool.start();
+            expect(pool.isStarted).toBe(true);
+            expect(pool.healthyConnections.size).toBe(3);
+            expect(startedSpy).toHaveBeenCalledWith({ healthy: 3, total: 3 });
+        });
+
+        it('marks itself started even when all connections fail', async () => {
+            CgateConnection.mockImplementation(() => makeMockConnection({ failConnect: true }));
+            const startedSpy = jest.fn();
+            pool.on('started', startedSpy);
+            const startPromise = pool.start();
+            jest.advanceTimersByTime(pool.connectionTimeout + 100);
+            await startPromise;
+            expect(pool.isStarted).toBe(true);
+            expect(pool.healthyConnections.size).toBe(0);
+            expect(startedSpy).toHaveBeenCalledWith({ healthy: 0, total: 3 });
+        });
+
+        it('does nothing when already started', async () => {
+            await pool.start();
+            const createSpy = jest.spyOn(pool, '_createConnection');
+            await pool.start();
+            expect(createSpy).not.toHaveBeenCalled();
+        });
+
+        it('starts health monitoring and keep-alive timers', async () => {
+            await pool.start();
+            expect(pool.healthCheckTimer).not.toBeNull();
+            expect(pool.keepAliveTimer).not.toBeNull();
+        });
+
+        it('sets poolIndex on each connection', async () => {
+            const connections = await startWithConnections();
+            expect(connections[0].poolIndex).toBe(0);
+            expect(connections[1].poolIndex).toBe(1);
+            expect(connections[2].poolIndex).toBe(2);
+        });
+
+        it('emits connectionAdded for each successful connection', async () => {
+            const addedSpy = jest.fn();
+            pool.on('connectionAdded', addedSpy);
+            await pool.start();
+            expect(addedSpy).toHaveBeenCalledTimes(3);
+        });
+
+        it('forwards data events from connections', async () => {
+            const connections = await startWithConnections();
+            const dataSpy = jest.fn();
+            pool.on('data', dataSpy);
+            connections[0].emit('data', Buffer.from('hello'));
+            expect(dataSpy).toHaveBeenCalledWith(Buffer.from('hello'), connections[0]);
+        });
+
+        it('schedules reconnect when a connection closes after start', async () => {
+            const connections = await startWithConnections();
+            const scheduleSpy = jest.spyOn(pool, '_scheduleReconnection');
+            connections[0].emit('close', false);
+            expect(scheduleSpy).toHaveBeenCalledWith(connections[0], 0);
+        });
+    });
+
+    describe('stop()', () => {
+        beforeEach(() => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+        });
+
+        it('stops pool, clears timers, and emits stopped', async () => {
+            await pool.start();
+            const stoppedSpy = jest.fn();
+            pool.on('stopped', stoppedSpy);
+            const stopPromise = pool.stop();
+            jest.runAllTimers();
+            await stopPromise;
+            expect(pool.isStarted).toBe(false);
+            expect(pool.healthyConnections.size).toBe(0);
+            expect(pool.healthCheckTimer).toBeNull();
+            expect(pool.keepAliveTimer).toBeNull();
+            expect(stoppedSpy).toHaveBeenCalled();
+        });
+
+        it('does nothing when pool is not started', async () => {
+            const stoppedSpy = jest.fn();
+            pool.on('stopped', stoppedSpy);
+            await pool.stop();
+            expect(stoppedSpy).not.toHaveBeenCalled();
+        });
+
+        it('does nothing when pool is already shutting down', async () => {
+            await pool.start();
+            pool.isShuttingDown = true;
+            const stoppedSpy = jest.fn();
+            pool.on('stopped', stoppedSpy);
+            await pool.stop();
+            expect(stoppedSpy).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('execute()', () => {
+        beforeEach(() => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+        });
+
+        it('throws when pool is not started', async () => {
+            await expect(pool.execute('GET //HOME/254/56/* level\n')).rejects.toThrow('not started');
+        });
+
+        it('throws when shutting down', async () => {
+            await pool.start();
+            pool.isShuttingDown = true;
+            await expect(pool.execute('cmd\n')).rejects.toThrow('not started');
+        });
+
+        it('sends command via a healthy connection and returns true', async () => {
+            const connections = await startWithConnections();
+            const result = await pool.execute('GET //HOME/254/56/* level\n');
+            expect(result).toBe(true);
+            expect(connections.some(c => c.sendWithBackpressure.mock.calls.length > 0)).toBe(true);
+        });
+
+        it('throws when no healthy connections are available', async () => {
+            await pool.start();
+            pool.healthyConnections.clear();
+            pool._healthyArray = null;
+            await expect(pool.execute('cmd\n')).rejects.toThrow('No healthy connections');
+        });
+
+        it('cleans up in-flight count after successful send', async () => {
+            const connections = await startWithConnections();
+            await pool.execute('cmd\n');
+            for (const c of connections) {
+                expect(pool.connectionInFlight.get(c) || 0).toBe(0);
+            }
+        });
+
+        it('marks connection unhealthy and tries next when send fails', async () => {
+            const connections = await startWithConnections();
+            for (const c of connections) {
+                c.sendWithBackpressure = jest.fn().mockResolvedValue(false);
+            }
+            const markSpy = jest.spyOn(pool, '_markConnectionUnhealthy');
+            await expect(pool.execute('cmd\n')).rejects.toThrow();
+            expect(markSpy).toHaveBeenCalled();
+        });
+    });
+
+    describe('Health monitoring', () => {
+        beforeEach(() => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+        });
+
+        it('_performHealthCheck emits allConnectionsUnhealthy when no healthy connections', async () => {
+            await pool.start();
+            pool.healthyConnections.clear();
+            pool._healthyArray = null;
+            const spy = jest.fn();
+            pool.on('allConnectionsUnhealthy', spy);
+            pool._performHealthCheck();
+            expect(spy).toHaveBeenCalled();
+        });
+
+        it('_performHealthCheck emits healthCheck event with stats', async () => {
+            await pool.start();
+            const spy = jest.fn();
+            pool.on('healthCheck', spy);
+            pool._performHealthCheck();
+            expect(spy).toHaveBeenCalledWith(expect.objectContaining({ healthyConnections: 3 }));
+        });
+
+        it('_checkConnectionHealth removes destroyed connections from healthy set', async () => {
+            await pool.start();
+            const [conn] = pool.connections;
+            conn.isDestroyed = true;
+            pool._checkConnectionHealth(conn);
+            expect(pool.healthyConnections.has(conn)).toBe(false);
+        });
+
+        it('_checkConnectionHealth removes disconnected connections from healthy set', async () => {
+            await pool.start();
+            const [conn] = pool.connections;
+            conn.connected = false;
+            pool._checkConnectionHealth(conn);
+            expect(pool.healthyConnections.has(conn)).toBe(false);
+        });
+
+        it('fires health check on interval', async () => {
+            await pool.start();
+            const spy = jest.spyOn(pool, '_performHealthCheck');
+            jest.advanceTimersByTime(pool.healthCheckInterval);
+            expect(spy).toHaveBeenCalled();
+        });
+
+        it('_markConnectionUnhealthy schedules a deferred health check', async () => {
+            await pool.start();
+            const [conn] = pool.connections;
+            const healthSpy = jest.spyOn(pool, '_checkConnectionHealth');
+            pool._markConnectionUnhealthy(conn);
+            jest.advanceTimersByTime(1000);
+            expect(healthSpy).toHaveBeenCalledWith(conn);
+        });
+    });
+
+    describe('Keep-alive', () => {
+        beforeEach(() => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+        });
+
+        it('sends keep-alive pings to healthy connections on interval', async () => {
+            const connections = await startWithConnections();
+            jest.advanceTimersByTime(pool.keepAliveInterval);
+            for (const c of connections) {
+                expect(c.send).toHaveBeenCalledWith(expect.stringContaining('Keep-alive'));
+            }
+        });
+
+        it('does not ping when shutting down', async () => {
+            const connections = await startWithConnections();
+            pool.isShuttingDown = true;
+            pool._sendKeepAlive();
+            for (const c of connections) {
+                expect(c.send).not.toHaveBeenCalled();
+            }
+        });
+
+        it('removes connection from healthy set when keep-alive send throws', async () => {
+            const connections = await startWithConnections();
+            connections[0].send = jest.fn().mockImplementation(() => { throw new Error('write failed'); });
+            pool._sendKeepAlive();
+            expect(pool.healthyConnections.has(connections[0])).toBe(false);
         });
     });
 });

@@ -24,10 +24,11 @@ class CommandResponseProcessor {
      * @param {Function} options.onObjectStatus - Callback for object status events
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, logger }) {
         this.eventPublisher = eventPublisher;
         this.haDiscovery = haDiscovery;
         this.onObjectStatus = onObjectStatus;
+        this.onCommandError = onCommandError || null;
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -196,6 +197,10 @@ class CommandResponseProcessor {
             this.logger.warn(message);
         } else {
             this.logger.error(message);
+        }
+
+        if (this.onCommandError) {
+            this.onCommandError(responseCode, statusData);
         }
     }
 }

@@ -596,6 +596,84 @@ describe('BridgeInitializationService', () => {
         });
     });
 
+    describe('handleCommandError', () => {
+        it('cancels the polling timer for a path that returns 401', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254],
+                ha_discovery_cover_app_id: '203'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+            expect(svc._perAppTimers.has('254/203')).toBe(true);
+
+            svc.handleCommandError('401', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
+
+            expect(svc._perAppTimers.has('254/203')).toBe(false);
+            svc.stop();
+        });
+
+        it('does not cancel timers for non-401 error codes', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254],
+                ha_discovery_cover_app_id: '203'
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            svc.handleCommandError('500', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
+
+            expect(svc._perAppTimers.has('254/203')).toBe(true);
+            svc.stop();
+        });
+
+        it('does nothing when statusData does not contain a matching path', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254]
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            expect(() => {
+                svc.handleCommandError('401', 'Some other error message');
+            }).not.toThrow();
+            expect(svc._perAppTimers.has('254/56')).toBe(true);
+            svc.stop();
+        });
+
+        it('does nothing when the path is not being polled', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254]
+            });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            // Path 254/203 is not in the timer map (no cover app configured)
+            expect(() => {
+                svc.handleCommandError('401', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
+            }).not.toThrow();
+            expect(svc._perAppTimers.has('254/56')).toBe(true);
+            svc.stop();
+        });
+
+        it('does nothing when statusData is null or undefined', async () => {
+            const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            expect(() => svc.handleCommandError('401', null)).not.toThrow();
+            expect(() => svc.handleCommandError('401', undefined)).not.toThrow();
+            svc.stop();
+        });
+    });
+
     describe('stop', () => {
         it('clears periodic interval on stop', async () => {
             const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });

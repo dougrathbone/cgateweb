@@ -373,5 +373,24 @@ describe('CommandResponseProcessor', () => {
                 expect.stringContaining('No details provided')
             );
         });
+
+        it('should invoke onCommandError callback when set', () => {
+            const onCommandError = jest.fn();
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                haDiscovery: mockHaDiscovery,
+                onObjectStatus: mockOnObjectStatus,
+                onCommandError,
+                logger: mockLogger
+            });
+            p._processCommandErrorResponse('401', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
+            expect(onCommandError).toHaveBeenCalledWith('401', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
+        });
+
+        it('should not throw when onCommandError is not set', () => {
+            expect(() => {
+                processor._processCommandErrorResponse('401', 'Some error');
+            }).not.toThrow();
+        });
     });
 });

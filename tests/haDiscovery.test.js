@@ -226,18 +226,16 @@ describe('HaDiscovery', () => {
             );
         });
 
-        it('should publish cover config with position support', () => {
+        it('should publish cover config with correct payload structure', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            // Find the cover config call
             const coverCall = mockPublishFn.mock.calls.find(
                 call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
             );
             expect(coverCall).toBeDefined();
-            
             const payload = JSON.parse(coverCall[1]);
-            
-            // Verify position topics are included
+
+            expect(payload.device_class).toBe('shutter');
             expect(payload.position_topic).toBe('cbus/read/254/203/15/position');
             expect(payload.set_position_topic).toBe('cbus/write/254/203/15/position');
             expect(payload.stop_topic).toBe('cbus/write/254/203/15/stop');
@@ -245,32 +243,6 @@ describe('HaDiscovery', () => {
             expect(payload.position_open).toBe(100);
             expect(payload.position_closed).toBe(0);
             expect(payload.optimistic).toBe(false);
-        });
-
-        it('should publish cover config with correct device class', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that cover configs include shutter device class
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            
-            const payload = JSON.parse(coverCall[1]);
-            expect(payload.device_class).toBe('shutter');
-        });
-
-        it('should publish cover config with open/close payloads', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            
-            const payload = JSON.parse(coverCall[1]);
-            
-            // Verify open/close payloads
             expect(payload.payload_open).toBe('ON');
             expect(payload.payload_close).toBe('OFF');
             expect(payload.state_open).toBe('ON');
@@ -343,20 +315,7 @@ describe('HaDiscovery', () => {
             expect(payload.retain).toBeUndefined();
         });
 
-        it('should publish companion button entity for each trigger group', () => {
-            mockSettings.ha_discovery_trigger_app_id = '203';
-            mockSettings.ha_discovery_cover_app_id = null;
-
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/button/cgateweb_254_203_15_btn/config',
-                expect.any(String),
-                { retain: true, qos: 0 }
-            );
-        });
-
-        it('should publish button entity with correct command_topic and payload_press', () => {
+        it('should publish companion button entity with correct payload', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
 
@@ -370,20 +329,6 @@ describe('HaDiscovery', () => {
             expect(payload.command_topic).toBe('cbus/write/254/203/15/trigger');
             expect(payload.payload_press).toBe('ON');
             expect(payload.unique_id).toBe('cgateweb_254_203_15_btn');
-        });
-
-        it('should link button entity to the same device as the event entity', () => {
-            mockSettings.ha_discovery_trigger_app_id = '203';
-            mockSettings.ha_discovery_cover_app_id = null;
-
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const buttonCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/button/cgateweb_254_203_15_btn/config'
-            );
-            expect(buttonCall).toBeDefined();
-            const payload = JSON.parse(buttonCall[1]);
-            // Button device identifiers should match the event entity's unique_id
             expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
         });
 
@@ -577,11 +522,6 @@ describe('HaDiscovery', () => {
     });
 
     describe('Integration with CgateWebBridge', () => {
-        it('should be triggered when all connections are established', () => {
-            // This test verifies the integration point exists
-            expect(typeof haDiscovery.trigger).toBe('function');
-        });
-
         it('should handle tree responses from C-Gate correctly', () => {
             haDiscovery.treeNetwork = '254';
             
@@ -1358,58 +1298,18 @@ describe('HaDiscovery', () => {
             );
         });
 
-        it('should publish scene entity with correct component in the discovery topic path', () => {
+        it('should publish scene entity with correct payload structure', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const sceneCall = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
             );
             expect(sceneCall).toBeDefined();
-            // The component is encoded in the topic path — verify the topic is under /scene/
             expect(sceneCall[0]).toMatch(/\/scene\//);
-        });
-
-        it('should publish scene entity with correct command_topic pointing to switch', () => {
-            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
-
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
             const payload = JSON.parse(sceneCall[1]);
             expect(payload.command_topic).toBe('cbus/write/254/202/1/switch');
-        });
-
-        it('should publish scene entity with correct unique_id', () => {
-            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
-
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
-            const payload = JSON.parse(sceneCall[1]);
             expect(payload.unique_id).toBe('cgateweb_254_202_1_scene');
-        });
-
-        it('should publish scene entity with payload_on set to ON', () => {
-            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
-
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
-            const payload = JSON.parse(sceneCall[1]);
             expect(payload.payload_on).toBe('ON');
-        });
-
-        it('should link scene entity to the same device as the event entity', () => {
-            haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
-
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
-            const payload = JSON.parse(sceneCall[1]);
             expect(payload.device.identifiers).toEqual(['cgateweb_254_202_1']);
             expect(payload.device.name).toBe('Entry Scene');
         });

@@ -245,6 +245,25 @@ class BridgeInitializationService {
         return [];
     }
 
+    /**
+     * Handles C-Gate command errors. If a 401 (not found) is received for a path
+     * that is being periodically polled, the polling timer is cancelled to prevent
+     * recurring error logs for apps that don't exist on this C-Bus installation.
+     */
+    handleCommandError(code, statusData) {
+        if (code !== '401') return;
+        // Extract network/app path from statusData like:
+        // "Bad object or device ID: //CLIPSAL/254/203/* (Object not found)"
+        const match = statusData && statusData.match(/\/\/[^/]+\/(\d+\/\d+)\/\*/);
+        if (!match) return;
+        const netapp = match[1];
+        if (this._perAppTimers.has(netapp)) {
+            clearInterval(this._perAppTimers.get(netapp));
+            this._perAppTimers.delete(netapp);
+            this.logger.warn(`Stopped periodic poll for ${netapp}: app not found on C-Bus system (401). Remove it from your configuration to suppress this message.`);
+        }
+    }
+
     stop() {
         if (this.bridge.periodicGetAllInterval) {
             clearInterval(this.bridge.periodicGetAllInterval);

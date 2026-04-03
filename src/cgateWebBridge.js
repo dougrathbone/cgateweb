@@ -211,6 +211,9 @@ class CgateWebBridge {
         });
 
         this.initializationService = new BridgeInitializationService(this);
+        this.commandResponseProcessor.onCommandError = (code, statusData) => {
+            this.initializationService.handleCommandError(code, statusData);
+        };
         this._setupEventHandlers();
     }
 
@@ -359,12 +362,12 @@ class CgateWebBridge {
 
     _processEventLine(line) {
         if (line.startsWith('#')) {
-            this.log(`Ignoring comment from event port:`, line);
+            this.logger.debug(`Ignoring comment from event port: ${line}`);
             return;
         }
 
         if (line.startsWith('clock ')) {
-            this.log(`Ignoring clock event from event port:`, line);
+            this.logger.debug(`Ignoring clock event from event port: ${line}`);
             return;
         }
 
@@ -516,6 +519,50 @@ class CgateWebBridge {
         this._lifecycle.state = state;
         this._lifecycle.reason = reason;
         this._lifecycle.since = Date.now();
+    }
+
+    // Hot-reloads settings that can be applied without reconnecting.
+    // Connection settings (mqtt host, cbus ip, ports) require a full restart.
+    reloadSettings(newSettings) {
+        const reloadableKeys = ['log_level', 'messageinterval', 'commandMinIntervalMs', 'getallperiod', 'getall_app_periods'];
+        const changed = reloadableKeys.filter(k => newSettings[k] !== this.settings[k]);
+
+        for (const k of reloadableKeys) {
+            this.settings[k] = newSettings[k];
+        }
+
+        if (newSettings.log_level) {
+            this._applyLogLevel(newSettings.log_level);
+        }
+
+        const getallNetworks = this.initializationService._resolveGetallNetworks();
+        if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
+            this.initializationService._scheduleAllGetalls(getallNetworks);
+        }
+
+        this.labelLoader.load();
+
+        if (changed.length > 0) {
+            this.logger.info(`Settings reloaded. Changed: ${changed.join(', ')}`);
+        } else {
+            this.logger.info('Settings reloaded (no changes detected)');
+        }
+    }
+
+    _applyLogLevel(level) {
+        for (const l of [
+            this.logger,
+            this.mqttManager?.logger,
+            this.commandConnectionPool?.logger,
+            this.eventConnection?.logger,
+            this.commandResponseProcessor?.logger,
+            this.initializationService?.logger,
+            this.mqttCommandRouter?.logger,
+            this.eventPublisher?.logger,
+            this.connectionManager?.logger,
+        ]) {
+            if (l?.setLevel) l.setLevel(level);
+        }
     }
 
     // Legacy method compatibility for tests

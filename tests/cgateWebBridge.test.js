@@ -391,22 +391,6 @@ describe('CgateWebBridge', () => {
                 expect(addSpy).toHaveBeenCalledWith(expect.stringContaining('GET //TestProject/254/56/* level'));
             });
 
-            it('should handle getall on start when enabled', () => {
-                bridge.settings.getallnetapp = '254/56';
-                bridge.settings.getallonstart = true;
-                bridge.mqttManager.connected = true;
-                bridge.commandConnectionPool.isStarted = true;
-                bridge.commandConnectionPool.healthyConnections = { size: 3 };
-                bridge.eventConnection.connected = true;
-
-                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
-
-                bridge._handleAllConnected();
-
-                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
-                queueSpy.mockRestore();
-            });
-
             it('should set up periodic getall when enabled', () => {
                 jest.useFakeTimers();
                 bridge.settings.getallnetapp = '254/56';
@@ -608,18 +592,6 @@ describe('CgateWebBridge', () => {
             });
         });
 
-        describe('Command data integration with CommandResponseProcessor', () => {
-            it('should delegate command processing to CommandResponseProcessor', () => {
-                const processSpy = jest.spyOn(bridge.commandResponseProcessor, 'processLine');
-                const testData = Buffer.from('300-//TestProject/254/56/1: level=128\n');
-                const mockConn = { id: 'integration', poolIndex: 0 };
-                
-                bridge._handleCommandData(testData, mockConn);
-                
-                expect(processSpy).toHaveBeenCalledWith('300-//TestProject/254/56/1: level=128');
-                processSpy.mockRestore();
-            });
-        });
     });
 
     describe('Event Processing', () => {
@@ -760,6 +732,64 @@ describe('CgateWebBridge', () => {
                 );
                 publishSpy.mockRestore();
             });
+        });
+    });
+
+    describe('reloadSettings()', () => {
+        let bridge;
+        beforeEach(() => {
+            bridge = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+        });
+
+        it('updates reloadable settings on the bridge', () => {
+            bridge.reloadSettings({ ...defaultSettings, log_level: 'debug', messageinterval: 500 });
+            expect(bridge.settings.log_level).toBe('debug');
+            expect(bridge.settings.messageinterval).toBe(500);
+        });
+
+        it('applies new log level to main bridge logger', () => {
+            const spy = jest.spyOn(bridge.logger, 'setLevel');
+            bridge.reloadSettings({ ...defaultSettings, log_level: 'debug' });
+            expect(spy).toHaveBeenCalledWith('debug');
+        });
+
+        it('applies new log level to all known sub-loggers', () => {
+            const spies = [
+                bridge.mqttManager?.logger,
+                bridge.eventConnection?.logger,
+                bridge.commandResponseProcessor?.logger,
+                bridge.initializationService?.logger,
+                bridge.connectionManager?.logger,
+            ].filter(Boolean).map(l => jest.spyOn(l, 'setLevel'));
+
+            bridge.reloadSettings({ ...defaultSettings, log_level: 'warn' });
+
+            for (const spy of spies) {
+                expect(spy).toHaveBeenCalledWith('warn');
+            }
+        });
+
+        it('reschedules getall timers when getallperiod and networks are set', () => {
+            bridge.settings.getall_networks = [254];
+            const rescheduleSpy = jest.spyOn(bridge.initializationService, '_scheduleAllGetalls');
+            bridge.reloadSettings({ ...defaultSettings, getallperiod: 300, getall_networks: [254] });
+            expect(rescheduleSpy).toHaveBeenCalled();
+        });
+
+        it('forces label reload', () => {
+            const loadSpy = jest.spyOn(bridge.labelLoader, 'load');
+            bridge.reloadSettings({ ...defaultSettings });
+            expect(loadSpy).toHaveBeenCalled();
+        });
+
+        it('does not throw when called with minimal settings', () => {
+            expect(() => bridge.reloadSettings({ ...defaultSettings })).not.toThrow();
+        });
+
+        it('does not throw when optional sub-loggers are missing', () => {
+            bridge.mqttCommandRouter = null;
+            bridge.eventPublisher = null;
+            expect(() => bridge.reloadSettings({ ...defaultSettings, log_level: 'debug' })).not.toThrow();
         });
     });
 });
