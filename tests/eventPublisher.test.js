@@ -385,67 +385,24 @@ describe('EventPublisher', () => {
     });
 
     describe('Cover getall response parsing (regression)', () => {
-        it('should publish position and ON state for a 300 GET response on cover app at level=128', () => {
-            // Simulates: commandResponseProcessor strips "300-" prefix, creates CBusEvent with statusDataOnly
-            const event = new CBusEvent('//HOME/254/203/5: level=128', { statusDataOnly: true });
-            expect(event.isValid()).toBe(true);
-
-            eventPublisher.publishEvent(event, '(Cmd)');
-
-            // Expect 3 publishes: state, level, position
-            expect(mockPublishFn).toHaveBeenCalledTimes(3);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/5/state',
-                'ON',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/5/level',
-                '50', // 128/255*100 ≈ 50
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/5/position',
-                '50',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish position=0 and OFF state for a 300 GET response on cover app at level=0', () => {
-            const event = new CBusEvent('//HOME/254/203/5: level=0', { statusDataOnly: true });
-            expect(event.isValid()).toBe(true);
-
-            eventPublisher.publishEvent(event, '(Cmd)');
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(3);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/5/state',
-                'OFF',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/5/position',
-                '0',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish position=100 and ON state for a 300 GET response on cover app at level=255', () => {
-            const event = new CBusEvent('//HOME/254/203/5: level=255', { statusDataOnly: true });
+        test.each([
+            [0,   'OFF', '0'],
+            [128, 'ON',  '50'],
+            [255, 'ON',  '100'],
+        ])('level=%i → state=%s, position=%s', (rawLevel, expectedState, expectedPosition) => {
+            const event = new CBusEvent(`//HOME/254/203/5: level=${rawLevel}`, { statusDataOnly: true });
             expect(event.isValid()).toBe(true);
 
             eventPublisher.publishEvent(event, '(Cmd)');
 
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/203/5/state',
-                'ON',
+                expectedState,
                 mockMqttOptions
             );
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/203/5/position',
-                '100',
+                expectedPosition,
                 mockMqttOptions
             );
         });

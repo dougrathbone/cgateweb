@@ -225,16 +225,28 @@ describe('CommandResponseProcessor', () => {
                 });
             });
 
-            it('should not crash when receiving tree responses before haDiscovery is initialized', () => {
+            it('should buffer tree responses and replay them when haDiscovery is set', () => {
                 expect(() => {
                     processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_START, 'tree start data');
                     processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'tree data');
                     processorWithNullHaDiscovery._processCommandResponse(CGATE_RESPONSE_TREE_END, 'tree end data');
                 }).not.toThrow();
 
-                expect(mockLogger.warn).toHaveBeenCalledWith(
-                    expect.stringContaining('Received tree start before HA Discovery initialized')
-                );
+                // Messages are buffered, not dropped
+                expect(processorWithNullHaDiscovery._pendingTreeMessages).toHaveLength(3);
+
+                // Setting haDiscovery replays the buffered messages
+                const mockHaDiscovery = {
+                    handleTreeStart: jest.fn(),
+                    handleTreeData: jest.fn(),
+                    handleTreeEnd: jest.fn()
+                };
+                processorWithNullHaDiscovery.haDiscovery = mockHaDiscovery;
+
+                expect(mockHaDiscovery.handleTreeStart).toHaveBeenCalledWith('tree start data');
+                expect(mockHaDiscovery.handleTreeData).toHaveBeenCalledWith('tree data');
+                expect(mockHaDiscovery.handleTreeEnd).toHaveBeenCalledWith('tree end data');
+                expect(processorWithNullHaDiscovery._pendingTreeMessages).toHaveLength(0);
             });
 
             it('should still process object status when haDiscovery is null', () => {

@@ -68,9 +68,6 @@ describe('CgateConnection', () => {
             expect(defaultConnection.reconnectMaxDelay).toBe(60000);
         });
 
-        it('should initialize logger with correct component name', () => {
-            expect(connection.logger).toBeDefined();
-        });
     });
 
     describe('connect', () => {

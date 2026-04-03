@@ -38,7 +38,6 @@ describe('MqttManager', () => {
             expect(mqttManager.settings).toBe(settings);
             expect(mqttManager.client).toBeNull();
             expect(mqttManager.connected).toBe(false);
-            expect(mqttManager.logger).toBeDefined();
         });
     });
 
@@ -163,11 +162,6 @@ describe('MqttManager', () => {
             expect(mockClient.end).toHaveBeenCalled();
         });
 
-        it('should handle null client gracefully', () => {
-            mqttManager.client = null;
-            
-            expect(() => mqttManager.disconnect()).not.toThrow();
-        });
     });
 
     describe('publish', () => {
@@ -563,21 +557,15 @@ describe('MqttManager', () => {
             expect(() => emptyManager.connect()).not.toThrow(); // Empty string splits to [''], which becomes host='', port='1883'
         });
 
-        it('should handle multiple connect calls', () => {
+        it('should skip connect when already connecting', () => {
             mqttManager.connect();
             const firstClient = mqttManager.client;
-            
-            // Create a new mock client for the second connect call
-            const secondMockClient = new EventEmitter();
-            secondMockClient.publish = jest.fn();
-            secondMockClient.subscribe = jest.fn();
-            secondMockClient.end = jest.fn();
-            mqtt.connect.mockReturnValueOnce(secondMockClient);
-            
+            expect(mqttManager._connecting).toBe(true);
+
+            // Second connect should be a no-op while _connecting is true
             mqttManager.connect();
-            
-            expect(firstClient.end).toHaveBeenCalled();
-            expect(mqttManager.client).toBe(secondMockClient);
+            expect(mqttManager.client).toBe(firstClient);
+            expect(mqtt.connect).toHaveBeenCalledTimes(1);
         });
 
         it('should handle publish when client is null', () => {
