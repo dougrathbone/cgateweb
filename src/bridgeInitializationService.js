@@ -280,6 +280,12 @@ class BridgeInitializationService {
             this.bridge._onLabelsChanged = null;
         }
         this.bridge.labelLoader.unwatch();
+
+        if (this.bridge.haDiscovery) {
+            this.bridge.haDiscovery.removeAllListeners?.();
+            this.bridge.haDiscovery = null;
+            this.bridge.commandResponseProcessor.haDiscovery = null;
+        }
     }
 }
 
