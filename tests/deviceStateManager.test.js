@@ -77,55 +77,21 @@ describe('DeviceStateManager', () => {
     });
 
     describe('updateLevelFromEvent', () => {
-        it('should extract level from ramp events', () => {
+        it.each([
+            ['ramp', 128,  128,          null],
+            ['on',   null, CGATE_LEVEL_MAX, null],
+            ['off',  null, CGATE_LEVEL_MIN, null],
+        ])('should extract level from %s events', (action, rawLevel, expectedLevel) => {
             const emitSpy = jest.spyOn(stateManager.getEventEmitter(), 'emit');
-            
-            const mockEvent = {
+            stateManager.updateLevelFromEvent({
                 getApplication: () => 56,
                 getNetwork: () => 254,
                 getGroup: () => 4,
-                getLevel: () => 128,
-                getAction: () => 'ramp'
-            };
-
-            stateManager.updateLevelFromEvent(mockEvent);
-
-            expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', 128);
-            expect(mockLogger.debug).toHaveBeenCalledWith('Level update: 254/56/4 = 128');
-        });
-
-        it('should extract level from on events', () => {
-            const emitSpy = jest.spyOn(stateManager.getEventEmitter(), 'emit');
-            
-            const mockEvent = {
-                getApplication: () => 56,
-                getNetwork: () => 254,
-                getGroup: () => 4,
-                getLevel: () => null,
-                getAction: () => CGATE_CMD_ON.toLowerCase()
-            };
-
-            stateManager.updateLevelFromEvent(mockEvent);
-
-            expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', CGATE_LEVEL_MAX);
-            expect(mockLogger.debug).toHaveBeenCalledWith(`Level update: 254/56/4 = ${CGATE_LEVEL_MAX}`);
-        });
-
-        it('should extract level from off events', () => {
-            const emitSpy = jest.spyOn(stateManager.getEventEmitter(), 'emit');
-            
-            const mockEvent = {
-                getApplication: () => 56,
-                getNetwork: () => 254,
-                getGroup: () => 4,
-                getLevel: () => null,
-                getAction: () => CGATE_CMD_OFF.toLowerCase()
-            };
-
-            stateManager.updateLevelFromEvent(mockEvent);
-
-            expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', CGATE_LEVEL_MIN);
-            expect(mockLogger.debug).toHaveBeenCalledWith(`Level update: 254/56/4 = ${CGATE_LEVEL_MIN}`);
+                getLevel: () => rawLevel,
+                getAction: () => action === 'ramp' ? 'ramp' : (action === 'on' ? CGATE_CMD_ON.toLowerCase() : CGATE_CMD_OFF.toLowerCase())
+            });
+            expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', expectedLevel);
+            expect(mockLogger.debug).toHaveBeenCalledWith(`Level update: 254/56/4 = ${expectedLevel}`);
         });
 
         it('should ignore PIR sensor events', () => {

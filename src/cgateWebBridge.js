@@ -550,7 +550,7 @@ class CgateWebBridge {
     }
 
     _applyLogLevel(level) {
-        for (const l of [
+        [
             this.logger,
             this.mqttManager?.logger,
             this.commandConnectionPool?.logger,
@@ -560,9 +560,7 @@ class CgateWebBridge {
             this.mqttCommandRouter?.logger,
             this.eventPublisher?.logger,
             this.connectionManager?.logger,
-        ]) {
-            if (l?.setLevel) l.setLevel(level);
-        }
+        ].filter(Boolean).forEach(l => l.setLevel(level));
     }
 
     // Legacy method compatibility for tests

@@ -608,19 +608,12 @@ class MqttCommandRouter extends EventEmitter {
         return `//${this.cbusname}/${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`;
     }
 
-    /**
-     * Queues a command for transmission to C-Gate.
-     * @param {string} command - The C-Gate command to queue
-     * @private
-     */
-    _queueCommand(command, priority = 'interactive') {
-        // Preserve historical behavior for omitted/empty priority while allowing
-        // explicit interactive commands to retain their priority in the queue.
-        if (arguments.length < 2 || !priority) {
+    _queueCommand(command, priority) {
+        if (priority) {
+            this.cgateCommandQueue.add(command, { priority });
+        } else {
             this.cgateCommandQueue.add(command);
-            return;
         }
-        this.cgateCommandQueue.add(command, { priority });
     }
 }
 

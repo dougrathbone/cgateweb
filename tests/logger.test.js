@@ -201,32 +201,21 @@ describe('Logger', () => {
             consoleTimeEndSpy = jest.spyOn(console, 'timeEnd').mockImplementation();
         });
 
-        it('should call console.time in development environment', () => {
-            const devLogger = new Logger({ component: 'test' });
-            devLogger.isDevelopment = true;
-            devLogger.time('myTimer');
-            expect(consoleTimeSpy).toHaveBeenCalledWith('[test] myTimer');
-        });
-
-        it('should call console.timeEnd in development environment', () => {
-            const devLogger = new Logger({ component: 'test' });
-            devLogger.isDevelopment = true;
-            devLogger.timeEnd('myTimer');
-            expect(consoleTimeEndSpy).toHaveBeenCalledWith('[test] myTimer');
-        });
-
-        it('should not call console.time in production environment', () => {
-            const prodLogger = new Logger({ component: 'test' });
-            prodLogger.isDevelopment = false;
-            prodLogger.time('myTimer');
-            expect(consoleTimeSpy).not.toHaveBeenCalled();
-        });
-
-        it('should not call console.timeEnd in production environment', () => {
-            const prodLogger = new Logger({ component: 'test' });
-            prodLogger.isDevelopment = false;
-            prodLogger.timeEnd('myTimer');
-            expect(consoleTimeEndSpy).not.toHaveBeenCalled();
+        it.each([
+            [true,  true],
+            [false, false],
+        ])('isDevelopment=%s: time/timeEnd %s call console helpers', (isDev, shouldCall) => {
+            const logger = new Logger({ component: 'test' });
+            logger.isDevelopment = isDev;
+            logger.time('myTimer');
+            logger.timeEnd('myTimer');
+            if (shouldCall) {
+                expect(consoleTimeSpy).toHaveBeenCalledWith('[test] myTimer');
+                expect(consoleTimeEndSpy).toHaveBeenCalledWith('[test] myTimer');
+            } else {
+                expect(consoleTimeSpy).not.toHaveBeenCalled();
+                expect(consoleTimeEndSpy).not.toHaveBeenCalled();
+            }
         });
     });
 

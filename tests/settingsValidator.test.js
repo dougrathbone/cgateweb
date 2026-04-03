@@ -410,11 +410,6 @@ describe('Module exports', () => {
     });
 
     describe('validateSetup function', () => {
-        it('should be exported and callable', () => {
-            const { validateSetup } = require('../src/settingsValidator');
-            expect(typeof validateSetup).toBe('function');
-        });
-
         it('should return isFirstTime when no settings provided', () => {
             const { validateSetup } = require('../src/settingsValidator');
             const result = validateSetup({});
