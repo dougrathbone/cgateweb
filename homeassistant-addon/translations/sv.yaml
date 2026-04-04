@@ -1,270 +1,270 @@
 configuration:
-  # ── Obligatoriska falt (alltid synliga) ──
+  # ── Obligatoriska fält (alltid synliga) ──
   cgate_mode:
-    name: C-Gate lage
+    name: C-Gate läge
     description: >-
-      Hur C-Gate tillhandahalls. "remote" ansluter till en C-Gate-server som
-      kors nagon annanstans i ditt natverk (vanligast). "managed" laddar ner
-      och kor C-Gate lokalt i detta tillagg.
+      Hur C-Gate tillhandahålls. "remote" ansluter till en C-Gate server
+      som körs någon annanstans i ditt nätverk (vanligast). "managed"
+      laddar ner och kör C-Gate lokalt i detta tillägg.
   cgate_host:
-    name: C-Gate vard (obligatorisk)
+    name: C-Gate värd (obligatorisk)
     description: >-
-      IP-adress eller vardnamn for din C-Gate-server. I fjarrlagt, ange
-      adressen till maskinen som kor C-Gate. I hanterat lage, anvand
+      IP-adress eller värdnamn för din C-Gate server. I fjärrläge, ange
+      adressen till maskinen som kör C-Gate. I hanterat läge, använd
       127.0.0.1.
   cgate_project:
     name: C-Gate projektnamn (obligatoriskt)
     description: >-
-      Namnet pa ditt C-Bus-projekt som konfigurerat i C-Gate (t.ex. HOME,
-      MYHOUSE). Hitta det i C-Gate Toolkit under ditt projektrad.
+      Namnet på ditt C-Bus projekt som konfigurerat i C-Gate (t.ex. HOME,
+      MYHOUSE). Hitta det i C-Gate Toolkit under ditt projektträd.
   ha_discovery_enabled:
     name: Aktivera Home Assistant Discovery
     description: >-
-      Registrera C-Bus-enheter automatiskt i Home Assistant med MQTT
-      Discovery. De flesta anvandare bor lata detta vara aktiverat. Enheter
+      Registrera C-Bus enheter automatiskt i Home Assistant med MQTT
+      Discovery. De flesta användare bör lämna detta aktiverat. Enheter
       visas som entiteter utan manuell YAML-konfiguration.
   log_level:
-    name: Loggniva
+    name: Loggnivå
     description: >-
-      Loggningsdetalj. Anvand "info" for normal drift, "debug" for
-      felsokning av anslutnings- eller upptacktsproblem.
+      Loggningsdetalj. Använd "info" för normal drift, "debug" för
+      felsökning av anslutnings- eller upptäcktsproblem.
 
-  # ── C-Gate-anslutning (valfritt, forinstellda varden) ──
+  # ── C-Gate anslutning (valfritt, vettiga standardvärden) ──
   cgate_port:
     name: C-Gate kommandoport
     description: >-
-      TCP-port for C-Gate kommandoanslutningar. Andra bara om din C-Gate
-      anvander en icke-standardport. Standard: 20023.
+      TCP-port för C-Gate kommandoanslutningar. Ändra bara om din C-Gate
+      använder en icke-standard port. Standard: 20023.
   cgate_event_port:
-    name: C-Gate handelseport
+    name: C-Gate händelseport
     description: >-
-      TCP-port for C-Gate handelseanslutningar. Andra bara om din C-Gate
-      anvander en icke-standardport. Standard: 20025.
+      TCP-port för C-Gate händelseanslutningar. Ändra bara om din C-Gate
+      använder en icke-standard port. Standard: 20025.
 
-  # ── C-Gate hanterat lage ──
+  # ── C-Gate hanterat läge ──
   cgate_install_source:
-    name: C-Gate installationskalla
+    name: C-Gate installationskälla
     description: >-
-      Anvands bara i hanterat lage. "download" hamtar C-Gate automatiskt.
-      "upload" letar efter en zip-fil du placerat i /share/cgate/.
+      Används bara i hanterat läge. "download" hämtar C-Gate automatiskt.
+      "upload" letar efter en zip-fil som du placerat i /share/cgate/.
   cgate_download_url:
     name: C-Gate nedladdnings-URL
     description: >-
-      Anvands bara i hanterat lage med nedladdningskalla. Asidosatt om den
-      officiella Clipsal-nedladdnings-URL:en andras. Lamna tomt for
-      standard-URL.
+      Används bara i hanterat läge med nedladdningskälla. Åsidosätt om
+      den officiella Clipsal nedladdnings-URL:en ändras. Lämna tomt för
+      standard-URL:en.
   cgate_download_sha256:
     name: C-Gate nedladdning SHA256
     description: >-
-      Valfri SHA256-kontrollsumma for att verifiera C-Gate-nedladdningen.
-      Rekommenderas vid anvandning av en anpassad nedladdnings-URL.
+      Valfri SHA256-kontrollsumma för att verifiera C-Gate nedladdningen.
+      Rekommenderas vid användning av en anpassad nedladdnings-URL.
 
-  # ── MQTT (vanligtvis automatiskt upptackt) ──
+  # ── MQTT (upptäcks vanligtvis automatiskt) ──
   mqtt_host:
-    name: MQTT Broker vard
+    name: MQTT Broker värd
     description: >-
-      Identifieras automatiskt fran Mosquitto-tillagget -- de flesta
-      anvandare bor lamna detta tomt. Stall bara in vid anvandning av en
-      extern MQTT-broker.
+      Upptäcks automatiskt från Mosquitto tillägget — de flesta användare
+      bör lämna detta tomt. Ställ bara in om du använder en extern MQTT
+      broker.
   mqtt_port:
     name: MQTT Broker port
     description: >-
-      Identifieras automatiskt fran Mosquitto-tillagget. Stall bara in for
+      Upptäcks automatiskt från Mosquitto tillägget. Ställ bara in för
       externa brokers. Standard: 1883.
   mqtt_username:
-    name: MQTT anvandarnamn
+    name: MQTT användarnamn
     description: >-
-      Identifieras automatiskt fran Mosquitto-tillagget. Stall bara in for
-      externa brokers eller for att asidosatta inloggningsuppgifter.
+      Upptäcks automatiskt från Mosquitto tillägget. Ställ bara in för
+      externa brokers eller för att åsidosätta inloggningsuppgifter.
   mqtt_password:
-    name: MQTT losenord
+    name: MQTT lösenord
     description: >-
-      Identifieras automatiskt fran Mosquitto-tillagget. Stall bara in for
-      externa brokers eller for att asidosatta inloggningsuppgifter.
+      Upptäcks automatiskt från Mosquitto tillägget. Ställ bara in för
+      externa brokers eller för att åsidosätta inloggningsuppgifter.
   mqtt_use_tls:
     name: Aktivera MQTT TLS
     description: >-
-      Anslut till MQTT med TLS (mqtts://). Aktivera for brokers som kraver
-      krypterade anslutningar (vanligtvis port 8883). Behovs inte for
-      standard Mosquitto-tillagget.
+      Anslut till MQTT med TLS (mqtts://). Aktivera för brokers som
+      kräver krypterade anslutningar (vanligtvis port 8883). Behövs inte
+      för standard Mosquitto tillägget.
   mqtt_ca_file:
     name: MQTT CA-certifikatfil
     description: >-
-      Sokvag till CA-certifikat for att verifiera brokerns TLS-certifikat.
-      Lagras vanligtvis i /ssl/ (t.ex. /ssl/ca.crt). Behovs bara for
-      sjalvsignerade certifikat.
+      Sökväg till CA-certifikat för att verifiera brokerns TLS-certifikat.
+      Lagras vanligtvis i /ssl/ (t.ex. /ssl/ca.crt). Behövs bara för
+      självsignerade certifikat.
   mqtt_reject_unauthorized:
     name: Verifiera MQTT TLS-certifikat
     description: >-
       Avvisa anslutningar om brokerns TLS-certifikat inte kan verifieras.
-      Ha aktiverat for sakerhet. Inaktivera bara for sjalvsignerade
+      Behåll aktiverat för säkerhet. Inaktivera bara för självsignerade
       certifikat utan CA-fil.
 
-  # ── C-Bus-overvakning ──
+  # ── C-Bus övervakning ──
   auto_discover_networks:
-    name: Automatisk upptackt av C-Bus-natverk
+    name: Auto-upptäck C-Bus nätverk
     description: >-
-      Upptack natverks-ID:n automatiskt fran C-Gate vid anslutning.
-      Upptackta natverk anvands for polling och HA Discovery. Inaktivera
-      bara om automatisk upptackt orsakar problem. Standard: aktiverad.
+      Upptäck automatiskt nätverks-ID:n från C-Gate vid anslutning.
+      Upptäckta nätverk används för polling och HA Discovery. Inaktivera
+      bara om auto-upptäckt orsakar problem. Standard: aktiverat.
   getall_networks:
-    name: C-Bus natverk att overvaka
+    name: C-Bus nätverk att övervaka
     description: >-
-      C-Bus natverks-ID:n att hamta enhetsstatus for. Standard: 254
-      (standard C-Bus-natverk for de flesta installationer). Hitta dina
-      natverks-ID:n i C-Gate Toolkit under ditt projektrad.
+      C-Bus nätverks-ID:n att hämta enhetsstatus för. Standard: 254
+      (standard C-Bus nätverk för de flesta installationer). Hitta dina
+      nätverks-ID:n i C-Gate Toolkit under ditt projektträd.
   getall_on_start:
-    name: Hamta alla enheter vid start
+    name: Hämta alla enheter vid start
     description: >-
-      Begara alla enhetstillstand nar tillagget startar och synkronisera
-      Home Assistant med aktuell C-Bus-status. Standard: aktiverad.
+      Hämta alla enhetstillstånd när tillägget startar, för att
+      synkronisera Home Assistant med aktuellt C-Bus tillstånd. Standard:
+      aktiverat.
   getall_period:
-    name: Hamtningsintervall (sekunder)
+    name: Hämtningsintervall (sekunder)
     description: >-
-      Hur ofta alla enhetstillstand hamtas pa nytt. Lagre varden = farskare
-      tillstand men mer C-Gate-trafik. Standard: 3600 (1 timme).
+      Hur ofta alla enhetstillstånd hämtas igen. Lägre värden = färskare
+      tillstånd men mer C-Gate trafik. Standard: 3600 (1 timme).
   getall_app_periods:
-    name: Hamtningsintervall per app
+    name: Hämtningsintervall per applikation
     description: >-
-      Asidosatt hamtningsintervallet for specifika C-Bus-applikationer. Varje
-      post har ett app_id (t.ex. "201" for HVAC) och period_sec (0 for att
-      inaktivera).
+      Åsidosätt hämtningsintervallet för specifika C-Bus applikationer.
+      Varje post har ett app_id (t.ex. "201" för HVAC) och period_sec
+      (0 för att inaktivera).
 
-  # ── MQTT-publicering ──
+  # ── MQTT publicering ──
   retain_reads:
-    name: Behall MQTT-statusmeddelanden
+    name: Behåll MQTT statusmeddelanden
     description: >-
-      Satt MQTT retain-flaggan pa statusmeddelanden sa att nya prenumeranter
-      omedelbart far senast kanda enhetstillstand. Standard: inaktiverad.
+      Sätt MQTT retain-flaggan på statusmeddelanden så nya prenumeranter
+      omedelbart får senast kända enhetsstatus. Standard: inaktiverat.
   message_interval:
     name: Kommandointervall (ms)
     description: >-
-      Minsta fordrojning mellan kommandon till C-Gate. Forhindrar
-      overbelastning av C-Gate med snabba kommandon. Standard: 200ms.
+      Minsta fördröjning mellan kommandon till C-Gate. Förhindrar att
+      C-Gate överbelastas med snabba kommandon. Standard: 200ms.
 
   # ── Home Assistant Discovery ──
   ha_discovery_prefix:
-    name: Discovery amnesprefix
+    name: Discovery ämnesprefix
     description: >-
-      MQTT-amnesprefix for HA Discovery-meddelanden. Maste matcha ditt
-      Home Assistant MQTT Discovery-prefix. Standard: homeassistant.
+      MQTT ämnesprefix för HA Discovery meddelanden. Måste matcha ditt
+      Home Assistant MQTT Discovery prefix. Standard: homeassistant.
   ha_discovery_networks:
-    name: Discovery-natverk
+    name: Discovery nätverk
     description: >-
-      C-Bus natverks-ID:n att skanna for enhetsupptackt. Om tomt, anvands
-      natverken fran "C-Bus natverk att overvaka". Standard: 254.
+      C-Bus nätverks-ID:n att skanna för enhetsupptäckt. Om tomt,
+      används nätverken från "C-Bus nätverk att övervaka". Standard: 254.
   ha_discovery_cover_app_id:
-    name: Applikations-ID for persienner
+    name: Applikations-ID för skydd
     description: >-
-      C-Bus app-ID for persienner (jalusier, rullgardiner, garageportar).
-      Vanligt varde: 203 (Enable Control). Lamna tomt for att hoppa over
-      persiennupptackt.
+      C-Bus app-ID för skydd (persienner, rullgardiner, garageportar).
+      Vanligt värde: 203 (Enable Control). Lämna tomt för att hoppa
+      över skyddsupptäckt.
   ha_discovery_cover_tilt_app_id:
-    name: Applikations-ID for persiennlutning
+    name: Applikations-ID för skyddslutning
     description: >-
-      C-Bus app-ID for styrning av lutning pa persienner. Paras med
-      persienner via gruppnummer. Lamna tomt for att hoppa over lutning.
+      C-Bus app-ID för lutningsstyrning av persienner. Kopplas via
+      gruppnummer med skydd. Lämna tomt för att hoppa över lutning.
   ha_discovery_switch_app_id:
-    name: Applikations-ID for strombrytare
+    name: Applikations-ID för strömbrytare
     description: >-
-      C-Bus app-ID for strombrytargrupper. Lamna tomt for att hoppa over
-      strombrytarupptackt.
+      C-Bus app-ID för strömbrytargrupper. Lämna tomt för att hoppa
+      över strömbrytarupptäckt.
   ha_discovery_trigger_app_id:
-    name: Applikations-ID for utlosare
+    name: Applikations-ID för utlösare
     description: >-
-      C-Bus app-ID for utlosargrupper (knappsatser, scener). Vanligt
-      varde: 202. Lamna tomt for att hoppa over utlosarupptackt.
+      C-Bus app-ID för utlösargrupper (knappsatser, scener). Vanligt
+      värde: 202. Lämna tomt för att hoppa över utlösarupptäckt.
   ha_discovery_scene_enabled:
-    name: Aktivera scen-entiteter
+    name: Aktivera scenentiteter
     description: >-
-      Skapa en Home Assistant scen-entitet for varje utlosargrupp, utover
-      handelse- och knappentiteter. Standard: aktiverad.
+      Skapa en Home Assistant scenentitet för varje utlösargrupp,
+      utöver händelse- och knappentiteter. Standard: aktiverat.
   ha_discovery_hvac_app_id:
     name: HVAC applikations-ID
     description: >-
-      C-Bus app-ID for HVAC/klimatzoner. Standard C-Bus HVAC-app: 201.
-      Lamna tomt for att hoppa over HVAC-upptackt.
+      C-Bus app-ID för HVAC/klimatzoner. Standard C-Bus HVAC app: 201.
+      Lämna tomt för att hoppa över HVAC-upptäckt.
   ha_hvac_temperature_unit:
     name: HVAC temperaturenhet
     description: >-
-      Temperaturenhet for HVAC-klimatentiteter. C for Celsius, F for
+      Temperaturenhet för HVAC klimatentiteter. C för Celsius, F för
       Fahrenheit. Standard: C.
 
-  # ── Bridge-diagnostik ──
+  # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:
     name: Aktivera bridge-diagnostik
     description: >-
-      Publicera bridge-halsoentiteter (redotillstand, anslutningar,
-      kodjup) till Home Assistant. Standard: aktiverad.
+      Publicera bridge-hälsoentiteter (redo-status, anslutningar,
+      ködjup) till Home Assistant. Standard: aktiverat.
   ha_bridge_diagnostics_interval_sec:
     name: Diagnostikintervall (sekunder)
     description: >-
-      Hur ofta bridge-diagnostiktillstand uppdateras. Standard: 60.
+      Hur ofta bridge-diagnostikstatus uppdateras. Standard: 60.
 
-  # ── Upptackt av inaktiva enheter ──
+  # ── Upptäckt av inaktiva enheter ──
   stale_device_detection_enabled:
-    name: Aktivera upptackt av inaktiva enheter
+    name: Aktivera upptäckt av inaktiva enheter
     description: >-
-      Upptack C-Bus-enheter som slutat rapportera och publicera en
-      varningssensor. Standard: aktiverad.
+      Upptäck C-Bus enheter som slutar rapportera och publicera en
+      varningssensor. Standard: aktiverat.
   stale_device_threshold_hours:
-    name: Trokel for inaktiv enhet (timmar)
+    name: Tröskel för inaktiv enhet (timmar)
     description: >-
       Timmar utan statusuppdatering innan en enhet anses inaktiv.
       Standard: 24.
   stale_device_check_interval_sec:
-    name: Kontrollintervall for inaktiva enheter (sekunder)
+    name: Kontrollintervall för inaktiva enheter (sekunder)
     description: >-
-      Hur ofta sokning efter inaktiva enheter gors. Standard: 3600
-      (1 timme).
+      Hur ofta inaktiva enheter söks. Standard: 3600 (1 timme).
 
   # ── Avancerat: Anslutningspool ──
   connection_pool_size:
     name: Anslutningspoolstorlek
     description: >-
-      Antal parallella TCP-anslutningar till C-Gate. Oka for
-      hogkapacitetsinstallationer, minska till 1 for aldre C-Gate.
+      Antal parallella TCP-anslutningar till C-Gate. Öka för
+      högkapacitetsinstallationer, minska till 1 för äldre C-Gate.
       Standard: 3.
   connection_health_check_interval_sec:
-    name: Halsokontrollintervall (sekunder)
+    name: Hälsokontrollintervall (sekunder)
     description: >-
-      Hur ofta C-Gate-anslutningar verifieras som fungerande. Standard: 30.
+      Hur ofta C-Gate anslutningar kontrolleras. Standard: 30.
   connection_keep_alive_interval_sec:
-    name: Keep-Alive-intervall (sekunder)
+    name: Keep-Alive intervall (sekunder)
     description: >-
-      Hur ofta C-Gate-anslutningar pingas. Forhindrar tysta
+      Hur ofta C-Gate anslutningar pingas. Förhindrar tysta
       TCP-avbrott. Standard: 60.
   cover_ramp_duration_sec:
-    name: Persiennrorelsetid (sekunder)
+    name: Skyddsrörelseduration (sekunder)
     description: >-
-      Forvantad tid for en persienn att helt oppnas/stangas. Bridge
-      publicerar uppskattade positioner under detta fonster. Standard: 5.
+      Förväntad tid för ett skydd att öppna/stänga helt. Bridge
+      publicerar uppskattade positioner under detta fönster. Standard: 5.
 
-  # ── Avancerat: Etikettfil och Web API ──
+  # ── Avancerat: Etikettfil & Web API ──
   cbus_label_file:
     name: Anpassad etikettfil
     description: >-
-      Sokvag till en JSON-fil med anpassade enhetsnamn. Identifieras
-      automatiskt fran vanliga sokvagar om ej angiven. Filen overvakas
-      for andringar.
+      Sökväg till en JSON-fil med anpassade enhetsnamn. Upptäcks
+      automatiskt från vanliga sökvägar om ej angiven. Filen övervakas
+      för ändringar.
   web_api_key:
     name: Web API-nyckel
     description: >-
-      API-nyckel for skrivoperationer i etikettredigeraren. Stall in
-      nar port 8080 exponeras utanfor HA ingress.
+      API-nyckel för skrivoperationer i etikettredigeraren. Ställ in
+      när port 8080 exponeras utanför HA ingress.
   web_allow_unauthenticated_mutations:
-    name: Tillat oautentiserade webbskrivningar (osakert)
+    name: Tillåt oautentiserade webbskrivningar (osäkert)
     description: >-
-      Tillat skrivandpunkter utan API-nyckel. Ha inaktiverat om du inte
-      fullt litar pa natverksatkomsten till detta tillagg.
+      Tillåt skrivändpunkter utan API-nyckel. Behåll inaktiverat om du
+      inte fullt ut litar på nätverksåtkomsten till detta tillägg.
   web_allowed_origins:
-    name: Tillatna webbkallor (CORS)
+    name: Tillåtna webbkällor (CORS)
     description: >-
-      CORS-vitlista for webblasar-atkomst. Ange fullstandiga kallor som
-      https://ha.example.com. Lamna tomt for att inaktivera
-      korsdomanatkomst.
+      CORS-tillåtslista för webbläsaråtkomst. Ange fullständiga
+      källadresser som https://ha.example.com. Lämna tomt för att
+      inaktivera cross-origin åtkomst.
   web_mutation_rate_limit_per_minute:
-    name: Webbskrivningsgrans
+    name: Webbskrivningsgräns
     description: >-
-      Maximalt antal andrande API-forfragan per minut per klient.
+      Maximalt antal muterande API-förfrågningar per minut per klient.
       Standard: 120.
