@@ -222,6 +222,7 @@ class MqttManager extends EventEmitter {
     }
 
     _handleClose() {
+        this._connecting = false;
         this.connected = false;
         this._bridgeReady = false;
         

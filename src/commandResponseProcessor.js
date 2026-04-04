@@ -28,6 +28,7 @@ class CommandResponseProcessor {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
+        this._maxPendingTreeMessages = 500;
         this.onObjectStatus = onObjectStatus;
         this.onCommandError = onCommandError || null;
         this.logger = logger || createLogger({
@@ -140,7 +141,7 @@ class CommandResponseProcessor {
             case CGATE_RESPONSE_TREE_START:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeStart(statusData);
-                } else {
+                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
                     this.logger.debug(`Buffering tree start (HA Discovery not yet initialized)`);
                     this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_START, data: statusData });
                 }
@@ -148,14 +149,14 @@ class CommandResponseProcessor {
             case CGATE_RESPONSE_TREE_DATA:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeData(statusData);
-                } else {
+                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
                     this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_DATA, data: statusData });
                 }
                 break;
             case CGATE_RESPONSE_TREE_END:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeEnd(statusData);
-                } else {
+                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
                     this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_END, data: statusData });
                 }
                 break;
