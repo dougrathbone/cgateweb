@@ -513,7 +513,7 @@ class ConfigLoader {
 
         if (!configToValidate.cbusname) {
             warnings.push('C-Gate project name (cbusname) not specified, using default');
-        } else if (/[\/\\\s"']/.test(configToValidate.cbusname)) {
+        } else if (/[/\\\s"']/.test(configToValidate.cbusname)) {
             errors.push('C-Gate project name (cbusname) must not contain spaces, slashes, or quotes');
         }
 

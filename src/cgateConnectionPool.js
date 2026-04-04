@@ -359,7 +359,7 @@ class CgateConnectionPool extends EventEmitter {
             if (oldConn) {
                 oldConn.removeAllListeners?.();
                 if (oldConn.socket && !oldConn.socket.destroyed) {
-                    try { oldConn.socket.destroy(); } catch (_) { /* ignore */ }
+                    try { oldConn.socket.destroy(); } catch { /* ignore */ }
                 }
             }
 

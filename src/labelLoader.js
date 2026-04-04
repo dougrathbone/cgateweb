@@ -136,6 +136,7 @@ class LabelLoader extends EventEmitter {
             fs.mkdirSync(dir, { recursive: true });
         }
 
+        this._lastSaveTime = Date.now();
         fs.writeFileSync(this.filePath, JSON.stringify(fileData, null, 2) + '\n', 'utf8');
         this._lastSaveTime = Date.now();
 
