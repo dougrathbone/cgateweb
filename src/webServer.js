@@ -63,6 +63,8 @@ class WebServer {
                 : 120
         );
         this._mutationRequestLog = new Map();
+        this._haAreasCache = null;
+        this._haAreasCacheTime = 0;
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
         this._parser = new CbusProjectParser();
@@ -434,33 +436,45 @@ class WebServer {
             }
         }
 
-        // Try to fetch areas from Home Assistant Supervisor API
-        const haAreas = [];
+        // Fetch areas from Home Assistant Supervisor API (cached 30s)
+        let haAreas = [];
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
         if (supervisorToken) {
-            try {
-                const http = require('http');
-                const data = await new Promise((resolve) => {
-                    const req = http.get('http://supervisor/core/api/config/area_registry/list', {
-                        headers: { 'Authorization': `Bearer ${supervisorToken}` },
-                        timeout: 5000
-                    }, (resp) => {
-                        let body = '';
-                        resp.on('data', (chunk) => { body += chunk; });
-                        resp.on('end', () => {
-                            try { resolve(JSON.parse(body)); } catch { resolve(null); }
+            const now = Date.now();
+            if (this._haAreasCache && now - this._haAreasCacheTime < 30000) {
+                haAreas = this._haAreasCache;
+            } else {
+                try {
+                    const http = require('http');
+                    const data = await new Promise((resolve) => {
+                        const req = http.request('http://supervisor/core/api/config/area_registry/list', {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${supervisorToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            timeout: 5000
+                        }, (resp) => {
+                            let body = '';
+                            resp.on('data', (chunk) => { body += chunk; });
+                            resp.on('end', () => {
+                                try { resolve(JSON.parse(body)); } catch { resolve(null); }
+                            });
                         });
+                        req.on('error', () => resolve(null));
+                        req.on('timeout', () => { req.destroy(); resolve(null); });
+                        req.end();
                     });
-                    req.on('error', () => resolve(null));
-                    req.on('timeout', () => { req.destroy(); resolve(null); });
-                });
-                if (Array.isArray(data)) {
-                    for (const area of data) {
-                        if (area.name) haAreas.push({ id: area.area_id, name: area.name });
+                    if (Array.isArray(data)) {
+                        for (const area of data) {
+                            if (area.name) haAreas.push({ id: area.area_id, name: area.name });
+                        }
+                        this._haAreasCache = haAreas;
+                        this._haAreasCacheTime = now;
                     }
+                } catch {
+                    // HA API not available (standalone mode)
                 }
-            } catch {
-                // HA API not available (standalone mode)
             }
         }
 
