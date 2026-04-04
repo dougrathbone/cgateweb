@@ -519,8 +519,8 @@ describe('WebServer', () => {
             });
             directServer.rateLimitWindowMs = 1000;
 
-            const ipA = { headers: { 'x-forwarded-for': '192.168.1.10' }, socket: {} };
-            const ipB = { headers: { 'x-forwarded-for': '192.168.1.11' }, socket: {} };
+            const ipA = { headers: {}, socket: { remoteAddress: '192.168.1.10' } };
+            const ipB = { headers: {}, socket: { remoteAddress: '192.168.1.11' } };
 
             const nowSpy = jest.spyOn(Date, 'now');
             nowSpy.mockReturnValue(1000);

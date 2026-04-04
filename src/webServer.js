@@ -115,6 +115,7 @@ class WebServer {
             }
 
             this._setCorsHeaders(req, res);
+            res.setHeader('X-Content-Type-Options', 'nosniff');
 
             if (req.method === 'OPTIONS') {
                 res.writeHead(204);
@@ -619,25 +620,22 @@ class WebServer {
 
     _setCorsHeaders(req, res) {
         const requestOrigin = req.headers.origin;
-        let origin = null;
         if (this.allowedOrigins && this.allowedOrigins.length > 0) {
-            const isAllowed = requestOrigin && this.allowedOrigins.includes(requestOrigin);
-            origin = isAllowed ? requestOrigin : this.allowedOrigins[0];
             res.setHeader('Vary', 'Origin');
-        }
-        if (origin) {
-            res.setHeader('Access-Control-Allow-Origin', origin);
+            if (requestOrigin && this.allowedOrigins.includes(requestOrigin)) {
+                res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+            }
+            // If origin is not in the allowlist, omit the header entirely —
+            // the browser will block the cross-origin request.
         }
         res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, PATCH, POST, DELETE, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
     }
 
     _isRateLimited(req) {
-        const source = String(
-            req.headers['x-forwarded-for'] ||
-            req.socket?.remoteAddress ||
-            'unknown'
-        ).split(',')[0].trim();
+        // Use socket address for rate limiting — X-Forwarded-For is spoofable
+        // and would allow bypass by rotating the header value.
+        const source = String(req.socket?.remoteAddress || 'unknown');
         const now = Date.now();
         const windowStart = now - this.rateLimitWindowMs;
         this._pruneMutationRequestLog(windowStart);
