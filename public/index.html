@@ -1416,6 +1416,7 @@ th.cb-col, td.cb-col {
           delete dirtyAreas[areaKey];
           render();
         } else if (ev.key === 'Tab') {
+          ev.preventDefault();
           if (activeIndex >= 0 && items[activeIndex]) {
             areaInput.value = items[activeIndex].dataset.areaVal;
           }
