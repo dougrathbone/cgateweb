@@ -739,7 +739,7 @@ th.cb-col, td.cb-col {
 
   // Fetch known areas from HA + labels on load
   function refreshKnownAreas() {
-    fetch(BASE + '/api/areas').then(function(r) { return r.json(); }).then(function(data) {
+    fetch(API_BASE + '/api/areas').then(function(r) { return r.json(); }).then(function(data) {
       knownAreas = (data.areas || []);
     }).catch(function() {});
   }
