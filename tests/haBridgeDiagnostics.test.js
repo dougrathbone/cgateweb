@@ -32,7 +32,7 @@ describe('HaBridgeDiagnostics', () => {
     test('publishes discovery and state on first publishNow call', () => {
         diagnostics.publishNow('test');
 
-        expect(publishFn).toHaveBeenCalledTimes(16);
+        expect(publishFn).toHaveBeenCalledTimes(17); // 8 discovery + 8 state + 1 consolidated stats
         expect(publishFn).toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
             expect.any(String),
@@ -56,7 +56,7 @@ describe('HaBridgeDiagnostics', () => {
 
         diagnostics.publishNow('second');
 
-        expect(publishFn).toHaveBeenCalledTimes(8);
+        expect(publishFn).toHaveBeenCalledTimes(9); // 8 state + 1 consolidated stats
         expect(publishFn).not.toHaveBeenCalledWith(
             expect.stringContaining('/config'),
             expect.any(String),

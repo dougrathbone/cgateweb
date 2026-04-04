@@ -201,6 +201,7 @@ class CgateWebBridge {
             maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
             triggerAppId: this.settings.ha_discovery_trigger_app_id || null,
             getStatus: () => this._getBridgeStatus(),
+            deviceStateManager: this.deviceStateManager,
             eventStream: this.eventStream
         });
         this.haBridgeDiagnostics = new HaBridgeDiagnostics(

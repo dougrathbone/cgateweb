@@ -47,6 +47,7 @@ class WebServer {
         this.eventStream = options.eventStream || null;
         this._sseKeepaliveMs = options._sseKeepaliveMs || 15000;
         this.getStatus = options.getStatus || (() => ({}));
+        this.deviceStateManager = options.deviceStateManager || null;
         this.apiKey = options.apiKey || null;
         this.allowUnauthenticatedMutations = options.allowUnauthenticatedMutations === true;
         this.allowedOrigins = Array.isArray(options.allowedOrigins)
@@ -145,6 +146,9 @@ class WebServer {
             }
             if (urlPath === '/api/status' && req.method === 'GET') {
                 return this._handleGetStatus(req, res);
+            }
+            if (urlPath === '/api/dashboard' && req.method === 'GET') {
+                return this._handleGetDashboard(req, res);
             }
             if (urlPath === '/healthz' && req.method === 'GET') {
                 return this._handleHealth(req, res);
@@ -362,6 +366,55 @@ class WebServer {
                 count: Object.keys(labels).length,
                 filePath: this.labelLoader.filePath
             }
+        });
+    }
+
+    _handleGetDashboard(_req, res) {
+        const status = this.getStatus();
+        const labels = this.labelLoader.getLabelsObject();
+        const labelCount = Object.keys(labels).length;
+
+        // Build device list from device state manager
+        const devices = [];
+        if (this.deviceStateManager) {
+            const allLastSeen = this.deviceStateManager.getAllLastSeen();
+            const allLevels = this.deviceStateManager.getAllLevels
+                ? this.deviceStateManager.getAllLevels()
+                : new Map();
+            for (const [address, lastSeen] of allLastSeen) {
+                const level = allLevels.get(address);
+                devices.push({
+                    address,
+                    level: level !== undefined ? level : null,
+                    label: labels[address] || null,
+                    lastSeen
+                });
+            }
+            devices.sort((a, b) => b.lastSeen - a.lastSeen);
+        }
+
+        // Recent events from event stream
+        const recentEvents = this.eventStream
+            ? this.eventStream.getRecent().slice(-50)
+            : [];
+
+        this._sendJSON(res, 200, {
+            bridge: {
+                version: status.version,
+                uptime: status.uptime,
+                ready: status.ready,
+                lifecycle: status.lifecycle
+            },
+            connections: status.connections,
+            metrics: status.metrics,
+            discovery: status.discovery,
+            labels: { count: labelCount },
+            devices: {
+                total: devices.length,
+                active: devices.filter(d => d.lastSeen > Date.now() - 86400000).length,
+                list: devices.slice(0, 200)
+            },
+            recentEvents: recentEvents.length
         });
     }
 

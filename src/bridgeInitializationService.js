@@ -66,6 +66,60 @@ class BridgeInitializationService {
         }
 
         this.bridge._updateBridgeReadiness('all-connected');
+        this._logStartupSummary();
+    }
+
+    _logStartupSummary() {
+        const s = this.bridge.settings;
+        const lines = ['--- Startup Summary ---'];
+
+        // Connections
+        lines.push(`  C-Gate: ${s.cbusip}:${s.cbuscommandport} (pool: ${s.connectionPoolSize}), event port: ${s.cbuseventport}`);
+        lines.push(`  MQTT: ${s.mqtt}${s.mqttusername ? ' (authenticated)' : ''}`);
+
+        // Networks
+        const nets = this.bridge.discoveredNetworks;
+        if (nets && nets.length > 0) {
+            lines.push(`  Networks: ${nets.join(', ')} (auto-discovered)`);
+        } else if (s.ha_discovery_networks && s.ha_discovery_networks.length > 0) {
+            lines.push(`  Networks: ${s.ha_discovery_networks.join(', ')} (configured)`);
+        }
+
+        // Features
+        const features = [];
+        if (s.ha_discovery_enabled) features.push('HA Discovery');
+        if (s.ha_bridge_diagnostics_enabled) features.push('Bridge Diagnostics');
+        if (s.stale_device_detection_enabled) features.push('Stale Device Detection');
+        if (s.getallonstart) features.push('Get-All on Start');
+        if (s.getallperiod) features.push(`Periodic Poll (${s.getallperiod}s)`);
+        if (s.eventPublishCoalesce) features.push('Event Coalescing');
+        if (s.eventPublishDedupWindowMs > 0) features.push(`Dedup (${s.eventPublishDedupWindowMs}ms)`);
+        lines.push(`  Features: ${features.length > 0 ? features.join(', ') : 'none'}`);
+
+        // Device types
+        const types = [];
+        if (s.ha_discovery_cover_app_id) types.push(`covers(app ${s.ha_discovery_cover_app_id})`);
+        if (s.ha_discovery_switch_app_id) types.push(`switches(app ${s.ha_discovery_switch_app_id})`);
+        if (s.ha_discovery_pir_app_id) types.push(`PIR(app ${s.ha_discovery_pir_app_id})`);
+        if (s.ha_discovery_trigger_app_id) types.push(`triggers(app ${s.ha_discovery_trigger_app_id})`);
+        if (s.ha_discovery_hvac_app_id) types.push(`HVAC(app ${s.ha_discovery_hvac_app_id})`);
+        if (types.length > 0) {
+            lines.push(`  Device types: lights + ${types.join(', ')}`);
+        }
+
+        // Labels
+        const labelCount = this.bridge.labelLoader.getLabelsObject ? Object.keys(this.bridge.labelLoader.getLabelsObject()).length : 0;
+        if (labelCount > 0) {
+            lines.push(`  Labels: ${labelCount} custom labels loaded`);
+        }
+
+        // Web
+        lines.push(`  Web UI: http://${s.web_bind_host || '127.0.0.1'}:${s.web_port || 8080}/`);
+
+        lines.push('--- Ready ---');
+        for (const line of lines) {
+            this.logger.info(line);
+        }
     }
 
     /**

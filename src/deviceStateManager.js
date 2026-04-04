@@ -144,6 +144,15 @@ class DeviceStateManager {
     }
 
     /**
+     * Returns a copy of the internal device levels Map (key → 0-255).
+     *
+     * @returns {Map<string, number>}
+     */
+    getAllLevels() {
+        return new Map(this._deviceLevels);
+    }
+
+    /**
      * Sets up a relative level operation handler.
      * 
      * This method sets up a one-time listener for level responses from a specific device,

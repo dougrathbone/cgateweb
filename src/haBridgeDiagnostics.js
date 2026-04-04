@@ -126,6 +126,37 @@ class HaBridgeDiagnostics {
             const topic = `cbus/read/bridge/diagnostics/${key}/state`;
             this._publish(topic, String(value), { retain: true, qos: 0 });
         }
+
+        // Publish consolidated JSON stats for monitoring dashboards
+        const publisher = status.metrics?.publisher || {};
+        const queue = status.metrics?.commandQueue || {};
+        const stats = {
+            version: status.version,
+            uptime: Math.round(status.uptime || 0),
+            ready: status.ready,
+            connections: {
+                mqtt: !!status.connections?.mqtt,
+                event: !!status.connections?.event,
+                commandPoolHealthy: Number(commandPool.healthyConnections || 0),
+                commandPoolTotal: Number(commandPool.totalConnections || 0)
+            },
+            queue: {
+                depth: Number(queue.depth || 0),
+                processed: Number(queue.processed || 0),
+                dropped: Number(queue.dropped || 0)
+            },
+            publisher: {
+                published: Number(publisher.published || 0),
+                dedupDropped: Number(publisher.dedupDropped || 0),
+                coalesceBufferSize: Number(publisher.coalesceBufferSize || 0)
+            },
+            discovery: status.discovery ? {
+                entityCount: Number(status.discovery.count || 0),
+                labels: status.discovery.labelStats || null
+            } : null,
+            cgate_version: cgateVersion
+        };
+        this._publish('cbus/read/bridge/stats', JSON.stringify(stats), { retain: true, qos: 0 });
     }
 }
 

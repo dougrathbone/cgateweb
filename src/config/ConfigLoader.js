@@ -1,6 +1,7 @@
 const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
+const { defaultSettings } = require('../defaultSettings');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -339,15 +340,25 @@ class ConfigLoader {
      */
     _convertSettingsToStandardFormat(settings) {
         const config = { ...settings };
-        
+
+        // Warn about unrecognized settings keys (likely typos)
+        const knownKeys = new Set(Object.keys(defaultSettings));
+        // Also accept keys that are set internally or by ConfigLoader
+        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'cgate_mode', 'cgate_install_source']);
+        for (const key of Object.keys(config)) {
+            if (!knownKeys.has(key) && !internalKeys.has(key)) {
+                this.logger.warn(`Unknown setting "${key}" in settings.js — check for typos. This key will be ignored by defaults.`);
+            }
+        }
+
         if (typeof config.getallonstart === 'string') {
             config.getallonstart = config.getallonstart.toLowerCase() === 'true';
         }
-        
+
         if (typeof config.retainreads === 'string') {
             config.retainreads = config.retainreads.toLowerCase() === 'true';
         }
-        
+
         if (typeof config.logging === 'string') {
             config.logging = config.logging.toLowerCase() === 'true';
         }
@@ -502,6 +513,8 @@ class ConfigLoader {
 
         if (!configToValidate.cbusname) {
             warnings.push('C-Gate project name (cbusname) not specified, using default');
+        } else if (/[\/\\\s"']/.test(configToValidate.cbusname)) {
+            errors.push('C-Gate project name (cbusname) must not contain spaces, slashes, or quotes');
         }
 
         if (configToValidate.cbuscommandport && (typeof configToValidate.cbuscommandport === 'number') && (configToValidate.cbuscommandport < 1 || configToValidate.cbuscommandport > 65535)) {
