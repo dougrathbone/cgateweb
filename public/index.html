@@ -1416,6 +1416,7 @@ th.cb-col, td.cb-col {
           }
           commitArea();
         } else if (ev.key === 'Escape') {
+          committed = true;
           delete dirtyAreas[areaKey];
           render();
         } else if (ev.key === 'Tab') {
