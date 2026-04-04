@@ -111,7 +111,9 @@ class EventPublisher {
         } else if (isCover) {
             // Covers: state is open/closed based on raw level, not quantized percent.
             // rawLevel 1-2 rounds to 0% but the cover IS open.
-            state = (rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF;
+            state = rawLevel !== null
+                ? ((rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
+                : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         } else {
             // Lighting devices: state based on raw level (avoids quantization loss
             // where rawLevel 1-2 rounds to 0% but the light IS on)
@@ -290,10 +292,12 @@ class EventPublisher {
             );
         }
 
-        // Publish mode based on action and level: 'off' action or level 0 → 'off'
+        // Publish mode based on action only. C-Gate sends explicit 'off' action when
+        // the HVAC unit is turned off. rawLevel=0 is NOT used because it maps to 0°C
+        // setpoint, which is a valid (if unusual) temperature, not an off state.
         // TODO: Hardware validation — real HVAC units may report heat/cool/fan_only via
         // dedicated group addresses or extended C-Gate event fields not yet handled here.
-        const mode = (action === 'off' || rawLevel === 0) ? 'off' : 'auto';
+        const mode = (action === 'off') ? 'off' : 'auto';
         this._publishIfNeeded(
             `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
             mode,

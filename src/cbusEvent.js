@@ -142,9 +142,10 @@ class CBusEvent {
                     this._level = this._levelRaw;
                 } else {
                     // Non-integer token (e.g. UUID in 730 events); prefer level=N key-value
-                    const levelIndex = this._rawEvent.indexOf('level=', thirdSpace + 1);
+                    // Search for ' level=' (space-prefixed) to avoid matching inside other keys
+                    const levelIndex = this._rawEvent.indexOf(' level=', thirdSpace);
                     if (levelIndex !== -1) {
-                        this._levelRaw = this._extractLeadingInt(this._rawEvent.slice(levelIndex + 6));
+                        this._levelRaw = this._extractLeadingInt(this._rawEvent.slice(levelIndex + 7));
                         this._level = this._levelRaw;
                     } else {
                         // Fall back to extracting leading digits from the token itself
