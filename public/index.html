@@ -253,6 +253,10 @@ td.label-cell { position: relative; }
 }
 .area-display:hover { background: rgba(34, 139, 230, 0.08); }
 .area-display.has-value { color: var(--text); }
+.area-input-wrap {
+  position: relative;
+  width: 100%;
+}
 .area-input {
   width: 100%;
   padding: 2px 4px;
@@ -262,6 +266,34 @@ td.label-cell { position: relative; }
   color: var(--text);
   font-size: 0.85rem;
   font-family: inherit;
+}
+.area-dropdown {
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  z-index: 100;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: var(--shadow);
+  list-style: none;
+}
+.area-dropdown li {
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.area-dropdown li.active,
+.area-dropdown li:hover {
+  background: var(--primary);
+  color: #fff;
+}
+.area-dropdown li .area-src {
+  float: right;
+  font-size: 0.7rem;
+  opacity: 0.6;
 }
 td.source-cell {
   font-size: 0.8rem;
@@ -703,6 +735,14 @@ th.cb-col, td.cb-col {
   let selectedKeys = new Set();
   let lastClickedKey = null;
   let lastFilteredKeys = [];
+  let knownAreas = []; // cached from /api/areas
+
+  // Fetch known areas from HA + labels on load
+  function refreshKnownAreas() {
+    fetch(BASE + '/api/areas').then(function(r) { return r.json(); }).then(function(data) {
+      knownAreas = (data.areas || []);
+    }).catch(function() {});
+  }
 
   // Undo/redo history stack
   var history = [];
@@ -1283,21 +1323,58 @@ th.cb-col, td.cb-col {
       return;
     }
 
-    // Inline area editing
+    // Inline area editing with searchable dropdown
     var areaDisplay = e.target.closest('.area-display');
     if (areaDisplay) {
       var areaKey = areaDisplay.dataset.areaKey;
       var currentArea = getArea(areaKey);
       var suggestedArea = areaDisplay.dataset.areaPlaceholder || null;
+
+      // Build all known area names: HA areas + label-file areas + areas in current dirty state
+      var allAreaNames = new Set();
+      knownAreas.forEach(function(a) { allAreaNames.add(a.name); });
+      Object.values(areas).forEach(function(a) { if (a) allAreaNames.add(a); });
+      Object.values(dirtyAreas).forEach(function(a) { if (a) allAreaNames.add(a); });
+      var areaList = Array.from(allAreaNames).sort(function(a, b) { return a.localeCompare(b); });
+
+      // Create wrapper
+      var wrap = document.createElement('div');
+      wrap.className = 'area-input-wrap';
+
       var areaInput = document.createElement('input');
       areaInput.className = 'area-input';
       areaInput.value = currentArea;
       areaInput.placeholder = suggestedArea ? suggestedArea + ' (suggested)' : 'e.g. Office';
-      areaDisplay.replaceWith(areaInput);
-      areaInput.focus();
-      areaInput.select();
+      areaInput.setAttribute('autocomplete', 'off');
+      wrap.appendChild(areaInput);
+
+      var dropdown = document.createElement('ul');
+      dropdown.className = 'area-dropdown';
+      dropdown.style.display = 'none';
+      wrap.appendChild(dropdown);
+
+      var activeIndex = -1;
+
+      function buildDropdown(filter) {
+        var filt = (filter || '').toLowerCase();
+        var matches = areaList.filter(function(name) {
+          return !filt || name.toLowerCase().indexOf(filt) !== -1;
+        });
+        if (matches.length === 0 || (matches.length === 1 && matches[0].toLowerCase() === filt)) {
+          dropdown.style.display = 'none';
+          activeIndex = -1;
+          return;
+        }
+        dropdown.innerHTML = matches.map(function(name, i) {
+          var src = knownAreas.find(function(a) { return a.name === name; });
+          var srcTag = src && src.source === 'homeassistant' ? '<span class="area-src">HA</span>' : '';
+          return '<li data-area-val="' + esc(name) + '"' + (i === activeIndex ? ' class="active"' : '') + '>' + esc(name) + srcTag + '</li>';
+        }).join('');
+        dropdown.style.display = '';
+      }
 
       function commitArea() {
+        dropdown.style.display = 'none';
         var newVal = areaInput.value.trim();
         if (newVal !== (areas[areaKey] || '')) {
           pushHistory('Edit area');
@@ -1306,11 +1383,57 @@ th.cb-col, td.cb-col {
           delete dirtyAreas[areaKey];
         }
         render();
+        refreshKnownAreas();
       }
-      areaInput.addEventListener('blur', commitArea);
+
+      areaDisplay.replaceWith(wrap);
+      areaInput.focus();
+      areaInput.select();
+      buildDropdown(currentArea);
+
+      areaInput.addEventListener('input', function() {
+        activeIndex = -1;
+        buildDropdown(areaInput.value);
+      });
+
       areaInput.addEventListener('keydown', function(ev) {
-        if (ev.key === 'Enter') { ev.preventDefault(); commitArea(); }
-        if (ev.key === 'Escape') { delete dirtyAreas[areaKey]; render(); }
+        var items = dropdown.querySelectorAll('li');
+        if (ev.key === 'ArrowDown') {
+          ev.preventDefault();
+          activeIndex = Math.min(activeIndex + 1, items.length - 1);
+          buildDropdown(areaInput.value);
+        } else if (ev.key === 'ArrowUp') {
+          ev.preventDefault();
+          activeIndex = Math.max(activeIndex - 1, 0);
+          buildDropdown(areaInput.value);
+        } else if (ev.key === 'Enter') {
+          ev.preventDefault();
+          if (activeIndex >= 0 && items[activeIndex]) {
+            areaInput.value = items[activeIndex].dataset.areaVal;
+          }
+          commitArea();
+        } else if (ev.key === 'Escape') {
+          delete dirtyAreas[areaKey];
+          render();
+        } else if (ev.key === 'Tab') {
+          if (activeIndex >= 0 && items[activeIndex]) {
+            areaInput.value = items[activeIndex].dataset.areaVal;
+          }
+          commitArea();
+        }
+      });
+
+      dropdown.addEventListener('mousedown', function(ev) {
+        var li = ev.target.closest('li');
+        if (li) {
+          ev.preventDefault();
+          areaInput.value = li.dataset.areaVal;
+          commitArea();
+        }
+      });
+
+      areaInput.addEventListener('blur', function() {
+        setTimeout(commitArea, 150);
       });
       return;
     }
@@ -1781,6 +1904,7 @@ th.cb-col, td.cb-col {
 
   loadLabels();
   loadRuntimeStatus();
+  refreshKnownAreas();
   clearStatusRefreshTimer();
   statusRefreshTimer = setInterval(loadRuntimeStatus, 10000);
 })();

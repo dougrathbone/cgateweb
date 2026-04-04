@@ -150,6 +150,9 @@ class WebServer {
             if (urlPath === '/api/dashboard' && req.method === 'GET') {
                 return this._handleGetDashboard(req, res);
             }
+            if (urlPath === '/api/areas' && req.method === 'GET') {
+                return this._handleGetAreas(req, res);
+            }
             if (urlPath === '/healthz' && req.method === 'GET') {
                 return this._handleHealth(req, res);
             }
@@ -416,6 +419,71 @@ class WebServer {
             },
             recentEvents: recentEvents.length
         });
+    }
+
+    async _handleGetAreas(_req, res) {
+        // Collect areas from label file
+        const labelAreas = new Set();
+        if (this.labelLoader) {
+            const areasMap = this.labelLoader.getLabelData?.()?.areas;
+            if (areasMap) {
+                const values = areasMap instanceof Map ? areasMap.values() : Object.values(areasMap);
+                for (const area of values) {
+                    if (area) labelAreas.add(area);
+                }
+            }
+        }
+
+        // Try to fetch areas from Home Assistant Supervisor API
+        const haAreas = [];
+        const supervisorToken = process.env.SUPERVISOR_TOKEN;
+        if (supervisorToken) {
+            try {
+                const http = require('http');
+                const data = await new Promise((resolve) => {
+                    const req = http.get('http://supervisor/core/api/config/area_registry/list', {
+                        headers: { 'Authorization': `Bearer ${supervisorToken}` },
+                        timeout: 5000
+                    }, (resp) => {
+                        let body = '';
+                        resp.on('data', (chunk) => { body += chunk; });
+                        resp.on('end', () => {
+                            try { resolve(JSON.parse(body)); } catch { resolve(null); }
+                        });
+                    });
+                    req.on('error', () => resolve(null));
+                    req.on('timeout', () => { req.destroy(); resolve(null); });
+                });
+                if (Array.isArray(data)) {
+                    for (const area of data) {
+                        if (area.name) haAreas.push({ id: area.area_id, name: area.name });
+                    }
+                }
+            } catch {
+                // HA API not available (standalone mode)
+            }
+        }
+
+        // Merge: HA areas + label-file areas, deduplicated by name (case-insensitive)
+        const seen = new Set();
+        const merged = [];
+        for (const ha of haAreas) {
+            const key = ha.name.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                merged.push({ name: ha.name, source: 'homeassistant' });
+            }
+        }
+        for (const name of labelAreas) {
+            const key = name.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                merged.push({ name, source: 'labels' });
+            }
+        }
+        merged.sort((a, b) => a.name.localeCompare(b.name));
+
+        this._sendJSON(res, 200, { areas: merged });
     }
 
     _handleHealth(_req, res) {
