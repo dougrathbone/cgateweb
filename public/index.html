@@ -1407,7 +1407,7 @@ th.cb-col, td.cb-col {
           buildDropdown(areaInput.value);
         } else if (ev.key === 'ArrowUp') {
           ev.preventDefault();
-          activeIndex = Math.max(activeIndex - 1, 0);
+          activeIndex = Math.max(activeIndex - 1, -1);
           buildDropdown(areaInput.value);
         } else if (ev.key === 'Enter') {
           ev.preventDefault();
