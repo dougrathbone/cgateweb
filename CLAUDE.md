@@ -36,6 +36,16 @@ When bumping the version (e.g., for a bug fix or feature release), you MUST:
 
 If you skip step 3, the distribution repo will NOT be updated, Home Assistant will not see the new version, and the add-on will not auto-update on user devices. This has caused stale deployments in the past.
 
+### Home Assistant Add-on config.yaml Rules
+
+When modifying `homeassistant-addon/config.yaml`, follow these rules to prevent upgrade failures:
+
+1. **Array-type schema fields MUST have defaults in `options`**. HA Supervisor validates that all non-optional schema fields exist in the user's saved config. If you remove an array field from `options`, users upgrading from older versions will get "Missing option" validation errors because their saved config won't have the field. This includes both simple arrays (`["int(1,255)"]`) and complex object lists.
+
+2. **Never remove a field from `options` unless its schema type ends with `?`** (optional). Only scalar fields with the `?` suffix (e.g., `"int(1,255)?"`, `"str?"`, `"bool?"`) can safely be omitted from `options`. Array and object list schemas cannot use `?`.
+
+3. **Test upgrade compatibility** before releasing config.yaml changes: verify that a user with the OLD config.yaml's `options` values saved in their HA instance can successfully upgrade to the NEW config.yaml without validation errors.
+
 ## Architecture
 
 ### Core Components

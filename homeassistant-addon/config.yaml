@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.5.1"
+version: "1.5.2"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -49,6 +49,16 @@ options:
 
   # ── Common: Logging ──
   log_level: "info"
+
+  # ── Array fields require defaults for upgrade compatibility ──
+  # HA Supervisor validates these exist in saved config; without defaults
+  # here, users upgrading from older versions get a validation error.
+  getall_networks:
+    - 254
+  getall_app_periods: []
+  ha_discovery_networks:
+    - 254
+  web_allowed_origins: []
 
 # ─── Schema ─────────────────────────────────────────────────────────
 # Fields without ? are required. Fields with ? are optional and hidden
