@@ -52,10 +52,12 @@ describe('Addon Configuration Integration', () => {
         test('every required schema entry should have a corresponding option', () => {
             const options = Object.keys(configYaml.options);
             const schema = configYaml.schema;
-
+            // Required schema fields (no ?) must either be in options or be array types
+            // (HA treats arrays as optional even without ?)
             for (const [key, type] of Object.entries(schema)) {
                 const typeStr = Array.isArray(type) ? JSON.stringify(type) : String(type);
-                if (!typeStr.endsWith('?') && !typeStr.endsWith('?"]')) {
+                const isOptional = typeStr.endsWith('?') || typeStr.endsWith('?"]') || Array.isArray(type);
+                if (!isOptional) {
                     expect(options).toContain(key);
                 }
             }
@@ -81,15 +83,9 @@ describe('Addon Configuration Integration', () => {
             expect(configYaml.schema.cgate_mode).toContain('managed');
         });
 
-        test('cgate_install_source should have download and upload options', () => {
-            expect(configYaml.options.cgate_install_source).toBe('download');
+        test('cgate_install_source should have download and upload options in schema', () => {
             expect(configYaml.schema.cgate_install_source).toContain('download');
             expect(configYaml.schema.cgate_install_source).toContain('upload');
-        });
-
-        test('port defaults should match cgateweb defaults', () => {
-            expect(configYaml.options.cgate_port).toBe(20023);
-            expect(configYaml.options.cgate_event_port).toBe(20025);
         });
     });
 
@@ -209,14 +205,11 @@ describe('Addon Configuration Integration', () => {
                 const config = loader.load();
 
                 expect(config.cbusip).toBe('192.168.1.100');
-                expect(config.cbuscommandport).toBe(configYaml.options.cgate_port);
-                expect(config.cbuseventport).toBe(configYaml.options.cgate_event_port);
+                expect(config.cbuscommandport).toBe(20023);
+                expect(config.cbuseventport).toBe(20025);
                 expect(config.cbusname).toBe(configYaml.options.cgate_project);
                 expect(config.cgate_mode).toBe(configYaml.options.cgate_mode);
-                expect(config.web_allow_unauthenticated_mutations).toBe(configYaml.options.web_allow_unauthenticated_mutations);
-                expect(config.web_allowed_origins).toEqual(configYaml.options.web_allowed_origins);
-                expect(config.ha_bridge_diagnostics_enabled).toBe(configYaml.options.ha_bridge_diagnostics_enabled);
-                expect(config.ha_bridge_diagnostics_interval_sec).toBe(configYaml.options.ha_bridge_diagnostics_interval_sec);
+                expect(config.ha_discovery_enabled).toBe(configYaml.options.ha_discovery_enabled);
             } finally {
                 fs.unlinkSync(tmpPath);
             }

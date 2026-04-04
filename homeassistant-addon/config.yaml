@@ -34,119 +34,66 @@ map:
   - "config:rw"
   - "share:ro"
 
+# ─── Options ────────────────────────────────────────────────────────
+# Only fields listed here appear in the UI by default.
+# All other fields (marked with ? in schema) can be added by the user
+# via "Show unused optional configuration options" in the HA UI.
 options:
-  # C-Gate mode
+  # ── Required: C-Gate Connection ──
   cgate_mode: "remote"
-
-  # C-Gate connection settings
   cgate_host: ""
-  cgate_port: 20023
-  cgate_event_port: 20025
   cgate_project: "HOME"
 
-  # C-Gate managed mode settings
-  cgate_install_source: "download"
-  cgate_download_sha256: ""
+  # ── Common: Home Assistant Discovery ──
+  ha_discovery_enabled: true
 
-  # Network auto-discovery
-  auto_discover_networks: true
-
-  # C-Bus monitoring settings
-  getall_networks:
-    - 254
-  getall_on_start: true
-  getall_period: 3600
-  getall_app_periods: []
-
-  # MQTT TLS settings (for external brokers with SSL/TLS)
-  mqtt_use_tls: false
-  mqtt_ca_file: ""
-  mqtt_reject_unauthorized: true
-
-  # MQTT settings
-  retain_reads: false
-  message_interval: 200
-
-  # Logging
+  # ── Common: Logging ──
   log_level: "info"
 
-  # Home Assistant Discovery
-  ha_discovery_enabled: true
-  ha_discovery_prefix: "homeassistant"
-  ha_discovery_networks:
-    - 254
-
-  ha_hvac_temperature_unit: "C"
-
-  ha_bridge_diagnostics_enabled: true
-  ha_bridge_diagnostics_interval_sec: 60
-
-  stale_device_detection_enabled: true
-  stale_device_threshold_hours: 24
-  stale_device_check_interval_sec: 3600
-
-  # Connection pool settings (advanced)
-  connection_pool_size: 3
-  connection_health_check_interval_sec: 30
-  connection_keep_alive_interval_sec: 60
-
-  # Cover ramp interpolation duration (seconds)
-  cover_ramp_duration_sec: 5
-
-  # Label file for custom device names (auto-detected if not set)
-  cbus_label_file: ""
-  web_api_key: ""
-  web_allow_unauthenticated_mutations: false
-  web_allowed_origins: []
-  web_mutation_rate_limit_per_minute: 120
-
+# ─── Schema ─────────────────────────────────────────────────────────
+# Fields without ? are required. Fields with ? are optional and hidden
+# from the UI unless the user adds them or they appear in options above.
 schema:
-  # C-Gate mode
+  # ── C-Gate Connection (required) ──
   cgate_mode: "list(remote|managed)"
-
-  # C-Gate connection settings
   cgate_host: "str"
-  cgate_port: "int(1,65535)"
-  cgate_event_port: "int(1,65535)"
   cgate_project: "str"
+  cgate_port: "int(1,65535)?"
+  cgate_event_port: "int(1,65535)?"
 
-  # C-Gate managed mode settings
-  cgate_install_source: "list(download|upload)"
+  # ── C-Gate Managed Mode ──
+  cgate_install_source: "list(download|upload)?"
   cgate_download_url: "str?"
   cgate_download_sha256: "str?"
 
-  # MQTT settings (auto-detected from Mosquitto add-on)
+  # ── MQTT (auto-detected from Mosquitto add-on) ──
   mqtt_host: "str?"
   mqtt_port: "int(1,65535)?"
   mqtt_username: "str?"
   mqtt_password: "password?"
+  mqtt_use_tls: "bool?"
+  mqtt_ca_file: "str?"
+  mqtt_reject_unauthorized: "bool?"
 
-  # Network auto-discovery
-  auto_discover_networks: "bool"
-
-  # C-Bus monitoring settings
+  # ── C-Bus Monitoring ──
+  auto_discover_networks: "bool?"
   getall_networks: ["int(1,255)"]
-  getall_on_start: "bool"
-  getall_period: "int(60,86400)"
+  getall_on_start: "bool?"
+  getall_period: "int(60,86400)?"
   getall_app_periods:
     - app_id: "str"
       period_sec: "int(0,86400)"
 
-  # MQTT TLS settings
-  mqtt_use_tls: "bool"
-  mqtt_ca_file: "str?"
-  mqtt_reject_unauthorized: "bool"
+  # ── MQTT Publishing ──
+  retain_reads: "bool?"
+  message_interval: "int(100,10000)?"
 
-  # MQTT settings
-  retain_reads: "bool"
-  message_interval: "int(100,10000)"
-
-  # Logging
+  # ── Logging ──
   log_level: "list(debug|info|warn|error)"
 
-  # Home Assistant Discovery
+  # ── Home Assistant Discovery ──
   ha_discovery_enabled: "bool"
-  ha_discovery_prefix: "str"
+  ha_discovery_prefix: "str?"
   ha_discovery_networks: ["int(1,255)"]
   ha_discovery_cover_app_id: "int(1,255)?"
   ha_discovery_cover_tilt_app_id: "int(1,255)?"
@@ -155,18 +102,27 @@ schema:
   ha_discovery_scene_enabled: "bool?"
   ha_discovery_hvac_app_id: "int(1,255)?"
   ha_hvac_temperature_unit: "list(C|F)?"
-  ha_bridge_diagnostics_enabled: "bool"
+
+  # ── Bridge Diagnostics ──
+  ha_bridge_diagnostics_enabled: "bool?"
   ha_bridge_diagnostics_interval_sec: "int(10,3600)?"
-  stale_device_detection_enabled: "bool"
+
+  # ── Stale Device Detection ──
+  stale_device_detection_enabled: "bool?"
   stale_device_threshold_hours: "int(1,720)?"
   stale_device_check_interval_sec: "int(60,86400)?"
-  # Connection pool settings (advanced)
+
+  # ── Advanced: Connection Pool ──
   connection_pool_size: "int(1,10)?"
   connection_health_check_interval_sec: "int(5,300)?"
   connection_keep_alive_interval_sec: "int(10,600)?"
+
+  # ── Advanced: Cover Ramp ──
   cover_ramp_duration_sec: "int(1,300)?"
+
+  # ── Advanced: Label File & Web API ──
   cbus_label_file: "str?"
   web_api_key: "password?"
-  web_allow_unauthenticated_mutations: "bool"
+  web_allow_unauthenticated_mutations: "bool?"
   web_allowed_origins: ["str"]
   web_mutation_rate_limit_per_minute: "int(1,5000)?"
