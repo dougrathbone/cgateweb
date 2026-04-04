@@ -1574,8 +1574,7 @@ describe('WebServer', () => {
                     http.get(`http://127.0.0.1:${corsPort}/api/status`, {
                         headers: { 'Origin': 'http://evil.com' }
                     }, (resp) => {
-                        let data = '';
-                        resp.on('data', (c) => { data += c; });
+                        resp.on('data', () => {});
                         resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
                     }).on('error', reject);
                 });
@@ -1601,8 +1600,7 @@ describe('WebServer', () => {
                     http.get(`http://127.0.0.1:${corsPort}/api/status`, {
                         headers: { 'Origin': 'http://trusted.local' }
                     }, (resp) => {
-                        let data = '';
-                        resp.on('data', (c) => { data += c; });
+                        resp.on('data', () => {});
                         resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
                     }).on('error', reject);
                 });
