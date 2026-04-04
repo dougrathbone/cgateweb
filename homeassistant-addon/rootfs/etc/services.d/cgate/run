@@ -30,5 +30,7 @@ cd "${CGATE_DIR}" || exit 1
 
 exec java \
     -Djava.awt.headless=true \
+    -Xmx256m \
+    -Xms64m \
     -jar "${CGATE_JAR}" \
     -s

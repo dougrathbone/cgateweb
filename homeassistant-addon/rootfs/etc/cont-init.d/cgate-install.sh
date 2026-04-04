@@ -39,8 +39,19 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
 
     bashio::log.info "Downloading C-Gate from: ${DOWNLOAD_URL}"
 
+    # Validate URL scheme (allow only https, or http for local/dev)
+    case "${DOWNLOAD_URL}" in
+        https://*) ;;
+        http://127.0.0.1*|http://localhost*) bashio::log.warning "Using insecure HTTP for local URL" ;;
+        *)
+            bashio::log.error "Invalid download URL scheme: ${DOWNLOAD_URL}"
+            bashio::log.error "Only https:// URLs are allowed (or http://localhost for development)"
+            exit 1
+            ;;
+    esac
+
     TEMP_ZIP="${WORK_DIR}/cgate-download.zip"
-    HTTP_CODE=$(curl -fSL -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
+    HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
     CURL_EXIT=$?
 
     if [[ ${CURL_EXIT} -ne 0 ]]; then
@@ -71,7 +82,14 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
         bashio::log.warning "No cgate_download_sha256 configured; integrity verification skipped"
     fi
 
-    bashio::log.info "Download complete, extracting..."
+    # Reject suspiciously large downloads (>500MB)
+    DOWNLOAD_SIZE=$(stat -c%s "${TEMP_ZIP}" 2>/dev/null || stat -f%z "${TEMP_ZIP}" 2>/dev/null || echo 0)
+    if [[ ${DOWNLOAD_SIZE} -gt 524288000 ]]; then
+        bashio::log.error "Downloaded file is too large (${DOWNLOAD_SIZE} bytes, max 500MB)"
+        exit 1
+    fi
+
+    bashio::log.info "Download complete (${DOWNLOAD_SIZE} bytes), extracting..."
     if ! unzip -o "${TEMP_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
         bashio::log.error "Failed to extract C-Gate zip file"
         exit 1
@@ -115,6 +133,14 @@ else
     exit 1
 fi
 
+# Security: reject symlinks in extracted content (prevent path traversal)
+SYMLINKS=$(find "${WORK_DIR}/extract" -type l 2>/dev/null)
+if [[ -n "${SYMLINKS}" ]]; then
+    bashio::log.error "Extracted archive contains symbolic links — rejecting for security"
+    bashio::log.error "Symlinks found: ${SYMLINKS}"
+    exit 1
+fi
+
 # The Schneider download is a zip-within-a-zip: the outer archive contains a
 # release notes PDF and an inner cgate-X.X.X_NNNN.zip with the actual files.
 # If cgate.jar is not yet visible, look for and extract any nested zip files.
@@ -130,6 +156,12 @@ if [[ -z "${NESTED_JAR}" ]]; then
         bashio::log.info "Extracting nested archive: $(basename "${NESTED_ZIP}")"
         if ! unzip -o "${NESTED_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
             bashio::log.error "Failed to extract nested zip: ${NESTED_ZIP}"
+            exit 1
+        fi
+        # Re-check for symlinks after nested extraction
+        SYMLINKS=$(find "${WORK_DIR}/extract" -type l 2>/dev/null)
+        if [[ -n "${SYMLINKS}" ]]; then
+            bashio::log.error "Nested archive contains symbolic links — rejecting for security"
             exit 1
         fi
     fi
@@ -148,10 +180,15 @@ bashio::log.info "Found C-Gate installation in: ${EXTRACTED_DIR}"
 
 cp -r "${EXTRACTED_DIR}"/* "${CGATE_DIR}/"
 
+# Restrict permissions on installed files
+chmod -R go-w "${CGATE_DIR}/" 2>/dev/null || true
+
 # Record installed version for diagnostics reporting
 if [[ -n "${CGATE_VERSION}" ]]; then
     echo "${CGATE_VERSION}" > "${CGATE_DIR}/.version"
     bashio::log.info "Recorded C-Gate version: ${CGATE_VERSION}"
+else
+    echo "unknown" > "${CGATE_DIR}/.version"
 fi
 
 # Configure access.txt to allow local connections
