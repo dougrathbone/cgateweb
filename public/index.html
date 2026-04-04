@@ -1373,7 +1373,10 @@ th.cb-col, td.cb-col {
         dropdown.style.display = '';
       }
 
+      var committed = false;
       function commitArea() {
+        if (committed) return;
+        committed = true;
         dropdown.style.display = 'none';
         var newVal = areaInput.value.trim();
         if (newVal !== (areas[areaKey] || '')) {
