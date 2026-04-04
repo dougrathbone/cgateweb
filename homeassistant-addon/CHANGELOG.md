@@ -5,6 +5,33 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-04-04
+
+### Fixed
+- **730 event level parsing**: C-Gate 730 events include a UUID before the `level=N` field; the fast-path parser was extracting the leading digit from the UUID (e.g. `6` from `6c2b7f80-...`) instead of the correct level value, causing lights to appear permanently on in Home Assistant
+- Cover and lighting ON/OFF state now uses raw C-Bus level instead of quantized percentage, fixing incorrect OFF state at very low brightness levels (1-2 out of 255)
+- HVAC mode correctly reports `off` for ramp-to-zero commands
+- haDiscovery race condition: tree responses arriving before HA Discovery initialized are now buffered and replayed instead of silently dropped
+- Connection pool recovery: bridge no longer gets stuck after all pool connections go unhealthy then recover
+- Socket state verified after drain timeout to prevent writing to destroyed sockets
+- Try/catch in command data handler prevents a single malformed C-Gate line from crashing the processing loop
+
+### Added
+- Startup diagnostics summary: logs connections, networks, features, device types, and labels on boot
+- MQTT consolidated stats topic (`cbus/read/bridge/stats`): JSON with version, uptime, connections, queue, publisher, and discovery stats
+- Web dashboard endpoint (`GET /api/dashboard`): bridge health, device list with levels/labels, and recent event count
+- Unknown settings key warnings in standalone mode (catches typos in settings.js)
+- `cbusname` validation (rejects spaces, slashes, and quotes)
+- Queue drop warnings published to `hello/cgateweb/warnings` when the command queue is full
+- Configurable INCREASE/DECREASE timeout (`relativeLevelTimeoutMs`, default 5000ms)
+
+### Changed
+- HA addon config simplified from ~40 visible fields to 5 essentials; all other settings hidden by default and accessible via "Show unused optional configuration options"
+- Improved addon config descriptions with defaults and auto-detection notes
+- All resources properly cleaned up on bridge stop (event listeners, timers, ramp trackers, coalesce buffers)
+- Input validation: C-Bus address ranges, 1MB line buffer cap, WebServer body read guards, rate limit memory cap
+- TLS certificate errors now show clear file path in the error message
+
 ## [1.4.30] - 2026-03-29
 
 ### Fixed
