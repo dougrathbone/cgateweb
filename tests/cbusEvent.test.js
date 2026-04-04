@@ -286,6 +286,21 @@ describe('CBusEvent', () => {
             expect(event.getAction()).toBe('ramp');
         });
 
+        describe('730 events with UUID and level=N key-value', () => {
+            test.each([
+                ['level=0',   0,   '5', '20260401-155917.864 730 //CB/254/56/5 6c2b7f80-1234-5678-abcd-000000000000 new level=0 sourceunit=8 ramptime=0'],
+                ['level=128', 128, '3', '20260401-161000.000 730 //HOME/254/56/3 00000000-0000-0000-0000-000000000000 new level=128 sourceunit=2 ramptime=10'],
+                ['level=255', 255, '7', '20260401-160000.000 730 //CB/254/56/7 abc12345-0000-0000-0000-000000000000 new level=255 sourceunit=1 ramptime=0'],
+            ])('extracts %s correctly (not UUID leading digit)', (_label, expectedLevel, expectedGroup, raw) => {
+                const event = new CBusEvent(raw);
+                expect(event.isValid()).toBe(true);
+                expect(event.getLevel()).toBe(expectedLevel);
+                expect(event.getGroup()).toBe(expectedGroup);
+                expect(event.getNetwork()).toBe('254');
+                expect(event.getApplication()).toBe('56');
+            });
+        });
+
         it('should handle invalid events correctly via getter methods', () => {
             const invalidEvent = new CBusEvent("invalid event data");
             expect(invalidEvent.isValid()).toBe(false);
