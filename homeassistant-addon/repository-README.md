@@ -70,15 +70,23 @@ If you don't already have C-Gate running, you can use this add-on's **managed mo
 - **[Full Configuration Reference](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/DOCS.md)** -- All options, MQTT topics, troubleshooting
 - **[Main Project README](https://github.com/dougrathbone/cgateweb#readme)** -- Architecture, development, standalone usage
 
-## Support & Development
+## About This Repository
 
-All development, issues, and contributions happen in the main repository:
+This is the **Home Assistant add-on distribution repository**. It is automatically synced from the source repository on each release. **Do not submit pull requests here** — they will be overwritten by the next release.
 
-**[dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)**
+## Questions, Bugs & Pull Requests
 
-- [Report a Bug](https://github.com/dougrathbone/cgateweb/issues/new)
-- [Request a Feature](https://github.com/dougrathbone/cgateweb/issues/new)
-- [View Source Code](https://github.com/dougrathbone/cgateweb)
+All development, issues, and contributions happen in the **source repository**:
+
+### [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb)
+
+| | |
+|---|---|
+| **Bug reports** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new) |
+| **Feature requests** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new) |
+| **Questions** | [Search existing issues](https://github.com/dougrathbone/cgateweb/issues) or open a new one |
+| **Pull requests** | [Submit to the source repo](https://github.com/dougrathbone/cgateweb/pulls) |
+| **Source code** | [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb) |
 
 ## License
 
