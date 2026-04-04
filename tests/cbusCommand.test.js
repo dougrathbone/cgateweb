@@ -445,4 +445,76 @@ describe('CBusCommand', () => {
         });
     });
 
-}); 
+    // === Address Range Validation ===
+
+    describe('address range validation', () => {
+        it('should reject network address > 254', () => {
+            const command = new CBusCommand('cbus/write/255/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject negative network address', () => {
+            const command = new CBusCommand('cbus/write/-1/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject application address > 255', () => {
+            const command = new CBusCommand('cbus/write/254/256/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject negative application address', () => {
+            const command = new CBusCommand('cbus/write/254/-1/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject group address > 255', () => {
+            const command = new CBusCommand('cbus/write/254/56/256/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject negative group address', () => {
+            const command = new CBusCommand('cbus/write/254/56/-1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should accept boundary network address 254', () => {
+            const command = new CBusCommand('cbus/write/254/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(true);
+        });
+
+        it('should accept boundary addresses 0', () => {
+            const command = new CBusCommand('cbus/write/0/0/0/switch', 'ON');
+            expect(command.isValid()).toBe(true);
+        });
+    });
+
+    // === Command Type Validation ===
+
+    describe('command type validation', () => {
+        it('should reject invalid command type', () => {
+            const command = new CBusCommand('cbus/write/254/56/1/invalid_cmd', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject unknown command type', () => {
+            const command = new CBusCommand('cbus/write/254/56/1/remap', '100');
+            expect(command.isValid()).toBe(false);
+        });
+    });
+
+    // === toString ===
+
+    describe('toString', () => {
+        it('should format valid command', () => {
+            const command = new CBusCommand('cbus/write/254/56/1/switch', 'ON');
+            expect(command.toString()).toContain('switch');
+            expect(command.toString()).toContain('254/56/1');
+        });
+
+        it('should format invalid command', () => {
+            const command = new CBusCommand('cbus/write/254/56/1/invalid', 'ON');
+            expect(command.toString()).toContain('Invalid');
+        });
+    });
+});

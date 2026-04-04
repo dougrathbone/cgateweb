@@ -16,7 +16,9 @@ function loadIndexWithMocks({
     jest.isolateModules(() => {
         bridgeInstance = {
             start: jest.fn().mockResolvedValue(undefined),
-            stop: jest.fn().mockResolvedValue(undefined)
+            stop: jest.fn().mockResolvedValue(undefined),
+            reloadSettings: jest.fn(),
+            _getBridgeStatus: jest.fn(() => ({ lifecycle: { state: 'ready' } }))
         };
 
         jest.doMock('../src/cgateWebBridge', () => {
@@ -238,6 +240,78 @@ describe('index.js', () => {
         expect(processOnSpy).toHaveBeenCalledWith('SIGUSR1', expect.any(Function));
         expect(processOnSpy).toHaveBeenCalledWith('uncaughtException', expect.any(Function));
         expect(processOnSpy).toHaveBeenCalledWith('unhandledRejection', expect.any(Function));
+    });
+
+    it('SIGTERM handler calls bridge.stop and exits', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, bridgeInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        const sigtermHandler = processOnSpy.mock.calls.find(c => c[0] === 'SIGTERM')[1];
+        expect(() => sigtermHandler()).toThrow('process.exit:0');
+        expect(bridgeInstance.stop).toHaveBeenCalled();
+    });
+
+    it('SIGUSR1 handler reloads configuration', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+        expect(logSpy).toHaveBeenCalledWith('[INFO] Configuration reloaded successfully');
+    });
+
+    it('SIGUSR1 handler logs error on reload failure', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        // Make load throw on second call (reload)
+        mockConfigLoaderInstance.load.mockImplementation(() => {
+            throw new Error('bad config');
+        });
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+        expect(errorSpy).toHaveBeenCalledWith('[ERROR] Failed to reload configuration: bad config');
+    });
+
+    it('uncaughtException handler stops bridge and exits', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, bridgeInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        const handler = processOnSpy.mock.calls.find(c => c[0] === 'uncaughtException')[1];
+        expect(() => handler(new Error('boom'))).toThrow('process.exit:1');
+        expect(bridgeInstance.stop).toHaveBeenCalled();
+    });
+
+    it('bridge.start failure logs error and exits', async () => {
+        const { indexModule, bridgeInstance } = loadIndexWithMocks();
+        bridgeInstance.start.mockRejectedValue(new Error('connection refused'));
+
+        await expect(indexModule.main()).rejects.toThrow('process.exit:1');
+        expect(errorSpy).toHaveBeenCalledWith('[ERROR] Failed to start bridge:', expect.any(Error));
+    });
+
+    it('logs ingress config when running as addon', () => {
+        loadIndexWithMocks({
+            envInfo: { type: 'addon', isAddon: true },
+            haConfig: {
+                isAddon: true,
+                optimizationsApplied: ['ingress'],
+                ingressConfig: { ingressUrl: '/api/hassio_ingress/abc123' }
+            }
+        });
+
+        expect(logSpy).toHaveBeenCalledWith(
+            '[INFO] Ingress configured: /api/hassio_ingress/abc123'
+        );
     });
 
     it('does not auto-start when imported as a module', () => {

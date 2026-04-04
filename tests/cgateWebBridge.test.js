@@ -653,6 +653,15 @@ describe('CgateWebBridge', () => {
                 expect(publishEventSpy).not.toHaveBeenCalled();
                 publishEventSpy.mockRestore();
             });
+
+            it('should ignore comment lines starting with #', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                bridge._processEventLine('# C-Gate event server started');
+
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
         });
 
         describe('EventPublisher integration', () => {

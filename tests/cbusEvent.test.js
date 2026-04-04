@@ -314,4 +314,40 @@ describe('CBusEvent', () => {
         });
     });
 
+    // === Address Parsing Edge Cases ===
+
+    describe('address parsing edge cases', () => {
+        it('should parse address with //PROJECT/ prefix', () => {
+            const event = new CBusEvent('lighting ramp //PROJECT/254/56/1 100');
+            expect(event.isValid()).toBe(true);
+            expect(event.getNetwork()).toBe('254');
+            expect(event.getApplication()).toBe('56');
+            expect(event.getGroup()).toBe('1');
+        });
+
+        it('should handle event with missing address', () => {
+            const event = new CBusEvent('lighting on');
+            expect(event.isValid()).toBe(false);
+        });
+
+        it('should reject address with only 2 parts', () => {
+            const event = new CBusEvent('lighting ramp 254/56 100');
+            expect(event.isValid()).toBe(false);
+        });
+    });
+
+    // === toString ===
+
+    describe('toString', () => {
+        it('should format valid event', () => {
+            const event = new CBusEvent('lighting ramp 254/56/1 100');
+            expect(event.toString()).toContain('lighting');
+            expect(event.toString()).toContain('254/56/1');
+        });
+
+        it('should format invalid event', () => {
+            const event = new CBusEvent('totally broken');
+            expect(event.toString()).toContain('Invalid');
+        });
+    });
 }); 
