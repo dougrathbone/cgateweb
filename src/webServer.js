@@ -151,7 +151,7 @@ class WebServer {
                 return this._handleGetDashboard(req, res);
             }
             if (urlPath === '/api/areas' && req.method === 'GET') {
-                return this._handleGetAreas(req, res);
+                return await this._handleGetAreas(req, res);
             }
             if (urlPath === '/healthz' && req.method === 'GET') {
                 return this._handleHealth(req, res);
