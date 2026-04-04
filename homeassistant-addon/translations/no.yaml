@@ -1,128 +1,266 @@
 configuration:
-  cgate_host:
-    name: C-Gate vert
-    description: IP-adresse eller vertsnavn for C-Gate serveren. Sett til 127.0.0.1
-      ved bruk av administrert modus, eller adressen til den eksterne serveren
-      ved bruk av fjernmodus.
-  cgate_port:
-    name: C-Gate kommandoport
-    description: TCP-port for C-Gate kommandotilkoblinger. Standard kommandoport for
-      C-Gate er 20023.
-  cgate_event_port:
-    name: C-Gate hendelsesport
-    description: TCP-port for C-Gate hendelsestilkoblinger. Standard hendelsesport
-      for C-Gate er 20025. Denne porten mottar sanntidsoppdateringer fra C-Bus
-      enheter.
-  cgate_project:
-    name: C-Gate prosjektnavn
-    description: Navnet på C-Bus prosjektet ditt som konfigurert i C-Gate (f.eks. HOME).
-  mqtt_host:
-    name: MQTT Broker vert
-    description: Oppdages automatisk fra Mosquitto tillegget. Sett bare dette hvis
-      du bruker en ekstern MQTT broker i stedet for HA Mosquitto tillegget.
-  mqtt_port:
-    name: MQTT Broker port
-    description: Oppdages automatisk fra Mosquitto tillegget. Sett bare dette hvis
-      du bruker en ekstern MQTT broker (standardport er 1883).
-  mqtt_username:
-    name: MQTT brukernavn
-    description: Oppdages automatisk fra Mosquitto tillegget. Sett bare dette hvis
-      du bruker en ekstern MQTT broker eller trenger å overstyre
-      påloggingsinformasjonen.
-  mqtt_password:
-    name: MQTT passord
-    description: Oppdages automatisk fra Mosquitto tillegget. Sett bare dette hvis
-      du bruker en ekstern MQTT broker eller trenger å overstyre
-      påloggingsinformasjonen.
-  getall_networks:
-    name: C-Bus nettverk å overvåke
-    description: Liste over C-Bus nettverks-IDer å hente enhetsstatuser for.
-      Standardnettverket er 254, som er det vanlige C-Bus nettverksnummeret for
-      de fleste installasjoner. For å finne dine nettverks-IDer, åpne C-Gate
-      Toolkit applikasjonen, utvid prosjektet ditt og se på nettverksnumrene som
-      er listet under det. Du kan også bruke Clipsal C-Bus Toolkit (CBAT) under
-      Prosjekt > Nettverksliste.
-  getall_on_start:
-    name: Hent ved oppstart
-    description: Hent alle enhetstilstander når tillegget starter. Nyttig for å
-      synkronisere Home Assistant med gjeldende tilstand for alle C-Bus enheter.
-  getall_period:
-    name: Hentingsintervall (sekunder)
-    description: Hvor ofte alle enhetstilstander skal hentes, i sekunder. Lavere
-      verdier gir ferskere tilstand, men øker nettverkstrafikken til C-Gate.
-  retain_reads:
-    name: Behold MQTT statusmeldinger
-    description: Sett MQTT retain-flagget på statusmeldinger. Når aktivert, mottar
-      nye MQTT abonnenter umiddelbart den sist kjente tilstanden for hver enhet.
-  message_interval:
-    name: Kommandointervall (ms)
-    description: Minimum forsinkelse mellom kommandoer sendt til C-Gate, i
-      millisekunder. Forhindrer at C-Gate overbelastes med raske kommandoer.
-      Standard 200ms.
-  log_level:
-    name: Loggnivå
-    description: Loggdetalj. Bruk debug for feilsøking, info for normal drift, warn
-      for bare advarsler eller error for bare feil.
-  ha_discovery_enabled:
-    name: Aktiver Home Assistant Discovery
-    description: Registrer C-Bus enheter automatisk i Home Assistant ved hjelp av
-      MQTT Discovery. Enheter vises som entiteter uten manuell konfigurasjon.
-  ha_discovery_prefix:
-    name: Discovery emneprefiks
-    description: "MQTT emneprefiks for Home Assistant Discovery meldinger. Dette må
-      samsvare med ditt Home Assistant MQTT Discovery prefiks (standard:
-      homeassistant)."
-  ha_discovery_networks:
-    name: Discovery nettverk
-    description: C-Bus nettverks-IDer å skanne for enhetsoppdagelse. Standard er
-      254, det vanlige C-Bus nettverket. Hvis tomt, brukes nettverkene oppført
-      under «C-Bus nettverk å overvåke». De fleste installasjoner har bare ett
-      nettverk.
-  ha_discovery_cover_app_id:
-    name: Applikasjons-ID for tildekking
-    description: C-Bus applikasjons-ID som skal behandles som tildekkinger
-      (persienner, rullegardiner, garasjeporter). Vanlig verdi er 203 (Enable
-      Control). La stå tomt for å deaktivere oppdagelse av tildekkinger.
-  ha_discovery_switch_app_id:
-    name: Applikasjons-ID for bryter
-    description: C-Bus applikasjons-ID som skal behandles som brytere. La stå tomt
-      for å deaktivere oppdagelse av brytere.
-  ha_discovery_trigger_app_id:
-    name: Trigger App ID
-    description: C-Bus application ID for trigger groups (keypads, scenes). Default
-      is 202. Leave empty to disable trigger discovery.
+  # ── Obligatoriske felt (alltid synlige) ──
   cgate_mode:
     name: C-Gate modus
-    description: Hvordan C-Gate tilbys. «remote» kobler til en C-Gate server som
-      kjører et annet sted i nettverket ditt. «managed» laster ned og kjører
-      C-Gate lokalt i dette tillegget (krever Java og et serielt C-Bus
-      grensesnitt).
+    description: >-
+      Hvordan C-Gate leveres. "remote" kobler til en C-Gate server som kjorer
+      et annet sted pa nettverket ditt (vanligst). "managed" laster ned og
+      kjorer C-Gate lokalt i dette tillegget.
+  cgate_host:
+    name: C-Gate vert (pakrevd)
+    description: >-
+      IP-adresse eller vertsnavn for C-Gate serveren din. For fjernmodus,
+      skriv inn adressen til maskinen som kjorer C-Gate. For administrert
+      modus, bruk 127.0.0.1.
+  cgate_project:
+    name: C-Gate prosjektnavn (pakrevd)
+    description: >-
+      Navnet pa C-Bus prosjektet ditt som konfigurert i C-Gate (f.eks. HOME,
+      MYHOUSE). Finn dette i C-Gate Toolkit under prosjekttreet ditt.
+  ha_discovery_enabled:
+    name: Aktiver Home Assistant Discovery
+    description: >-
+      Registrer C-Bus enheter automatisk i Home Assistant ved hjelp av MQTT
+      Discovery. De fleste brukere bor la dette vaere aktivert. Enheter vises
+      som entiteter uten manuell YAML-konfigurasjon.
+  log_level:
+    name: Loggniva
+    description: >-
+      Loggdetalj. Bruk "info" for normal drift, "debug" for feilsoking av
+      tilkoblings- eller oppdagelsesproblemer.
+
+  # ── C-Gate tilkobling (valgfri, fornuftige standarder) ──
+  cgate_port:
+    name: C-Gate kommandoport
+    description: >-
+      TCP-port for C-Gate kommandotilkoblinger. Endre bare dette hvis C-Gate
+      bruker en ikke-standard port. Standard: 20023.
+  cgate_event_port:
+    name: C-Gate hendelsesport
+    description: >-
+      TCP-port for C-Gate hendelsestilkoblinger. Endre bare dette hvis C-Gate
+      bruker en ikke-standard port. Standard: 20025.
+
+  # ── C-Gate administrert modus ──
   cgate_install_source:
     name: C-Gate installasjonskilde
-    description: Brukes bare når C-Gate modus er «managed». «download» laster
-      automatisk ned C-Gate fra den offisielle Clipsal URL-en ved første
-      oppstart. «upload» ser etter en C-Gate zip-fil du har plassert i
-      /share/cgate/.
+    description: >-
+      Brukes bare i administrert modus. "download" henter C-Gate automatisk.
+      "upload" ser etter en zip-fil du har plassert i /share/cgate/.
   cgate_download_url:
     name: C-Gate nedlastings-URL
-    description: Brukes bare når C-Gate modus er «managed» og installasjonskilde er
-      «download». Overstyr standard-URL-en hvis den offisielle Clipsal
-      nedlastingsadressen endres. La stå tomt for å bruke standard-URL-en.
-  cbus_label_file:
-    name: Custom Label File
-    description: Path to a JSON file with custom device names for C-Bus groups.
-      Generated by the import tool or the built-in label editor. Labels from
-      this file take priority over names from C-Gate. Auto-detected from common
-      paths if not set. The file is watched and changes are applied
-      automatically.
+    description: >-
+      Brukes bare i administrert modus med nedlastingskilde. Overstyr hvis
+      den offisielle Clipsal nedlastings-URL-en endres. La sta tomt for
+      standard-URL-en.
+  cgate_download_sha256:
+    name: C-Gate nedlasting SHA256
+    description: >-
+      Valgfri SHA256-sjekksum for a verifisere C-Gate-nedlastingen. Anbefalt
+      ved bruk av en egendefinert nedlastings-URL.
+
+  # ── MQTT (vanligvis automatisk oppdaget) ──
+  mqtt_host:
+    name: MQTT Broker vert
+    description: >-
+      Oppdages automatisk fra Mosquitto tillegget — de fleste brukere bor la
+      dette sta tomt. Sett bare dette hvis du bruker en ekstern MQTT broker.
+  mqtt_port:
+    name: MQTT Broker port
+    description: >-
+      Oppdages automatisk fra Mosquitto tillegget. Sett bare for eksterne
+      brokere. Standard: 1883.
+  mqtt_username:
+    name: MQTT brukernavn
+    description: >-
+      Oppdages automatisk fra Mosquitto tillegget. Sett bare for eksterne
+      brokere eller for a overstyre paloggingsinformasjon.
+  mqtt_password:
+    name: MQTT passord
+    description: >-
+      Oppdages automatisk fra Mosquitto tillegget. Sett bare for eksterne
+      brokere eller for a overstyre paloggingsinformasjon.
+  mqtt_use_tls:
+    name: Aktiver MQTT TLS
+    description: >-
+      Koble til MQTT med TLS (mqtts://). Aktiver for brokere som krever
+      krypterte tilkoblinger (vanligvis port 8883). Ikke nodvendig for
+      standard Mosquitto tillegget.
+  mqtt_ca_file:
+    name: MQTT CA-sertifikatfil
+    description: >-
+      Sti til CA-sertifikat for a verifisere brokerens TLS-sertifikat.
+      Vanligvis lagret i /ssl/ (f.eks. /ssl/ca.crt). Bare nodvendig for
+      selvsignerte sertifikater.
+  mqtt_reject_unauthorized:
+    name: Verifiser MQTT TLS-sertifikat
+    description: >-
+      Avvis tilkoblinger hvis brokerens TLS-sertifikat ikke kan verifiseres.
+      Hold aktivert for sikkerhet. Deaktiver bare for selvsignerte
+      sertifikater uten CA-fil.
+
+  # ── C-Bus overvaking ──
+  auto_discover_networks:
+    name: Auto-oppdage C-Bus nettverk
+    description: >-
+      Oppdage nettverks-IDer automatisk fra C-Gate ved tilkobling. Oppdagede
+      nettverk brukes til polling og HA Discovery. Deaktiver bare hvis
+      auto-oppdagelse forarsaker problemer. Standard: aktivert.
+  getall_networks:
+    name: C-Bus nettverk a overvake
+    description: >-
+      C-Bus nettverks-IDer for a hente enhetstilstander. Standard: 254
+      (standard C-Bus nettverk for de fleste installasjoner). Finn dine
+      nettverks-IDer i C-Gate Toolkit under prosjekttreet ditt.
+  getall_on_start:
+    name: Hent alle enheter ved oppstart
+    description: >-
+      Be om alle enhetstilstander nar tillegget starter, for a synkronisere
+      Home Assistant med gjeldende C-Bus tilstand. Standard: aktivert.
+  getall_period:
+    name: Hentingsintervall (sekunder)
+    description: >-
+      Hvor ofte alle enhetstilstander hentes pa nytt. Lavere verdier =
+      ferskere tilstand men mer C-Gate trafikk. Standard: 3600 (1 time).
+  getall_app_periods:
+    name: Hentingsintervaller per app
+    description: >-
+      Overstyr hentingsintervallet for spesifikke C-Bus applikasjoner. Hver
+      oppforing har en app_id (f.eks. "201" for HVAC) og period_sec (0 for
+      a deaktivere).
+
+  # ── MQTT publisering ──
+  retain_reads:
+    name: Behold MQTT statusmeldinger
+    description: >-
+      Sett MQTT retain-flagget pa statusmeldinger sa nye abonnenter
+      umiddelbart mottar sist kjente enhetstilstander. Standard: deaktivert.
+  message_interval:
+    name: Kommandointervall (ms)
+    description: >-
+      Minimum forsinkelse mellom kommandoer sendt til C-Gate. Forhindrer
+      overbelastning av C-Gate med raske kommandoer. Standard: 200ms.
+
+  # ── Home Assistant Discovery ──
+  ha_discovery_prefix:
+    name: Discovery emneprefiks
+    description: >-
+      MQTT emneprefiks for HA Discovery meldinger. Ma samsvare med ditt
+      Home Assistant MQTT Discovery prefiks. Standard: homeassistant.
+  ha_discovery_networks:
+    name: Discovery nettverk
+    description: >-
+      C-Bus nettverks-IDer a skanne for enhetsoppdagelse. Hvis tomt, brukes
+      nettverkene fra "C-Bus nettverk a overvake". Standard: 254.
+  ha_discovery_cover_app_id:
+    name: Applikasjons-ID for deksel
+    description: >-
+      C-Bus app-ID for deksel (persienner, rullegardiner, garasjeporter).
+      Vanlig verdi: 203 (Enable Control). La sta tomt for a hoppe over
+      dekseloppdagelse.
+  ha_discovery_cover_tilt_app_id:
+    name: Applikasjons-ID for dekseltilt
+    description: >-
+      C-Bus app-ID for tilt-styring av persienner. Paret med deksel etter
+      gruppenummer. La sta tomt for a hoppe over tilt.
+  ha_discovery_switch_app_id:
+    name: Applikasjons-ID for bryter
+    description: >-
+      C-Bus app-ID for brytergrupper. La sta tomt for a hoppe over
+      bryteroppdagelse.
+  ha_discovery_trigger_app_id:
+    name: Applikasjons-ID for utloser
+    description: >-
+      C-Bus app-ID for utlosergrupper (tastatur, scener). Vanlig verdi: 202.
+      La sta tomt for a hoppe over utloseroppdagelse.
+  ha_discovery_scene_enabled:
+    name: Aktiver sceneentiteter
+    description: >-
+      Opprett en Home Assistant sceneentitet for hver utlosergruppe, i tillegg
+      til hendelses- og knappentiteter. Standard: aktivert.
+  ha_discovery_hvac_app_id:
+    name: HVAC applikasjons-ID
+    description: >-
+      C-Bus app-ID for HVAC/klimasoner. Standard C-Bus HVAC app: 201. La
+      sta tomt for a hoppe over HVAC-oppdagelse.
+  ha_hvac_temperature_unit:
+    name: HVAC temperaturenhet
+    description: >-
+      Temperaturenhet for HVAC klimaentiteter. C for Celsius, F for
+      Fahrenheit. Standard: C.
+
+  # ── Bro-diagnostikk ──
   ha_bridge_diagnostics_enabled:
-    name: Enable Bridge Diagnostics
-    description: Publish bridge health entities (ready state, connection status,
-      queue depth) using Home Assistant MQTT Discovery.
+    name: Aktiver bro-diagnostikk
+    description: >-
+      Publiser bro-helseentiteter (klar-tilstand, tilkoblinger, kodybde)
+      til Home Assistant. Standard: aktivert.
   ha_bridge_diagnostics_interval_sec:
-    name: Diagnostics Update Interval (seconds)
-    description: How often bridge diagnostic entity states are refreshed. Lower
-      values update faster but increase MQTT traffic.
+    name: Diagnostikkintervall (sekunder)
+    description: >-
+      Hvor ofte bro-diagnostikktilstander oppdateres. Standard: 60.
+
+  # ── Deteksjon av inaktive enheter ──
+  stale_device_detection_enabled:
+    name: Aktiver deteksjon av inaktive enheter
+    description: >-
+      Oppdage C-Bus enheter som slutter a rapportere og publiser en
+      advarselssensor. Standard: aktivert.
+  stale_device_threshold_hours:
+    name: Grense for inaktiv enhet (timer)
+    description: >-
+      Timer uten statusoppdatering for en enhet anses som inaktiv.
+      Standard: 24.
+  stale_device_check_interval_sec:
+    name: Kontrollintervall for inaktivitet (sekunder)
+    description: >-
+      Hvor ofte det skannes for inaktive enheter. Standard: 3600 (1 time).
+
+  # ── Avansert: Tilkoblingspool ──
+  connection_pool_size:
+    name: Tilkoblingspoolstorrelse
+    description: >-
+      Antall parallelle TCP-tilkoblinger til C-Gate. Ok for installasjoner
+      med hoy gjennomstromning, reduser til 1 for eldre C-Gate. Standard: 3.
+  connection_health_check_interval_sec:
+    name: Helsesjekkintervall (sekunder)
+    description: >-
+      Hvor ofte C-Gate tilkoblinger verifiseres som sunne. Standard: 30.
+  connection_keep_alive_interval_sec:
+    name: Keep-alive intervall (sekunder)
+    description: >-
+      Hvor ofte C-Gate tilkoblinger pinges. Forhindrer stille TCP-brudd.
+      Standard: 60.
   cover_ramp_duration_sec:
-    name: "Cover Ramp Duration (seconds)"
-    description: "How long (in seconds) a cover position command is expected to take to complete. The bridge publishes estimated intermediate positions during this window so Home Assistant shows smooth movement. Default: 5."
+    name: Deksel bevegelsestid (sekunder)
+    description: >-
+      Forventet tid for et deksel a apne/lukke helt. Broen publiserer
+      estimerte posisjoner i dette vinduet. Standard: 5.
+
+  # ── Avansert: Labelfil & Web API ──
+  cbus_label_file:
+    name: Egendefinert labelfil
+    description: >-
+      Sti til en JSON-fil med egendefinerte enhetsnavn. Oppdages automatisk
+      fra vanlige stier hvis ikke angitt. Filen overvakes for endringer.
+  web_api_key:
+    name: Web API-nokkel
+    description: >-
+      API-nokkel for skriveoperasjoner i label-editoren. Sett dette nar
+      port 8080 eksponeres utenfor HA ingress.
+  web_allow_unauthenticated_mutations:
+    name: Tillat uautentiserte web-skrivinger (usikkert)
+    description: >-
+      Tillat skriveendepunkter uten API-nokkel. Hold deaktivert med mindre
+      du fullt ut stoler pa nettverkstilgangen til dette tillegget.
+  web_allowed_origins:
+    name: Tillatte web-origins (CORS)
+    description: >-
+      CORS-hviteliste for nettlesertilgang. Skriv inn fulle origins som
+      https://ha.example.com. La sta tomt for a deaktivere
+      cross-origin-tilgang.
+  web_mutation_rate_limit_per_minute:
+    name: Web-skrivehastighetsgrense
+    description: >-
+      Maksimalt antall muterende API-foresporsler per minutt per klient.
+      Standard: 120.

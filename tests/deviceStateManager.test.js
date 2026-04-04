@@ -477,6 +477,46 @@ describe('DeviceStateManager', () => {
             expect(stateManager.getLastSeen(254, 56, 99)).toBeUndefined();
         });
 
+        it('getAllLevels returns a Map with all tracked levels', () => {
+            const mockEvent1 = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 10,
+                getLevel: () => 200,
+                getAction: () => 'ramp'
+            };
+            const mockEvent2 = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 11,
+                getLevel: () => 0,
+                getAction: () => 'ramp'
+            };
+            stateManager.updateLevelFromEvent(mockEvent1);
+            stateManager.updateLevelFromEvent(mockEvent2);
+
+            const map = stateManager.getAllLevels();
+            expect(map).toBeInstanceOf(Map);
+            expect(map.get('254/56/10')).toBe(200);
+            expect(map.get('254/56/11')).toBe(0);
+        });
+
+        it('getAllLevels returns a copy (mutations do not affect internal state)', () => {
+            const mockEvent = {
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => 12,
+                getLevel: () => 50,
+                getAction: () => 'ramp'
+            };
+            stateManager.updateLevelFromEvent(mockEvent);
+
+            const map = stateManager.getAllLevels();
+            map.set('254/56/99', 255);
+
+            expect(stateManager.getLevel(254, 56, 99)).toBeUndefined();
+        });
+
         it('lastSeen is not recorded for PIR sensor events', () => {
             const mockEvent = {
                 getApplication: () => 36, // PIR app

@@ -83,4 +83,27 @@ describe('HaBridgeDiagnostics', () => {
 
         expect(publishFn).toHaveBeenCalled();
     });
+
+    test('consolidated stats topic contains correct JSON structure', () => {
+        diagnostics.publishNow('test');
+
+        const statsCall = publishFn.mock.calls.find(c => c[0] === 'cbus/read/bridge/stats');
+        expect(statsCall).toBeDefined();
+
+        const stats = JSON.parse(statsCall[1]);
+        expect(stats).toHaveProperty('uptime');
+        expect(stats).toHaveProperty('ready', true);
+        expect(stats.connections).toEqual({
+            mqtt: true,
+            event: true,
+            commandPoolHealthy: 3,
+            commandPoolTotal: 0
+        });
+        expect(stats.queue).toHaveProperty('depth', 4);
+        expect(stats.publisher).toHaveProperty('published');
+        expect(stats).toHaveProperty('cgate_version', 'unknown');
+
+        // Verify it's published with retain
+        expect(statsCall[2]).toEqual({ retain: true, qos: 0 });
+    });
 });

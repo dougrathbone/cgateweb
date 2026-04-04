@@ -182,6 +182,25 @@ describe('LineProcessor', () => {
             expect(processor.getBuffer()).toBe('');
         });
     });
+
+    describe('buffer size cap', () => {
+        it('should truncate buffer when exceeding MAX_BUFFER_SIZE (1MB)', () => {
+            // Feed data without newlines so it accumulates in the buffer
+            const chunkSize = 256 * 1024; // 256KB per chunk
+            const chunk = 'A'.repeat(chunkSize);
+            const handler = (line) => processedLines.push(line);
+
+            // Feed 5 chunks = 1.25MB, exceeding the 1MB cap
+            for (let i = 0; i < 5; i++) {
+                processor.processData(chunk, handler);
+            }
+
+            // Buffer should be capped at 1MB (1024 * 1024)
+            expect(processor.getBuffer().length).toBeLessThanOrEqual(1024 * 1024);
+            // No lines emitted since there were no newlines
+            expect(processedLines).toEqual([]);
+        });
+    });
 });
 
 describe('processLines utility function', () => {

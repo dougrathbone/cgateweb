@@ -1433,4 +1433,184 @@ describe('WebServer', () => {
             expect(dataLines.length).toBeGreaterThanOrEqual(2);
         });
     });
+
+    describe('GET /api/dashboard', () => {
+        it('should return bridge status, devices, and labels', async () => {
+            const now = Date.now();
+            const mockDeviceStateManager = {
+                getAllLastSeen: () => new Map([
+                    ['254/56/10', now - 1000],
+                    ['254/56/11', now - 100000000]
+                ]),
+                getAllLevels: () => new Map([
+                    ['254/56/10', 128],
+                    ['254/56/11', 0]
+                ])
+            };
+
+            const dashServer = new WebServer({
+                port: 0,
+                labelLoader,
+                deviceStateManager: mockDeviceStateManager,
+                getStatus: () => ({
+                    version: '1.5.3',
+                    uptime: 3600,
+                    ready: true,
+                    lifecycle: { state: 'ready' },
+                    connections: { mqtt: true, event: true },
+                    metrics: {},
+                    discovery: { count: 5 }
+                })
+            });
+            await dashServer.start();
+            const dashPort = dashServer._server.address().port;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    http.get(`http://127.0.0.1:${dashPort}/api/dashboard`, (resp) => {
+                        let data = '';
+                        resp.on('data', (c) => { data += c; });
+                        resp.on('end', () => resolve({ status: resp.statusCode, body: JSON.parse(data) }));
+                    }).on('error', reject);
+                });
+
+                expect(res.status).toBe(200);
+                expect(res.body.bridge.version).toBe('1.5.3');
+                expect(res.body.bridge.ready).toBe(true);
+                expect(res.body.labels.count).toBe(2);
+                expect(res.body.devices.total).toBe(2);
+                expect(res.body.devices.active).toBe(1); // only 254/56/10 within 24h
+                expect(res.body.devices.list).toHaveLength(2);
+                expect(res.body.devices.list[0].address).toBe('254/56/10');
+                expect(res.body.devices.list[0].level).toBe(128);
+                expect(res.body.devices.list[0].label).toBe('Kitchen');
+                expect(res.body.devices.list[1].level).toBe(0);
+                expect(res.body.devices.list[1].label).toBe('Living Room');
+            } finally {
+                await dashServer.close();
+            }
+        });
+
+        it('should handle missing deviceStateManager gracefully', async () => {
+            const res = await request('GET', '/api/dashboard');
+            expect(res.status).toBe(200);
+            expect(res.body.devices.total).toBe(0);
+            expect(res.body.devices.list).toEqual([]);
+        });
+    });
+
+    describe('GET /api/areas', () => {
+        it('should return areas from label file', async () => {
+            // Save labels with areas
+            labelLoader.save({
+                version: 1,
+                labels: { '254/56/10': 'Kitchen', '254/56/11': 'Living Room' },
+                areas: { '254/56/10': 'Kitchen', '254/56/11': 'Lounge' }
+            });
+
+            const res = await request('GET', '/api/areas');
+            expect(res.status).toBe(200);
+            expect(res.body.areas).toBeInstanceOf(Array);
+            const names = res.body.areas.map(a => a.name);
+            expect(names).toContain('Kitchen');
+            expect(names).toContain('Lounge');
+            res.body.areas.forEach(a => {
+                expect(a).toHaveProperty('name');
+                expect(a).toHaveProperty('source');
+                expect(a.source).toBe('labels');
+            });
+        });
+
+        it('should return empty array when no areas exist', async () => {
+            const res = await request('GET', '/api/areas');
+            expect(res.status).toBe(200);
+            expect(res.body.areas).toEqual([]);
+        });
+
+        it('should deduplicate areas by name (case-insensitive)', async () => {
+            labelLoader.save({
+                version: 1,
+                labels: { '254/56/10': 'Test', '254/56/11': 'Test2' },
+                areas: { '254/56/10': 'Kitchen', '254/56/11': 'kitchen' }
+            });
+
+            const res = await request('GET', '/api/areas');
+            expect(res.status).toBe(200);
+            const kitchenAreas = res.body.areas.filter(a => a.name.toLowerCase() === 'kitchen');
+            expect(kitchenAreas).toHaveLength(1);
+        });
+
+        it('should return areas sorted alphabetically', async () => {
+            labelLoader.save({
+                version: 1,
+                labels: { '254/56/10': 'T1', '254/56/11': 'T2', '254/56/12': 'T3' },
+                areas: { '254/56/10': 'Lounge', '254/56/11': 'Bedroom', '254/56/12': 'Kitchen' }
+            });
+
+            const res = await request('GET', '/api/areas');
+            const names = res.body.areas.map(a => a.name);
+            expect(names).toEqual(['Bedroom', 'Kitchen', 'Lounge']);
+        });
+    });
+
+    describe('Security headers', () => {
+        it('should include X-Content-Type-Options: nosniff', async () => {
+            const res = await request('GET', '/api/status');
+            expect(res.headers['x-content-type-options']).toBe('nosniff');
+        });
+
+        it('should not set CORS header for disallowed origins', async () => {
+            const corsServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowedOrigins: ['http://trusted.local'],
+                getStatus: () => ({})
+            });
+            await corsServer.start();
+            const corsPort = corsServer._server.address().port;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    http.get(`http://127.0.0.1:${corsPort}/api/status`, {
+                        headers: { 'Origin': 'http://evil.com' }
+                    }, (resp) => {
+                        let data = '';
+                        resp.on('data', (c) => { data += c; });
+                        resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
+                    }).on('error', reject);
+                });
+
+                expect(res.headers['access-control-allow-origin']).toBeUndefined();
+            } finally {
+                await corsServer.close();
+            }
+        });
+
+        it('should set CORS header for allowed origins', async () => {
+            const corsServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowedOrigins: ['http://trusted.local'],
+                getStatus: () => ({})
+            });
+            await corsServer.start();
+            const corsPort = corsServer._server.address().port;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    http.get(`http://127.0.0.1:${corsPort}/api/status`, {
+                        headers: { 'Origin': 'http://trusted.local' }
+                    }, (resp) => {
+                        let data = '';
+                        resp.on('data', (c) => { data += c; });
+                        resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
+                    }).on('error', reject);
+                });
+
+                expect(res.headers['access-control-allow-origin']).toBe('http://trusted.local');
+            } finally {
+                await corsServer.close();
+            }
+        });
+    });
 });

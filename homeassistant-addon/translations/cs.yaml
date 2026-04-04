@@ -1,124 +1,265 @@
 configuration:
-  cgate_host:
-    name: Hostitel C-Gate
-    description: IP adresa nebo název hostitele serveru C-Gate. Nastavte na
-      127.0.0.1 při použití spravovaného režimu, nebo adresu vzdáleného serveru
-      při použití vzdáleného režimu.
-  cgate_port:
-    name: Příkazový port C-Gate
-    description: TCP port pro příkazová připojení C-Gate. Výchozí příkazový port
-      C-Gate je 20023.
-  cgate_event_port:
-    name: Port událostí C-Gate
-    description: TCP port pro připojení událostí C-Gate. Výchozí port událostí
-      C-Gate je 20025. Tento port přijímá aktualizace v reálném čase ze zařízení
-      C-Bus.
-  cgate_project:
-    name: Název projektu C-Gate
-    description: Název vašeho projektu C-Bus nakonfigurovaný v C-Gate (např. HOME).
-  mqtt_host:
-    name: Hostitel MQTT brokera
-    description: Automaticky detekován z doplňku Mosquitto. Nastavte pouze pokud
-      používáte externího MQTT brokera místo doplňku HA Mosquitto.
-  mqtt_port:
-    name: Port MQTT brokera
-    description: Automaticky detekován z doplňku Mosquitto. Nastavte pouze pokud
-      používáte externího MQTT brokera (výchozí port je 1883).
-  mqtt_username:
-    name: MQTT uživatelské jméno
-    description: Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pokud
-      používáte externího MQTT brokera nebo potřebujete přepsat přihlašovací
-      údaje.
-  mqtt_password:
-    name: MQTT heslo
-    description: Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pokud
-      používáte externího MQTT brokera nebo potřebujete přepsat přihlašovací
-      údaje.
-  getall_networks:
-    name: Sítě C-Bus ke sledování
-    description: Seznam ID sítí C-Bus pro dotazování stavů zařízení. Výchozí síť je
-      254, což je standardní číslo sítě C-Bus ve většině instalací. Pro nalezení
-      vašich ID sítí otevřete aplikaci C-Gate Toolkit, rozbalte svůj projekt a
-      podívejte se na čísla sítí uvedená pod ním. Můžete také použít Clipsal
-      C-Bus Toolkit (CBAT) v nabídce Projekt > Seznam sítí.
-  getall_on_start:
-    name: Dotazování při spuštění
-    description: Načíst všechny stavy zařízení při spuštění doplňku. Užitečné pro
-      synchronizaci Home Assistant s aktuálním stavem všech zařízení C-Bus.
-  getall_period:
-    name: Interval dotazování (sekundy)
-    description: Jak často načítat všechny stavy zařízení, v sekundách. Nižší
-      hodnoty poskytují aktuálnější stav, ale zvyšují síťový provoz směrem k
-      C-Gate.
-  retain_reads:
-    name: Zachovat stavové zprávy MQTT
-    description: Nastavit příznak MQTT retain na stavových zprávách. Při aktivaci
-      noví MQTT odběratelé okamžitě obdrží poslední známý stav každého zařízení.
-  message_interval:
-    name: Interval příkazů (ms)
-    description: Minimální prodleva mezi příkazy odeslanými do C-Gate, v
-      milisekundách. Zabraňuje zahlcení C-Gate rychlými příkazy. Výchozí 200ms.
-  log_level:
-    name: Úroveň logování
-    description: Podrobnost logování. Použijte debug pro řešení problémů, info pro
-      normální provoz, warn pouze pro varování nebo error pouze pro chyby.
-  ha_discovery_enabled:
-    name: Povolit Home Assistant Discovery
-    description: Automaticky registrovat zařízení C-Bus v Home Assistant pomocí MQTT
-      Discovery. Zařízení se zobrazí jako entity bez ruční konfigurace.
-  ha_discovery_prefix:
-    name: Prefix tématu Discovery
-    description: "Prefix MQTT tématu pro zprávy Home Assistant Discovery. Tento musí
-      odpovídat vašemu prefixu MQTT Discovery v Home Assistant (výchozí:
-      homeassistant)."
-  ha_discovery_networks:
-    name: Sítě Discovery
-    description: ID sítí C-Bus ke skenování pro objevování zařízení. Výchozí je 254,
-      standardní síť C-Bus. Pokud je prázdné, použijí se sítě uvedené v „Sítě
-      C-Bus ke sledování". Většina instalací má pouze jednu síť.
-  ha_discovery_cover_app_id:
-    name: ID aplikace pro kryty
-    description: ID aplikace C-Bus zpracovávané jako kryty (žaluzie, rolety,
-      garážová vrata). Běžná hodnota je 203 (Enable Control). Ponechte prázdné
-      pro vypnutí objevování krytů.
-  ha_discovery_switch_app_id:
-    name: ID aplikace pro spínače
-    description: ID aplikace C-Bus zpracovávané jako spínače. Ponechte prázdné pro
-      vypnutí objevování spínačů.
-  ha_discovery_trigger_app_id:
-    name: Trigger App ID
-    description: C-Bus application ID for trigger groups (keypads, scenes). Default
-      is 202. Leave empty to disable trigger discovery.
+  # ── Povinná pole (vždy viditelná) ──
   cgate_mode:
     name: Režim C-Gate
-    description: Jak je C-Gate poskytován. „remote" se připojí k serveru C-Gate
-      běžícímu jinde ve vaší síti. „managed" stáhne a spustí C-Gate lokálně v
-      tomto doplňku (vyžaduje Java a sériové rozhraní C-Bus).
+    description: >-
+      Jak je C-Gate poskytován. "remote" se připojí k serveru C-Gate běžícímu
+      jinde ve vaší síti (nejběžnější). "managed" stáhne a spustí C-Gate
+      lokálně v tomto doplňku.
+  cgate_host:
+    name: Hostitel C-Gate (povinný)
+    description: >-
+      IP adresa nebo název hostitele serveru C-Gate. Pro vzdálený režim zadejte
+      adresu počítače, na kterém běží C-Gate. Pro spravovaný režim použijte
+      127.0.0.1.
+  cgate_project:
+    name: Název projektu C-Gate (povinný)
+    description: >-
+      Název vašeho projektu C-Bus nakonfigurovaný v C-Gate (např. HOME,
+      MYHOUSE). Najdete ho v C-Gate Toolkit ve stromu projektů.
+  ha_discovery_enabled:
+    name: Povolit Home Assistant Discovery
+    description: >-
+      Automaticky registrovat zařízení C-Bus v Home Assistant pomocí MQTT
+      Discovery. Většina uživatelů by měla tuto funkci ponechat zapnutou.
+      Zařízení se zobrazí jako entity bez ruční konfigurace YAML.
+  log_level:
+    name: Úroveň logování
+    description: >-
+      Podrobnost logování. Použijte "info" pro normální provoz, "debug" pro
+      řešení problémů s připojením nebo detekcí zařízení.
+
+  # ── Připojení C-Gate (volitelné, rozumné výchozí hodnoty) ──
+  cgate_port:
+    name: Příkazový port C-Gate
+    description: >-
+      TCP port pro příkazová připojení C-Gate. Měňte pouze pokud váš C-Gate
+      používá nestandardní port. Výchozí: 20023.
+  cgate_event_port:
+    name: Port událostí C-Gate
+    description: >-
+      TCP port pro připojení událostí C-Gate. Měňte pouze pokud váš C-Gate
+      používá nestandardní port. Výchozí: 20025.
+
+  # ── Spravovaný režim C-Gate ──
   cgate_install_source:
     name: Zdroj instalace C-Gate
-    description: Používá se pouze když je režim C-Gate „managed". „download"
-      automaticky stáhne C-Gate z oficiální Clipsal URL při prvním spuštění.
-      „upload" hledá soubor ZIP C-Gate, který jste umístili do /share/cgate/.
+    description: >-
+      Používá se pouze ve spravovaném režimu. "download" automaticky stáhne
+      C-Gate. "upload" hledá soubor ZIP, který jste umístili do /share/cgate/.
   cgate_download_url:
     name: URL pro stažení C-Gate
-    description: Používá se pouze když je režim C-Gate „managed" a zdroj instalace
-      je „download". Přepište výchozí URL, pokud se změní oficiální umístění
-      stahování Clipsal. Ponechte prázdné pro použití výchozí URL.
-  cbus_label_file:
-    name: Custom Label File
-    description: Path to a JSON file with custom device names for C-Bus groups.
-      Generated by the import tool or the built-in label editor. Labels from
-      this file take priority over names from C-Gate. Auto-detected from common
-      paths if not set. The file is watched and changes are applied
-      automatically.
+    description: >-
+      Používá se pouze ve spravovaném režimu se zdrojem stahování. Přepište
+      pokud se změní oficiální Clipsal URL. Ponechte prázdné pro výchozí URL.
+  cgate_download_sha256:
+    name: SHA256 kontrolní součet stažení C-Gate
+    description: >-
+      Volitelný kontrolní součet SHA256 pro ověření staženého C-Gate.
+      Doporučeno při použití vlastní URL pro stažení.
+
+  # ── MQTT (obvykle automaticky detekováno) ──
+  mqtt_host:
+    name: Hostitel MQTT brokera
+    description: >-
+      Automaticky detekován z doplňku Mosquitto — většina uživatelů by měla
+      toto pole ponechat prázdné. Nastavte pouze pokud používáte externího
+      MQTT brokera.
+  mqtt_port:
+    name: Port MQTT brokera
+    description: >-
+      Automaticky detekován z doplňku Mosquitto. Nastavte pouze pro externí
+      brokery. Výchozí: 1883.
+  mqtt_username:
+    name: MQTT uživatelské jméno
+    description: >-
+      Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pro externí
+      brokery nebo pro přepsání přihlašovacích údajů.
+  mqtt_password:
+    name: MQTT heslo
+    description: >-
+      Automaticky detekováno z doplňku Mosquitto. Nastavte pouze pro externí
+      brokery nebo pro přepsání přihlašovacích údajů.
+  mqtt_use_tls:
+    name: Povolit MQTT TLS
+    description: >-
+      Připojit se k MQTT pomocí TLS (mqtts://). Povolte pro brokery vyžadující
+      šifrované připojení (obvykle port 8883). Není potřeba pro standardní
+      doplněk Mosquitto.
+  mqtt_ca_file:
+    name: Soubor CA certifikátu MQTT
+    description: >-
+      Cesta k CA certifikátu pro ověření TLS certifikátu brokera. Obvykle
+      uložen v /ssl/ (např. /ssl/ca.crt). Potřeba pouze pro samopodepsané
+      certifikáty.
+  mqtt_reject_unauthorized:
+    name: Ověřit TLS certifikát MQTT
+    description: >-
+      Odmítnout připojení pokud TLS certifikát brokera nelze ověřit. Ponechte
+      zapnuté pro bezpečnost. Vypněte pouze pro samopodepsané certifikáty bez
+      souboru CA.
+
+  # ── Monitorování C-Bus ──
+  auto_discover_networks:
+    name: Automatická detekce sítí C-Bus
+    description: >-
+      Automaticky detekovat ID sítí z C-Gate při připojení. Detekované sítě
+      se používají pro dotazování a HA Discovery. Vypněte pouze pokud
+      automatická detekce způsobuje problémy. Výchozí: zapnuto.
+  getall_networks:
+    name: Sítě C-Bus ke sledování
+    description: >-
+      ID sítí C-Bus pro dotazování stavů zařízení. Výchozí: 254 (standardní
+      síť C-Bus ve většině instalací). Své ID sítí najdete v C-Gate Toolkit
+      ve stromu projektů.
+  getall_on_start:
+    name: Dotazování všech zařízení při spuštění
+    description: >-
+      Načíst všechny stavy zařízení při spuštění doplňku pro synchronizaci
+      Home Assistant s aktuálním stavem C-Bus. Výchozí: zapnuto.
+  getall_period:
+    name: Interval dotazování (sekundy)
+    description: >-
+      Jak často znovu načítat všechny stavy zařízení. Nižší hodnoty =
+      aktuálnější stav, ale větší provoz na C-Gate. Výchozí: 3600 (1 hodina).
+  getall_app_periods:
+    name: Intervaly dotazování podle aplikací
+    description: >-
+      Přepsat interval dotazování pro konkrétní aplikace C-Bus. Každý záznam
+      má app_id (např. "201" pro HVAC) a period_sec (0 pro vypnutí).
+
+  # ── Publikování MQTT ──
+  retain_reads:
+    name: Zachovat stavové zprávy MQTT
+    description: >-
+      Nastavit příznak MQTT retain na stavových zprávách, aby noví odběratelé
+      okamžitě obdrželi poslední známé stavy zařízení. Výchozí: vypnuto.
+  message_interval:
+    name: Interval příkazů (ms)
+    description: >-
+      Minimální prodleva mezi příkazy odeslanými do C-Gate. Zabraňuje zahlcení
+      C-Gate rychlými příkazy. Výchozí: 200ms.
+
+  # ── Home Assistant Discovery ──
+  ha_discovery_prefix:
+    name: Prefix tématu Discovery
+    description: >-
+      Prefix MQTT tématu pro zprávy HA Discovery. Musí odpovídat vašemu
+      prefixu MQTT Discovery v Home Assistant. Výchozí: homeassistant.
+  ha_discovery_networks:
+    name: Sítě Discovery
+    description: >-
+      ID sítí C-Bus ke skenování pro objevování zařízení. Pokud je prázdné,
+      použijí se sítě z „Sítě C-Bus ke sledování". Výchozí: 254.
+  ha_discovery_cover_app_id:
+    name: ID aplikace pro kryty
+    description: >-
+      ID aplikace C-Bus pro kryty (žaluzie, rolety, garážová vrata). Běžná
+      hodnota: 203 (Enable Control). Ponechte prázdné pro přeskočení detekce
+      krytů.
+  ha_discovery_cover_tilt_app_id:
+    name: ID aplikace pro náklon krytů
+    description: >-
+      ID aplikace C-Bus pro ovládání náklonu žaluzií. Párováno podle čísla
+      skupiny s kryty. Ponechte prázdné pro přeskočení náklonu.
+  ha_discovery_switch_app_id:
+    name: ID aplikace pro spínače
+    description: >-
+      ID aplikace C-Bus pro skupiny spínačů. Ponechte prázdné pro přeskočení
+      detekce spínačů.
+  ha_discovery_trigger_app_id:
+    name: ID aplikace pro spouštěče
+    description: >-
+      ID aplikace C-Bus pro skupiny spouštěčů (klávesnice, scény). Běžná
+      hodnota: 202. Ponechte prázdné pro přeskočení detekce spouštěčů.
+  ha_discovery_scene_enabled:
+    name: Povolit entity scén
+    description: >-
+      Vytvořit entitu scény Home Assistant pro každou skupinu spouštěčů,
+      kromě entit událostí a tlačítek. Výchozí: zapnuto.
+  ha_discovery_hvac_app_id:
+    name: ID aplikace HVAC
+    description: >-
+      ID aplikace C-Bus pro HVAC/klimatické zóny. Standardní HVAC aplikace
+      C-Bus: 201. Ponechte prázdné pro přeskočení detekce HVAC.
+  ha_hvac_temperature_unit:
+    name: Jednotka teploty HVAC
+    description: >-
+      Jednotka teploty pro klimatické entity HVAC. C pro stupně Celsia, F pro
+      stupně Fahrenheita. Výchozí: C.
+
+  # ── Diagnostika mostu ──
   ha_bridge_diagnostics_enabled:
-    name: Enable Bridge Diagnostics
-    description: Publish bridge health entities (ready state, connection status,
-      queue depth) using Home Assistant MQTT Discovery.
+    name: Povolit diagnostiku mostu
+    description: >-
+      Publikovat entity zdraví mostu (stav připravenosti, připojení, hloubka
+      fronty) do Home Assistant. Výchozí: zapnuto.
   ha_bridge_diagnostics_interval_sec:
-    name: Diagnostics Update Interval (seconds)
-    description: How often bridge diagnostic entity states are refreshed. Lower
-      values update faster but increase MQTT traffic.
+    name: Interval diagnostiky (sekundy)
+    description: >-
+      Jak často se obnovují stavy diagnostických entit mostu. Výchozí: 60.
+
+  # ── Detekce neaktivních zařízení ──
+  stale_device_detection_enabled:
+    name: Povolit detekci neaktivních zařízení
+    description: >-
+      Detekovat zařízení C-Bus, která přestala hlásit stav, a publikovat
+      varovný senzor. Výchozí: zapnuto.
+  stale_device_threshold_hours:
+    name: Práh neaktivity zařízení (hodiny)
+    description: >-
+      Počet hodin bez aktualizace stavu, po kterém je zařízení považováno za
+      neaktivní. Výchozí: 24.
+  stale_device_check_interval_sec:
+    name: Interval kontroly neaktivity (sekundy)
+    description: >-
+      Jak často kontrolovat neaktivní zařízení. Výchozí: 3600 (1 hodina).
+
+  # ── Pokročilé: Fond připojení ──
+  connection_pool_size:
+    name: Velikost fondu připojení
+    description: >-
+      Počet paralelních TCP připojení k C-Gate. Zvyšte pro instalace s vysokou
+      propustností, snižte na 1 pro starší C-Gate. Výchozí: 3.
+  connection_health_check_interval_sec:
+    name: Interval kontroly zdraví (sekundy)
+    description: >-
+      Jak často ověřovat, zda jsou připojení C-Gate v pořádku. Výchozí: 30.
+  connection_keep_alive_interval_sec:
+    name: Interval udržování připojení (sekundy)
+    description: >-
+      Jak často pingovat připojení C-Gate. Zabraňuje tichému přerušení TCP.
+      Výchozí: 60.
   cover_ramp_duration_sec:
-    name: "Cover Ramp Duration (seconds)"
-    description: "How long (in seconds) a cover position command is expected to take to complete. The bridge publishes estimated intermediate positions during this window so Home Assistant shows smooth movement. Default: 5."
+    name: Doba přesunu krytu (sekundy)
+    description: >-
+      Očekávaná doba pro úplné otevření/zavření krytu. Most publikuje
+      odhadované pozice během tohoto okna. Výchozí: 5.
+
+  # ── Pokročilé: Soubor popisků a Web API ──
+  cbus_label_file:
+    name: Vlastní soubor popisků
+    description: >-
+      Cesta k souboru JSON s vlastními názvy zařízení. Automaticky detekováno
+      z běžných cest pokud není nastaveno. Soubor je sledován pro změny.
+  web_api_key:
+    name: Klíč Web API
+    description: >-
+      Klíč API pro operace zápisu v editoru popisků. Nastavte pokud
+      zpřístupňujete port 8080 mimo HA ingress.
+  web_allow_unauthenticated_mutations:
+    name: Povolit neautentizované webové zápisy (nebezpečné)
+    description: >-
+      Povolit koncové body zápisu bez klíče API. Ponechte vypnuté, pokud plně
+      nedůvěřujete síťovému přístupu k tomuto doplňku.
+  web_allowed_origins:
+    name: Povolené webové zdroje (CORS)
+    description: >-
+      Seznam povolených zdrojů CORS pro přístup z prohlížeče. Zadejte úplné
+      zdroje jako https://ha.example.com. Ponechte prázdné pro zakázání
+      přístupu mezi zdroji.
+  web_mutation_rate_limit_per_minute:
+    name: Limit rychlosti webových zápisů
+    description: >-
+      Maximální počet mutujících API požadavků za minutu na klienta.
+      Výchozí: 120.

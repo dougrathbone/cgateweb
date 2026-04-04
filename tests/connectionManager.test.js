@@ -218,6 +218,29 @@ describe('ConnectionManager', () => {
         });
     });
 
+    describe('connectionAdded recovery', () => {
+        it('should re-check allConnected when connectionAdded fires after pool recovery', async () => {
+            const allConnectedSpy = jest.fn();
+            connectionManager.on('allConnected', allConnectedSpy);
+
+            // Start everything so allConnected fires once
+            await connectionManager.start();
+            await new Promise(resolve => process.nextTick(resolve));
+            expect(allConnectedSpy).toHaveBeenCalledTimes(1);
+
+            // Simulate all connections going unhealthy
+            mockConnections.commandConnectionPool.emit('allConnectionsUnhealthy');
+            expect(connectionManager.allConnected).toBe(false);
+
+            // Simulate a connection recovering via connectionAdded
+            mockConnections.commandConnectionPool.emit('connectionAdded');
+
+            // Should re-emit allConnected since MQTT and event are still up
+            expect(allConnectedSpy).toHaveBeenCalledTimes(2);
+            expect(connectionManager.isAllConnected).toBe(true);
+        });
+    });
+
     describe('isAllConnected getter', () => {
         it('should return current connection state', async () => {
             expect(connectionManager.isAllConnected).toBe(false);

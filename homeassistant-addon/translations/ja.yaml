@@ -1,111 +1,272 @@
 configuration:
-  cgate_host:
-    name: C-Gate ホスト
-    description: C-Gate サーバーの IP アドレスまたはホスト名。マネージドモードでは 127.0.0.1
-      に設定し、リモートモードではリモートサーバーのアドレスを 設定してください。
-  cgate_port:
-    name: C-Gate コマンドポート
-    description: C-Gate コマンド接続用の TCP ポート。C-Gate のデフォルトコマンド ポートは 20023 です。
-  cgate_event_port:
-    name: C-Gate イベントポート
-    description: C-Gate イベント接続用の TCP ポート。C-Gate のデフォルトイベント ポートは 20025 です。このポートは
-      C-Bus デバイスからのリアルタイム 更新を受信します。
-  cgate_project:
-    name: C-Gate プロジェクト名
-    description: C-Gate で設定された C-Bus プロジェクトの名前（例：HOME）。
-  mqtt_host:
-    name: MQTT ブローカーホスト
-    description: Mosquitto アドオンから自動検出されます。Home Assistant の Mosquitto アドオンではなく外部 MQTT
-      ブローカーを使用する場合のみ 設定してください。
-  mqtt_port:
-    name: MQTT ブローカーポート
-    description: Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを 使用する場合のみ設定してください（デフォルトポートは 1883）。
-  mqtt_username:
-    name: MQTT ユーザー名
-    description: Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを
-      使用する場合、または資格情報を上書きする必要がある場合のみ 設定してください。
-  mqtt_password:
-    name: MQTT パスワード
-    description: Mosquitto アドオンから自動検出されます。外部 MQTT ブローカーを
-      使用する場合、または資格情報を上書きする必要がある場合のみ 設定してください。
-  getall_networks:
-    name: 監視する C-Bus ネットワーク
-    description: デバイスの状態をポーリングする C-Bus ネットワーク ID のリスト。 デフォルトネットワークは 254
-      で、ほとんどの環境で標準的な C-Bus ネットワーク番号です。ネットワーク ID を確認するには、C-Gate Toolkit
-      アプリケーションを開き、プロジェクトを展開して、その下に 表示されるネットワーク番号を確認してください。Clipsal C-Bus Toolkit
-      (CBAT) のプロジェクト > ネットワークリストでも確認できます。
-  getall_on_start:
-    name: 起動時にポーリング
-    description: アドオンの起動時にすべてのデバイスの状態を要求します。 Home Assistant をすべての C-Bus
-      デバイスの現在の状態と同期する のに便利です。
-  getall_period:
-    name: ポーリング間隔（秒）
-    description: すべてのデバイスの状態を要求する頻度（秒単位）。値を小さくすると 最新の状態を取得できますが、C-Gate
-      へのネットワークトラフィックが 増加します。
-  retain_reads:
-    name: MQTT 状態メッセージを保持
-    description: 状態メッセージに MQTT 保持フラグを設定します。有効にすると、新しい MQTT
-      サブスクライバーは各デバイスの最後の既知の状態をすぐに 受信します。
-  message_interval:
-    name: コマンド間隔（ミリ秒）
-    description: C-Gate に送信するコマンド間の最小遅延（ミリ秒単位）。高速な コマンドで C-Gate が過負荷になるのを防ぎます。デフォルトは
-      200ms です。
-  log_level:
-    name: ログレベル
-    description: ログの詳細度。トラブルシューティングには debug、通常運用には info、 警告のみは warn、エラーのみは error を使用してください。
-  ha_discovery_enabled:
-    name: Home Assistant Discovery を有効化
-    description: MQTT Discovery を使用して C-Bus デバイスを Home Assistant に
-      自動登録します。手動設定なしでデバイスがエンティティとして 表示されます。
-  ha_discovery_prefix:
-    name: Discovery トピックプレフィックス
-    description: Home Assistant Discovery メッセージの MQTT トピックプレフィックス。 Home Assistant の
-      MQTT Discovery プレフィックスと一致させる必要が あります（デフォルト：homeassistant）。
-  ha_discovery_networks:
-    name: Discovery ネットワーク
-    description: デバイス検出のためにスキャンする C-Bus ネットワーク ID。デフォルト は 254（標準的な C-Bus
-      ネットワーク）です。空の場合、「監視する C-Bus ネットワーク」に設定されたネットワークにフォールバックします。
-      ほとんどの環境ではネットワークは 1 つだけです。
-  ha_discovery_cover_app_id:
-    name: カバーアプリケーション ID
-    description: カバー（ブラインド、シャッター、ガレージドア）として扱う C-Bus アプリケーション ID。一般的な値は 203（Enable
-      Control）です。 カバーの検出を無効にするには空のままにしてください。
-  ha_discovery_switch_app_id:
-    name: スイッチアプリケーション ID
-    description: スイッチとして扱う C-Bus アプリケーション ID。スイッチの検出を 無効にするには空のままにしてください。
-  ha_discovery_trigger_app_id:
-    name: Trigger App ID
-    description: C-Bus application ID for trigger groups (keypads, scenes). Default
-      is 202. Leave empty to disable trigger discovery.
+  # ── 必須フィールド（常に表示）──
   cgate_mode:
     name: C-Gate モード
-    description: C-Gate の提供方法。"remote" はネットワーク上の別の場所で動作して いる C-Gate
-      サーバーに接続します。"managed" はこのアドオン内で C-Gate をローカルにダウンロードして実行します（Java と C-Bus
-      シリアルインターフェースが必要です）。
+    description: >-
+      C-Gate の提供方法。"remote" はネットワーク上の別の場所で動作している
+      C-Gate サーバーに接続します（最も一般的）。"managed" はこのアドオン内で
+      C-Gate をローカルにダウンロードして実行します。
+  cgate_host:
+    name: C-Gate ホスト（必須）
+    description: >-
+      C-Gate サーバーの IP アドレスまたはホスト名。リモートモードでは C-Gate
+      を実行しているマシンのアドレスを入力してください。マネージドモードでは
+      127.0.0.1 を使用してください。
+  cgate_project:
+    name: C-Gate プロジェクト名（必須）
+    description: >-
+      C-Gate で設定された C-Bus プロジェクトの名前（例：HOME、MYHOUSE）。
+      C-Gate Toolkit のプロジェクトツリーで確認できます。
+  ha_discovery_enabled:
+    name: Home Assistant Discovery を有効化
+    description: >-
+      MQTT Discovery を使用して C-Bus デバイスを Home Assistant に自動登録
+      します。ほとんどのユーザーはこれを有効のままにしてください。手動の
+      YAML 設定なしでデバイスがエンティティとして表示されます。
+  log_level:
+    name: ログレベル
+    description: >-
+      ログの詳細度。通常運用には "info"、接続やディスカバリの問題を
+      トラブルシューティングするには "debug" を使用してください。
+
+  # ── C-Gate 接続（オプション、適切なデフォルト値あり）──
+  cgate_port:
+    name: C-Gate コマンドポート
+    description: >-
+      C-Gate コマンド接続用の TCP ポート。C-Gate が非標準ポートを使用して
+      いる場合のみ変更してください。デフォルト：20023。
+  cgate_event_port:
+    name: C-Gate イベントポート
+    description: >-
+      C-Gate イベント接続用の TCP ポート。C-Gate が非標準ポートを使用して
+      いる場合のみ変更してください。デフォルト：20025。
+
+  # ── C-Gate マネージドモード ──
   cgate_install_source:
     name: C-Gate インストールソース
-    description: C-Gate モードが "managed" の場合のみ使用されます。"download" は 初回起動時に公式 Clipsal URL
-      から C-Gate を自動ダウンロードします。 "upload" は /share/cgate/ に配置した C-Gate zip ファイルを
-      使用します。
+    description: >-
+      マネージドモードでのみ使用されます。"download" は C-Gate を自動的に
+      ダウンロードします。"upload" は /share/cgate/ に配置した zip ファイル
+      を使用します。
   cgate_download_url:
     name: C-Gate ダウンロード URL
-    description: C-Gate モードが "managed" でインストールソースが "download" の 場合のみ使用されます。公式
-      Clipsal ダウンロード先が変更された場合に デフォルト URL を上書きできます。デフォルト URL を使用するには 空のままにしてください。
-  cbus_label_file:
-    name: Custom Label File
-    description: Path to a JSON file with custom device names for C-Bus groups.
-      Generated by the import tool or the built-in label editor. Labels from
-      this file take priority over names from C-Gate. Auto-detected from common
-      paths if not set. The file is watched and changes are applied
-      automatically.
+    description: >-
+      ダウンロードソースのマネージドモードでのみ使用されます。公式 Clipsal
+      ダウンロード URL が変更された場合に上書きします。デフォルト URL を
+      使用するには空のままにしてください。
+  cgate_download_sha256:
+    name: C-Gate ダウンロード SHA256
+    description: >-
+      C-Gate ダウンロードを検証するためのオプションの SHA256 チェックサム。
+      カスタムダウンロード URL を使用する場合に推奨されます。
+
+  # ── MQTT（通常は自動検出）──
+  mqtt_host:
+    name: MQTT ブローカーホスト
+    description: >-
+      Mosquitto アドオンから自動検出されます — ほとんどのユーザーは空のまま
+      にしてください。外部 MQTT ブローカーを使用する場合のみ設定してください。
+  mqtt_port:
+    name: MQTT ブローカーポート
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部ブローカーの場合のみ設定
+      してください。デフォルト：1883。
+  mqtt_username:
+    name: MQTT ユーザー名
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部ブローカーの場合または
+      資格情報を上書きする場合のみ設定してください。
+  mqtt_password:
+    name: MQTT パスワード
+    description: >-
+      Mosquitto アドオンから自動検出されます。外部ブローカーの場合または
+      資格情報を上書きする場合のみ設定してください。
+  mqtt_use_tls:
+    name: MQTT TLS を有効化
+    description: >-
+      TLS (mqtts://) を使用して MQTT に接続します。暗号化された接続を
+      必要とするブローカーで有効にしてください（通常ポート 8883）。標準の
+      Mosquitto アドオンでは不要です。
+  mqtt_ca_file:
+    name: MQTT CA 証明書ファイル
+    description: >-
+      ブローカーの TLS 証明書を検証するための CA 証明書のパス。通常
+      /ssl/ に保存されます（例：/ssl/ca.crt）。自己署名証明書の場合のみ
+      必要です。
+  mqtt_reject_unauthorized:
+    name: MQTT TLS 証明書を検証
+    description: >-
+      ブローカーの TLS 証明書を検証できない場合に接続を拒否します。
+      セキュリティのために有効のままにしてください。CA ファイルのない
+      自己署名証明書の場合のみ無効にしてください。
+
+  # ── C-Bus モニタリング ──
+  auto_discover_networks:
+    name: C-Bus ネットワークを自動検出
+    description: >-
+      接続時に C-Gate からネットワーク ID を自動的に検出します。検出された
+      ネットワークはポーリングと HA Discovery に使用されます。自動検出が
+      問題を起こす場合のみ無効にしてください。デフォルト：有効。
+  getall_networks:
+    name: 監視する C-Bus ネットワーク
+    description: >-
+      デバイス状態をポーリングする C-Bus ネットワーク ID。デフォルト：254
+      （ほとんどの環境での標準 C-Bus ネットワーク）。C-Gate Toolkit の
+      プロジェクトツリーでネットワーク ID を確認できます。
+  getall_on_start:
+    name: 起動時にすべてのデバイスをポーリング
+    description: >-
+      アドオン起動時にすべてのデバイス状態を要求し、Home Assistant を
+      現在の C-Bus 状態と同期します。デフォルト：有効。
+  getall_period:
+    name: ポーリング間隔（秒）
+    description: >-
+      すべてのデバイス状態を再ポーリングする頻度。低い値 = より新しい
+      状態ですが C-Gate トラフィックが増加します。デフォルト：3600
+      （1 時間）。
+  getall_app_periods:
+    name: アプリごとのポーリング間隔
+    description: >-
+      特定の C-Bus アプリケーションのポーリング間隔を上書きします。
+      各エントリには app_id（例："201" は HVAC）と period_sec（0 で
+      無効化）があります。
+
+  # ── MQTT パブリッシング ──
+  retain_reads:
+    name: MQTT 状態メッセージを保持
+    description: >-
+      状態メッセージに MQTT 保持フラグを設定し、新しいサブスクライバーが
+      最後の既知のデバイス状態をすぐに受信できるようにします。デフォルト：
+      無効。
+  message_interval:
+    name: コマンド間隔（ミリ秒）
+    description: >-
+      C-Gate に送信するコマンド間の最小遅延。高速なコマンドで C-Gate が
+      過負荷になるのを防ぎます。デフォルト：200ms。
+
+  # ── Home Assistant Discovery ──
+  ha_discovery_prefix:
+    name: Discovery トピックプレフィックス
+    description: >-
+      HA Discovery メッセージの MQTT トピックプレフィックス。Home
+      Assistant の MQTT Discovery プレフィックスと一致させる必要が
+      あります。デフォルト：homeassistant。
+  ha_discovery_networks:
+    name: Discovery ネットワーク
+    description: >-
+      デバイス検出のためにスキャンする C-Bus ネットワーク ID。空の場合、
+      「監視する C-Bus ネットワーク」のネットワークを使用します。
+      デフォルト：254。
+  ha_discovery_cover_app_id:
+    name: カバーアプリケーション ID
+    description: >-
+      カバー（ブラインド、シャッター、ガレージドア）用の C-Bus アプリ
+      ID。一般的な値：203（Enable Control）。カバー検出をスキップするには
+      空のままにしてください。
+  ha_discovery_cover_tilt_app_id:
+    name: カバー傾斜アプリケーション ID
+    description: >-
+      ベネチアンブラインドの傾斜制御用の C-Bus アプリ ID。グループ番号で
+      カバーとペアリングされます。傾斜をスキップするには空のままにして
+      ください。
+  ha_discovery_switch_app_id:
+    name: スイッチアプリケーション ID
+    description: >-
+      スイッチグループ用の C-Bus アプリ ID。スイッチ検出をスキップするには
+      空のままにしてください。
+  ha_discovery_trigger_app_id:
+    name: トリガーアプリケーション ID
+    description: >-
+      トリガーグループ（キーパッド、シーン）用の C-Bus アプリ ID。
+      一般的な値：202。トリガー検出をスキップするには空のままにして
+      ください。
+  ha_discovery_scene_enabled:
+    name: シーンエンティティを有効化
+    description: >-
+      各トリガーグループに対して、イベントおよびボタンエンティティに加えて
+      Home Assistant シーンエンティティを作成します。デフォルト：有効。
+  ha_discovery_hvac_app_id:
+    name: HVAC アプリケーション ID
+    description: >-
+      HVAC/空調ゾーン用の C-Bus アプリ ID。標準 C-Bus HVAC アプリ：201。
+      HVAC 検出をスキップするには空のままにしてください。
+  ha_hvac_temperature_unit:
+    name: HVAC 温度単位
+    description: >-
+      HVAC 空調エンティティの温度単位。C は摂氏、F は華氏。デフォルト：C。
+
+  # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:
-    name: Enable Bridge Diagnostics
-    description: Publish bridge health entities (ready state, connection status,
-      queue depth) using Home Assistant MQTT Discovery.
+    name: Bridge 診断を有効化
+    description: >-
+      Bridge ヘルスエンティティ（準備状態、接続、キュー深度）を Home
+      Assistant に公開します。デフォルト：有効。
   ha_bridge_diagnostics_interval_sec:
-    name: Diagnostics Update Interval (seconds)
-    description: How often bridge diagnostic entity states are refreshed. Lower
-      values update faster but increase MQTT traffic.
+    name: 診断間隔（秒）
+    description: >-
+      Bridge 診断状態の更新頻度。デフォルト：60。
+
+  # ── 古いデバイスの検出 ──
+  stale_device_detection_enabled:
+    name: 古いデバイスの検出を有効化
+    description: >-
+      報告を停止した C-Bus デバイスを検出し、警告センサーを公開します。
+      デフォルト：有効。
+  stale_device_threshold_hours:
+    name: 古いデバイスの閾値（時間）
+    description: >-
+      デバイスが古いと見なされるまでの状態更新のない時間数。デフォルト：24。
+  stale_device_check_interval_sec:
+    name: 古いデバイスのチェック間隔（秒）
+    description: >-
+      古いデバイスをスキャンする頻度。デフォルト：3600（1 時間）。
+
+  # ── 高度：接続プール ──
+  connection_pool_size:
+    name: 接続プールサイズ
+    description: >-
+      C-Gate への並列 TCP 接続数。高スループットのインストールでは増加し、
+      古い C-Gate では 1 に減らしてください。デフォルト：3。
+  connection_health_check_interval_sec:
+    name: ヘルスチェック間隔（秒）
+    description: >-
+      C-Gate 接続が正常かどうかを確認する頻度。デフォルト：30。
+  connection_keep_alive_interval_sec:
+    name: Keep-Alive 間隔（秒）
+    description: >-
+      C-Gate 接続を ping する頻度。サイレント TCP 切断を防止します。
+      デフォルト：60。
   cover_ramp_duration_sec:
-    name: "Cover Ramp Duration (seconds)"
-    description: "How long (in seconds) a cover position command is expected to take to complete. The bridge publishes estimated intermediate positions during this window so Home Assistant shows smooth movement. Default: 5."
+    name: カバー昇降時間（秒）
+    description: >-
+      カバーが完全に開閉するまでの予想時間。Bridge はこのウィンドウ中に
+      推定位置を公開します。デフォルト：5。
+
+  # ── 高度：ラベルファイルと Web API ──
+  cbus_label_file:
+    name: カスタムラベルファイル
+    description: >-
+      カスタムデバイス名を含む JSON ファイルのパス。未設定の場合、一般的な
+      パスから自動検出されます。ファイルは変更が監視されます。
+  web_api_key:
+    name: Web API キー
+    description: >-
+      ラベルエディタでの書き込み操作用の API キー。ポート 8080 を HA
+      ingress 外に公開する場合に設定してください。
+  web_allow_unauthenticated_mutations:
+    name: 未認証の Web 書き込みを許可（安全でない）
+    description: >-
+      API キーなしで書き込みエンドポイントを許可します。このアドオンへの
+      ネットワークアクセスを完全に信頼している場合を除き、無効のままに
+      してください。
+  web_allowed_origins:
+    name: 許可された Web オリジン（CORS）
+    description: >-
+      ブラウザアクセス用の CORS 許可リスト。https://ha.example.com のような
+      完全なオリジンを入力してください。クロスオリジンアクセスを無効にするには
+      空のままにしてください。
+  web_mutation_rate_limit_per_minute:
+    name: Web 書き込みレート制限
+    description: >-
+      クライアントあたりの 1 分間の最大変更 API リクエスト数。デフォルト：
+      120。
