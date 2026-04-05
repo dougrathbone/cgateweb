@@ -441,7 +441,7 @@ class WebServer {
         let haAreas = [];
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
         if (!supervisorToken) {
-            this.logger.debug('SUPERVISOR_TOKEN not available; skipping HA area fetch');
+            this.logger.warn('SUPERVISOR_TOKEN not available; skipping HA area fetch');
         }
         if (supervisorToken) {
             const now = Date.now();
