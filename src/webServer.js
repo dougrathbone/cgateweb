@@ -454,7 +454,7 @@ class WebServer {
                 try {
                     const http = require('http');
                     const data = await new Promise((resolve) => {
-                        const req = http.request('http://supervisor/core/api/config/area_registry', {
+                        const req = http.request('http://supervisor/core/api/areas', {
                             method: 'GET',
                             headers: {
                                 'Authorization': `Bearer ${supervisorToken}`,
