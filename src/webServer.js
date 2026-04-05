@@ -467,8 +467,44 @@ class WebServer {
                         req.end();
                     });
                     if (Array.isArray(data)) {
+                        // Fetch floors to resolve floor_id → name
+                        const floorMap = {};
+                        try {
+                            const floorData = await new Promise((resolve2) => {
+                                const fReq = http.request('http://supervisor/core/api/config/floor_registry/list', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Authorization': `Bearer ${supervisorToken}`,
+                                        'Content-Type': 'application/json'
+                                    },
+                                    timeout: 5000
+                                }, (fResp) => {
+                                    let fBody = '';
+                                    fResp.on('data', (chunk) => { fBody += chunk; });
+                                    fResp.on('end', () => {
+                                        try { resolve2(JSON.parse(fBody)); } catch { resolve2(null); }
+                                    });
+                                });
+                                fReq.on('error', () => resolve2(null));
+                                fReq.on('timeout', () => { fReq.destroy(); resolve2(null); });
+                                fReq.end();
+                            });
+                            if (Array.isArray(floorData)) {
+                                for (const f of floorData) {
+                                    if (f.floor_id && f.name) floorMap[f.floor_id] = f.name;
+                                }
+                            }
+                        } catch { /* floors not available */ }
+
                         for (const area of data) {
-                            if (area.name) haAreas.push({ id: area.area_id, name: area.name });
+                            if (area.name) {
+                                const entry = { id: area.area_id, name: area.name };
+                                if (area.floor_id && floorMap[area.floor_id]) {
+                                    entry.floor = floorMap[area.floor_id];
+                                }
+                                if (area.icon) entry.icon = area.icon;
+                                haAreas.push(entry);
+                            }
                         }
                         this._haAreasCache = haAreas;
                         this._haAreasCacheTime = now;
@@ -486,7 +522,10 @@ class WebServer {
             const key = ha.name.toLowerCase();
             if (!seen.has(key)) {
                 seen.add(key);
-                merged.push({ name: ha.name, source: 'homeassistant' });
+                const entry = { name: ha.name, source: 'homeassistant' };
+                if (ha.floor) entry.floor = ha.floor;
+                if (ha.icon) entry.icon = ha.icon;
+                merged.push(entry);
             }
         }
         for (const name of labelAreas) {
