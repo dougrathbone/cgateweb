@@ -425,7 +425,9 @@ class WebServer {
     }
 
     async _handleGetAreas(_req, res) {
-        this.logger.info('Areas endpoint called. SUPERVISOR_TOKEN present:', !!process.env.SUPERVISOR_TOKEN);
+        const _tokenPresent = !!process.env.SUPERVISOR_TOKEN;
+        const _tokenLen = (process.env.SUPERVISOR_TOKEN || '').length;
+        this.logger.info(`Areas endpoint called. Token present: ${_tokenPresent}, length: ${_tokenLen}`);
         // Collect areas from label file
         const labelAreas = new Set();
         if (this.labelLoader) {
