@@ -1006,7 +1006,8 @@ th.cb-col, td.cb-col {
         updateUndoRedoButtons();
       }
       render();
-      showToast('Saved (' + data.count + ' labels). HA Discovery will update shortly.');
+      var savedCount = data.count || Object.keys(mergedLabels).length;
+      showToast('Saved ' + savedCount + ' label' + (savedCount === 1 ? '' : 's') + '. HA Discovery will update shortly.');
     } catch (e) {
       showToast('Failed to save: ' + e.message, true);
     }
