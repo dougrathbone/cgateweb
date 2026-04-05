@@ -440,6 +440,9 @@ class WebServer {
         // Fetch areas from Home Assistant Supervisor API (cached 30s)
         let haAreas = [];
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
+        if (!supervisorToken) {
+            this.logger.debug('SUPERVISOR_TOKEN not available; skipping HA area fetch');
+        }
         if (supervisorToken) {
             const now = Date.now();
             if (this._haAreasCache && now - this._haAreasCacheTime < 30000) {
@@ -466,6 +469,9 @@ class WebServer {
                         req.on('timeout', () => { req.destroy(); resolve(null); });
                         req.end();
                     });
+                    if (data && !Array.isArray(data)) {
+                        this.logger.warn('Area registry returned unexpected format:', typeof data, JSON.stringify(data).slice(0, 200));
+                    }
                     if (Array.isArray(data)) {
                         // Fetch floors to resolve floor_id → name
                         const floorMap = {};
@@ -509,8 +515,8 @@ class WebServer {
                         this._haAreasCache = haAreas;
                         this._haAreasCacheTime = now;
                     }
-                } catch {
-                    // HA API not available (standalone mode)
+                } catch (err) {
+                    this.logger.warn('Failed to fetch HA areas:', err.message || err);
                 }
             }
         }
