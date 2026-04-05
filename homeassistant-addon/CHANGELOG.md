@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-04-05
+
+### Fixed
+- **Area picker**: fetch areas via HA template API (registry endpoint removed in HA 2026.x); dropdown now shows full area names without icons
+- **Save toast**: show actual label count instead of "undefined"
+- **Tab bar scrollbar**: removed spurious scrollbar on tab bar
+
 ## [1.6.0] - 2026-04-05
 
 ### Changed
