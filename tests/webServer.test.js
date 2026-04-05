@@ -266,6 +266,36 @@ describe('WebServer', () => {
             expect(res.status).toBe(200);
             expect(res.headers['content-type']).toContain('text/html');
         });
+
+        it('should contain all four tab buttons', async () => {
+            const res = await request('GET', '/');
+            expect(res.body).toContain('data-tab="status"');
+            expect(res.body).toContain('data-tab="labels"');
+            expect(res.body).toContain('data-tab="events"');
+            expect(res.body).toContain('data-tab="import"');
+        });
+
+        it('should contain all four tab panels', async () => {
+            const res = await request('GET', '/');
+            expect(res.body).toContain('id="tabStatus"');
+            expect(res.body).toContain('id="tabLabels"');
+            expect(res.body).toContain('id="tabEvents"');
+            expect(res.body).toContain('id="tabImport"');
+        });
+
+        it('should have status tab active by default', async () => {
+            const res = await request('GET', '/');
+            // The status tab button should have class="tab-btn active"
+            expect(res.body).toMatch(/tab-btn active[^"]*" data-tab="status"/);
+            // The status panel should have class="tab-panel active"
+            expect(res.body).toMatch(/tab-panel active[^"]*" id="tabStatus"/);
+        });
+
+        it('should persist active tab via localStorage in client JS', async () => {
+            const res = await request('GET', '/');
+            expect(res.body).toContain("localStorage.getItem('activeTab')");
+            expect(res.body).toContain("localStorage.setItem('activeTab'");
+        });
     });
 
     describe('Ingress base path', () => {
