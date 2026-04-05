@@ -1154,7 +1154,7 @@ th.cb-col, td.cb-col {
           '<td class="label-cell"><span class="label-display" data-key="' + esc(k) + '">' + esc(val) + '</span></td>' +
           typeCell +
           '<td><span class="eid-display' + (eid ? ' has-value' : '') + '" data-eid-key="' + esc(k) + '">' + (eid ? esc(eid) : '<span style="color:var(--text-muted);font-style:italic">auto</span>') + '</span></td>' +
-          '<td style="min-width:80px;max-width:130px"><span class="area-display' + (area ? ' has-value' : '') + '" data-area-key="' + esc(k) + '"' + areaAttr + '>' + areaContent + '</span></td>' +
+          '<td style="min-width:100px;max-width:180px"><span class="area-display' + (area ? ' has-value' : '') + '" data-area-key="' + esc(k) + '"' + areaAttr + '>' + areaContent + '</span></td>' +
           '<td style="text-align:center"><input type="checkbox" class="exclude-cb" data-excl-key="' + esc(k) + '"' + (excl ? ' checked' : '') + '></td>' +
           '<td class="source-cell">' + (rowDirty ? '<span class="badge badge-custom">unsaved</span>' : '') + '</td>' +
           '<td class="actions-cell"><button class="small danger" data-delete="' + esc(k) + '">Remove</button></td>' +
@@ -1168,7 +1168,7 @@ th.cb-col, td.cb-col {
         '<th data-sort="label">Label' + sortArrow('label') + '</th>' +
         '<th data-sort="type">Type' + sortArrow('type') + '</th>' +
         '<th data-sort="entity_id">Entity ID' + sortArrow('entity_id') + '</th>' +
-        '<th class="no-sort" style="min-width:80px;max-width:130px">Area</th>' +
+        '<th class="no-sort" style="min-width:100px;max-width:180px">Area</th>' +
         '<th class="no-sort">Excl</th>' +
         '<th class="no-sort"></th>' +
         '<th class="no-sort"></th>' +
@@ -1632,6 +1632,8 @@ th.cb-col, td.cb-col {
 
   // --- Section toggle ---
   document.querySelectorAll('.section-header').forEach(function(hdr) {
+    // Skip the events section — it has its own toggle handler with localStorage persistence
+    if (hdr.dataset.section === 'events') return;
     hdr.addEventListener('click', function() {
       var body = hdr.nextElementSibling;
       var chevron = hdr.querySelector('.chevron');
