@@ -286,7 +286,10 @@ td.label-cell { position: relative; }
 .area-input::placeholder { color: var(--primary); opacity: 0.7; }
 .area-dropdown {
   position: absolute;
-  left: -8px; right: -8px; top: calc(100% + 4px);
+  left: -8px; top: calc(100% + 4px);
+  min-width: 220px;
+  width: max-content;
+  max-width: 320px;
   z-index: 200;
   max-height: 260px;
   overflow-y: auto;
@@ -298,10 +301,7 @@ td.label-cell { position: relative; }
   padding: 4px 0;
 }
 .area-dropdown li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   font-size: 0.85rem;
   border-radius: 4px;
@@ -311,33 +311,9 @@ td.label-cell { position: relative; }
 .area-dropdown li:hover {
   background: var(--surface-alt);
 }
-.area-dropdown li .area-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface-alt);
-  border-radius: 6px;
-  font-size: 1rem;
-  flex-shrink: 0;
-  color: var(--primary);
-}
-.area-dropdown li .area-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
 .area-dropdown li .area-name {
   font-weight: 500;
   color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.area-dropdown li .area-floor {
-  font-size: 0.75rem;
-  color: var(--primary);
 }
 .area-dropdown .area-new-hint {
   padding: 6px 12px;
@@ -1398,11 +1374,8 @@ th.cb-col, td.cb-col {
         });
         var exactMatch = matches.length === 1 && matches[0].name.toLowerCase() === filt;
         var html = matches.map(function(a, i) {
-          var floorHtml = a.floor ? '<span class="area-floor">' + esc(a.floor) + '</span>' : '';
-          var iconChar = a.source === 'homeassistant' ? '&#127968;' : '&#9654;';
           return '<li data-area-val="' + esc(a.name) + '"' + (i === activeIndex ? ' class="active"' : '') + '>' +
-            '<span class="area-icon">' + iconChar + '</span>' +
-            '<span class="area-info"><span class="area-name">' + esc(a.name) + '</span>' + floorHtml + '</span></li>';
+            '<span class="area-name">' + esc(a.name) + '</span></li>';
         }).join('');
         // Show "create new" hint if typed text doesn't exactly match any area
         if (filt && !exactMatch && matches.every(function(a) { return a.name.toLowerCase() !== filt; })) {
