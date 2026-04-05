@@ -472,9 +472,7 @@ class WebServer {
                         req.on('timeout', () => { req.destroy(); resolve(null); });
                         req.end();
                     });
-                    if (data && !Array.isArray(data)) {
-                        this.logger.warn('Area registry returned unexpected format:', typeof data, JSON.stringify(data).slice(0, 200));
-                    }
+                    this.logger.info(`Area registry response: type=${typeof data}, isArray=${Array.isArray(data)}, length=${Array.isArray(data) ? data.length : 'n/a'}, preview=${JSON.stringify(data).slice(0, 300)}`);
                     if (Array.isArray(data)) {
                         // Fetch floors to resolve floor_id → name
                         const floorMap = {};
