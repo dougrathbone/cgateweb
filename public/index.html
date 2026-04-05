@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>C-Bus Label Editor - cgateweb</title>
+<title>C-Bus Web - cgateweb</title>
 <style>
 :root {
   --bg: #f8f9fa;
@@ -103,26 +103,43 @@ header h1 {
   font-weight: 600;
 }
 
-.section {
+.tab-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 16px;
+  overflow-x: auto;
+}
+.tab-btn {
+  padding: 10px 18px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+  border-radius: 0;
+}
+.tab-btn:hover { color: var(--text); background: none; }
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 600;
+}
+.tab-panel {
+  display: none;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 16px;
   box-shadow: var(--shadow);
+  padding: 14px;
 }
-.section-header {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
-.section-header h2 { font-size: 0.95rem; font-weight: 600; }
-.section-body { padding: 14px; }
-.section-body.collapsed { display: none; }
+.tab-panel.active { display: block; }
 
 .drop-zone {
   border: 2px dashed var(--border);
@@ -396,8 +413,6 @@ button:disabled:hover { background: var(--surface); }
 }
 .empty-state p { margin-bottom: 8px; }
 
-.chevron { transition: transform 0.15s; display: inline-block; }
-.chevron.open { transform: rotate(90deg); }
 
 @media (prefers-color-scheme: dark) {
   .badge-cover { background: #1b2838; color: #74c0fc; }
@@ -563,7 +578,7 @@ th.cb-col, td.cb-col {
 <body>
 <div class="app">
   <header>
-    <h1>C-Bus Label Editor</h1>
+    <h1>C-Bus Web</h1>
     <div class="header-actions">
       <button id="undoBtn" disabled title="Undo (Ctrl/Cmd+Z)">Undo (0)</button>
       <button id="redoBtn" disabled title="Redo (Ctrl/Cmd+Shift+Z)">Redo (0)</button>
@@ -571,19 +586,14 @@ th.cb-col, td.cb-col {
     </div>
   </header>
 
-  <div class="status-bar" id="statusBar">
-    <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
-    <div class="status-item">Custom: <span class="status-value" id="statCustom">-</span></div>
-    <div class="status-item">Overrides: <span class="status-value" id="statOverrides">-</span></div>
-    <div class="status-item">Excluded: <span class="status-value" id="statExcluded">-</span></div>
-    <div class="status-item">Unsaved: <span class="status-value" id="statDirty">0</span></div>
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-btn active" data-tab="status">Status</button>
+    <button class="tab-btn" data-tab="labels">Device Labels</button>
+    <button class="tab-btn" data-tab="events">Live Events</button>
+    <button class="tab-btn" data-tab="import">Import / Export</button>
   </div>
 
-  <div class="section">
-    <div class="section-header" data-section="runtime">
-      <h2><span class="chevron open" id="runtimeChevron">&#9654;</span> Runtime Status</h2>
-    </div>
-    <div class="section-body" id="runtimeBody">
+  <div class="tab-panel active" id="tabStatus">
       <div class="diag-grid">
         <div class="diag-item"><div class="diag-label">Version</div><div class="diag-value" id="diagVersion">-</div></div>
         <div class="diag-item"><div class="diag-label">Uptime</div><div class="diag-value" id="diagUptime">-</div></div>
@@ -596,14 +606,16 @@ th.cb-col, td.cb-col {
         <div class="diag-item"><div class="diag-label">Cmd Pool Healthy</div><div class="diag-value" id="diagHealthy">-</div></div>
         <div class="diag-item"><div class="diag-label">Queue Depth</div><div class="diag-value" id="diagQueueDepth">-</div></div>
       </div>
+    <div class="status-bar" id="statusBar" style="margin-top:14px">
+      <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
+      <div class="status-item">Custom: <span class="status-value" id="statCustom">-</span></div>
+      <div class="status-item">Overrides: <span class="status-value" id="statOverrides">-</span></div>
+      <div class="status-item">Excluded: <span class="status-value" id="statExcluded">-</span></div>
+      <div class="status-item">Unsaved: <span class="status-value" id="statDirty">0</span></div>
     </div>
   </div>
 
-  <div class="section">
-    <div class="section-header" data-section="import">
-      <h2><span class="chevron open" id="importChevron">&#9654;</span> Import from Clipsal Toolkit</h2>
-    </div>
-    <div class="section-body" id="importBody">
+  <div class="tab-panel" id="tabImport">
       <div class="drop-zone" id="dropZone">
         <p>Drag and drop a .cbz or .xml file here, or click to browse</p>
         <button>Choose File</button>
@@ -619,14 +631,9 @@ th.cb-col, td.cb-col {
         <button id="exportXmlBtn" style="margin-left:8px">&#11015; Export project XML</button>
       </div>
       <div class="import-preview" id="importPreview"></div>
-    </div>
   </div>
 
-  <div class="section">
-    <div class="section-header" data-section="labels">
-      <h2><span class="chevron open" id="labelsChevron">&#9654;</span> Labels</h2>
-    </div>
-    <div class="section-body" id="labelsBody">
+  <div class="tab-panel" id="tabLabels">
       <div class="toolbar">
         <input type="text" class="search-input" id="searchInput" placeholder="Search by address, label, entity ID, or area...">
         <select class="filter-select" id="typeFilter">
@@ -679,14 +686,9 @@ th.cb-col, td.cb-col {
         </select>
         <button id="addBtn">Add</button>
       </div>
-    </div>
   </div>
 
-  <div class="section">
-    <div class="section-header" data-section="events">
-      <h2><span class="chevron" id="eventsChevron">&#9654;</span> Live Events</h2>
-    </div>
-    <div class="section-body collapsed" id="eventsBody">
+  <div class="tab-panel" id="tabEvents">
       <div class="event-log-toolbar">
         <button id="eventToggleBtn">&#9654; Live</button>
         <button id="eventClearBtn">Clear</button>
@@ -708,7 +710,6 @@ th.cb-col, td.cb-col {
           <tbody id="eventLogBody"></tbody>
         </table>
       </div>
-    </div>
   </div>
 </div>
 
@@ -1630,17 +1631,28 @@ th.cb-col, td.cb-col {
     document.body.removeChild(a);
   });
 
-  // --- Section toggle ---
-  document.querySelectorAll('.section-header').forEach(function(hdr) {
-    // Skip the events section — it has its own toggle handler with localStorage persistence
-    if (hdr.dataset.section === 'events') return;
-    hdr.addEventListener('click', function() {
-      var body = hdr.nextElementSibling;
-      var chevron = hdr.querySelector('.chevron');
-      body.classList.toggle('collapsed');
-      chevron.classList.toggle('open');
+  // --- Tab switching ---
+  (function() {
+    var tabMap = {
+      status: document.getElementById('tabStatus'),
+      labels: document.getElementById('tabLabels'),
+      events: document.getElementById('tabEvents'),
+      import: document.getElementById('tabImport')
+    };
+    var tabs = document.querySelectorAll('.tab-btn');
+    var savedTab = localStorage.getItem('activeTab') || 'status';
+    function switchTab(name) {
+      tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.tab === name); });
+      for (var key in tabMap) {
+        tabMap[key].classList.toggle('active', key === name);
+      }
+      localStorage.setItem('activeTab', name);
+    }
+    tabs.forEach(function(t) {
+      t.addEventListener('click', function() { switchTab(t.dataset.tab); });
     });
-  });
+    if (tabMap[savedTab]) switchTab(savedTab);
+  })();
 
   // --- File import ---
   var dropZone = document.getElementById('dropZone');
@@ -1735,22 +1747,7 @@ th.cb-col, td.cb-col {
     var EVENT_MAX = 200;
     var RECONNECT_DELAY = 3000;
 
-    // Persist collapsed state
-    var eventsCollapsed = localStorage.getItem('eventsCollapsed') !== 'false';
-    var eventsBody = document.getElementById('eventsBody');
-    var eventsChevron = document.getElementById('eventsChevron');
-    if (eventsCollapsed) {
-      eventsBody.classList.add('collapsed');
-    } else {
-      eventsChevron.classList.add('open');
-    }
-
-    document.querySelector('.section-header[data-section="events"]').addEventListener('click', function() {
-      eventsBody.classList.toggle('collapsed');
-      eventsChevron.classList.toggle('open');
-      eventsCollapsed = eventsBody.classList.contains('collapsed');
-      localStorage.setItem('eventsCollapsed', eventsCollapsed ? 'true' : 'false');
-    });
+    // Events tab — always visible when tab is active (no collapse needed)
 
     function pad2(n) { return n < 10 ? '0' + n : '' + n; }
 
