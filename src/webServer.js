@@ -465,11 +465,12 @@ class WebServer {
                             let body = '';
                             resp.on('data', (chunk) => { body += chunk; });
                             resp.on('end', () => {
+                                this.logger.info(`Area API HTTP ${resp.statusCode}, body length: ${body.length}, preview: ${body.slice(0, 200)}`);
                                 try { resolve(JSON.parse(body)); } catch { resolve(null); }
                             });
                         });
-                        req.on('error', () => resolve(null));
-                        req.on('timeout', () => { req.destroy(); resolve(null); });
+                        req.on('error', (e) => { this.logger.warn('Area API request error:', e.message); resolve(null); });
+                        req.on('timeout', () => { this.logger.warn('Area API request timeout'); req.destroy(); resolve(null); });
                         req.end();
                     });
                     this.logger.info(`Area registry response: type=${typeof data}, isArray=${Array.isArray(data)}, length=${Array.isArray(data) ? data.length : 'n/a'}, preview=${JSON.stringify(data).slice(0, 300)}`);
