@@ -425,9 +425,6 @@ class WebServer {
     }
 
     async _handleGetAreas(_req, res) {
-        const _tokenPresent = !!process.env.SUPERVISOR_TOKEN;
-        const _tokenLen = (process.env.SUPERVISOR_TOKEN || '').length;
-        this.logger.info(`Areas endpoint called. Token present: ${_tokenPresent}, length: ${_tokenLen}`);
         // Collect areas from label file
         const labelAreas = new Set();
         if (this.labelLoader) {
@@ -443,9 +440,6 @@ class WebServer {
         // Fetch areas from Home Assistant Supervisor API (cached 30s)
         let haAreas = [];
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
-        if (!supervisorToken) {
-            this.logger.warn('SUPERVISOR_TOKEN not available; skipping HA area fetch');
-        }
         if (supervisorToken) {
             const now = Date.now();
             if (this._haAreasCache && now - this._haAreasCacheTime < 30000) {
@@ -468,7 +462,7 @@ class WebServer {
                             let body = '';
                             resp.on('data', (chunk) => { body += chunk; });
                             resp.on('end', () => {
-                                this.logger.info(`Area API HTTP ${resp.statusCode}, body length: ${body.length}, preview: ${body.slice(0, 300)}`);
+                                this.logger.debug(`Area API HTTP ${resp.statusCode}, body length: ${body.length}`);
                                 try { resolve(JSON.parse(body)); } catch { resolve(null); }
                             });
                         });
@@ -477,7 +471,7 @@ class WebServer {
                         req.write(postBody);
                         req.end();
                     });
-                    this.logger.info(`Area template response: type=${typeof data}, isArray=${Array.isArray(data)}, length=${Array.isArray(data) ? data.length : 'n/a'}`);
+                    this.logger.debug(`Area template response: isArray=${Array.isArray(data)}, count=${Array.isArray(data) ? data.length : 0}`);
                     if (Array.isArray(data)) {
                         for (const name of data) {
                             if (typeof name === 'string' && name) {
