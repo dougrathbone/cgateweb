@@ -72,7 +72,7 @@ class HaBridgeDiagnostics {
             const payload = {
                 name: entity.name,
                 unique_id: `cgateweb_bridge_${entity.key}`,
-                object_id: `cgateweb_bridge_${entity.key}`,
+                default_entity_id: `${entity.component}.cgateweb_bridge_${entity.key}`,
                 state_topic: stateTopic,
                 availability_topic: MQTT_TOPIC_STATUS,
                 payload_available: 'Online',

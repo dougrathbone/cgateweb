@@ -229,7 +229,7 @@ class LabelLoader extends EventEmitter {
     }
 
     /**
-     * @returns {Map<string, string>} Entity ID hints (address -> object_id for HA)
+     * @returns {Map<string, string>} Entity ID hints (address -> default_entity_id for HA)
      */
     getEntityIds() {
         return this._entityIds;

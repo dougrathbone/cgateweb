@@ -49,7 +49,7 @@ class HaDiscovery {
      * @param {Object} [labelData] - Optional label data object from LabelLoader.getLabelData()
      * @param {Map<string, string>} [labelData.labels] - Label overrides keyed by "network/app/group"
      * @param {Map<string, string>} [labelData.typeOverrides] - Type overrides ("cover"|"switch"|"light")
-     * @param {Map<string, string>} [labelData.entityIds] - Entity ID hints (object_id for HA)
+     * @param {Map<string, string>} [labelData.entityIds] - Entity ID hints (default_entity_id for HA)
      * @param {Set<string>} [labelData.exclude] - Addresses to skip during discovery
      */
     constructor(settings, publishFn, sendCommandFn, labelData = null) {
@@ -406,7 +406,7 @@ class HaDiscovery {
             const payload = {
                 name: null,
                 unique_id: uniqueId,
-                ...(entityId && { object_id: entityId }),
+                ...(entityId && { default_entity_id: `${HA_COMPONENT_LIGHT}.${entityId}` }),
                 state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
                 command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
                 brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
@@ -518,7 +518,7 @@ class HaDiscovery {
         const payload = {
             name: null,
             unique_id: uniqueId,
-            ...(entityId && { object_id: entityId }),
+            ...(entityId && { default_entity_id: `${HA_COMPONENT_CLIMATE}.${entityId}` }),
 
             // Current temperature: reported by C-Gate as a status level on this group.
             // Template converts 0-255 C-Bus level to 0-50°C (0.5°C resolution):
@@ -590,7 +590,7 @@ class HaDiscovery {
         const payload = {
             name: null,
             unique_id: uniqueId,
-            ...(entityId && { object_id: entityId }),
+            ...(entityId && { default_entity_id: `${config.component}.${entityId}` }),
             state_topic: stateTopic,
             ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
@@ -653,7 +653,7 @@ class HaDiscovery {
         const payload = {
             name: null,
             unique_id: uniqueId,
-            ...(entityId && { object_id: `${entityId}_btn` }),
+            ...(entityId && { default_entity_id: `${HA_COMPONENT_BUTTON}.${entityId}_btn` }),
             command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
             payload_press: MQTT_STATE_ON,
             qos: 0,
@@ -686,7 +686,7 @@ class HaDiscovery {
         const payload = {
             name: null,
             unique_id: uniqueId,
-            ...(entityId && { object_id: `${entityId}_scene` }),
+            ...(entityId && { default_entity_id: `${HA_COMPONENT_SCENE}.${entityId}_scene` }),
             command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
             payload_on: MQTT_STATE_ON,
             qos: 0,

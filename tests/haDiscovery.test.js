@@ -715,7 +715,7 @@ describe('HaDiscovery', () => {
             expect(payload.device.name).toBe('Pond Pump');
         });
 
-        it('should inject object_id when entity_ids has an entry', () => {
+        it('should inject default_entity_id with domain prefix when entity_ids has an entry', () => {
             const labelData = {
                 labels: new Map([['254/56/10', 'Kitchen']]),
                 typeOverrides: new Map(),
@@ -730,10 +730,11 @@ describe('HaDiscovery', () => {
             );
             expect(call).toBeDefined();
             const payload = JSON.parse(call[1]);
-            expect(payload.object_id).toBe('kitchen_light');
+            expect(payload.default_entity_id).toBe('light.kitchen_light');
+            expect(payload.object_id).toBeUndefined();
         });
 
-        it('should not include object_id when no entity_id is configured', () => {
+        it('should not include default_entity_id when no entity_id is configured', () => {
             const labelData = {
                 labels: new Map(),
                 typeOverrides: new Map(),
@@ -748,10 +749,10 @@ describe('HaDiscovery', () => {
             );
             expect(call).toBeDefined();
             const payload = JSON.parse(call[1]);
-            expect(payload.object_id).toBeUndefined();
+            expect(payload.default_entity_id).toBeUndefined();
         });
 
-        it('should inject object_id on type-overridden cover entities', () => {
+        it('should inject default_entity_id with domain prefix on type-overridden cover entities', () => {
             const labelData = {
                 labels: new Map([['254/56/10', 'Main Blind']]),
                 typeOverrides: new Map([['254/56/10', 'cover']]),
@@ -766,7 +767,8 @@ describe('HaDiscovery', () => {
             );
             expect(coverCall).toBeDefined();
             const payload = JSON.parse(coverCall[1]);
-            expect(payload.object_id).toBe('main_blind');
+            expect(payload.default_entity_id).toBe('cover.main_blind');
+            expect(payload.object_id).toBeUndefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Main Blind');
         });
@@ -816,7 +818,7 @@ describe('HaDiscovery', () => {
             const payload = JSON.parse(extraCall[1]);
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Extra Group Not In Tree');
-            expect(payload.object_id).toBe('extra_group');
+            expect(payload.default_entity_id).toBe('light.extra_group');
 
             const anotherCall = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/light/cgateweb_254_56_201/config'
@@ -876,7 +878,7 @@ describe('HaDiscovery', () => {
             const payload = JSON.parse(coverCall[1]);
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Extra Blind');
-            expect(payload.object_id).toBe('extra_blind');
+            expect(payload.default_entity_id).toBe('cover.extra_blind');
         });
     });
 
@@ -1373,7 +1375,7 @@ describe('HaDiscovery', () => {
             expect(payload.device.name).toBe('Movie Mode');
         });
 
-        it('should apply entity_id suffix to scene object_id when entity ID is configured', () => {
+        it('should apply entity_id suffix to scene default_entity_id when entity ID is configured', () => {
             haDiscovery.updateLabels({
                 labels: new Map(),
                 typeOverrides: new Map(),
@@ -1388,7 +1390,8 @@ describe('HaDiscovery', () => {
             );
             expect(sceneCall).toBeDefined();
             const payload = JSON.parse(sceneCall[1]);
-            expect(payload.object_id).toBe('entry_scene_scene');
+            expect(payload.default_entity_id).toBe('scene.entry_scene_scene');
+            expect(payload.object_id).toBeUndefined();
         });
     });
 });
