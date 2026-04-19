@@ -122,6 +122,57 @@ describe('CbusProjectParser', () => {
             expect(result.stats.labelCount).toBe(1);
         });
 
+        it('should parse Toolkit export with child-element Address, TagName, and DLT tags (real-world CLIPSAL.xml shape)', async () => {
+            // Mirrors the structure of a real user-submitted CLIPSAL.xml (GitHub issue #3):
+            // Address and TagName are child elements (not attributes) and groups may include
+            // a <TagsDLT> block. Regression test so this common shape keeps working.
+            const xml = `<?xml version="1.0" encoding="utf-8"?>
+                <Installation>
+                    <DBVersion>2.3</DBVersion>
+                    <Version>1.0</Version>
+                    <Project>
+                        <TagName>DOUG</TagName>
+                        <Address>DOUG</Address>
+                        <Network>
+                            <TagName>Steve</TagName>
+                            <Address>254</Address>
+                            <NetworkNumber>254</NetworkNumber>
+                            <Application>
+                                <TagName>Lighting</TagName>
+                                <Address>56</Address>
+                                <Group>
+                                    <TagName>Main bed blind Southside</TagName>
+                                    <Address>0</Address>
+                                    <TagsDLT>
+                                        <TagDLT>
+                                            <LanguageID>1</LanguageID>
+                                            <FlavourID>1</FlavourID>
+                                            <TagType>TEXT</TagType>
+                                            <TagValue>Southside</TagValue>
+                                        </TagDLT>
+                                    </TagsDLT>
+                                </Group>
+                                <Group>
+                                    <TagName>Bed 2 Large blind</TagName>
+                                    <Address>21</Address>
+                                </Group>
+                            </Application>
+                        </Network>
+                    </Project>
+                </Installation>`;
+
+            const result = await parser.parseXML(xml);
+
+            expect(result.labels).toEqual({
+                '254/56/0': 'Main bed blind Southside',
+                '254/56/21': 'Bed 2 Large blind'
+            });
+            expect(result.networks).toEqual([{ address: '254', name: 'Steve' }]);
+            expect(result.stats.networkCount).toBe(1);
+            expect(result.stats.groupCount).toBe(2);
+            expect(result.stats.labelCount).toBe(2);
+        });
+
         it('should handle empty XML gracefully', async () => {
             const xml = `<?xml version="1.0"?><Root/>`;
             const result = await parser.parseXML(xml);

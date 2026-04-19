@@ -1161,6 +1161,19 @@ describe('ConfigLoader', () => {
             expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
         });
 
+        test('should default cbus_label_file to /config/cgateweb-labels.json when unset and no files exist (fresh addon install)', () => {
+            // Only the options file itself exists — no pre-existing label files anywhere.
+            fs.existsSync.mockImplementation((p) => p === '/data/options.json');
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            // Even without an existing label file, the addon must fall back to a writable default
+            // so the first-time "Import" flow can create the file rather than throwing
+            // "No label file path configured". See GitHub issue #3.
+            expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
+        });
+
         test('should map ha_discovery_trigger_app_id as string when provided', () => {
             const options = {
                 ...baseAddonOptions,
