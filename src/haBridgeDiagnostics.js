@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS } = require('./constants');
+const { MQTT_TOPIC_STATUS, entityIdFields } = require('./constants');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -72,8 +72,7 @@ class HaBridgeDiagnostics {
             const payload = {
                 name: entity.name,
                 unique_id: `cgateweb_bridge_${entity.key}`,
-                default_entity_id: `${entity.component}.cgateweb_bridge_${entity.key}`,
-                object_id: `cgateweb_bridge_${entity.key}`,
+                ...entityIdFields(entity.component, `cgateweb_bridge_${entity.key}`),
                 state_topic: stateTopic,
                 availability_topic: MQTT_TOPIC_STATUS,
                 payload_available: 'Online',

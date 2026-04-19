@@ -95,6 +95,11 @@ const HA_ORIGIN_NAME = 'cgateweb';
 const HA_ORIGIN_SW_VERSION = packageJson.version;
 const HA_ORIGIN_SUPPORT_URL = 'https://github.com/dougrathbone/cgateweb';
 
+// HA Discovery entity ID helpers
+function entityIdFields(component, objectId) {
+    return { default_entity_id: `${component}.${objectId}`, object_id: objectId };
+}
+
 // === File Paths ===
 // Default label-file path for Home Assistant add-on installs — /config is mounted
 // read-write and persists across updates.
@@ -193,6 +198,7 @@ module.exports = {
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,
+    entityIdFields,
 
     // File Paths
     DEFAULT_ADDON_LABEL_FILE,

@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS } = require('./constants');
+const { MQTT_TOPIC_STATUS, entityIdFields } = require('./constants');
 
 /**
  * Periodically checks for C-Bus devices that have not reported a state change
@@ -143,8 +143,7 @@ class StaleDeviceDetector {
         const payload = {
             name: 'C-Bus Stale Devices',
             unique_id: 'cgateweb_stale_devices',
-            default_entity_id: 'sensor.cgateweb_stale_devices',
-            object_id: 'cgateweb_stale_devices',
+            ...entityIdFields('sensor', 'cgateweb_stale_devices'),
             state_topic: 'cbus/bridge/stale_devices',
             json_attributes_topic: 'cbus/bridge/stale_devices_detail',
             unit_of_measurement: 'devices',
