@@ -95,6 +95,12 @@ const HA_ORIGIN_NAME = 'cgateweb';
 const HA_ORIGIN_SW_VERSION = packageJson.version;
 const HA_ORIGIN_SUPPORT_URL = 'https://github.com/dougrathbone/cgateweb';
 
+// === File Paths ===
+// Default label-file path for Home Assistant add-on installs — /config is mounted
+// read-write and persists across updates.
+const DEFAULT_ADDON_LABEL_FILE = '/config/cgateweb-labels.json';
+const DEFAULT_ADDON_DATA_LABEL_FILE = '/data/labels.json';
+
 // === System ===
 const NEWLINE = '\n';
 
@@ -187,7 +193,11 @@ module.exports = {
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,
-    
+
+    // File Paths
+    DEFAULT_ADDON_LABEL_FILE,
+    DEFAULT_ADDON_DATA_LABEL_FILE,
+
     // System
     NEWLINE,
     EVENT_REGEX,

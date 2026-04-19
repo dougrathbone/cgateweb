@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('./logger');
 const CbusProjectParser = require('./cbusProjectParser');
+const { DEFAULT_ADDON_LABEL_FILE } = require('./constants');
 
 const STATIC_DIR = path.join(__dirname, '..', 'public');
 const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
@@ -261,7 +262,7 @@ class WebServer {
     async _handleImportLabels(req, res) {
         if (!this.labelLoader.filePath) {
             return this._sendJSON(res, 400, {
-                error: 'Label file path not configured. In the Home Assistant add-on, set the "cbus_label_file" option (e.g. "/config/cgateweb-labels.json"). In standalone mode, set cbus_label_file in settings.js.'
+                error: `Label file path not configured. In the Home Assistant add-on, set the "cbus_label_file" option (e.g. "${DEFAULT_ADDON_LABEL_FILE}"). In standalone mode, set cbus_label_file in settings.js.`
             });
         }
 

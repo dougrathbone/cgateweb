@@ -2,6 +2,7 @@ const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 const { defaultSettings } = require('../defaultSettings');
+const { DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -298,17 +299,13 @@ class ConfigLoader {
             config.cover_ramp_duration_ms = options.cover_ramp_duration_sec * 1000;
         }
 
-        // Label file: use explicit setting, auto-detect an existing file, or fall back
-        // to a writable default inside the addon's /config mount. The fallback matters
-        // for fresh installs — without it, the first Import attempt fails with
-        // "No label file path configured" (GitHub issue #3).
-        // /share is not in the auto-detect list because the addon mounts it read-only,
-        // so auto-detecting there would set up a path that can't be written to.
-        const DEFAULT_ADDON_LABEL_FILE = '/config/cgateweb-labels.json';
+        // Fresh installs must default to a writable path so the first Import
+        // creates the file rather than erroring (GitHub #3). /share is excluded —
+        // mounted read-only in the add-on.
         if (options.cbus_label_file) {
             config.cbus_label_file = options.cbus_label_file;
         } else {
-            const autoDetectPaths = [DEFAULT_ADDON_LABEL_FILE, '/data/labels.json'];
+            const autoDetectPaths = [DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE];
             for (const p of autoDetectPaths) {
                 if (fs.existsSync(p)) {
                     config.cbus_label_file = p;

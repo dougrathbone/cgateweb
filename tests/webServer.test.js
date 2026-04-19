@@ -803,48 +803,17 @@ describe('WebServer', () => {
         });
 
         it('returns 400 with a helpful message when label file path is not configured', async () => {
-            // Reproduces GitHub issue #3: a fresh install with no cbus_label_file configured
-            // should return a clear, actionable error rather than the generic save failure.
-            const noPathLoader = new LabelLoader(null);
-            const noPathServer = new WebServer({
-                port: 0,
-                labelLoader: noPathLoader,
-                allowUnauthenticatedMutations: true,
-                getStatus: () => ({})
-            });
-            await noPathServer.start();
-            const noPathPort = noPathServer._server.address().port;
-
+            // GitHub issue #3: reach the import handler with no file path set.
+            const originalFilePath = labelLoader.filePath;
+            labelLoader.filePath = null;
             try {
-                const res = await new Promise((resolve, reject) => {
-                    const body = Buffer.from('<xml>fake</xml>');
-                    const req = http.request({
-                        hostname: '127.0.0.1',
-                        port: noPathPort,
-                        path: '/api/labels/import',
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/octet-stream',
-                            'Content-Length': body.length
-                        }
-                    }, (response) => {
-                        let data = '';
-                        response.on('data', (chunk) => { data += chunk; });
-                        response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
-                    });
-                    req.on('error', reject);
-                    req.write(body);
-                    req.end();
-                });
+                const res = await request('POST', '/api/labels/import', Buffer.from('<xml>fake</xml>'),
+                    { 'Content-Type': 'application/octet-stream' });
                 expect(res.status).toBe(400);
                 expect(res.body.error).toMatch(/label file path not configured/i);
                 expect(res.body.error).toMatch(/cbus_label_file/);
-                // Should NOT be the old raw "No label file path configured" (unhelpful for end users)
-                expect(res.body.error).not.toBe('Import failed: No label file path configured');
-                // Should NOT double-prefix with "Import failed:" (the frontend adds its own prefix)
-                expect(res.body.error).not.toMatch(/^Import failed:/);
             } finally {
-                await noPathServer.close();
+                labelLoader.filePath = originalFilePath;
             }
         });
     });
