@@ -259,6 +259,12 @@ class WebServer {
     }
 
     async _handleImportLabels(req, res) {
+        if (!this.labelLoader.filePath) {
+            return this._sendJSON(res, 400, {
+                error: 'Label file path not configured. In the Home Assistant add-on, set the "cbus_label_file" option (e.g. "/config/cgateweb-labels.json"). In standalone mode, set cbus_label_file in settings.js.'
+            });
+        }
+
         const contentType = req.headers['content-type'] || '';
         let fileBuffer, filename;
 
@@ -309,7 +315,7 @@ class WebServer {
                 saved: true
             });
         } catch (err) {
-            this._sendJSON(res, 400, { error: `Import failed: ${err.message}` });
+            this._sendJSON(res, 400, { error: err.message });
         }
     }
 

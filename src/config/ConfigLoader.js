@@ -298,17 +298,27 @@ class ConfigLoader {
             config.cover_ramp_duration_ms = options.cover_ramp_duration_sec * 1000;
         }
 
-        // Label file: use explicit setting, or auto-detect from common addon paths
+        // Label file: use explicit setting, auto-detect an existing file, or fall back
+        // to a writable default inside the addon's /config mount. The fallback matters
+        // for fresh installs — without it, the first Import attempt fails with
+        // "No label file path configured" (GitHub issue #3).
+        // /share is not in the auto-detect list because the addon mounts it read-only,
+        // so auto-detecting there would set up a path that can't be written to.
+        const DEFAULT_ADDON_LABEL_FILE = '/config/cgateweb-labels.json';
         if (options.cbus_label_file) {
             config.cbus_label_file = options.cbus_label_file;
         } else {
-            const autoDetectPaths = ['/config/cgateweb-labels.json', '/share/cgate/labels.json', '/data/labels.json'];
+            const autoDetectPaths = [DEFAULT_ADDON_LABEL_FILE, '/data/labels.json'];
             for (const p of autoDetectPaths) {
                 if (fs.existsSync(p)) {
                     config.cbus_label_file = p;
                     this.logger.info(`Auto-detected label file: ${p}`);
                     break;
                 }
+            }
+            if (!config.cbus_label_file) {
+                config.cbus_label_file = DEFAULT_ADDON_LABEL_FILE;
+                this.logger.info(`Using default label file path: ${DEFAULT_ADDON_LABEL_FILE} (will be created on first save)`);
             }
         }
 
