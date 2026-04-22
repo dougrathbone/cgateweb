@@ -5,6 +5,23 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-04-19
+
+### Fixed
+- **Fresh-install Import failure**: the add-on now falls back to `/config/cgateweb-labels.json` when no `cbus_label_file` option is set and no label file exists at auto-detect paths. Previously, importing a Clipsal project file on a fresh install failed with "No label file path configured". Dropped `/share/cgate/labels.json` from auto-detect since `/share` is mounted read-only.
+- **Standalone Import error message**: when the label file path really is unset (standalone mode), the Import endpoint now returns a 400 with an actionable message pointing at `cbus_label_file` instead of a generic failure.
+- **Doubled toast prefix**: removed the server-side "Import failed: " prefix that was duplicating the client-side prefix in error toasts.
+
+## [1.7.1] - 2026-04-14
+
+### Fixed
+- **Backwards compatibility**: retain `object_id` alongside `default_entity_id` in MQTT discovery payloads so Home Assistant versions prior to 2025.10 continue to work. Unknown keys are silently ignored by both old and new HA versions.
+
+## [1.7.0] - 2026-04-14
+
+### Fixed
+- **HA 2026.4 compatibility**: Home Assistant 2026.4 removed support for the deprecated `object_id` field in MQTT discovery. Replaced with `default_entity_id` (which includes the domain prefix, e.g. `light.kitchen_light`) across `haDiscovery`, `haBridgeDiagnostics`, and `staleDeviceDetector`.
+
 ## [1.6.1] - 2026-04-05
 
 ### Fixed
