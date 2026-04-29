@@ -5,6 +5,7 @@ const {
     HA_COMPONENT_EVENT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_SCENE,
+    HA_COMPONENT_BINARY_SENSOR,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
     HA_MODEL_COVER,
@@ -79,7 +80,7 @@ function getDiscoveryConfig(type) {
             }
         },
         pir: {
-            component: 'binary_sensor',
+            component: HA_COMPONENT_BINARY_SENSOR,
             defaultType: 'PIR',
             model: HA_MODEL_PIR,
             deviceClass: 'motion',

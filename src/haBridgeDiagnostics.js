@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR } = require('./constants');
+const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -79,12 +79,12 @@ class HaBridgeDiagnostics {
                 payload_not_available: 'Offline',
                 entity_category: 'diagnostic',
                 icon: entity.icon,
-                ...(entity.component === 'binary_sensor' && {
+                ...(entity.component === HA_COMPONENT_BINARY_SENSOR && {
                     payload_on: 'ON',
                     payload_off: 'OFF'
                 }),
                 device: {
-                    identifiers: ['cgateweb_bridge'],
+                    identifiers: [HA_DEVICE_VIA],
                     name: 'cgateweb Bridge',
                     manufacturer: 'Clipsal C-Bus via cgateweb',
                     model: 'Bridge Diagnostics'

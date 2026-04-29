@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR } = require('./constants');
+const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
 
 /**
  * Periodically checks for C-Bus devices that have not reported a state change
@@ -153,7 +153,7 @@ class StaleDeviceDetector {
             payload_available: 'Online',
             payload_not_available: 'Offline',
             device: {
-                identifiers: ['cgateweb_bridge'],
+                identifiers: [HA_DEVICE_VIA],
                 name: 'cgateweb Bridge',
                 manufacturer: 'Clipsal C-Bus via cgateweb',
                 model: 'Bridge Diagnostics'
