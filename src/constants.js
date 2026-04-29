@@ -71,6 +71,8 @@ const HA_COMPONENT_COVER = 'cover';
 const HA_COMPONENT_SWITCH = 'switch';
 const HA_COMPONENT_BUTTON = 'button';
 const HA_COMPONENT_CLIMATE = 'climate';
+const HA_COMPONENT_SENSOR = 'sensor';
+const HA_COMPONENT_BINARY_SENSOR = 'binary_sensor';
 const HA_DISCOVERY_SUFFIX = 'config';
 
 // HA Device Classes
@@ -181,6 +183,8 @@ module.exports = {
     HA_COMPONENT_SWITCH,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_CLIMATE,
+    HA_COMPONENT_SENSOR,
+    HA_COMPONENT_BINARY_SENSOR,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
