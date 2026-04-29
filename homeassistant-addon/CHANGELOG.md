@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-04-29
+
+### Changed
+- **MQTT pre-connect log noise**: when the bridge starts before the MQTT broker is reachable, `MqttManager` now warns once per disconnect window instead of per-publish. On reconnect, a single rolled-up info line reports how many publishes were dropped while disconnected. Eliminates ~17 startup warnings per restart and bounds spam if the broker stays unreachable.
+- **Network auto-discovery fallback**: when `tree //PROJECT` returns a 4xx/5xx (e.g. C-Gate 402 "Operation not supported"), the discovery handler now claims the response so the default error logger does not also fire, and the discovery messages are demoted from WARN/ERROR to INFO since the fallback to configured `getall_networks` is the expected path on C-Gate versions that do not support project-level tree queries.
+
+### Refactor
+- Extracted entity-id field construction (`default_entity_id` + `object_id`) into a shared `entityIdFields(component, objectId)` helper in `src/constants.js` and replaced six inline callsites across `haDiscovery`, `haBridgeDiagnostics`, and `staleDeviceDetector`.
+- Replaced raw `'sensor'`, `'binary_sensor'`, and `'cgateweb_bridge'` string literals with `HA_COMPONENT_SENSOR`, `HA_COMPONENT_BINARY_SENSOR`, and `HA_DEVICE_VIA` constants for consistency with the rest of the HA discovery code.
+
 ## [1.7.2] - 2026-04-19
 
 ### Fixed
