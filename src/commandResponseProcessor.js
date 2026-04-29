@@ -130,8 +130,12 @@ class CommandResponseProcessor {
      */
     _processCommandResponse(responseCode, statusData) {
         // Forward all responses to the network discovery handler if one is active.
+        // If the handler claims the response (returns true), skip default routing —
+        // this avoids logging an ERROR for the 4xx that auto-discovery already handled.
         if (this.networkDiscoveryHandler) {
-            this.networkDiscoveryHandler(responseCode, statusData);
+            if (this.networkDiscoveryHandler(responseCode, statusData) === true) {
+                return;
+            }
         }
 
         switch (responseCode) {

@@ -43,6 +43,8 @@ class MqttManager extends EventEmitter {
         this._intentionalDisconnect = false;
         this._bridgeReady = false;
         this._lastStatusPayload = null;
+        this._droppedPublishCount = 0;
+        this._droppedPublishWarned = false;
         this.logger = createLogger({ component: 'MqttManager' });
         this.errorHandler = createErrorHandler('MqttManager');
     }
@@ -115,7 +117,11 @@ class MqttManager extends EventEmitter {
      */
     publish(topic, payload, options = {}) {
         if (!this.client || !this.connected) {
-            this.logger.warn(`Cannot publish to MQTT: not connected`);
+            this._droppedPublishCount++;
+            if (!this._droppedPublishWarned) {
+                this.logger.warn('Cannot publish to MQTT: not connected (further drops suppressed until reconnect)');
+                this._droppedPublishWarned = true;
+            }
             return false;
         }
 
@@ -206,6 +212,12 @@ class MqttManager extends EventEmitter {
         this._connecting = false;
         this.connected = true;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
+
+        if (this._droppedPublishCount > 0) {
+            this.logger.info(`MQTT reconnected; ${this._droppedPublishCount} publish(es) were dropped while disconnected`);
+            this._droppedPublishCount = 0;
+        }
+        this._droppedPublishWarned = false;
 
         this._publishStatus(this._bridgeReady ? MQTT_PAYLOAD_STATUS_ONLINE : MQTT_PAYLOAD_STATUS_OFFLINE);
         

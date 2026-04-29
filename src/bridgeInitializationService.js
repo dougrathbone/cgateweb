@@ -230,7 +230,7 @@ class BridgeInitializationService {
                     this.bridge.discoveredNetworks = networks;
                     this.logger.info(`Auto-discovered C-Bus networks: [${networks.join(', ')}]`);
                 } else {
-                    this.logger.warn('Network auto-discovery returned no networks; using configured values');
+                    this.logger.info('Network auto-discovery returned no networks; falling back to configured values');
                     this.bridge.discoveredNetworks = null;
                 }
                 resolve();
@@ -239,15 +239,17 @@ class BridgeInitializationService {
             // C-Gate tree response: each level of the tree comes back as a 200 response line.
             // After the last tree line, C-Gate sends a "200-OK" or similar terminal response.
             // We collect lines that match //PROJECT/NNN and stop on a 4xx/5xx error or timeout.
+            // Returning true claims the response so the default error logger doesn't also fire.
             processor.networkDiscoveryHandler = (responseCode, statusData) => {
                 if (responseCode === '200') {
                     collectedLines.push(statusData);
+                    return false;
                 } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
-                    // Error response — discovery failed
-                    this.logger.warn(`Network auto-discovery failed with C-Gate error ${responseCode}: ${statusData}`);
+                    this.logger.info(`Network auto-discovery: C-Gate ${responseCode} ${statusData}; using configured networks`);
                     finish();
+                    return true;
                 }
-                // Other codes (300, etc.) are ignored during discovery
+                return false;
             };
 
             timeoutRef.handle = setTimeout(() => {

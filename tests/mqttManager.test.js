@@ -183,11 +183,50 @@ describe('MqttManager', () => {
         it('should warn when not connected', () => {
             mqttManager.connected = false;
             const loggerSpy = jest.spyOn(mqttManager.logger, 'warn');
-            
+
             mqttManager.publish('test/topic', 'message');
-            
+
             expect(mockClient.publish).not.toHaveBeenCalled();
             expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot publish to MQTT: not connected'));
+        });
+
+        it('should warn only once when publishing repeatedly while disconnected', () => {
+            mqttManager.connected = false;
+            const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+
+            for (let i = 0; i < 50; i++) {
+                mqttManager.publish('test/topic', `msg ${i}`);
+            }
+
+            expect(mockClient.publish).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledTimes(1);
+            expect(mqttManager._droppedPublishCount).toBe(50);
+        });
+
+        it('should log roll-up summary on reconnect after disconnected drops', () => {
+            mqttManager.connected = false;
+            for (let i = 0; i < 17; i++) {
+                mqttManager.publish('test/topic', `msg ${i}`);
+            }
+
+            const infoSpy = jest.spyOn(mqttManager.logger, 'info');
+            mockClient.connected = true;
+            mqttManager.client.emit('connect');
+
+            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('17 publish(es) were dropped while disconnected'));
+            expect(mqttManager._droppedPublishCount).toBe(0);
+            expect(mqttManager._droppedPublishWarned).toBe(false);
+        });
+
+        it('should not log roll-up when no publishes were dropped', () => {
+            const infoSpy = jest.spyOn(mqttManager.logger, 'info');
+            mockClient.connected = true;
+            mqttManager.client.emit('connect');
+
+            const rollupCalls = infoSpy.mock.calls.filter(c =>
+                typeof c[0] === 'string' && c[0].includes('publish(es) were dropped')
+            );
+            expect(rollupCalls).toHaveLength(0);
         });
 
         it('should handle publish errors', () => {

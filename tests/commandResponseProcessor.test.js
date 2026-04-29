@@ -183,9 +183,28 @@ describe('CommandResponseProcessor', () => {
 
         it('should route 5xx error responses', () => {
             const errorSpy = jest.spyOn(processor, '_processCommandErrorResponse');
-            
+
             processor._processCommandResponse('500', 'Internal error');
-            
+
+            expect(errorSpy).toHaveBeenCalledWith('500', 'Internal error');
+        });
+
+        it('should skip default error routing when networkDiscoveryHandler claims response', () => {
+            const errorSpy = jest.spyOn(processor, '_processCommandErrorResponse');
+            processor.networkDiscoveryHandler = jest.fn(() => true);
+
+            processor._processCommandResponse('402', 'Operation not supported');
+
+            expect(processor.networkDiscoveryHandler).toHaveBeenCalledWith('402', 'Operation not supported');
+            expect(errorSpy).not.toHaveBeenCalled();
+        });
+
+        it('should still route to default when networkDiscoveryHandler returns falsy', () => {
+            const errorSpy = jest.spyOn(processor, '_processCommandErrorResponse');
+            processor.networkDiscoveryHandler = jest.fn(() => false);
+
+            processor._processCommandResponse('500', 'Internal error');
+
             expect(errorSpy).toHaveBeenCalledWith('500', 'Internal error');
         });
 

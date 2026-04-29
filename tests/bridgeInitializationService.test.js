@@ -260,6 +260,32 @@ describe('BridgeInitializationService', () => {
             expect(bridge.commandResponseProcessor.networkDiscoveryHandler).toBeNull();
         });
 
+        it('handler returns true on 4xx/5xx so default error logger is suppressed', async () => {
+            const { bridge } = makeBridge({ cbusname: 'CLIPSAL' });
+            const svc = new BridgeInitializationService(bridge);
+
+            const promise = svc._discoverNetworks();
+            const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
+
+            expect(handler('402', 'Operation not supported by: //CLIPSAL')).toBe(true);
+
+            jest.advanceTimersByTime(6000);
+            await promise;
+        });
+
+        it('handler returns false on 200 so default routing still runs', async () => {
+            const { bridge } = makeBridge({ cbusname: 'HOME' });
+            const svc = new BridgeInitializationService(bridge);
+
+            const promise = svc._discoverNetworks();
+            const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
+
+            expect(handler('200', '//HOME/254')).toBe(false);
+
+            jest.advanceTimersByTime(6000);
+            await promise;
+        });
+
         it('resolves after timeout even if no terminating response', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
             const svc = new BridgeInitializationService(bridge);
