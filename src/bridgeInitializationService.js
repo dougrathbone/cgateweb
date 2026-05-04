@@ -305,8 +305,14 @@ class BridgeInitializationService {
      * Handles C-Gate command errors. If a 401 (not found) is received for a path
      * that is being periodically polled, the polling timer is cancelled to prevent
      * recurring error logs for apps that don't exist on this C-Bus installation.
+     * Also forwards 401 errors to HaDiscovery so it can retry TreeXML requests
+     * that fail because C-Gate hasn't finished loading networks at startup.
      */
     handleCommandError(code, statusData) {
+        if (this.bridge.haDiscovery && typeof this.bridge.haDiscovery.handleCommandError === 'function') {
+            this.bridge.haDiscovery.handleCommandError(code, statusData);
+        }
+
         if (code !== '401') return;
         // Extract network/app path from statusData like:
         // "Bad object or device ID: //CLIPSAL/254/203/* (Object not found)"
@@ -338,6 +344,9 @@ class BridgeInitializationService {
         this.bridge.labelLoader.unwatch();
 
         if (this.bridge.haDiscovery) {
+            if (typeof this.bridge.haDiscovery.stop === 'function') {
+                this.bridge.haDiscovery.stop();
+            }
             this.bridge.haDiscovery.removeAllListeners?.();
             this.bridge.haDiscovery = null;
             this.bridge.commandResponseProcessor.haDiscovery = null;

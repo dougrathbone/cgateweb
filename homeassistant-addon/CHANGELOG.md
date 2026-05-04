@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-05-04
+
+### Fixed
+- **HA Discovery startup race**: C-Gate accepts TCP connections on the command port before its project's networks are loaded, so the initial `TREEXML` query could return `401 Network not found` and HA Discovery would silently give up — devices never appeared in Home Assistant even though events flowed normally. `HaDiscovery` now retries failed TreeXML requests with exponential backoff (2s → 60s, up to 8 attempts), driven both by the `401 Network not found` fast-fail and an 8s no-response watchdog. After the retry limit, a clear warning explains how to recover via `cbus/write/<network>///gettree`.
+
 ## [1.8.0] - 2026-04-29
 
 ### Changed

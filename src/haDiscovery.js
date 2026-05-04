@@ -69,6 +69,18 @@ class HaDiscovery {
         // Tracks all discovery config topics published in this session so that
         // stale retained messages can be cleared when devices are excluded or change type.
         this._publishedTopics = new Set();
+
+        // C-Gate accepts TCP connections on the command port before its project
+        // networks are loaded. Initial TREEXML can therefore return 401 "Network
+        // not found" until C-Gate finishes startup. These maps drive a
+        // per-network retry loop with exponential backoff so HA Discovery
+        // recovers automatically without restarting the bridge.
+        this._treeWatchdogs = new Map();   // networkId -> timeoutHandle
+        this._treeRetryState = new Map();  // networkId -> { attempts, retryHandle }
+        this._maxTreeRetryAttempts = 8;
+        this._treeRetryInitialDelayMs = 2000;
+        this._treeRetryMaxDelayMs = 60000;
+        this._treeRequestTimeoutMs = 8000;
     }
 
     /**
@@ -145,9 +157,119 @@ class HaDiscovery {
 
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
+
+        // Cancel any pending retry timer — we're sending a fresh request now.
+        this._cancelTreeRetry(normalizedNetwork, /* keepAttempts */ true);
+
         this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
-        this.pendingTreeNetworks.push(normalizedNetwork);
+
+        // Avoid duplicate pending entries when a retry races a late response.
+        if (!this.pendingTreeNetworks.includes(normalizedNetwork)) {
+            this.pendingTreeNetworks.push(normalizedNetwork);
+        }
+
+        this._armTreeWatchdog(normalizedNetwork);
         this._sendCommand(`${CGATE_CMD_TREEXML} ${normalizedNetwork}${NEWLINE}`);
+    }
+
+    _armTreeWatchdog(networkId) {
+        this._cancelTreeWatchdog(networkId);
+        const handle = setTimeout(() => {
+            this._treeWatchdogs.delete(networkId);
+            this._handleTreeRequestFailure(networkId, 'no response within timeout');
+        }, this._treeRequestTimeoutMs);
+        if (typeof handle.unref === 'function') handle.unref();
+        this._treeWatchdogs.set(networkId, handle);
+    }
+
+    _cancelTreeWatchdog(networkId) {
+        const handle = this._treeWatchdogs.get(networkId);
+        if (handle) {
+            clearTimeout(handle);
+            this._treeWatchdogs.delete(networkId);
+        }
+    }
+
+    _cancelTreeRetry(networkId, keepAttempts = false) {
+        const state = this._treeRetryState.get(networkId);
+        if (!state) return;
+        if (state.retryHandle) {
+            clearTimeout(state.retryHandle);
+            state.retryHandle = null;
+        }
+        if (!keepAttempts) {
+            this._treeRetryState.delete(networkId);
+        }
+    }
+
+    /**
+     * Receives a 4xx/5xx C-Gate command error and, if it indicates that an
+     * in-flight TreeXML request failed because the network isn't loaded yet,
+     * fast-fails the head of the pending queue and schedules a retry.
+     *
+     * Tree-related "Network not found" errors come back without a path
+     * ("401 Bad object or device ID: Network not found"), whereas getall errors
+     * include a path ("401 Bad object or device ID: //PROJECT/254/56/* (...)").
+     * That difference lets us distinguish the two.
+     */
+    handleCommandError(code, statusData) {
+        if (code !== '401') return;
+        const data = statusData || '';
+        if (!/Network not found/i.test(data)) return;
+        if (/\/\/[^/]+\/\d+/.test(data)) return;
+        if (this.pendingTreeNetworks.length === 0) return;
+
+        const failedNetwork = this.pendingTreeNetworks.shift();
+        this._cancelTreeWatchdog(failedNetwork);
+        this._handleTreeRequestFailure(failedNetwork, '401 Network not found');
+    }
+
+    _handleTreeRequestFailure(networkId, reason) {
+        const state = this._treeRetryState.get(networkId) || { attempts: 0, retryHandle: null };
+        state.attempts += 1;
+
+        if (state.attempts > this._maxTreeRetryAttempts) {
+            this.logger.warn(
+                `HA Discovery: TreeXML for network ${networkId} failed after ${this._maxTreeRetryAttempts} attempts (${reason}). ` +
+                `Auto-discovery for this network is paused. ` +
+                `Verify the network is configured and reachable in C-Gate, then restart the bridge or publish to cbus/write/${networkId}///gettree to retry.`
+            );
+            this._treeRetryState.delete(networkId);
+            return;
+        }
+
+        const delay = Math.min(
+            this._treeRetryInitialDelayMs * Math.pow(2, state.attempts - 1),
+            this._treeRetryMaxDelayMs
+        );
+
+        this.logger.warn(
+            `HA Discovery: TreeXML for network ${networkId} failed (${reason}). ` +
+            `Retrying in ${Math.round(delay / 1000)}s (attempt ${state.attempts}/${this._maxTreeRetryAttempts}). ` +
+            `This typically means C-Gate is still loading networks at startup.`
+        );
+
+        if (state.retryHandle) clearTimeout(state.retryHandle);
+        state.retryHandle = setTimeout(() => {
+            state.retryHandle = null;
+            this.queueTreeRequest(networkId);
+        }, delay);
+        if (typeof state.retryHandle.unref === 'function') state.retryHandle.unref();
+        this._treeRetryState.set(networkId, state);
+    }
+
+    /**
+     * Cancels all retry timers and watchdogs. Call on bridge shutdown.
+     */
+    stop() {
+        for (const handle of this._treeWatchdogs.values()) {
+            clearTimeout(handle);
+        }
+        this._treeWatchdogs.clear();
+        for (const state of this._treeRetryState.values()) {
+            if (state.retryHandle) clearTimeout(state.retryHandle);
+        }
+        this._treeRetryState.clear();
     }
 
     handleTreeStart(_statusData) {
@@ -156,8 +278,15 @@ class HaDiscovery {
         }
 
         const nextNetwork = this.pendingTreeNetworks.shift() || this.treeNetwork || 'unknown';
+        const networkKey = String(nextNetwork);
+
+        // The request succeeded — cancel watchdog and any pending retry so a
+        // late retry doesn't issue a redundant TREEXML.
+        this._cancelTreeWatchdog(networkKey);
+        this._cancelTreeRetry(networkKey);
+
         this.activeTreeSession = {
-            network: String(nextNetwork),
+            network: networkKey,
             bufferParts: []
         };
 

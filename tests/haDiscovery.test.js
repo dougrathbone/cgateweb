@@ -524,13 +524,157 @@ describe('HaDiscovery', () => {
     describe('Integration with CgateWebBridge', () => {
         it('should handle tree responses from C-Gate correctly', () => {
             haDiscovery.treeNetwork = '254';
-            
+
             haDiscovery.handleTreeStart('start');
             expect(haDiscovery.treeBufferParts).toEqual([]);
-            
+
             haDiscovery.handleTreeData('data1');
             haDiscovery.handleTreeData('data2');
             expect(haDiscovery.treeBufferParts).toEqual(['data1', 'data2']);
+        });
+    });
+
+    describe('TreeXML retry on startup race (401 Network not found)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('schedules a retry after a 401 Network not found error for an in-flight TreeXML', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+
+            // Failed entry removed from pending so a late tree-start can't be misattributed.
+            expect(haDiscovery.pendingTreeNetworks).toEqual([]);
+            // No retry yet — it's scheduled.
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // First retry runs after the initial backoff (2s).
+            jest.advanceTimersByTime(2000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+        });
+
+        it('ignores 401 errors that include a path (not a tree request)', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: //PROJECT/254/56/* (Network not found)');
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+            jest.advanceTimersByTime(2000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+
+        it('ignores 401 errors when no TreeXML is in flight', () => {
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            jest.advanceTimersByTime(60000);
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('uses exponential backoff between successive retries', () => {
+            haDiscovery.trigger();
+            const errMsg = 'Bad object or device ID: Network not found';
+
+            haDiscovery.handleCommandError('401', errMsg); // attempt 1, retry in 2s
+            jest.advanceTimersByTime(2000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+
+            haDiscovery.handleCommandError('401', errMsg); // attempt 2, retry in 4s
+            jest.advanceTimersByTime(3999);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+            jest.advanceTimersByTime(1);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(3);
+
+            haDiscovery.handleCommandError('401', errMsg); // attempt 3, retry in 8s
+            jest.advanceTimersByTime(8000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(4);
+        });
+
+        it('gives up after the maximum number of attempts', () => {
+            const warnSpy = jest.spyOn(haDiscovery.logger, 'warn');
+            haDiscovery.trigger();
+            const errMsg = 'Bad object or device ID: Network not found';
+
+            // 8 retries permitted; the 9th failure exhausts the budget.
+            for (let i = 1; i <= 8; i++) {
+                haDiscovery.handleCommandError('401', errMsg);
+                jest.runOnlyPendingTimers();
+            }
+            haDiscovery.handleCommandError('401', errMsg);
+
+            // No further retry scheduled.
+            const callsAfterFinalFailure = mockSendCommandFn.mock.calls.length;
+            jest.advanceTimersByTime(120000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsAfterFinalFailure);
+            expect(warnSpy.mock.calls.some(([msg]) => /failed after 8 attempts/i.test(msg))).toBe(true);
+        });
+
+        it('falls back to the watchdog when no response arrives within the request timeout', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // Watchdog fires after 8s (request timeout), then 2s backoff before retry.
+            jest.advanceTimersByTime(8000);
+            jest.advanceTimersByTime(2000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('cancels pending retry when the next TreeXML succeeds', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            jest.advanceTimersByTime(2000);
+
+            // Retry sent — simulate a successful tree response.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<xml/>');
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, {}));
+            haDiscovery.handleTreeEnd('end');
+
+            // Watchdog and retry state should now be cleared.
+            expect(haDiscovery._treeWatchdogs.size).toBe(0);
+            expect(haDiscovery._treeRetryState.size).toBe(0);
+
+            // Advance time well past any potential retry — no extra commands.
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+            jest.advanceTimersByTime(120000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
+        });
+
+        it('retries each network independently when multiple fail', () => {
+            mockSettings.ha_discovery_networks = ['254', '200'];
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254', '200']);
+
+            // First 401 is for 254 (FIFO).
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            // Second 401 is for 200.
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            expect(haDiscovery.pendingTreeNetworks).toEqual([]);
+
+            jest.advanceTimersByTime(2000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(4);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(expect.arrayContaining(['254', '200']));
+        });
+
+        it('stop() clears all retry timers and watchdogs', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            expect(haDiscovery._treeRetryState.size).toBe(1);
+
+            haDiscovery.stop();
+            expect(haDiscovery._treeWatchdogs.size).toBe(0);
+            expect(haDiscovery._treeRetryState.size).toBe(0);
+
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+            jest.advanceTimersByTime(120000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
         });
     });
 
