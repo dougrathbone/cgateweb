@@ -384,6 +384,90 @@ async function runTests() {
     }
 
     // ------------------------------------------------------------------
+    // 6b. Discovery health diagnostic (v1.8.4) — per-network sensor
+    // ------------------------------------------------------------------
+    section('Discovery health diagnostic');
+    info('Collecting per-network discovery_status messages for 3s...');
+
+    const diagReceived = await collectMqtt(
+        ['homeassistant/sensor/cgateweb_discovery_+/config', 'cbus/read/+///discovery_status'],
+        3000
+    );
+    const diagConfigTopics = Object.keys(diagReceived).filter(t =>
+        /^homeassistant\/sensor\/cgateweb_discovery_\w+\/config$/.test(t)
+    );
+    const diagStateTopics = Object.keys(diagReceived).filter(t =>
+        /^cbus\/read\/\w+\/\/\/discovery_status$/.test(t)
+    );
+
+    if (diagConfigTopics.length === 0 && diagStateTopics.length === 0) {
+        info('No discovery diagnostic messages received — HA Discovery may not have run (no networks configured?). Skipping diagnostic assertions.');
+        pass('Discovery diagnostic: no messages (soft pass)');
+        passed++;
+    } else {
+        assert(
+            `discovery diagnostic config published (${diagConfigTopics.length} sensor config(s))`,
+            diagConfigTopics.length > 0
+        );
+        assert(
+            `discovery diagnostic state published (${diagStateTopics.length} network(s))`,
+            diagStateTopics.length > 0
+        );
+
+        // Validate the config payload shape on at least one diagnostic.
+        if (diagConfigTopics.length > 0) {
+            const cfgTopic = diagConfigTopics[0];
+            try {
+                const cfg = JSON.parse(diagReceived[cfgTopic]);
+                assert(
+                    `${cfgTopic} has entity_category=diagnostic`,
+                    cfg.entity_category === 'diagnostic',
+                    `got: ${cfg.entity_category}`
+                );
+                assert(
+                    `${cfgTopic} has unique_id matching cgateweb_discovery_*`,
+                    typeof cfg.unique_id === 'string' && cfg.unique_id.startsWith('cgateweb_discovery_'),
+                    `got: ${cfg.unique_id}`
+                );
+                assert(
+                    `${cfgTopic} state_topic matches cbus/read/<network>///discovery_status`,
+                    /^cbus\/read\/\w+\/\/\/discovery_status$/.test(cfg.state_topic || ''),
+                    `got: ${cfg.state_topic}`
+                );
+                assert(
+                    `${cfgTopic} grouped under cgateweb_bridge device`,
+                    Array.isArray(cfg.device?.identifiers) && cfg.device.identifiers.includes('cgateweb_bridge'),
+                    `got: ${JSON.stringify(cfg.device?.identifiers)}`
+                );
+            } catch (err) {
+                fail(`${cfgTopic} payload not valid JSON: ${err.message}`);
+                failed++;
+            }
+        }
+
+        // Validate the state payload — should be one of {discovering, ok, paused}.
+        const validStates = new Set(['discovering', 'ok', 'paused']);
+        for (const stateTopic of diagStateTopics) {
+            const value = diagReceived[stateTopic];
+            assert(
+                `${stateTopic} = ${value} (one of discovering/ok/paused)`,
+                validStates.has(value),
+                `got: ${value}`
+            );
+        }
+
+        // For a working stack with at least one network, at least one diagnostic
+        // should have reached "ok" (TreeXML succeeded). If everything is still
+        // "discovering" after readiness, something's wrong.
+        const okCount = diagStateTopics.filter(t => diagReceived[t] === 'ok').length;
+        assert(
+            `at least one network reached discovery_status=ok  (${okCount} of ${diagStateTopics.length})`,
+            okCount > 0 || diagStateTopics.length === 0,
+            'all networks still in discovering/paused after readiness'
+        );
+    }
+
+    // ------------------------------------------------------------------
     // 7. Stability check — watch for 10s, no reconnects
     // ------------------------------------------------------------------
     section(`Stability check (${STABLE_WINDOW / 1000}s window)`);
