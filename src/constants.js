@@ -24,6 +24,7 @@ const CGATE_RESPONSE_OBJECT_STATUS = '300';  // Device status response (e.g., "3
 const CGATE_RESPONSE_TREE_START = '343';     // Start of TREEXML response
 const CGATE_RESPONSE_TREE_END = '344';       // End of TREEXML response
 const CGATE_RESPONSE_TREE_DATA = '347';      // TREEXML data line
+const CGATE_RESPONSE_SYSTEM_EVENT = '742';   // Async object/network event (e.g. "Network created")
 
 // === MQTT System ===
 const MQTT_TOPIC_PREFIX_CBUS = 'cbus';
@@ -148,6 +149,7 @@ module.exports = {
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_END,
     CGATE_RESPONSE_TREE_DATA,
+    CGATE_RESPONSE_SYSTEM_EVENT,
     
     // MQTT System
     MQTT_TOPIC_PREFIX_CBUS,

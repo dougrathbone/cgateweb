@@ -5,6 +5,14 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - 2026-05-04
+
+### Added
+- **Event-driven HA Discovery refresh**: when a network finishes loading in C-Gate (async system event 742, "Network created"), HA Discovery now refreshes the network's tree the moment it becomes available, instead of waiting for the v1.8.1 retry backoff to fire. This eliminates the discovery delay on cold starts where C-Gate initialises a few seconds after opening its TCP port. The retry remains as belt-and-braces.
+
+### Changed
+- **Command response parser hardening**: the parser now recognises C-Gate's timestamp-prefixed async event lines (e.g. `20260504-193110.569 742 //PROJECT/254 ... Network created ...`) by stripping the leading timestamp before parsing. The parser also pins response codes to positions 0-2 of the line, eliminating mis-parses caused by hyphens elsewhere in the payload (UUIDs, etc.). Validity range expanded from 1xx-6xx to 1xx-9xx so 7xx/8xx async events route correctly. Behaviour for canonical lines like `200-OK` is unchanged.
+
 ## [1.8.4] - 2026-05-04
 
 ### Added

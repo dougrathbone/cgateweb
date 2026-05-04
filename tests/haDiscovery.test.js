@@ -790,6 +790,56 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('handleNetworkCreated (event-driven discovery)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('triggers a TreeXML for a configured network when it becomes available', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkCreated('254');
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+        });
+
+        it('skips networks not in ha_discovery_networks when the list is configured', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkCreated('999');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('triggers for any network when ha_discovery_networks is empty', () => {
+            mockSettings.ha_discovery_networks = [];
+            haDiscovery.handleNetworkCreated('999');
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 999${NEWLINE}`);
+        });
+
+        it('does nothing when discovery is disabled', () => {
+            mockSettings.ha_discovery_enabled = false;
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkCreated('254');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('cancels a pending retry when an event arrives mid-backoff', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger();
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            // Retry is scheduled for 2s. A Network created event arriving now
+            // should send a fresh TREEXML and cancel the pending retry.
+            mockSendCommandFn.mockClear();
+            haDiscovery.handleNetworkCreated('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+            // Advance past the original retry's 2s backoff. No extra send.
+            jest.advanceTimersByTime(2500);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+    });
+
     describe('Custom Label Override (three-tier priority)', () => {
         beforeEach(() => {
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {

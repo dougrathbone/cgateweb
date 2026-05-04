@@ -4,7 +4,8 @@ const {
     CGATE_RESPONSE_OBJECT_STATUS,
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_DATA,
-    CGATE_RESPONSE_TREE_END
+    CGATE_RESPONSE_TREE_END,
+    CGATE_RESPONSE_SYSTEM_EVENT
 } = require('./constants');
 
 /**
@@ -85,41 +86,45 @@ class CommandResponseProcessor {
      * @returns {Object|null} Parsed response with responseCode and statusData, or null if invalid
      */
     _parseCommandResponseLine(line) {
-        let responseCode = '';
-        let statusData = '';
-        const hyphenIndex = line.indexOf('-');
+        // Strip a leading C-Gate timestamp (e.g. "20260504-193110.569 ").
+        // Asynchronous notifications enabled by EVENT ON arrive on the command
+        // port with this prefix; without stripping it the hyphen-first split
+        // below would land in the date instead of the response code.
+        const stripped = (line || '').replace(/^\d{8}-\d{6}\.\d+\s+/, '');
 
-        if (hyphenIndex > -1 && line.length > hyphenIndex + 1) {
-            // C-Gate format: "200-OK" or "300-//PROJECT/254/56/1: level=255"
-            responseCode = line.substring(0, hyphenIndex).trim();
-            statusData = line.substring(hyphenIndex + 1).trim();
-        } else {
-            // Alternative format: "200 OK" (space-separated)
-            const firstSpace = line.indexOf(' ');
-            if (firstSpace === -1) {
-                responseCode = line.trim();
-            } else {
-                responseCode = line.substring(0, firstSpace).trim();
-                statusData = line.substring(firstSpace + 1).trim();
-            }
+        // C-Gate response codes are exactly 3 digits at the start of the line,
+        // followed by either '-' (e.g. "200-OK") or ' ' (e.g. "742 //PROJECT
+        // /254 ... Network created ..."), or end-of-string. Pinning to
+        // positions 0-2 avoids mis-parsing payloads with later hyphens (UUIDs).
+        const trimmed = stripped.trim();
+        const responseCode = trimmed.substring(0, 3);
+        if (trimmed.length < 3 || !this._isValidResponseCode(responseCode)) {
+            this.logger.debug(`Skipping non-response line: ${line}`);
+            return null;
         }
-        
-        if (!this._isValidResponseCode(responseCode)) {
-             this.logger.debug(`Skipping non-response line: ${line}`);
-             return null; 
+        const separator = trimmed.charAt(3);
+        if (separator && separator !== '-' && separator !== ' ') {
+            // Position 3 must be the start of the data section, not another
+            // digit (which would mean the "code" is part of a 4+ digit number).
+            this.logger.debug(`Skipping non-response line: ${line}`);
+            return null;
         }
-
-        return { responseCode, statusData };
+        // Strip the separator and any surrounding whitespace.
+        const statusData = trimmed.substring(3).replace(/^\s*-?\s*/, '');
+        return { responseCode, statusData: statusData.trim() };
     }
 
     _isValidResponseCode(responseCode) {
         if (!responseCode || responseCode.length !== 3) {
             return false;
         }
+        // C-Gate codes span 1xx-9xx: 1xx informational, 2xx success, 3xx
+        // multi-line (tree), 4xx/5xx errors, 7xx/8xx async system events
+        // (network created, connection events), 9xx job lifecycle.
         const c0 = responseCode.charCodeAt(0);
         const c1 = responseCode.charCodeAt(1);
         const c2 = responseCode.charCodeAt(2);
-        return c0 >= 49 && c0 <= 54 && c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57;
+        return c0 >= 49 && c0 <= 57 && c1 >= 48 && c1 <= 57 && c2 >= 48 && c2 <= 57;
     }
 
     /**
@@ -164,6 +169,9 @@ class CommandResponseProcessor {
                     this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_END, data: statusData });
                 }
                 break;
+            case CGATE_RESPONSE_SYSTEM_EVENT:
+                this._processSystemEvent(statusData);
+                break;
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
@@ -176,8 +184,36 @@ class CommandResponseProcessor {
     }
 
     /**
+     * Processes async system event lines (response code 742). C-Gate emits
+     * these for tag/network changes; the case we care about is "Network
+     * created", which signals that a configured network has finished loading
+     * and is now queryable via TREEXML. Forwarding to HaDiscovery lets us
+     * refresh discovery the moment a network becomes available, eliminating
+     * the startup race that the v1.8.1 retry mechanism otherwise covers.
+     *
+     * Example payload:
+     *   "//12LESLIE/254 c2211b00-... Network created type=cni address=..."
+     */
+    _processSystemEvent(statusData) {
+        const data = statusData || '';
+        if (!/Network created/.test(data)) {
+            this.logger.debug(`C-Gate system event 742 (no action): ${data}`);
+            return;
+        }
+        const match = data.match(/\/\/[^/]+\/(\d+)\b/);
+        if (!match) {
+            this.logger.debug(`C-Gate system event 742 (Network created, but no network id parsed): ${data}`);
+            return;
+        }
+        const networkId = match[1];
+        if (this._haDiscovery && typeof this._haDiscovery.handleNetworkCreated === 'function') {
+            this._haDiscovery.handleNetworkCreated(networkId);
+        }
+    }
+
+    /**
      * Processes object status responses from C-Gate commands.
-     * 
+     *
      * @param {string} statusData - Object status data from C-Gate
      */
     _processCommandObjectStatus(statusData) {

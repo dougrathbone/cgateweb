@@ -22,7 +22,8 @@ describe('CommandResponseProcessor', () => {
         mockHaDiscovery = {
             handleTreeStart: jest.fn(),
             handleTreeData: jest.fn(),
-            handleTreeEnd: jest.fn()
+            handleTreeEnd: jest.fn(),
+            handleNetworkCreated: jest.fn()
         };
 
         mockOnObjectStatus = jest.fn();
@@ -135,14 +136,24 @@ describe('CommandResponseProcessor', () => {
             );
         });
 
-        it('should skip C-Gate v3.6.0 timestamp-prefixed notifications at debug level', () => {
+        it('should strip a leading C-Gate timestamp and parse the response code', () => {
             const result = processor._parseCommandResponseLine(
                 '20251031-171409.874 803 cmd7 - Host:/127.0.0.1 opened command interface from port: 60052'
             );
-            expect(result).toBeNull();
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('Skipping non-response line:')
+            expect(result).toEqual({
+                responseCode: '803',
+                statusData: 'cmd7 - Host:/127.0.0.1 opened command interface from port: 60052'
+            });
+        });
+
+        it('should not be fooled by hyphens in payload UUIDs', () => {
+            const result = processor._parseCommandResponseLine(
+                '20260504-193110.569 742 //PROJECT/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
             );
+            expect(result).toEqual({
+                responseCode: '742',
+                statusData: '//PROJECT/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
+            });
         });
     });
 
@@ -169,8 +180,46 @@ describe('CommandResponseProcessor', () => {
 
         it('should route tree end responses to HA discovery', () => {
             processor._processCommandResponse(CGATE_RESPONSE_TREE_END, 'tree end data');
-            
+
             expect(mockHaDiscovery.handleTreeEnd).toHaveBeenCalledWith('tree end data');
+        });
+
+        it('should forward Network created system events to HA discovery', () => {
+            processor._processCommandResponse(
+                '742',
+                '//PROJECT/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
+            );
+            expect(mockHaDiscovery.handleNetworkCreated).toHaveBeenCalledWith('254');
+        });
+
+        it('should ignore 742 events that are not Network created', () => {
+            processor._processCommandResponse(
+                '742',
+                '//PROJECT - Tag information changed at tag address: //PROJECT/Installation oldtag: null newtag: null'
+            );
+            expect(mockHaDiscovery.handleNetworkCreated).not.toHaveBeenCalled();
+        });
+
+        it('should ignore Network created events without a parseable network id', () => {
+            processor._processCommandResponse('742', 'Network created (malformed line)');
+            expect(mockHaDiscovery.handleNetworkCreated).not.toHaveBeenCalled();
+        });
+
+        it('should not throw when haDiscovery lacks handleNetworkCreated', () => {
+            processor.haDiscovery = { handleTreeStart: jest.fn() };
+            expect(() => {
+                processor._processCommandResponse(
+                    '742',
+                    '//PROJECT/254 uuid Network created type=cni'
+                );
+            }).not.toThrow();
+        });
+
+        it('end-to-end: timestamped 742 line on processLine forwards to handleNetworkCreated', () => {
+            processor.processLine(
+                '20260504-193110.569 742 //12LESLIE/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
+            );
+            expect(mockHaDiscovery.handleNetworkCreated).toHaveBeenCalledWith('254');
         });
 
         it('should route 4xx error responses', () => {

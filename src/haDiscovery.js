@@ -168,6 +168,29 @@ class HaDiscovery {
         });
     }
 
+    /**
+     * Triggers a discovery refresh for a network that has just become
+     * available in C-Gate (driven by a "Network created" async event on the
+     * command port). Gated by the same scope rules as `trigger()`: when
+     * `ha_discovery_networks` is configured, only those networks refresh;
+     * otherwise we let any network through (matching the auto-discovery path).
+     *
+     * Idempotent against the v1.8.1 retry: `queueTreeRequest` cancels any
+     * pending retry and de-duplicates the pending queue, so a Network created
+     * event mid-backoff just short-circuits the wait.
+     */
+    handleNetworkCreated(networkId) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+        const configured = this.settings.ha_discovery_networks || [];
+        if (configured.length > 0 && !configured.map(String).includes(networkKey)) {
+            this.logger.debug(`Network ${networkKey} created but not in ha_discovery_networks; skipping refresh`);
+            return;
+        }
+        this.logger.info(`Network ${networkKey} created in C-Gate; refreshing HA Discovery`);
+        this.queueTreeRequest(networkKey);
+    }
+
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
         const state = this._getOrCreateTreeState(normalizedNetwork);
