@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-05-04
+
+### Added
+- **Per-network discovery health sensor**: HA Discovery now publishes a "Discovery (Network N)" diagnostic sensor for each configured network, with three states — `discovering` (request in flight or retry pending), `ok` (last TreeXML succeeded), or `paused` (retry budget exhausted from the v1.8.1 startup-race protection). The sensor lives under the existing cgateweb Bridge device in HA, so users can see at a glance whether auto-discovery is healthy without trawling the add-on logs. State publishes are de-duplicated; the HA Discovery config payload is published once per network.
+
 ## [1.8.3] - 2026-05-04
 
 ### Refactor

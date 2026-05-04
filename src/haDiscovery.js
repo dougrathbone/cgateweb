@@ -25,10 +25,13 @@ const {
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
+    MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
+    MQTT_TOPIC_STATUS,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_CLIMATE,
     HA_COMPONENT_SCENE,
+    HA_COMPONENT_SENSOR,
     HA_DISCOVERY_SUFFIX,
     HA_DEVICE_VIA,
     HA_DEVICE_MANUFACTURER,
@@ -37,6 +40,9 @@ const {
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,
+    DISCOVERY_STATE_DISCOVERING,
+    DISCOVERY_STATE_OK,
+    DISCOVERY_STATE_PAUSED,
     CGATE_CMD_TREEXML,
     NEWLINE,
     entityIdFields
@@ -81,6 +87,13 @@ class HaDiscovery {
         this._treeRetryInitialDelayMs = 2000;
         this._treeRetryMaxDelayMs = 60000;
         this._treeRequestTimeoutMs = 8000;
+
+        // Tracks per-network HA Discovery health. Each entry holds the last
+        // published state so we don't re-publish identical states. Networks for
+        // which we've published an HA Discovery config are tracked separately
+        // to avoid republishing the same config payload on every transition.
+        this._networkDiscoveryStatus = new Map();   // networkId -> 'discovering' | 'ok' | 'paused'
+        this._discoveryStatusConfigPublished = new Set();
     }
 
     /**
@@ -163,6 +176,7 @@ class HaDiscovery {
         // attempts counter so backoff continues if this attempt also fails.
         this._clearTimer(state, 'retryHandle');
 
+        this._setDiscoveryStatus(normalizedNetwork, DISCOVERY_STATE_DISCOVERING);
         this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
 
         // Avoid duplicate pending entries when a retry races a late response.
@@ -243,6 +257,7 @@ class HaDiscovery {
                 `Verify the network is configured and reachable in C-Gate, then restart the bridge or publish to cbus/write/${networkId}///gettree to retry.`
             );
             this._clearTreeState(networkId);
+            this._setDiscoveryStatus(networkId, DISCOVERY_STATE_PAUSED);
             return;
         }
 
@@ -271,6 +286,65 @@ class HaDiscovery {
         for (const networkId of [...this._treeRequestState.keys()]) {
             this._clearTreeState(networkId);
         }
+    }
+
+    /**
+     * Publishes a per-network "Discovery (Network N)" diagnostic sensor to HA
+     * via MQTT Discovery. Idempotent — only publishes the config payload once
+     * per network for the lifetime of this instance.
+     */
+    _publishDiscoveryStatusConfig(networkId) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+        if (this._discoveryStatusConfigPublished.has(networkKey)) return;
+
+        const uniqueId = `cgateweb_discovery_${networkKey}`;
+        const stateTopic = `${MQTT_TOPIC_PREFIX_READ}/${networkKey}///${MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS}`;
+        const configTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const payload = {
+            name: `Discovery (Network ${networkKey})`,
+            unique_id: uniqueId,
+            ...entityIdFields(HA_COMPONENT_SENSOR, uniqueId),
+            state_topic: stateTopic,
+            availability_topic: MQTT_TOPIC_STATUS,
+            payload_available: 'Online',
+            payload_not_available: 'Offline',
+            entity_category: 'diagnostic',
+            icon: 'mdi:radar',
+            device: {
+                identifiers: [HA_DEVICE_VIA],
+                name: 'cgateweb Bridge',
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: 'Bridge Diagnostics'
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
+            }
+        };
+
+        this._publish(configTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._discoveryStatusConfigPublished.add(networkKey);
+    }
+
+    /**
+     * Updates the per-network discovery status. Publishes the HA Discovery
+     * config the first time a network is seen, then publishes the state to the
+     * sensor's state topic. Skips republishes when the state hasn't changed.
+     */
+    _setDiscoveryStatus(networkId, status) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+        const previous = this._networkDiscoveryStatus.get(networkKey);
+        if (previous === status) return;
+
+        this._publishDiscoveryStatusConfig(networkKey);
+        this._networkDiscoveryStatus.set(networkKey, status);
+
+        const stateTopic = `${MQTT_TOPIC_PREFIX_READ}/${networkKey}///${MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS}`;
+        this._publish(stateTopic, status, { retain: true, qos: 0 });
+        this.logger.debug(`Discovery status for network ${networkKey}: ${previous || 'init'} -> ${status}`);
     }
 
     handleTreeStart(_statusData) {
@@ -349,16 +423,18 @@ class HaDiscovery {
                 });
             } else {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
-                
+
                 // Publish standard tree topic
                 this._publish(
                     `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
                     JSON.stringify(result),
                     { retain: true, qos: 0 }
                 );
-                
+
                 // Generate HA Discovery messages
                 this._publishDiscoveryFromTree(networkForTree, result);
+
+                this._setDiscoveryStatus(networkForTree, DISCOVERY_STATE_OK);
             }
         });
     }

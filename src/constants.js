@@ -92,6 +92,13 @@ const HA_MODEL_HVAC = 'HVAC Zone (Air Conditioning)';
 const HA_COMPONENT_EVENT = 'event';
 const HA_COMPONENT_SCENE = 'scene';
 
+// HA Discovery health states surfaced as the per-network "Discovery" sensor.
+const DISCOVERY_STATE_DISCOVERING = 'discovering';
+const DISCOVERY_STATE_OK = 'ok';
+const DISCOVERY_STATE_PAUSED = 'paused';
+
+const MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS = 'discovery_status';
+
 // HA Origin Info
 const HA_ORIGIN_NAME = 'cgateweb';
 const HA_ORIGIN_SW_VERSION = packageJson.version;
@@ -152,6 +159,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_TREE,
+    MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
@@ -199,6 +207,9 @@ module.exports = {
     HA_MODEL_HVAC,
     HA_COMPONENT_EVENT,
     HA_COMPONENT_SCENE,
+    DISCOVERY_STATE_DISCOVERING,
+    DISCOVERY_STATE_OK,
+    DISCOVERY_STATE_PAUSED,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
     HA_ORIGIN_SUPPORT_URL,

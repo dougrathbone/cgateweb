@@ -679,6 +679,117 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('Discovery health diagnostic sensor', () => {
+        const findStateCall = (network) => mockPublishFn.mock.calls.find(
+            c => c[0] === `cbus/read/${network}///discovery_status`
+        );
+        const findConfigCall = (network) => mockPublishFn.mock.calls.find(
+            c => c[0] === `testhomeassistant/sensor/cgateweb_discovery_${network}/config`
+        );
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('publishes a HA Discovery config + discovering state on first request', () => {
+            haDiscovery.trigger();
+
+            const config = findConfigCall('254');
+            expect(config).toBeDefined();
+            const payload = JSON.parse(config[1]);
+            expect(payload.unique_id).toBe('cgateweb_discovery_254');
+            expect(payload.state_topic).toBe('cbus/read/254///discovery_status');
+            expect(payload.entity_category).toBe('diagnostic');
+            expect(payload.device.identifiers).toContain('cgateweb_bridge');
+
+            const state = findStateCall('254');
+            expect(state).toBeDefined();
+            expect(state[1]).toBe('discovering');
+            expect(state[2]).toEqual({ retain: true, qos: 0 });
+        });
+
+        it('transitions to ok after a successful TreeXML', () => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, {}));
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<xml/>');
+            haDiscovery.handleTreeEnd('end');
+
+            const stateCalls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'cbus/read/254///discovery_status'
+            );
+            const states = stateCalls.map(c => c[1]);
+            expect(states).toEqual(['discovering', 'ok']);
+        });
+
+        it('transitions to paused after retry limit is exhausted', () => {
+            const errMsg = 'Bad object or device ID: Network not found';
+            haDiscovery.trigger();
+            for (let i = 1; i <= 8; i++) {
+                haDiscovery.handleCommandError('401', errMsg);
+                jest.runOnlyPendingTimers();
+            }
+            haDiscovery.handleCommandError('401', errMsg);
+
+            const stateCalls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'cbus/read/254///discovery_status'
+            );
+            const states = stateCalls.map(c => c[1]);
+            expect(states[states.length - 1]).toBe('paused');
+        });
+
+        it('does not republish the config on every state transition', () => {
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, {}));
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeEnd('end');
+            haDiscovery.queueTreeRequest('254');
+
+            const configCalls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'testhomeassistant/sensor/cgateweb_discovery_254/config'
+            );
+            expect(configCalls).toHaveLength(1);
+        });
+
+        it('does not republish the same state twice in a row', () => {
+            haDiscovery.trigger();
+            // Calling queueTreeRequest again for the same network shouldn't
+            // produce a duplicate "discovering" publish.
+            haDiscovery.queueTreeRequest('254');
+
+            const stateCalls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'cbus/read/254///discovery_status'
+            );
+            expect(stateCalls).toHaveLength(1);
+            expect(stateCalls[0][1]).toBe('discovering');
+        });
+
+        it('publishes a separate sensor per network', () => {
+            mockSettings.ha_discovery_networks = ['254', '200'];
+            haDiscovery.trigger();
+
+            expect(findConfigCall('254')).toBeDefined();
+            expect(findConfigCall('200')).toBeDefined();
+            expect(findStateCall('254')[1]).toBe('discovering');
+            expect(findStateCall('200')[1]).toBe('discovering');
+        });
+
+        it('skips publishing when HA discovery is disabled', () => {
+            mockSettings.ha_discovery_enabled = false;
+            haDiscovery._setDiscoveryStatus('254', 'discovering');
+
+            expect(findStateCall('254')).toBeUndefined();
+            expect(findConfigCall('254')).toBeUndefined();
+        });
+    });
+
     describe('Custom Label Override (three-tier priority)', () => {
         beforeEach(() => {
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
