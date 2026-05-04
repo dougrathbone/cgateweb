@@ -205,31 +205,39 @@ ACCESSEOF
     bashio::log.info "Created default access.txt"
 fi
 
-# Set the project name and port configuration in C-Gate config
+# Set the project name and port configuration in C-Gate config.
+# Keys are anchored to start-of-line so the comment headers in C-GateConfig.txt
+# (e.g. "#### command-port:") don't produce false-positive grep matches.
+# Earlier versions wrote "CommandInterface.port" / "EventInterface.port", which
+# C-Gate doesn't recognize and warns about at startup; those lines are stripped
+# here so the warnings go away on next install.
 CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
 CGATE_EVENT_PORT=$(bashio::config 'cgate_event_port' '20025')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
 if [[ -f "${CGATE_CONFIG}" ]]; then
+    # Strip legacy invalid keys that older versions of this script appended.
+    sed -i '/^CommandInterface\.port=/d;/^EventInterface\.port=/d' "${CGATE_CONFIG}"
+
     # project.default
-    if grep -q "project.default" "${CGATE_CONFIG}"; then
-        sed -i "s/project.default=.*/project.default=${CGATE_PROJECT}/" "${CGATE_CONFIG}"
+    if grep -q "^project.default=" "${CGATE_CONFIG}"; then
+        sed -i "s/^project.default=.*/project.default=${CGATE_PROJECT}/" "${CGATE_CONFIG}"
     else
         echo "project.default=${CGATE_PROJECT}" >> "${CGATE_CONFIG}"
     fi
 
-    # CommandInterface.port (command/program port)
-    if grep -q "CommandInterface.port" "${CGATE_CONFIG}"; then
-        sed -i "s/CommandInterface.port=.*/CommandInterface.port=${CGATE_PORT}/" "${CGATE_CONFIG}"
+    # command-port (command/program port)
+    if grep -q "^command-port=" "${CGATE_CONFIG}"; then
+        sed -i "s/^command-port=.*/command-port=${CGATE_PORT}/" "${CGATE_CONFIG}"
     else
-        echo "CommandInterface.port=${CGATE_PORT}" >> "${CGATE_CONFIG}"
+        echo "command-port=${CGATE_PORT}" >> "${CGATE_CONFIG}"
     fi
 
-    # EventInterface.port (event/monitor port)
-    if grep -q "EventInterface.port" "${CGATE_CONFIG}"; then
-        sed -i "s/EventInterface.port=.*/EventInterface.port=${CGATE_EVENT_PORT}/" "${CGATE_CONFIG}"
+    # event-port (event/monitor port)
+    if grep -q "^event-port=" "${CGATE_CONFIG}"; then
+        sed -i "s/^event-port=.*/event-port=${CGATE_EVENT_PORT}/" "${CGATE_CONFIG}"
     else
-        echo "EventInterface.port=${CGATE_EVENT_PORT}" >> "${CGATE_CONFIG}"
+        echo "event-port=${CGATE_EVENT_PORT}" >> "${CGATE_CONFIG}"
     fi
 
     bashio::log.info "Set default project to: ${CGATE_PROJECT}"

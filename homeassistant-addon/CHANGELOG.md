@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-05-04
+
+### Fixed
+- **C-Gate config keys**: `cgate-install.sh` was writing `CommandInterface.port` and `EventInterface.port` into `C-GateConfig.txt`, but C-Gate uses `command-port` and `event-port`. C-Gate logged "Invalid key" warnings on every startup and any user-customized ports were silently dropped, so the addon kept using C-Gate defaults regardless of the configured `cgate_port` / `cgate_event_port` values. The script now writes the correct keys, anchors its grep checks with `^…=` so comment headers in `C-GateConfig.txt` don't produce false-positive matches, and strips any legacy invalid keys left over from earlier installs.
+
 ## [1.8.1] - 2026-05-04
 
 ### Fixed
