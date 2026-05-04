@@ -309,7 +309,7 @@ class BridgeInitializationService {
      * that fail because C-Gate hasn't finished loading networks at startup.
      */
     handleCommandError(code, statusData) {
-        if (this.bridge.haDiscovery && typeof this.bridge.haDiscovery.handleCommandError === 'function') {
+        if (this.bridge.haDiscovery) {
             this.bridge.haDiscovery.handleCommandError(code, statusData);
         }
 
@@ -344,9 +344,7 @@ class BridgeInitializationService {
         this.bridge.labelLoader.unwatch();
 
         if (this.bridge.haDiscovery) {
-            if (typeof this.bridge.haDiscovery.stop === 'function') {
-                this.bridge.haDiscovery.stop();
-            }
+            this.bridge.haDiscovery.stop();
             this.bridge.haDiscovery.removeAllListeners?.();
             this.bridge.haDiscovery = null;
             this.bridge.commandResponseProcessor.haDiscovery = null;

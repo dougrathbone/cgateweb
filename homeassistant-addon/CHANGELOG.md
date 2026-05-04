@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-05-04
+
+### Refactor
+- **HA Discovery retry state**: collapsed the parallel `_treeWatchdogs` and `_treeRetryState` Maps in `HaDiscovery` into a single `_treeRequestState` Map (`networkId -> { attempts, watchdogHandle, retryHandle }`), eliminating duplicate lookups, an awkward `keepAttempts` boolean parameter, and three near-duplicate cleanup helpers. Behaviour is unchanged.
+- Removed unnecessary `typeof === 'function'` guards around `haDiscovery.handleCommandError` and `haDiscovery.stop` calls in `BridgeInitializationService`; the methods are part of the class contract and the bridge holds a locally constructed instance.
+
 ## [1.8.2] - 2026-05-04
 
 ### Fixed

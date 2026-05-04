@@ -58,7 +58,9 @@ describe('BridgeInitializationService', () => {
         HaDiscovery.mockClear();
         HaDiscovery.mockImplementation(() => ({
             trigger: jest.fn(),
-            updateLabels: jest.fn()
+            updateLabels: jest.fn(),
+            handleCommandError: jest.fn(),
+            stop: jest.fn()
         }));
     });
 

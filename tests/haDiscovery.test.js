@@ -602,6 +602,9 @@ describe('HaDiscovery', () => {
             const errMsg = 'Bad object or device ID: Network not found';
 
             // 8 retries permitted; the 9th failure exhausts the budget.
+            // runOnlyPendingTimers fires just the scheduled retry (which
+            // arms a fresh watchdog) — the next handleCommandError cancels
+            // that watchdog before it can fire and double-count attempts.
             for (let i = 1; i <= 8; i++) {
                 haDiscovery.handleCommandError('401', errMsg);
                 jest.runOnlyPendingTimers();
@@ -637,8 +640,7 @@ describe('HaDiscovery', () => {
             haDiscovery.handleTreeEnd('end');
 
             // Watchdog and retry state should now be cleared.
-            expect(haDiscovery._treeWatchdogs.size).toBe(0);
-            expect(haDiscovery._treeRetryState.size).toBe(0);
+            expect(haDiscovery._treeRequestState.size).toBe(0);
 
             // Advance time well past any potential retry — no extra commands.
             const callsBefore = mockSendCommandFn.mock.calls.length;
@@ -666,11 +668,10 @@ describe('HaDiscovery', () => {
         it('stop() clears all retry timers and watchdogs', () => {
             haDiscovery.trigger();
             haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
-            expect(haDiscovery._treeRetryState.size).toBe(1);
+            expect(haDiscovery._treeRequestState.size).toBe(1);
 
             haDiscovery.stop();
-            expect(haDiscovery._treeWatchdogs.size).toBe(0);
-            expect(haDiscovery._treeRetryState.size).toBe(0);
+            expect(haDiscovery._treeRequestState.size).toBe(0);
 
             const callsBefore = mockSendCommandFn.mock.calls.length;
             jest.advanceTimersByTime(120000);

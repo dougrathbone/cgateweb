@@ -72,11 +72,11 @@ class HaDiscovery {
 
         // C-Gate accepts TCP connections on the command port before its project
         // networks are loaded. Initial TREEXML can therefore return 401 "Network
-        // not found" until C-Gate finishes startup. These maps drive a
+        // not found" until C-Gate finishes startup. This map drives a
         // per-network retry loop with exponential backoff so HA Discovery
         // recovers automatically without restarting the bridge.
-        this._treeWatchdogs = new Map();   // networkId -> timeoutHandle
-        this._treeRetryState = new Map();  // networkId -> { attempts, retryHandle }
+        // networkId -> { attempts, watchdogHandle, retryHandle }
+        this._treeRequestState = new Map();
         this._maxTreeRetryAttempts = 8;
         this._treeRetryInitialDelayMs = 2000;
         this._treeRetryMaxDelayMs = 60000;
@@ -157,9 +157,11 @@ class HaDiscovery {
 
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
+        const state = this._getOrCreateTreeState(normalizedNetwork);
 
-        // Cancel any pending retry timer — we're sending a fresh request now.
-        this._cancelTreeRetry(normalizedNetwork, /* keepAttempts */ true);
+        // Sending a fresh request: clear any pending retry but keep the
+        // attempts counter so backoff continues if this attempt also fails.
+        this._clearTimer(state, 'retryHandle');
 
         this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
 
@@ -168,38 +170,43 @@ class HaDiscovery {
             this.pendingTreeNetworks.push(normalizedNetwork);
         }
 
-        this._armTreeWatchdog(normalizedNetwork);
+        this._clearTimer(state, 'watchdogHandle');
+        state.watchdogHandle = this._setTimer(this._treeRequestTimeoutMs, () => {
+            state.watchdogHandle = null;
+            this._handleTreeRequestFailure(normalizedNetwork, 'no response within timeout');
+        });
+
         this._sendCommand(`${CGATE_CMD_TREEXML} ${normalizedNetwork}${NEWLINE}`);
     }
 
-    _armTreeWatchdog(networkId) {
-        this._cancelTreeWatchdog(networkId);
-        const handle = setTimeout(() => {
-            this._treeWatchdogs.delete(networkId);
-            this._handleTreeRequestFailure(networkId, 'no response within timeout');
-        }, this._treeRequestTimeoutMs);
-        if (typeof handle.unref === 'function') handle.unref();
-        this._treeWatchdogs.set(networkId, handle);
-    }
-
-    _cancelTreeWatchdog(networkId) {
-        const handle = this._treeWatchdogs.get(networkId);
-        if (handle) {
-            clearTimeout(handle);
-            this._treeWatchdogs.delete(networkId);
+    _getOrCreateTreeState(networkId) {
+        let state = this._treeRequestState.get(networkId);
+        if (!state) {
+            state = { attempts: 0, watchdogHandle: null, retryHandle: null };
+            this._treeRequestState.set(networkId, state);
         }
+        return state;
     }
 
-    _cancelTreeRetry(networkId, keepAttempts = false) {
-        const state = this._treeRetryState.get(networkId);
+    _clearTreeState(networkId) {
+        const state = this._treeRequestState.get(networkId);
         if (!state) return;
-        if (state.retryHandle) {
-            clearTimeout(state.retryHandle);
-            state.retryHandle = null;
+        this._clearTimer(state, 'watchdogHandle');
+        this._clearTimer(state, 'retryHandle');
+        this._treeRequestState.delete(networkId);
+    }
+
+    _clearTimer(state, key) {
+        if (state[key]) {
+            clearTimeout(state[key]);
+            state[key] = null;
         }
-        if (!keepAttempts) {
-            this._treeRetryState.delete(networkId);
-        }
+    }
+
+    _setTimer(delayMs, fn) {
+        const handle = setTimeout(fn, delayMs);
+        if (typeof handle.unref === 'function') handle.unref();
+        return handle;
     }
 
     /**
@@ -220,12 +227,13 @@ class HaDiscovery {
         if (this.pendingTreeNetworks.length === 0) return;
 
         const failedNetwork = this.pendingTreeNetworks.shift();
-        this._cancelTreeWatchdog(failedNetwork);
+        const state = this._treeRequestState.get(failedNetwork);
+        if (state) this._clearTimer(state, 'watchdogHandle');
         this._handleTreeRequestFailure(failedNetwork, '401 Network not found');
     }
 
     _handleTreeRequestFailure(networkId, reason) {
-        const state = this._treeRetryState.get(networkId) || { attempts: 0, retryHandle: null };
+        const state = this._getOrCreateTreeState(networkId);
         state.attempts += 1;
 
         if (state.attempts > this._maxTreeRetryAttempts) {
@@ -234,7 +242,7 @@ class HaDiscovery {
                 `Auto-discovery for this network is paused. ` +
                 `Verify the network is configured and reachable in C-Gate, then restart the bridge or publish to cbus/write/${networkId}///gettree to retry.`
             );
-            this._treeRetryState.delete(networkId);
+            this._clearTreeState(networkId);
             return;
         }
 
@@ -249,27 +257,20 @@ class HaDiscovery {
             `This typically means C-Gate is still loading networks at startup.`
         );
 
-        if (state.retryHandle) clearTimeout(state.retryHandle);
-        state.retryHandle = setTimeout(() => {
+        this._clearTimer(state, 'retryHandle');
+        state.retryHandle = this._setTimer(delay, () => {
             state.retryHandle = null;
             this.queueTreeRequest(networkId);
-        }, delay);
-        if (typeof state.retryHandle.unref === 'function') state.retryHandle.unref();
-        this._treeRetryState.set(networkId, state);
+        });
     }
 
     /**
      * Cancels all retry timers and watchdogs. Call on bridge shutdown.
      */
     stop() {
-        for (const handle of this._treeWatchdogs.values()) {
-            clearTimeout(handle);
+        for (const networkId of [...this._treeRequestState.keys()]) {
+            this._clearTreeState(networkId);
         }
-        this._treeWatchdogs.clear();
-        for (const state of this._treeRetryState.values()) {
-            if (state.retryHandle) clearTimeout(state.retryHandle);
-        }
-        this._treeRetryState.clear();
     }
 
     handleTreeStart(_statusData) {
@@ -280,10 +281,10 @@ class HaDiscovery {
         const nextNetwork = this.pendingTreeNetworks.shift() || this.treeNetwork || 'unknown';
         const networkKey = String(nextNetwork);
 
-        // The request succeeded — cancel watchdog and any pending retry so a
-        // late retry doesn't issue a redundant TREEXML.
-        this._cancelTreeWatchdog(networkKey);
-        this._cancelTreeRetry(networkKey);
+        // The request succeeded — drop watchdog and any pending retry so a
+        // late retry doesn't issue a redundant TREEXML, and reset the attempts
+        // counter for any future failure on this network.
+        this._clearTreeState(networkKey);
 
         this.activeTreeSession = {
             network: networkKey,
