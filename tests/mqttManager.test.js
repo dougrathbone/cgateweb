@@ -187,7 +187,7 @@ describe('MqttManager', () => {
             mqttManager.publish('test/topic', 'message');
 
             expect(mockClient.publish).not.toHaveBeenCalled();
-            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Cannot publish to MQTT: not connected'));
+            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT not connected'));
         });
 
         it('should warn only once when publishing repeatedly while disconnected', () => {
@@ -213,7 +213,7 @@ describe('MqttManager', () => {
             mockClient.connected = true;
             mqttManager.client.emit('connect');
 
-            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('17 publish(es) were dropped while disconnected'));
+            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('17 publish(es) attempted while disconnected'));
             expect(mqttManager._droppedPublishCount).toBe(0);
             expect(mqttManager._droppedPublishWarned).toBe(false);
         });
@@ -234,13 +234,118 @@ describe('MqttManager', () => {
             mockClient.publish.mockImplementation(() => {
                 throw new Error('Publish failed');
             });
-            
+
             mqttManager.publish('test/topic', 'message');
-            
+
             expect(loggerSpy).toHaveBeenCalledWith(
                 expect.stringContaining('Error publishing to MQTT'),
                 expect.objectContaining({ error: expect.any(Error) })
             );
+        });
+
+        describe('retain-aware pre-connect publish queue', () => {
+            it('queues retained publishes while disconnected', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('cbus/read/254/56/1/state', 'ON', { retain: true });
+                expect(mqttManager._pendingPublishQueue.size).toBe(1);
+                expect(mqttManager._pendingPublishQueue.get('cbus/read/254/56/1/state')).toEqual({
+                    payload: 'ON',
+                    options: { retain: true }
+                });
+            });
+
+            it('does not queue non-retained publishes (one-shot events)', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('cbus/read/254/56/1/event', 'press', { retain: false });
+                expect(mqttManager._pendingPublishQueue.size).toBe(0);
+            });
+
+            it('newest-wins per topic when the same topic is published multiple times', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('cbus/read/254/56/1/level', '0', { retain: true });
+                mqttManager.publish('cbus/read/254/56/1/level', '128', { retain: true });
+                mqttManager.publish('cbus/read/254/56/1/level', '255', { retain: true });
+                expect(mqttManager._pendingPublishQueue.size).toBe(1);
+                expect(mqttManager._pendingPublishQueue.get('cbus/read/254/56/1/level').payload).toBe('255');
+            });
+
+            it('flushes the queue on reconnect', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('cbus/read/254/56/1/state', 'ON', { retain: true });
+                mqttManager.publish('cbus/read/254/56/2/state', 'OFF', { retain: true });
+                expect(mqttManager._pendingPublishQueue.size).toBe(2);
+
+                mockClient.connected = true;
+                mqttManager.client.emit('connect');
+
+                expect(mqttManager._pendingPublishQueue.size).toBe(0);
+                expect(mockClient.publish).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/state', 'ON', { retain: true }
+                );
+                expect(mockClient.publish).toHaveBeenCalledWith(
+                    'cbus/read/254/56/2/state', 'OFF', { retain: true }
+                );
+            });
+
+            it('logs the replay count on reconnect', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('cbus/read/254/56/1/state', 'ON', { retain: true });
+                mqttManager.publish('cbus/read/254/56/2/state', 'OFF', { retain: true });
+
+                const infoSpy = jest.spyOn(mqttManager.logger, 'info');
+                mockClient.connected = true;
+                mqttManager.client.emit('connect');
+
+                expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('replayed 2 queued retained publish(es)'));
+            });
+
+            it('evicts the oldest entry when the queue exceeds its cap', () => {
+                mqttManager._pendingPublishMaxEntries = 3;
+                mqttManager.connected = false;
+                mqttManager.publish('a', 'first', { retain: true });
+                mqttManager.publish('b', 'second', { retain: true });
+                mqttManager.publish('c', 'third', { retain: true });
+                mqttManager.publish('d', 'fourth', { retain: true });
+
+                expect(mqttManager._pendingPublishQueue.size).toBe(3);
+                expect(mqttManager._pendingPublishQueue.has('a')).toBe(false);
+                expect(mqttManager._pendingPublishQueue.has('d')).toBe(true);
+                expect(mqttManager._pendingPublishEvicted).toBe(1);
+            });
+
+            it('warns about evictions on reconnect', () => {
+                mqttManager._pendingPublishMaxEntries = 2;
+                mqttManager.connected = false;
+                mqttManager.publish('a', 'x', { retain: true });
+                mqttManager.publish('b', 'y', { retain: true });
+                mqttManager.publish('c', 'z', { retain: true });
+
+                const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+                mockClient.connected = true;
+                mqttManager.client.emit('connect');
+
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('1 oldest retained publish(es) evicted'));
+                expect(mqttManager._pendingPublishEvicted).toBe(0);
+            });
+
+            it('continues replaying remaining publishes when one fails mid-flush', () => {
+                mqttManager.connected = false;
+                mqttManager.publish('topic1', 'a', { retain: true });
+                mqttManager.publish('topic2', 'b', { retain: true });
+                mqttManager.publish('topic3', 'c', { retain: true });
+
+                let callCount = 0;
+                mockClient.publish.mockImplementation((topic) => {
+                    callCount++;
+                    if (topic === 'topic2') throw new Error('Mid-flush failure');
+                });
+
+                mockClient.connected = true;
+                mqttManager.client.emit('connect');
+
+                expect(callCount).toBeGreaterThanOrEqual(3);
+                expect(mqttManager._pendingPublishQueue.size).toBe(0);
+            });
         });
     });
 

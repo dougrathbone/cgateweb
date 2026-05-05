@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.7] - 2026-05-05
+
+### Fixed
+- **Startup-race silent publish drops**: HA Discovery configs and initial state values published before the MQTT broker was fully connected were silently dropped — `MqttManager.publish()` incremented a counter but never replayed the lost messages. Affected entities sat at `unavailable` in Home Assistant indefinitely (until C-Gate happened to emit a fresh event for that group while MQTT was up). `cgateweb`'s own startup path is the largest culprit: `cgateWebBridge.start()` calls `_updateBridgeReadiness('startup')` and `haBridgeDiagnostics.publishNow('startup')` before the broker connects, so ~38 retained publishes per restart go to /dev/null.
+- `MqttManager` now keeps a bounded retain-aware queue of publishes attempted while disconnected. Map semantics give us newest-wins-per-topic so a stale `level=0` is correctly overwritten by a fresh `level=128` if both queue during the same disconnect window. The queue is bounded (default 1000 entries; configurable via `mqttPendingPublishMaxEntries`) and oldest entries are evicted with a warning if the broker stays unreachable. On (re)connect, the queue is flushed and the count is logged. Non-retained publishes (one-shot events whose meaning would be invalidated by replay) are still dropped — only retained state is queued.
+
 ## [1.8.6] - 2026-05-05
 
 ### Added

@@ -45,6 +45,21 @@ class MqttManager extends EventEmitter {
         this._lastStatusPayload = null;
         this._droppedPublishCount = 0;
         this._droppedPublishWarned = false;
+
+        // Pre-connect / disconnect publish queue. Retained-state publishes
+        // attempted while the broker is unreachable are queued here and
+        // replayed on (re)connect, so HA Discovery configs and initial state
+        // values aren't silently lost during the startup race. Map semantics
+        // give us newest-wins-per-topic — a stale level=0 is overwritten by a
+        // fresh level=128 if both queue while disconnected. Bounded by
+        // mqttPendingPublishMaxEntries (default 1000); when full, the oldest
+        // entry is evicted.
+        this._pendingPublishQueue = new Map();
+        this._pendingPublishMaxEntries = Math.max(
+            10, Number(settings && settings.mqttPendingPublishMaxEntries) || 1000
+        );
+        this._pendingPublishEvicted = 0;
+
         this.logger = createLogger({ component: 'MqttManager' });
         this.errorHandler = createErrorHandler('MqttManager');
     }
@@ -118,8 +133,11 @@ class MqttManager extends EventEmitter {
     publish(topic, payload, options = {}) {
         if (!this.client || !this.connected) {
             this._droppedPublishCount++;
+            if (options && options.retain) {
+                this._enqueueRetainedPublish(topic, payload, options);
+            }
             if (!this._droppedPublishWarned) {
-                this.logger.warn('Cannot publish to MQTT: not connected (further drops suppressed until reconnect)');
+                this.logger.warn('MQTT not connected; queueing retained publishes for replay on reconnect (further drops suppressed)');
                 this._droppedPublishWarned = true;
             }
             return false;
@@ -132,6 +150,37 @@ class MqttManager extends EventEmitter {
             this.logger.error(`Error publishing to MQTT:`, { error });
             return false;
         }
+    }
+
+    _enqueueRetainedPublish(topic, payload, options) {
+        // Newest-wins per topic — a fresh value supersedes a stale one queued
+        // earlier in the same disconnect window.
+        this._pendingPublishQueue.delete(topic);
+        this._pendingPublishQueue.set(topic, { payload, options });
+
+        // Bounded queue: evict the oldest entry when over the cap. Map
+        // iteration is insertion order so the first key is the oldest.
+        if (this._pendingPublishQueue.size > this._pendingPublishMaxEntries) {
+            const oldest = this._pendingPublishQueue.keys().next().value;
+            this._pendingPublishQueue.delete(oldest);
+            this._pendingPublishEvicted += 1;
+        }
+    }
+
+    _flushPendingPublishes() {
+        if (this._pendingPublishQueue.size === 0) return;
+        const entries = [...this._pendingPublishQueue.entries()];
+        this._pendingPublishQueue.clear();
+        let succeeded = 0;
+        for (const [topic, { payload, options }] of entries) {
+            try {
+                this.client.publish(topic, payload, options);
+                succeeded += 1;
+            } catch (error) {
+                this.logger.error(`Error replaying queued MQTT publish for ${topic}:`, { error });
+            }
+        }
+        this.logger.info(`MQTT reconnected; replayed ${succeeded} queued retained publish(es)`);
     }
 
     subscribe(topic, callback) {
@@ -213,13 +262,23 @@ class MqttManager extends EventEmitter {
         this.connected = true;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
 
+        if (this._pendingPublishEvicted > 0) {
+            this.logger.warn(
+                `MQTT publish queue exceeded max entries while disconnected; ${this._pendingPublishEvicted} oldest retained publish(es) evicted before flush`
+            );
+            this._pendingPublishEvicted = 0;
+        }
         if (this._droppedPublishCount > 0) {
-            this.logger.info(`MQTT reconnected; ${this._droppedPublishCount} publish(es) were dropped while disconnected`);
+            const queued = this._pendingPublishQueue.size;
+            this.logger.info(
+                `MQTT reconnected; ${this._droppedPublishCount} publish(es) attempted while disconnected, ${queued} queued for replay`
+            );
             this._droppedPublishCount = 0;
         }
         this._droppedPublishWarned = false;
 
         this._publishStatus(this._bridgeReady ? MQTT_PAYLOAD_STATUS_ONLINE : MQTT_PAYLOAD_STATUS_OFFLINE);
+        this._flushPendingPublishes();
         
         // Subscribe to command topics
         this.subscribe(`${MQTT_TOPIC_PREFIX_WRITE}/#`, (err) => {
