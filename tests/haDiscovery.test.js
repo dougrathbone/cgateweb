@@ -840,6 +840,83 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('handleNetworkRemoved (cleanup on C-Gate network removal)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, MOCK_TREEXML_RESULT_NET254));
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        const findEmptyPublish = (topic) => mockPublishFn.mock.calls.find(c => c[0] === topic && c[1] === '');
+
+        it('publishes empty payloads to all entity discovery configs for the removed network', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            // Run a full discovery cycle to populate _publishedTopics
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            const publishedBefore = mockPublishFn.mock.calls.length;
+            expect(haDiscovery._publishedTopics.size).toBeGreaterThan(0);
+
+            haDiscovery.handleNetworkRemoved('254');
+
+            // Each previously published light/cover config should be cleared with an empty retained payload.
+            const lightCleared = findEmptyPublish('testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(lightCleared).toBeDefined();
+            expect(lightCleared[2]).toEqual({ retain: true, qos: 0 });
+
+            // _publishedTopics is now empty for this network.
+            expect(haDiscovery._publishedTopics.size).toBe(0);
+            expect(mockPublishFn.mock.calls.length).toBeGreaterThan(publishedBefore);
+        });
+
+        it('removes the diagnostic sensor when one was published', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger(); // publishes diagnostic config + 'discovering' state
+
+            haDiscovery.handleNetworkRemoved('254');
+
+            const diagCleared = findEmptyPublish('testhomeassistant/sensor/cgateweb_discovery_254/config');
+            expect(diagCleared).toBeDefined();
+        });
+
+        it('cancels in-flight tree retry state for the removed network', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger();
+            haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
+            expect(haDiscovery._treeRequestState.size).toBe(1);
+
+            haDiscovery.handleNetworkRemoved('254');
+
+            expect(haDiscovery._treeRequestState.size).toBe(0);
+            expect(haDiscovery.pendingTreeNetworks).toEqual([]);
+
+            // The previously-scheduled retry must not fire after removal.
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+            jest.advanceTimersByTime(60000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
+        });
+
+        it('is a no-op when discovery is disabled', () => {
+            mockSettings.ha_discovery_enabled = false;
+            haDiscovery.handleNetworkRemoved('254');
+            expect(mockPublishFn).not.toHaveBeenCalled();
+        });
+
+        it('is safe to call for a network we never published for', () => {
+            // No prior trigger / publish. handleNetworkRemoved should not throw,
+            // and should not publish a diagnostic-cleanup payload (because the
+            // diagnostic was never published in the first place).
+            haDiscovery.handleNetworkRemoved('999');
+            const diagCleanup = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/sensor/cgateweb_discovery_999/config' && c[1] === ''
+            );
+            expect(diagCleanup).toBeUndefined();
+        });
+    });
+
     describe('Custom Label Override (three-tier priority)', () => {
         beforeEach(() => {
             jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {

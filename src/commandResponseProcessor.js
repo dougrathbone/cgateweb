@@ -190,29 +190,37 @@ class CommandResponseProcessor {
 
     /**
      * Processes async system event lines (response code 742). C-Gate emits
-     * these for tag/network changes; the case we care about is "Network
-     * created", which signals that a configured network has finished loading
-     * and is now queryable via TREEXML. Forwarding to HaDiscovery lets us
-     * refresh discovery the moment a network becomes available, eliminating
-     * the startup race that the v1.8.1 retry mechanism otherwise covers.
+     * these for tag/network changes; we route two sub-types to HaDiscovery:
+     *
+     *   "Network created"  — a network has finished loading; refresh discovery
+     *                        immediately rather than waiting on the v1.8.1
+     *                        retry backoff.
+     *   "Network removed" / "Network deleted" — a network is gone; clear all
+     *                        retained HA Discovery config topics for it so the
+     *                        entities don't linger in HA forever.
      *
      * Example payload:
      *   "//12LESLIE/254 c2211b00-... Network created type=cni address=..."
      */
     _processSystemEvent(statusData) {
         const data = statusData || '';
-        if (!/Network created/.test(data)) {
+        const lifecycle = data.match(/Network (created|removed|deleted)/i);
+        if (!lifecycle) {
             this.logger.debug(`C-Gate system event 742 (no action): ${data}`);
             return;
         }
-        const match = data.match(CGATE_NETWORK_PATH);
-        if (!match) {
-            this.logger.debug(`C-Gate system event 742 (Network created, but no network id parsed): ${data}`);
+        const pathMatch = data.match(CGATE_NETWORK_PATH);
+        if (!pathMatch) {
+            this.logger.debug(`C-Gate system event 742 (${lifecycle[1]}, but no network id parsed): ${data}`);
             return;
         }
-        const networkId = match[1];
-        if (this._haDiscovery) {
+        if (!this._haDiscovery) return;
+
+        const networkId = pathMatch[1];
+        if (/created/i.test(lifecycle[1])) {
             this._haDiscovery.handleNetworkCreated(networkId);
+        } else {
+            this._haDiscovery.handleNetworkRemoved(networkId);
         }
     }
 

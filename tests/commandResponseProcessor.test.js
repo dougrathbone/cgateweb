@@ -23,7 +23,8 @@ describe('CommandResponseProcessor', () => {
             handleTreeStart: jest.fn(),
             handleTreeData: jest.fn(),
             handleTreeEnd: jest.fn(),
-            handleNetworkCreated: jest.fn()
+            handleNetworkCreated: jest.fn(),
+            handleNetworkRemoved: jest.fn()
         };
 
         mockOnObjectStatus = jest.fn();
@@ -220,6 +221,35 @@ describe('CommandResponseProcessor', () => {
                 '20260504-193110.569 742 //12LESLIE/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
             );
             expect(mockHaDiscovery.handleNetworkCreated).toHaveBeenCalledWith('254');
+        });
+
+        it('should forward Network removed events to handleNetworkRemoved', () => {
+            processor._processCommandResponse(
+                '742',
+                '//PROJECT/254 c2211b00-28c1-103f-94b5-db702a32859b Network removed'
+            );
+            expect(mockHaDiscovery.handleNetworkRemoved).toHaveBeenCalledWith('254');
+            expect(mockHaDiscovery.handleNetworkCreated).not.toHaveBeenCalled();
+        });
+
+        it('should forward Network deleted events to handleNetworkRemoved', () => {
+            processor._processCommandResponse(
+                '742',
+                '//PROJECT/254 uuid Network deleted'
+            );
+            expect(mockHaDiscovery.handleNetworkRemoved).toHaveBeenCalledWith('254');
+        });
+
+        it('should ignore network removal events without a parseable id', () => {
+            processor._processCommandResponse('742', 'Network removed (malformed)');
+            expect(mockHaDiscovery.handleNetworkRemoved).not.toHaveBeenCalled();
+        });
+
+        it('end-to-end: timestamped 742 Network removed forwards to handleNetworkRemoved', () => {
+            processor.processLine(
+                '20260505-101122.000 742 //12LESLIE/254 abc-uuid Network removed'
+            );
+            expect(mockHaDiscovery.handleNetworkRemoved).toHaveBeenCalledWith('254');
         });
 
         it('should route 4xx error responses', () => {

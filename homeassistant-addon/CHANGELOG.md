@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.6] - 2026-05-05
+
+### Added
+- **Network removed cleanup**: counterpart to the v1.8.5 "Network created" handler. When C-Gate signals that a network has been removed or deleted (async system event 742, "Network removed" / "Network deleted"), HA Discovery now publishes empty retained payloads to every previously-published entity config topic for that network — including the per-network discovery diagnostic sensor itself — so HA tears the entities down instead of leaving them sitting Offline forever. Any in-flight TREEXML retry for the removed network is canceled.
+
 ## [1.8.5] - 2026-05-04
 
 ### Added

@@ -241,6 +241,43 @@ describe('HA Discovery e2e (real processor + real haDiscovery)', () => {
         expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} 254${NEWLINE}`]);
     });
 
+    it('Network removed event clears entities and the diagnostic sensor', async () => {
+        const h = buildHarness();
+        h.haDiscovery.trigger();
+
+        // Drive a complete discovery cycle so we have published entity configs to clean up.
+        h.processor.processLine('343-Begin TreeXML');
+        for (const line of TREE_XML.split('\n')) {
+            h.processor.processLine(`347-${line}`);
+        }
+        h.processor.processLine('344-End TreeXML');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Sanity: we've published light configs.
+        const lightConfigs = h.publishes.filter(
+            p => /^homeassistant\/light\/cgateweb_254_56_(10|11)\/config$/.test(p.topic) && p.payload !== ''
+        );
+        expect(lightConfigs.length).toBeGreaterThan(0);
+
+        // Now C-Gate emits a network-removed event for network 254.
+        h.processor.processLine(
+            '20260505-101122.000 742 //PROJECT/254 uuid Network removed'
+        );
+
+        // Each previously-published light config gets a retained-empty payload (HA delete).
+        const lightCleared = h.publishes.filter(
+            p => /^homeassistant\/light\/cgateweb_254_56_(10|11)\/config$/.test(p.topic) && p.payload === ''
+        );
+        expect(lightCleared.length).toBe(lightConfigs.length);
+
+        // The discovery diagnostic sensor itself is also removed.
+        const diagCleared = h.publishes.find(
+            p => p.topic === 'homeassistant/sensor/cgateweb_discovery_254/config' && p.payload === ''
+        );
+        expect(diagCleared).toBeDefined();
+    });
+
     it('config payload retains diagnostic shape across the full lifecycle', () => {
         const h = buildHarness();
         h.haDiscovery.trigger();

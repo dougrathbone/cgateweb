@@ -191,6 +191,51 @@ class HaDiscovery {
         this.queueTreeRequest(networkKey);
     }
 
+    /**
+     * Counterpart to handleNetworkCreated: when C-Gate signals that a network
+     * has been removed/deleted, clear all retained HA Discovery config topics
+     * for that network so the entities don't linger in HA forever. Empty
+     * retained payloads tell HA Discovery to delete the entity. Also cancels
+     * any in-flight TREEXML request and clears internal state for the network.
+     */
+    handleNetworkRemoved(networkId) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+
+        // Cancel any in-flight or pending discovery for this network.
+        this._clearTreeState(networkKey);
+        const pendingIdx = this.pendingTreeNetworks.indexOf(networkKey);
+        if (pendingIdx >= 0) this.pendingTreeNetworks.splice(pendingIdx, 1);
+
+        // Clear all entity discovery configs that we previously published for
+        // this network. HA Discovery convention: an empty retained payload on
+        // the config topic removes the entity.
+        const networkPrefix = `cgateweb_${networkKey}_`;
+        const topicsToRemove = [];
+        for (const topic of this._publishedTopics) {
+            if (topic.includes(`/${networkPrefix}`)) {
+                topicsToRemove.push(topic);
+            }
+        }
+        for (const topic of topicsToRemove) {
+            this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.delete(topic);
+        }
+
+        // Remove the per-network discovery health diagnostic sensor itself.
+        const diagEntry = this._networkDiscoveryEntities.get(networkKey);
+        if (diagEntry && diagEntry.configPublished) {
+            const diagConfigTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_discovery_${networkKey}/${HA_DISCOVERY_SUFFIX}`;
+            this._publish(diagConfigTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+        }
+        this._networkDiscoveryEntities.delete(networkKey);
+
+        this.logger.info(
+            `Network ${networkKey} removed from C-Gate; cleared ${topicsToRemove.length} entity ` +
+            `discovery topic(s)${diagEntry ? ' + diagnostic sensor' : ''}`
+        );
+    }
+
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
         const state = this._getOrCreateTreeState(normalizedNetwork);
