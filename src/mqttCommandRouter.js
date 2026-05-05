@@ -5,6 +5,7 @@ const { createLogger } = require('./logger');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_TOPIC_PREFIX_READ,
+    MQTT_RETAINED_STATE_OPTIONS,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_GETALL,
@@ -462,7 +463,7 @@ class MqttCommandRouter extends EventEmitter {
             ? durationMs
             : (this.settings.cover_ramp_duration_ms || 5000);
 
-        const mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
+        const mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
 
         this._coverRampTracker.startRamp(key, startLevel, targetLevel, duration, (level) => {

@@ -27,6 +27,7 @@ const {
     MQTT_COMMAND_STOP,
     MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
     MQTT_TOPIC_STATUS,
+    MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_CLIMATE,
@@ -346,7 +347,7 @@ class HaDiscovery {
             }
         };
 
-        this._publish(configTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(configTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         entry.configPublished = true;
     }
 
@@ -373,7 +374,7 @@ class HaDiscovery {
         entry.status = status;
 
         const stateTopic = `${MQTT_TOPIC_PREFIX_READ}/${networkKey}///${MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS}`;
-        this._publish(stateTopic, status, { retain: true, qos: 0 });
+        this._publish(stateTopic, status, MQTT_RETAINED_STATE_OPTIONS);
         this.logger.debug(`Discovery status for network ${networkKey}: ${previous || 'init'} -> ${status}`);
     }
 
@@ -458,7 +459,7 @@ class HaDiscovery {
                 this._publish(
                     `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
                     JSON.stringify(result),
-                    { retain: true, qos: 0 }
+                    MQTT_RETAINED_STATE_OPTIONS
                 );
 
                 // Generate HA Discovery messages
@@ -541,7 +542,7 @@ class HaDiscovery {
         for (const topic of this._publishedTopics) {
             if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
                 this.logger.debug(`Clearing stale discovery topic: ${topic}`);
-                this._publish(topic, '', { retain: true, qos: 0 });
+                this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
             }
         }
 
@@ -621,7 +622,7 @@ class HaDiscovery {
                     // (e.g. first run saw it as a light; this run sees the type override).
                     const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
                     const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    this._publish(staleTopic, '', { retain: true, qos: 0 });
+                    this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
                     // Ensure the stale light topic is not retained in _publishedTopics
                     this._publishedTopics.delete(staleTopic);
                     return;
@@ -671,7 +672,7 @@ class HaDiscovery {
                 }
             };
 
-            this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+            this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
             if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
             this.discoveryCount++;
         });
@@ -796,7 +797,7 @@ class HaDiscovery {
             }
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         this.discoveryCount++;
     }
 
@@ -865,7 +866,7 @@ class HaDiscovery {
             }
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
         this.discoveryCount++;
 
@@ -909,7 +910,7 @@ class HaDiscovery {
             }
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         this.discoveryCount++;
     }
 
@@ -942,7 +943,7 @@ class HaDiscovery {
             }
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         this.discoveryCount++;
     }
 

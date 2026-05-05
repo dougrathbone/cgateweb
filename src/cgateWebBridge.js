@@ -15,6 +15,7 @@ const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
 const StaleDeviceDetector = require('./staleDeviceDetector');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
+const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
 
 /**
  * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
@@ -140,7 +141,7 @@ class CgateWebBridge {
         };
 
         // MQTT options
-        this._mqttOptions = this.settings.retainreads ? { retain: true, qos: 0 } : { qos: 0 };
+        this._mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
 
         // Label loader for custom device names (before EventPublisher so it can use type overrides)
         this.labelLoader = new LabelLoader(this.settings.cbus_label_file || null);

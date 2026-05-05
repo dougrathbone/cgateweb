@@ -1,6 +1,6 @@
 const fs = require('fs');
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
+const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -90,7 +90,7 @@ class HaBridgeDiagnostics {
                     model: 'Bridge Diagnostics'
                 }
             };
-            this._publish(topic, JSON.stringify(payload), { retain: true, qos: 0 });
+            this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         }
     }
 
@@ -124,7 +124,7 @@ class HaBridgeDiagnostics {
 
         for (const [key, value] of Object.entries(values)) {
             const topic = `cbus/read/bridge/diagnostics/${key}/state`;
-            this._publish(topic, String(value), { retain: true, qos: 0 });
+            this._publish(topic, String(value), MQTT_RETAINED_STATE_OPTIONS);
         }
 
         // Publish consolidated JSON stats for monitoring dashboards
@@ -156,7 +156,7 @@ class HaBridgeDiagnostics {
             } : null,
             cgate_version: cgateVersion
         };
-        this._publish('cbus/read/bridge/stats', JSON.stringify(stats), { retain: true, qos: 0 });
+        this._publish('cbus/read/bridge/stats', JSON.stringify(stats), MQTT_RETAINED_STATE_OPTIONS);
     }
 }
 

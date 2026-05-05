@@ -44,6 +44,11 @@ const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan speed/m
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 
+// Default publish options for retained state topics (HA Discovery configs,
+// device states, diagnostics). Frozen so callers can't accidentally mutate
+// the shared object.
+const MQTT_RETAINED_STATE_OPTIONS = Object.freeze({ retain: true, qos: 0 });
+
 // MQTT Payloads
 const MQTT_PAYLOAD_STATUS_ONLINE = 'Online';
 const MQTT_PAYLOAD_STATUS_OFFLINE = 'Offline';
@@ -168,6 +173,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
+    MQTT_RETAINED_STATE_OPTIONS,
     MQTT_PAYLOAD_STATUS_ONLINE,
     MQTT_PAYLOAD_STATUS_OFFLINE,
     MQTT_STATE_ON,

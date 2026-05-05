@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
+const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
 
 /**
  * Periodically checks for C-Bus devices that have not reported a state change
@@ -121,16 +121,15 @@ class StaleDeviceDetector {
      */
     _publishStaleCount(count, staleDevices) {
         const thresholdHours = Math.max(1, Number(this.settings.stale_device_threshold_hours) || 24);
-        const opts = { retain: true, qos: 0 };
 
-        this.mqttClient.publish('cbus/bridge/stale_devices', String(count), opts);
+        this.mqttClient.publish('cbus/bridge/stale_devices', String(count), MQTT_RETAINED_STATE_OPTIONS);
 
         const attributes = {
             stale_devices: staleDevices,
             threshold_hours: thresholdHours,
             checked_at: new Date().toISOString()
         };
-        this.mqttClient.publish('cbus/bridge/stale_devices_detail', JSON.stringify(attributes), opts);
+        this.mqttClient.publish('cbus/bridge/stale_devices_detail', JSON.stringify(attributes), MQTT_RETAINED_STATE_OPTIONS);
     }
 
     /**
@@ -159,7 +158,7 @@ class StaleDeviceDetector {
                 model: 'Bridge Diagnostics'
             }
         };
-        this.mqttClient.publish(topic, JSON.stringify(payload), { retain: true, qos: 0 });
+        this.mqttClient.publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
     }
 }
 

@@ -8,6 +8,11 @@ const {
     CGATE_RESPONSE_SYSTEM_EVENT
 } = require('./constants');
 
+// Strips C-Gate's leading async-event timestamp ("20260504-193110.569 ").
+const CGATE_TIMESTAMP_PREFIX = /^\d{8}-\d{6}\.\d+\s+/;
+// Extracts the numeric network id from a C-Gate object path "//PROJECT/254 ...".
+const CGATE_NETWORK_PATH = /\/\/[^/]+\/(\d+)\b/;
+
 /**
  * Handles processing of C-Gate command responses.
  * 
@@ -90,7 +95,7 @@ class CommandResponseProcessor {
         // Asynchronous notifications enabled by EVENT ON arrive on the command
         // port with this prefix; without stripping it the hyphen-first split
         // below would land in the date instead of the response code.
-        const stripped = (line || '').replace(/^\d{8}-\d{6}\.\d+\s+/, '');
+        const stripped = (line || '').replace(CGATE_TIMESTAMP_PREFIX, '');
 
         // C-Gate response codes are exactly 3 digits at the start of the line,
         // followed by either '-' (e.g. "200-OK") or ' ' (e.g. "742 //PROJECT
@@ -200,7 +205,7 @@ class CommandResponseProcessor {
             this.logger.debug(`C-Gate system event 742 (no action): ${data}`);
             return;
         }
-        const match = data.match(/\/\/[^/]+\/(\d+)\b/);
+        const match = data.match(CGATE_NETWORK_PATH);
         if (!match) {
             this.logger.debug(`C-Gate system event 742 (Network created, but no network id parsed): ${data}`);
             return;
