@@ -206,7 +206,7 @@ class CommandResponseProcessor {
             return;
         }
         const networkId = match[1];
-        if (this._haDiscovery && typeof this._haDiscovery.handleNetworkCreated === 'function') {
+        if (this._haDiscovery) {
             this._haDiscovery.handleNetworkCreated(networkId);
         }
     }

@@ -205,8 +205,8 @@ describe('CommandResponseProcessor', () => {
             expect(mockHaDiscovery.handleNetworkCreated).not.toHaveBeenCalled();
         });
 
-        it('should not throw when haDiscovery lacks handleNetworkCreated', () => {
-            processor.haDiscovery = { handleTreeStart: jest.fn() };
+        it('should not throw when haDiscovery is not yet initialized', () => {
+            processor.haDiscovery = null;
             expect(() => {
                 processor._processCommandResponse(
                     '742',

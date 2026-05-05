@@ -88,12 +88,11 @@ class HaDiscovery {
         this._treeRetryMaxDelayMs = 60000;
         this._treeRequestTimeoutMs = 8000;
 
-        // Tracks per-network HA Discovery health. Each entry holds the last
-        // published state so we don't re-publish identical states. Networks for
-        // which we've published an HA Discovery config are tracked separately
-        // to avoid republishing the same config payload on every transition.
-        this._networkDiscoveryStatus = new Map();   // networkId -> 'discovering' | 'ok' | 'paused'
-        this._discoveryStatusConfigPublished = new Set();
+        // Tracks per-network HA Discovery health. The status field is used to
+        // de-dup repeated state publishes; configPublished gates the (one-shot)
+        // HA Discovery config payload so we don't republish it on every
+        // transition. networkId -> { status, configPublished }
+        this._networkDiscoveryEntities = new Map();
     }
 
     /**
@@ -303,12 +302,14 @@ class HaDiscovery {
     }
 
     /**
-     * Cancels all retry timers and watchdogs. Call on bridge shutdown.
+     * Cancels all retry timers and watchdogs and clears per-network state.
+     * Call on bridge shutdown.
      */
     stop() {
         for (const networkId of [...this._treeRequestState.keys()]) {
             this._clearTreeState(networkId);
         }
+        this._networkDiscoveryEntities.clear();
     }
 
     /**
@@ -316,10 +317,8 @@ class HaDiscovery {
      * via MQTT Discovery. Idempotent — only publishes the config payload once
      * per network for the lifetime of this instance.
      */
-    _publishDiscoveryStatusConfig(networkId) {
-        if (!this.settings.ha_discovery_enabled) return;
-        const networkKey = String(networkId);
-        if (this._discoveryStatusConfigPublished.has(networkKey)) return;
+    _publishDiscoveryStatusConfig(entry, networkKey) {
+        if (entry.configPublished) return;
 
         const uniqueId = `cgateweb_discovery_${networkKey}`;
         const stateTopic = `${MQTT_TOPIC_PREFIX_READ}/${networkKey}///${MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS}`;
@@ -348,22 +347,30 @@ class HaDiscovery {
         };
 
         this._publish(configTopic, JSON.stringify(payload), { retain: true, qos: 0 });
-        this._discoveryStatusConfigPublished.add(networkKey);
+        entry.configPublished = true;
     }
 
     /**
      * Updates the per-network discovery status. Publishes the HA Discovery
      * config the first time a network is seen, then publishes the state to the
      * sensor's state topic. Skips republishes when the state hasn't changed.
+     *
+     * @param {string|number} networkId
+     * @param {('discovering'|'ok'|'paused')} status
      */
     _setDiscoveryStatus(networkId, status) {
         if (!this.settings.ha_discovery_enabled) return;
         const networkKey = String(networkId);
-        const previous = this._networkDiscoveryStatus.get(networkKey);
-        if (previous === status) return;
+        let entry = this._networkDiscoveryEntities.get(networkKey);
+        if (!entry) {
+            entry = { status: null, configPublished: false };
+            this._networkDiscoveryEntities.set(networkKey, entry);
+        }
+        if (entry.status === status) return;
 
-        this._publishDiscoveryStatusConfig(networkKey);
-        this._networkDiscoveryStatus.set(networkKey, status);
+        this._publishDiscoveryStatusConfig(entry, networkKey);
+        const previous = entry.status;
+        entry.status = status;
 
         const stateTopic = `${MQTT_TOPIC_PREFIX_READ}/${networkKey}///${MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS}`;
         this._publish(stateTopic, status, { retain: true, qos: 0 });
