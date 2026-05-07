@@ -3,6 +3,35 @@
 # Install C-Gate if running in managed mode
 # ==============================================================================
 
+CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
+
+# bashio::config returns the literal string "null" for unset optional fields,
+# even when an empty default is passed (upstream bashio's `${2:-null}` rewrites
+# an empty default to "null"). Treat both empty and "null" as unset.
+_cgateweb_resolve_download_url() {
+    local url
+    url=$(bashio::config 'cgate_download_url')
+    if [[ -z "${url}" || "${url}" == "null" ]]; then
+        url="${CGATEWEB_DEFAULT_DOWNLOAD_URL}"
+    fi
+    printf '%s' "${url}"
+}
+
+_cgateweb_resolve_download_sha256() {
+    local sha
+    sha=$(bashio::config 'cgate_download_sha256')
+    if [[ "${sha}" == "null" ]]; then
+        sha=""
+    fi
+    printf '%s' "${sha}"
+}
+
+# Allow tests to source this script for unit testing the helpers above without
+# running the install flow.
+if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
 
 if [[ "${CGATE_MODE}" != "managed" ]]; then
@@ -13,7 +42,7 @@ fi
 CGATE_DIR="/data/cgate"
 CGATE_JAR="${CGATE_DIR}/cgate.jar"
 INSTALL_SOURCE=$(bashio::config 'cgate_install_source' 'download')
-DOWNLOAD_SHA256=$(bashio::config 'cgate_download_sha256' '')
+DOWNLOAD_SHA256=$(_cgateweb_resolve_download_sha256)
 WORK_DIR=$(mktemp -d /tmp/cgate-install.XXXXXX)
 
 cleanup() {
@@ -32,10 +61,7 @@ bashio::log.info "C-Gate not found, installing from source: ${INSTALL_SOURCE}"
 mkdir -p "${CGATE_DIR}"
 
 if [[ "${INSTALL_SOURCE}" == "download" ]]; then
-    DOWNLOAD_URL=$(bashio::config 'cgate_download_url' '')
-    if [[ -z "${DOWNLOAD_URL}" ]]; then
-        DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
-    fi
+    DOWNLOAD_URL=$(_cgateweb_resolve_download_url)
 
     bashio::log.info "Downloading C-Gate from: ${DOWNLOAD_URL}"
 

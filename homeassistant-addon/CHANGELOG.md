@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.8] - 2026-05-07
+
+### Fixed
+- **Managed mode install failed with "Invalid download URL scheme: null"**: when running the add-on in managed mode without overriding `cgate_download_url`, the install script would log `Downloading C-Gate from: null` and abort. Root cause: `bashio::config 'cgate_download_url' ''` returns the literal string `"null"` for unset optional fields (upstream bashio's `${2:-null}` rewrites an empty default to `"null"`), so the script's `[[ -z … ]]` empty-check never fired and the hardcoded fallback URL was never applied. The install script now treats both empty and `"null"` as unset for `cgate_download_url` and `cgate_download_sha256`, and the URL/SHA resolution is extracted into helpers covered by unit tests.
+
 ## [1.8.7] - 2026-05-05
 
 ### Fixed
