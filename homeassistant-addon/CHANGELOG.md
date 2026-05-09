@@ -5,6 +5,11 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.9] - 2026-05-09
+
+### Added
+- **MIT LICENSE bundled with the distribution repo**: the release workflow now copies the MIT license into both the `cgateweb-homeassistant` repo root and the add-on subfolder so the licensing terms are visible alongside the installable add-on (and so the repo passes OSI-license listing checks for awesome-home-assistant).
+
 ## [1.8.8] - 2026-05-07
 
 ### Fixed

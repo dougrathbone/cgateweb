@@ -83,6 +83,8 @@ jobs:
         cp homeassistant-addon/logo.png distribution/
         cp homeassistant-addon/icon.png distribution/
         cp homeassistant-addon/repository-README.md distribution/README.md
+        cp homeassistant-addon/LICENSE distribution/LICENSE
+        cp homeassistant-addon/LICENSE distribution/cgateweb/LICENSE
 
         # Create repository.yaml at the distribution root
         cat > distribution/repository.yaml << 'REPOEOF'
