@@ -555,6 +555,39 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('TreeXML parse failure recovery', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('engages the retry mechanism when parseString fails on malformed XML', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // Simulate C-Gate returning a tree that's syntactically broken.
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData('<not valid xml');
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            // Retry state for the network must now show one failed attempt,
+            // proving the parseString failure was surfaced as a discovery
+            // failure (not silently swallowed).
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+
+            // Initial backoff fires and re-requests the tree.
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+    });
+
     describe('TreeXML retry on startup race (401 Network not found)', () => {
         beforeEach(() => {
             jest.useFakeTimers();

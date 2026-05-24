@@ -499,6 +499,11 @@ class HaDiscovery {
                     line: err.line,
                     column: err.column
                 });
+                // Surface the parse failure to the retry mechanism so a malformed
+                // response from C-Gate (truncated, mid-restart, encoding glitch)
+                // doesn't leave discovery silently stuck. Same backoff budget as
+                // 401-on-tree applies; we'll PAUSE after the retry limit.
+                this._handleTreeRequestFailure(networkForTree, `parse error: ${err.message || err}`);
             } else {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
 
