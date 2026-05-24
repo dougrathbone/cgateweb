@@ -5,6 +5,25 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-05-24
+
+### Added
+- **Tunable HA Discovery TreeXML retry settings**: four new keys in `settings.js` allow ops to tune the discovery startup-race retry budget without forking. `haDiscoveryMaxTreeRetryAttempts` (default 8), `haDiscoveryTreeRetryInitialDelayMs` (default 2000), `haDiscoveryTreeRetryMaxDelayMs` (default 60000), `haDiscoveryTreeRequestTimeoutMs` (default 8000). Defaults are unchanged from prior behaviour.
+- **Tunable web UI body-size limit**: `webMaxBodySizeBytes` setting (default 10MB) controls the max accepted POST/PUT/PATCH body on the label-editing API. Useful for unusually large `.cbz` uploads on permissive deployments.
+
+### Fixed
+- **Stuck HA Discovery on malformed TreeXML**: when `parseString` failed (truncated payload, encoding glitch, C-Gate restart mid-stream), the discovery network previously sat in `DISCOVERING` state forever - no retry, no `PAUSED` transition, no diagnostic signal. The parse error now flows through the same retry-with-backoff mechanism as 401 Network not found, eventually transitioning to `PAUSED` after the retry budget is exhausted.
+
+### Changed
+- **Internal: `labelSnapshot` lifted to instance property in `HaDiscovery`**. Eliminates a positional parameter that was threaded through seven helper methods (23+ call sites). No external behaviour change.
+- **Internal: exponential-backoff calculation extracted to `src/backoff.js`**. Replaces three subtly different inline formulas in `cgateConnectionPool.js`, `cgateConnection.js`, and `haDiscovery.js`. No behaviour change at the three call sites.
+
+### Operations / CI
+- **Added a CI gate that fails the build when `package.json` and `homeassistant-addon/config.yaml` versions disagree**. Previously documented as manual-and-error-prone in `CLAUDE.md`; now enforced.
+- **GitHub Actions versions pinned to commit SHAs** for `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, and `softprops/action-gh-release`. Pin updates become explicit code changes instead of silent absorption of upstream tag movements.
+- **HACS deploy token moved out of the rendered git-clone URL** in `hacs-distribution.yml`, into the run step's `env:` block. Eliminates the risk of token leakage via verbose-mode logging.
+- **`HEALTHCHECK` added to the addon Dockerfile**. TCP-probes the always-on cgateweb web UI port after a 180s start-period (allows for managed-mode first-boot C-Gate download). Mostly diagnostic under HA Supervisor, but useful for visibility.
+
 ## [1.8.10] - 2026-05-24
 
 ### Added
