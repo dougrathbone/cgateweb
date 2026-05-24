@@ -58,6 +58,10 @@ class DeviceStateManager {
 
         // Track last-seen timestamp per device address (network/app/group → ms since epoch)
         this._lastSeen = new Map();
+
+        // Bound on _deviceLevels / _lastSeen growth. Matches the floor + default
+        // pattern used by eventPublisher's topicCacheMaxEntries / dedup cache.
+        this._maxEntries = Math.max(100, Number(this.settings.deviceStateMaxEntries) || 5000);
     }
 
     /**
@@ -112,6 +116,13 @@ class DeviceStateManager {
 
         if (levelValue !== null) {
             this.logger.debug(`Level update: ${simpleAddr} = ${levelValue}`);
+            // FIFO-evict the oldest entry before inserting to keep both maps
+            // bounded. Matches eventPublisher's topic-cache pattern.
+            if (!this._deviceLevels.has(simpleAddr) && this._deviceLevels.size >= this._maxEntries) {
+                const oldestKey = this._deviceLevels.keys().next().value;
+                this._deviceLevels.delete(oldestKey);
+                this._lastSeen.delete(oldestKey);
+            }
             // Store latest known level so callers can retrieve it synchronously
             this._deviceLevels.set(simpleAddr, levelValue);
             // Record when this device was last seen (for stale device detection)

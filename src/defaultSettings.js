@@ -75,7 +75,11 @@ const defaultSettings = {
     haDiscoveryTreeRequestTimeoutMs: 8000,
     // Maximum size (bytes) for POST/PUT/PATCH request bodies on the web UI's
     // label-editing API. Default 10MB covers typical .cbz uploads.
-    webMaxBodySizeBytes: 10 * 1024 * 1024
+    webMaxBodySizeBytes: 10 * 1024 * 1024,
+    // Upper bound on DeviceStateManager's per-address level + last-seen maps.
+    // Each entry is ~30 bytes; default 5000 covers any realistic install while
+    // bounding worst-case growth from device churn over long uptime.
+    deviceStateMaxEntries: 5000
 };
 
 module.exports = { defaultSettings };

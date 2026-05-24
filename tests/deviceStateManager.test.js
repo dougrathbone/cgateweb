@@ -130,7 +130,7 @@ describe('DeviceStateManager', () => {
 
         it('should handle level 0 from ramp events', () => {
             const emitSpy = jest.spyOn(stateManager.getEventEmitter(), 'emit');
-            
+
             const mockEvent = {
                 getApplication: () => 56,
                 getNetwork: () => 254,
@@ -142,6 +142,43 @@ describe('DeviceStateManager', () => {
             stateManager.updateLevelFromEvent(mockEvent);
 
             expect(emitSpy).toHaveBeenCalledWith(MQTT_TOPIC_SUFFIX_LEVEL, '254/56/4', 0);
+        });
+
+        it('evicts oldest entries to keep _deviceLevels / _lastSeen bounded', () => {
+            // Cap the maps tightly so we can exercise eviction without
+            // pushing thousands of events through.
+            const boundedManager = new DeviceStateManager({
+                settings: { deviceStateMaxEntries: 3 },
+                logger: mockLogger
+            });
+            // The floor in the constructor clamps to >= 100; reach into the
+            // instance to actually exercise eviction in a single-digit test.
+            boundedManager._maxEntries = 3;
+
+            const send = (group, level) => boundedManager.updateLevelFromEvent({
+                getApplication: () => 56,
+                getNetwork: () => 254,
+                getGroup: () => group,
+                getLevel: () => level,
+                getAction: () => 'ramp'
+            });
+
+            send(1, 100); // [1]
+            send(2, 100); // [1, 2]
+            send(3, 100); // [1, 2, 3]
+            send(4, 100); // [2, 3, 4] - 1 evicted
+
+            expect(boundedManager._deviceLevels.size).toBe(3);
+            expect(boundedManager._deviceLevels.has('254/56/1')).toBe(false);
+            expect(boundedManager._deviceLevels.has('254/56/4')).toBe(true);
+            // _lastSeen must evict in lockstep so the two maps don't drift.
+            expect(boundedManager._lastSeen.size).toBe(3);
+            expect(boundedManager._lastSeen.has('254/56/1')).toBe(false);
+
+            // Re-publishing an existing key must NOT evict (no growth).
+            send(2, 200);
+            expect(boundedManager._deviceLevels.size).toBe(3);
+            expect(boundedManager._deviceLevels.get('254/56/2')).toBe(200);
         });
     });
 
