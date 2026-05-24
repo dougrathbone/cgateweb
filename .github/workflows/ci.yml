@@ -70,9 +70,6 @@ jobs:
     runs-on: ubuntu-latest
     # Only run on push to main branches — not on PRs — to avoid long waits during review.
     if: github.event_name == 'push'
-    # Network download of C-Gate can be slow; mark non-blocking so a flaky
-    # Schneider download does not gate merges.
-    continue-on-error: true
     timeout-minutes: 20
     needs: test
 

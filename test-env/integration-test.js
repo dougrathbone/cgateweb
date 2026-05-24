@@ -3,7 +3,13 @@
  * Integration test for cgateweb managed mode.
  *
  * Validates the full managed-mode stack:
- *   podman compose  →  C-Gate install  →  C-Gate start  →  cgateweb  →  MQTT ready
+ *   podman-compose  →  C-Gate install  →  C-Gate start  →  cgateweb  →  MQTT ready
+ *
+ * Uses `podman-compose` (the Python wrapper, installed via pip / brew) rather
+ * than `podman compose` (the built-in subcommand). `podman compose` on Linux
+ * delegates to an external docker-compose plugin that expects a daemon socket
+ * which isn't activated on rootless CI runners; `podman-compose` shells out
+ * to the podman CLI directly and works in both environments without setup.
  *
  * Usage:
  *   node test-env/integration-test.js                # full lifecycle (build → test → teardown)
@@ -12,7 +18,8 @@
  *   node test-env/integration-test.js --attach       # stack already up, just run assertions
  *
  * Prerequisites:
- *   podman machine start
+ *   podman machine start    (macOS/Windows only)
+ *   pip install podman-compose   OR   brew install podman-compose
  *   cp test-env/options-managed-download.json test-env/active-options.json
  */
 
@@ -56,7 +63,7 @@ function fail(label) { log(`  ${RED}✘${RESET}  ${label}`); }
 function section(h)  { log(`\n${BOLD}${h}${RESET}`); }
 
 function compose(...args) {
-    const result = spawnSync('podman', ['compose', ...args], {
+    const result = spawnSync('podman-compose', args, {
         cwd: TEST_ENV_DIR,
         stdio: ['ignore', 'pipe', 'pipe'],
         encoding: 'utf8',
@@ -66,18 +73,18 @@ function compose(...args) {
 
 function composeUp(build) {
     const buildArgs = build ? ['--build'] : [];
-    info(`podman compose up${build ? ' --build' : ''} (this may take a few minutes on first run)`);
-    const result = spawnSync('podman', ['compose', 'up', '--detach', ...buildArgs], {
+    info(`podman-compose up${build ? ' --build' : ''} (this may take a few minutes on first run)`);
+    const result = spawnSync('podman-compose', ['up', '--detach', ...buildArgs], {
         cwd: TEST_ENV_DIR,
         stdio: 'inherit',
         encoding: 'utf8',
     });
-    if (result.status !== 0) throw new Error('podman compose up failed');
+    if (result.status !== 0) throw new Error('podman-compose up failed');
 }
 
 function composeDown() {
     info('Stopping compose stack...');
-    spawnSync('podman', ['compose', 'down'], {
+    spawnSync('podman-compose', ['down'], {
         cwd: TEST_ENV_DIR,
         stdio: 'inherit',
     });
@@ -93,6 +100,15 @@ function checkPrereqs() {
         process.exit(1);
     }
     pass(`podman ${pv.stdout.trim().split('\n')[0]}`);
+
+    // podman-compose (the Python wrapper) available?
+    const pcv = spawnSync('podman-compose', ['--version'], { encoding: 'utf8' });
+    if (pcv.status !== 0) {
+        fail('podman-compose not found — install with: pip install podman-compose (or: brew install podman-compose)');
+        process.exit(1);
+    }
+    const firstLine = pcv.stdout.trim().split('\n')[0] || 'podman-compose';
+    pass(firstLine);
 
     // podman machine running? (macOS/Windows only — Linux runs containers natively)
     if (process.platform !== 'linux') {
