@@ -5,6 +5,15 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.10] - 2026-05-24
+
+### Added
+- **Managed mode project sync from `/share/cgate/tag/`**: a new `cont-init` script syncs pre-built C-Gate project database files into the managed C-Gate `tag/` directory on every container start. Place `<PROJECTNAME>.db` (built in C-Bus Toolkit or copied from another C-Gate install) into `/share/cgate/tag/`, restart the add-on, and managed C-Gate will serve the project so TreeXML / HA Discovery succeed. The sync is timestamp-aware (`source -nt dest`) so C-Gate state written between restarts is never clobbered by a stale share copy.
+- **Web UI import response now flags itself as labels-only**: `POST /api/labels/import` returns `scope: "labels-only"` and a `notice` field explaining that the `.cbz`/`.xml` import does not load the C-Gate project itself, with a pointer to the managed-mode `.db` workflow. Avoids the trap where users assumed importing in the Web UI was sufficient to populate managed C-Gate (issue #9).
+
+### Documentation
+- New "Loading your C-Gate project in managed mode" section in `DOCS.md` explaining the `.db` sync workflow and why `.cbz` import alone is insufficient.
+
 ## [1.8.9] - 2026-05-09
 
 ### Added

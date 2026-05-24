@@ -313,7 +313,9 @@ class WebServer {
                 networks: result.networks,
                 stats: result.stats,
                 merged: merge,
-                saved: true
+                saved: true,
+                scope: 'labels-only',
+                notice: 'Imported labels only. This does NOT load the C-Gate project itself. In managed mode, place a pre-built <PROJECT>.db file in /share/cgate/tag/ for the add-on to sync into C-Gate. See the add-on documentation for the supported managed-mode project workflow.'
             });
         } catch (err) {
             this._sendJSON(res, 400, { error: err.message });

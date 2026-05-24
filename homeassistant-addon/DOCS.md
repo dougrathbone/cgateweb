@@ -53,6 +53,38 @@ If you choose `upload` as the install source:
 2. Place the `.zip` file in the `/share/cgate/` directory on your Home Assistant instance (accessible via the Samba, SSH, or File Editor add-ons)
 3. Restart the add-on -- it will detect and install from the zip file
 
+#### Loading your C-Gate project in managed mode
+
+Installing C-Gate (above) gives you a running C-Gate process but does **not**
+populate it with your project. C-Gate stores each project as a single binary
+database file at `tag/<PROJECTNAME>.db` inside its install directory. If that
+file is missing, requests like `tree 254` return `401 Bad object or device ID`
+and Home Assistant Discovery cannot find any devices.
+
+The supported workflow for managed mode is:
+
+1. Build your project in C-Bus Toolkit on a Windows machine, or copy it from an
+   existing C-Gate install. The file you need is `<PROJECTNAME>.db` from
+   C-Gate's `tag/` directory (where `<PROJECTNAME>` matches the `cgate_project`
+   add-on option, case-sensitive).
+2. Place the `.db` file in `/share/cgate/tag/` on your Home Assistant instance
+   (accessible via the Samba, SSH, or File Editor add-ons). Create the
+   directory if it does not exist.
+3. Restart the add-on. On startup it syncs `/share/cgate/tag/*.db` into
+   C-Gate's `tag/` directory, then C-Gate loads `cgate_project` automatically.
+
+The sync only overwrites files in C-Gate's `tag/` directory when the
+`/share/cgate/tag/` copy is newer, so you will not lose state that managed
+C-Gate writes back to its own `.db` between restarts. To force a re-sync,
+`touch` the file in `/share/cgate/tag/` before restarting.
+
+**Note on the web UI's `.cbz` / `.xml` import**: the add-on's built-in Web UI
+(C-Bus Labels) imports labels only - it extracts network/application/group
+names from a Toolkit `.cbz` or XML export so they appear in MQTT Discovery
+friendly names. It does **not** load the actual C-Gate project; converting
+`.cbz` to a runnable C-Gate `.db` requires Toolkit. Use the `.db` workflow
+above to make managed C-Gate actually serve your project.
+
 ### MQTT Settings
 
 MQTT connection details are **automatically detected** from the Mosquitto add-on. You do not need to configure these unless you are using an external MQTT broker.

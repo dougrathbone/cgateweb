@@ -669,6 +669,34 @@ describe('WebServer', () => {
             expect(res.body.saved).toBe(true);
         });
 
+        it('returns a scope=labels-only notice so users do not assume the C-Gate project itself was loaded', async () => {
+            const res = await new Promise((resolve, reject) => {
+                const body = Buffer.from('<xml>fake</xml>');
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port,
+                    path: '/api/labels/import',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/octet-stream',
+                        'Content-Length': body.length
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
+            });
+            expect(res.status).toBe(200);
+            expect(res.body.scope).toBe('labels-only');
+            expect(res.body.notice).toMatch(/labels only/i);
+            expect(res.body.notice).toMatch(/managed mode/i);
+            expect(res.body.notice).toMatch(/\/share\/cgate\/tag/);
+        });
+
         it('merges imported labels with existing when merge=true', async () => {
             const res = await new Promise((resolve, reject) => {
                 const body = Buffer.from('<xml>fake</xml>');
