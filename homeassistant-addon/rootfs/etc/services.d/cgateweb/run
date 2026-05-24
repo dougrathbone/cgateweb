@@ -32,4 +32,9 @@ export LOG_LEVEL="${LOG_LEVEL}"
 cd /app || exit 1
 
 bashio::log.info "Starting C-Gate Web Bridge application..."
-exec node index.js
+# --max-old-space-size caps V8's old-generation heap. Node defaults to a
+# fraction of host memory (often >1GB), which on shared HA hardware means
+# runaway leaks only OOM after starving other addons. 256MB is well above
+# the ~110MB steady-state RSS (per perf/baseline.json) and gives V8 ample
+# headroom while making bad-path behaviour predictable.
+exec node --max-old-space-size=256 index.js
