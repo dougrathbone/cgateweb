@@ -1,0 +1,48 @@
+# --- Critical: never ship the host's node_modules ---
+# It may contain platform-specific native binaries (e.g. macOS arm64) that
+# break inside Alpine. `npm ci` reinstalls these correctly in the image.
+node_modules/
+
+# --- Heavy dev / VCS state ---
+.git/
+.github/
+
+# --- Test, benchmark, and dev tooling ---
+tests/
+test-env/
+coverage/
+perf/
+tools/
+build/
+toolkit-certs/
+
+# --- Editor / IDE / Claude artifacts ---
+.vscode/
+.cursor/
+.claude/
+.DS_Store
+
+# --- Dev-only configuration ---
+jest.config.*
+.eslintrc*
+eslint.config.js
+tsconfig.json
+.npmrc
+.gitignore
+.gitattributes
+
+# --- User-local dev data that never belongs in the image ---
+settings.js
+settings.js.bak
+labels.json
+
+# --- Repo docs / metadata that the addon image doesn't need ---
+README.md
+CHANGELOG.md
+LICENSE
+ROADMAP.md
+
+# --- Logs, swap, OS junk ---
+*.log
+*.swp
+*.swo

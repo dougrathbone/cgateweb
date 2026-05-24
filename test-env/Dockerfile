@@ -1,4 +1,25 @@
 ARG BUILD_FROM
+
+# ----------------------------------------------------------------------------
+# Builder stage: install npm + run `npm ci` only. Mirrors the production
+# Dockerfile's multi-stage layout so the integration test exercises the same
+# image structure that ships to users.
+# ----------------------------------------------------------------------------
+FROM $BUILD_FROM AS builder
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apk add --no-cache nodejs npm
+
+WORKDIR /app
+# package.json and source are in the repo root (build context)
+COPY package*.json ./
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# ----------------------------------------------------------------------------
+# Runtime stage
+# ----------------------------------------------------------------------------
 FROM $BUILD_FROM
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -6,7 +27,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN \
     apk add --no-cache \
         nodejs \
-        npm \
         openjdk17-jre-headless \
         curl \
         unzip \
@@ -14,10 +34,8 @@ RUN \
 
 WORKDIR /app
 
-# package.json and source are in the repo root (build context)
-COPY package*.json ./
-RUN npm ci --only=production
-
+COPY --from=builder /app/node_modules ./node_modules
+COPY package.json ./
 COPY src/ ./src/
 COPY public/ ./public/
 COPY index.js ./

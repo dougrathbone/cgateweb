@@ -1,4 +1,26 @@
 ARG BUILD_FROM
+
+# ----------------------------------------------------------------------------
+# Builder stage: only purpose is to run `npm ci`. npm + its deps are ~50-80MB
+# on Alpine and are never needed at runtime, so we isolate them here and
+# carry only node_modules forward.
+# ----------------------------------------------------------------------------
+FROM $BUILD_FROM AS builder
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+RUN apk add --no-cache nodejs npm
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# ----------------------------------------------------------------------------
+# Runtime stage: only the packages the addon actually needs at runtime.
+# curl + unzip are kept because managed-mode's cont-init.d C-Gate installer
+# uses them; netcat-openbsd is used by the HEALTHCHECK.
+# ----------------------------------------------------------------------------
 FROM $BUILD_FROM
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -6,7 +28,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN \
     apk add --no-cache \
         nodejs \
-        npm \
         openjdk17-jre-headless \
         curl \
         unzip \
@@ -14,9 +35,12 @@ RUN \
 
 WORKDIR /app
 
-COPY package*.json ./
+# node_modules from the builder stage (no npm needed in the runtime image)
+COPY --from=builder /app/node_modules ./node_modules
 
-RUN npm ci --only=production
+# package.json is read at runtime for the version string (src/constants.js,
+# src/cgateWebBridge.js diagnostics, etc.) - keep it but skip the lockfile.
+COPY package.json ./
 
 COPY src/ ./src/
 COPY public/ ./public/
