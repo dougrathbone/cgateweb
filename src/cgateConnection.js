@@ -1,6 +1,7 @@
 const net = require('net');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
+const { backoffDelay } = require('./backoff');
 const { 
     CGATE_CMD_EVENT_ON, 
     CGATE_CMD_LOGIN, 
@@ -269,12 +270,10 @@ class CgateConnection extends EventEmitter {
         }
 
         // Exponential backoff, capped at reconnectMaxDelay -- never permanently give up
-        const baseDelay = Math.min(
-            this.reconnectInitialDelay * Math.pow(2, this.reconnectAttempts),
-            this.reconnectMaxDelay
-        );
-        const jitterMultiplier = 0.5 + Math.random();
-        const delay = Math.round(baseDelay * jitterMultiplier);
+        const delay = backoffDelay(this.reconnectAttempts, {
+            initialMs: this.reconnectInitialDelay,
+            maxMs: this.reconnectMaxDelay
+        });
 
         this.reconnectAttempts++;
         

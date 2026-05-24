@@ -2,6 +2,7 @@ const parseString = require('xml2js').parseString;
 const { createLogger } = require('./logger');
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
 const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
+const { backoffDelay } = require('./backoff');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_TOPIC_PREFIX_READ,
@@ -329,10 +330,11 @@ class HaDiscovery {
             return;
         }
 
-        const delay = Math.min(
-            this._treeRetryInitialDelayMs * Math.pow(2, state.attempts - 1),
-            this._treeRetryMaxDelayMs
-        );
+        const delay = backoffDelay(state.attempts - 1, {
+            initialMs: this._treeRetryInitialDelayMs,
+            maxMs: this._treeRetryMaxDelayMs,
+            jitter: false
+        });
 
         this.logger.warn(
             `HA Discovery: TreeXML for network ${networkId} failed (${reason}). ` +

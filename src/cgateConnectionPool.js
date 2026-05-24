@@ -2,6 +2,7 @@ const { EventEmitter } = require('events');
 const CgateConnection = require('./cgateConnection');
 const { createLogger } = require('./logger');
 const { NEWLINE } = require('./constants');
+const { backoffDelay } = require('./backoff');
 
 /**
  * Connection pool for C-Gate command connections.
@@ -337,12 +338,10 @@ class CgateConnectionPool extends EventEmitter {
         this.pendingReconnects.add(index);
         
         this.retryCounts[index] = (this.retryCounts[index] || 0) + 1;
-        
+
         // Exponential backoff capped at 60s -- never permanently give up
         const retryCount = this.retryCounts[index];
-        const baseDelay = Math.min(1000 * Math.pow(2, retryCount - 1), 60000);
-        const jitterMultiplier = 0.5 + Math.random();
-        const delay = Math.round(baseDelay * jitterMultiplier);
+        const delay = backoffDelay(retryCount - 1, { initialMs: 1000, maxMs: 60000 });
         
         if (retryCount <= this.maxRetries) {
             this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`);
