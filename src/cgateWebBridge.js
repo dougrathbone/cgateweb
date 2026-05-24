@@ -286,21 +286,22 @@ class CgateWebBridge {
         this.logger.info('Starting cgateweb bridge');
         this._setLifecycleState('booting', 'startup');
         this._updateBridgeReadiness('startup');
-        
-        // Start web server
-        try {
-            await this.webServer.start();
-        } catch (err) {
-            this.logger.warn(`Web server failed to start: ${err.message}`);
-        }
-        
+
         // Start all connections via connection manager
         await this.connectionManager.start();
         this.haBridgeDiagnostics.start();
         this.haBridgeDiagnostics.publishNow('startup');
         this.staleDeviceDetector.start();
         this._updateBridgeReadiness('startup-complete');
-        
+
+        // The C-Bus Labels web UI is never exercised during the boot window,
+        // so start it in the background after readiness has fired. Keeping it
+        // off the await chain shaves it off the critical startup path; failure
+        // logs without blocking the bridge.
+        this.webServer.start().catch((err) => {
+            this.logger.warn(`Web server failed to start: ${err.message}`);
+        });
+
         return this;
     }
 
