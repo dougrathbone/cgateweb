@@ -23,6 +23,16 @@ class BridgeInitializationService {
         this.bridge._lastInitTime = now;
         this.bridge.log('ALL CONNECTED - Initializing services...');
 
+        // Signal readiness up-front. All connection-health checks have already
+        // passed by the time this handler fires, and the post-connect work
+        // below (auto-discover, initial getall, HA Discovery TreeXML sweep) is
+        // initialization that doesn't gate the bridge's ability to serve. The
+        // production caller does not await this function, so moving the signal
+        // up lets the readiness MQTT publish land on the wire before the
+        // (potentially 5s) auto-discovery wait. Tests that await the function
+        // still observe all work completing as before.
+        this.bridge._updateBridgeReadiness('all-connected');
+
         // Auto-discover networks from C-Gate if enabled and no explicit config overrides it
         if (this.bridge.settings.autoDiscoverNetworks) {
             await this._discoverNetworks();
@@ -65,7 +75,6 @@ class BridgeInitializationService {
             this.bridge.haDiscovery.trigger(this.bridge.discoveredNetworks || null);
         }
 
-        this.bridge._updateBridgeReadiness('all-connected');
         this._logStartupSummary();
     }
 

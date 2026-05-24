@@ -427,6 +427,35 @@ describe('BridgeInitializationService', () => {
             expect(bridge._updateBridgeReadiness).toHaveBeenCalledWith('all-connected');
         });
 
+        it('signals readiness BEFORE running the post-connect init work', async () => {
+            // The whole point of the v1.9.1 deferral: readiness MUST publish
+            // before any of the post-connect work (auto-discovery wait,
+            // initial getall queue, HA Discovery trigger). Capture the call
+            // order across the readiness signal, the command-queue add, and
+            // the haDiscovery construction.
+            const { bridge, commandQueueAdd } = makeBridge({
+                ha_discovery_enabled: true,
+                getallonstart: true,
+                getall_networks: [254]
+            });
+
+            const eventOrder = [];
+            bridge._updateBridgeReadiness = jest.fn(() => eventOrder.push('readiness'));
+            commandQueueAdd.mockImplementation(() => eventOrder.push('queue-add'));
+            HaDiscovery.mockImplementation(() => {
+                eventOrder.push('discovery-ctor');
+                return { trigger: jest.fn(() => eventOrder.push('discovery-trigger')) };
+            });
+
+            const svc = new BridgeInitializationService(bridge);
+            await svc.handleAllConnected();
+
+            // readiness fires first - then the rest of the post-connect work.
+            expect(eventOrder[0]).toBe('readiness');
+            expect(eventOrder).toContain('queue-add');
+            expect(eventOrder).toContain('discovery-trigger');
+        });
+
         it('passes working publish callback to HaDiscovery', async () => {
             const { bridge, mqttPublish } = makeBridge({ ha_discovery_enabled: true });
             const svc = new BridgeInitializationService(bridge);
