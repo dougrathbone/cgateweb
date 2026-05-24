@@ -30,6 +30,9 @@ cd "${CGATE_DIR}" || exit 1
 
 exec java \
     -Djava.awt.headless=true \
+    -Djava.net.preferIPv4Stack=true \
+    -XX:+UseSerialGC \
+    -XX:TieredStopAtLevel=1 \
     -Xmx256m \
     -Xms64m \
     -jar "${CGATE_JAR}" \
