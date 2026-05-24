@@ -56,4 +56,12 @@ LABEL \
     org.opencontainers.image.revision=${BUILD_REF} \
     org.opencontainers.image.version=${BUILD_VERSION}
 
+# Liveness probe: the cgateweb process always serves the C-Bus Labels web UI
+# on port 8080, so a successful TCP check means the Node.js bridge has booted.
+# start-period is generous because managed-mode first-boot downloads and
+# extracts C-Gate (potentially hundreds of MB on slow connections) before the
+# bridge even starts.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD nc -z 127.0.0.1 8080 || exit 1
+
 CMD [ "/run.sh" ]
