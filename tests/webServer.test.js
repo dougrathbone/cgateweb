@@ -385,6 +385,40 @@ describe('WebServer', () => {
             expect(res.status).toBe(204);
             expect(res.headers['access-control-allow-origin']).toBe('https://ha.local');
         });
+
+        it('should omit Access-Control-Allow-Origin on OPTIONS preflight from a disallowed origin', async () => {
+            const corsServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowedOrigins: ['https://ha.local'],
+                getStatus: () => ({})
+            });
+            await corsServer.start();
+            const corsPort = corsServer._server.address().port;
+
+            try {
+                const res = await new Promise((resolve, reject) => {
+                    const req = http.request({
+                        hostname: '127.0.0.1',
+                        port: corsPort,
+                        path: '/api/labels',
+                        method: 'OPTIONS',
+                        headers: { Origin: 'https://evil.example' }
+                    }, (response) => {
+                        resolve({ status: response.statusCode, headers: response.headers });
+                    });
+                    req.on('error', reject);
+                    req.end();
+                });
+
+                // Browsers treat a missing Allow-Origin header on the preflight
+                // response as a hard CORS denial. Server should NEVER reflect an
+                // origin that is not in the allowlist.
+                expect(res.headers['access-control-allow-origin']).toBeUndefined();
+            } finally {
+                await corsServer.close();
+            }
+        });
     });
 
     describe('API key protection', () => {
@@ -556,6 +590,38 @@ describe('WebServer', () => {
 
             const second = await doPatch();
             expect(second.status).toBe(429);
+            expect(second.body).toEqual({ error: 'Too many requests' });
+        });
+
+        it('does not rate-limit GET / read traffic regardless of frequency', async () => {
+            // Mutation budget is 1 per window, but reads must never be capped -
+            // a noisy dashboard polling /api/labels shouldn't lock itself out.
+            limitedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                maxMutationRequestsPerWindow: 1,
+                getStatus: () => ({})
+            });
+            await limitedServer.start();
+            limitedPort = limitedServer._server.address().port;
+
+            const doGet = () => new Promise((resolve, reject) => {
+                http.get({
+                    hostname: '127.0.0.1',
+                    port: limitedPort,
+                    path: '/api/labels'
+                }, (res) => {
+                    res.on('data', () => {});
+                    res.on('end', () => resolve({ status: res.statusCode }));
+                }).on('error', reject);
+            });
+
+            // Fire well past the mutation budget on GET - none should 429.
+            for (let i = 0; i < 5; i++) {
+                const r = await doGet();
+                expect(r.status).toBe(200);
+            }
         });
 
         it('removes dormant source entries after the rate limit window passes', () => {

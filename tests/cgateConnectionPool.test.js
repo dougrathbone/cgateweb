@@ -482,6 +482,37 @@ describe('CgateConnectionPool', () => {
             await expect(pool.execute('cmd\n')).rejects.toThrow();
             expect(markSpy).toHaveBeenCalled();
         });
+
+        it('drains the pool when every connection fails during a single execute()', async () => {
+            // Walk the cascading-failure path end-to-end: start fully healthy,
+            // make every connection refuse the send, assert execute() rejects
+            // and every healthy connection was marked unhealthy in turn.
+            // _markConnectionUnhealthy defers the actual removal via setTimeout;
+            // we advance fake timers so _checkConnectionHealth then prunes the
+            // unwritable/destroyed connections from the healthy set, and a
+            // follow-up execute surfaces the canonical "No healthy connections"
+            // error - proving the cascade path drains the pool, not just the
+            // first failed connection.
+            const connections = await startWithConnections();
+            const poolSize = connections.length;
+            expect(poolSize).toBeGreaterThan(0);
+            for (const c of connections) {
+                c.sendWithBackpressure = jest.fn().mockResolvedValue(false);
+                c.isWritable = false;
+                c.isDestroyed = true;
+            }
+            const markSpy = jest.spyOn(pool, '_markConnectionUnhealthy');
+
+            await expect(pool.execute('cmd\n')).rejects.toThrow();
+
+            expect(markSpy).toHaveBeenCalledTimes(poolSize);
+
+            // Drive the deferred health checks queued by _markConnectionUnhealthy.
+            jest.advanceTimersByTime(1100);
+            expect(pool.healthyConnections.size).toBe(0);
+
+            await expect(pool.execute('cmd\n')).rejects.toThrow('No healthy connections available in pool');
+        });
     });
 
     describe('Health monitoring', () => {
