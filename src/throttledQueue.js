@@ -1,4 +1,5 @@
 const { createLogger } = require('./logger');
+const { clampSetting } = require('./utils');
 
 class ThrottledQueue {
     /**
@@ -123,7 +124,7 @@ class ThrottledQueue {
         if (this._timer !== null) {
             return;
         }
-        const delay = Math.max(0, Number(delayMs) || 0);
+        const delay = clampSetting(delayMs, 0, 0);
         this._timer = setTimeout(() => {
             this._timer = null;
             this._process();

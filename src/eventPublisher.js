@@ -1,4 +1,5 @@
 const { createLogger } = require('./logger');
+const { clampSetting, evictOldestFifo } = require('./utils');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
@@ -34,9 +35,9 @@ class EventPublisher {
         this.labelLoader = options.labelLoader || null;
         this.coverRampTracker = options.coverRampTracker || null;
         this.onEventLog = options.onEventLog || null;
-        this.eventPublishDedupWindowMs = Math.max(0, Number(this.settings.eventPublishDedupWindowMs) || 0);
-        this.eventPublishDedupMaxEntries = Math.max(100, Number(this.settings.eventPublishDedupMaxEntries) || 5000);
-        this.topicCacheMaxEntries = Math.max(100, Number(this.settings.topicCacheMaxEntries) || 5000);
+        this.eventPublishDedupWindowMs = clampSetting(this.settings.eventPublishDedupWindowMs, 0, 0);
+        this.eventPublishDedupMaxEntries = clampSetting(this.settings.eventPublishDedupMaxEntries, 100, 5000);
+        this.topicCacheMaxEntries = clampSetting(this.settings.topicCacheMaxEntries, 100, 5000);
         this.eventPublishCoalesce = this.settings.eventPublishCoalesce === true;
         this._recentPublishes = new Map();
         this._topicCache = new Map();
@@ -388,7 +389,7 @@ class EventPublisher {
         };
 
         if (this._topicCache.size >= this.topicCacheMaxEntries) {
-            this._topicCache.delete(this._topicCache.keys().next().value);
+            evictOldestFifo(this._topicCache);
         }
         this._topicCache.set(key, topics);
         this._publishStats.topicCacheMiss += 1;
@@ -411,9 +412,8 @@ class EventPublisher {
 
         // Second pass: enforce max size by oldest insertion order.
         while (this._recentPublishes.size > this.eventPublishDedupMaxEntries) {
-            const oldestKey = this._recentPublishes.keys().next().value;
+            const oldestKey = evictOldestFifo(this._recentPublishes);
             if (oldestKey === undefined) break;
-            this._recentPublishes.delete(oldestKey);
             this._publishStats.dedupEvicted += 1;
         }
     }

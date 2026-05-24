@@ -16,6 +16,7 @@ const StaleDeviceDetector = require('./staleDeviceDetector');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
+const { clampSetting } = require('./utils');
 
 /**
  * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
@@ -294,10 +295,7 @@ class CgateWebBridge {
         this.staleDeviceDetector.start();
         this._updateBridgeReadiness('startup-complete');
 
-        // The C-Bus Labels web UI is never exercised during the boot window,
-        // so start it in the background after readiness has fired. Keeping it
-        // off the await chain shaves it off the critical startup path; failure
-        // logs without blocking the bridge.
+        // Off the await chain so it never gates the critical startup path.
         this.webServer.start().catch((err) => {
             this.logger.warn(`Web server failed to start: ${err.message}`);
         });
@@ -431,8 +429,8 @@ class CgateWebBridge {
     }
 
     _getAdaptiveQueueIntervalMs() {
-        const baseInterval = Math.max(10, Number(this.settings.messageinterval) || 200);
-        const minInterval = Math.max(5, Number(this.settings.commandMinIntervalMs) || 10);
+        const baseInterval = clampSetting(this.settings.messageinterval, 10, 200);
+        const minInterval = clampSetting(this.settings.commandMinIntervalMs, 5, 10);
         const stats = this.commandConnectionPool?.getStats?.();
         if (!stats || stats.healthyConnections <= 0) {
             return baseInterval;

@@ -450,10 +450,14 @@ describe('BridgeInitializationService', () => {
             const svc = new BridgeInitializationService(bridge);
             await svc.handleAllConnected();
 
-            // readiness fires first - then the rest of the post-connect work.
-            expect(eventOrder[0]).toBe('readiness');
-            expect(eventOrder).toContain('queue-add');
-            expect(eventOrder).toContain('discovery-trigger');
+            // Verify the actual ordering constraint (readiness before each
+            // post-connect work item) rather than the brittle "readiness is
+            // first" check - keeps the test robust if a future change adds
+            // bookkeeping before readiness.
+            const readinessIdx = eventOrder.indexOf('readiness');
+            expect(readinessIdx).toBeGreaterThanOrEqual(0);
+            expect(readinessIdx).toBeLessThan(eventOrder.indexOf('queue-add'));
+            expect(readinessIdx).toBeLessThan(eventOrder.indexOf('discovery-trigger'));
         });
 
         it('passes working publish callback to HaDiscovery', async () => {

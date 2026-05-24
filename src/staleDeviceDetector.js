@@ -1,5 +1,6 @@
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
+const { clampSetting } = require('./utils');
 
 /**
  * Periodically checks for C-Bus devices that have not reported a state change
@@ -44,7 +45,7 @@ class StaleDeviceDetector {
             return;
         }
 
-        const intervalSec = Math.max(60, Number(this.settings.stale_device_check_interval_sec) || 3600);
+        const intervalSec = clampSetting(this.settings.stale_device_check_interval_sec, 60, 3600);
 
         this._publishDiscovery();
         this._check();
@@ -73,7 +74,7 @@ class StaleDeviceDetector {
      */
     _check() {
         try {
-            const thresholdMs = Math.max(1, Number(this.settings.stale_device_threshold_hours) || 24) * 60 * 60 * 1000;
+            const thresholdMs = clampSetting(this.settings.stale_device_threshold_hours, 1, 24) * 60 * 60 * 1000;
             const staleDevices = this._getStaleDevices(thresholdMs);
             this._publishStaleCount(staleDevices.length, staleDevices);
         } catch (error) {
@@ -120,7 +121,7 @@ class StaleDeviceDetector {
      * @private
      */
     _publishStaleCount(count, staleDevices) {
-        const thresholdHours = Math.max(1, Number(this.settings.stale_device_threshold_hours) || 24);
+        const thresholdHours = clampSetting(this.settings.stale_device_threshold_hours, 1, 24);
 
         this.mqttClient.publish('cbus/bridge/stale_devices', String(count), MQTT_RETAINED_STATE_OPTIONS);
 

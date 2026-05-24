@@ -2,6 +2,7 @@ const mqtt = require('mqtt');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 const { createErrorHandler } = require('./errorHandler');
+const { evictOldestFifo } = require('./utils');
 const { 
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_STATUS,
@@ -161,8 +162,7 @@ class MqttManager extends EventEmitter {
         // Bounded queue: evict the oldest entry when over the cap. Map
         // iteration is insertion order so the first key is the oldest.
         if (this._pendingPublishQueue.size > this._pendingPublishMaxEntries) {
-            const oldest = this._pendingPublishQueue.keys().next().value;
-            this._pendingPublishQueue.delete(oldest);
+            evictOldestFifo(this._pendingPublishQueue);
             this._pendingPublishEvicted += 1;
         }
     }
