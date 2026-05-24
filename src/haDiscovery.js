@@ -84,10 +84,10 @@ class HaDiscovery {
         // recovers automatically without restarting the bridge.
         // networkId -> { attempts, watchdogHandle, retryHandle }
         this._treeRequestState = new Map();
-        this._maxTreeRetryAttempts = 8;
-        this._treeRetryInitialDelayMs = 2000;
-        this._treeRetryMaxDelayMs = 60000;
-        this._treeRequestTimeoutMs = 8000;
+        this._maxTreeRetryAttempts = (settings && settings.haDiscoveryMaxTreeRetryAttempts) || 8;
+        this._treeRetryInitialDelayMs = (settings && settings.haDiscoveryTreeRetryInitialDelayMs) || 2000;
+        this._treeRetryMaxDelayMs = (settings && settings.haDiscoveryTreeRetryMaxDelayMs) || 60000;
+        this._treeRequestTimeoutMs = (settings && settings.haDiscoveryTreeRequestTimeoutMs) || 8000;
 
         // Tracks per-network HA Discovery health. The status field is used to
         // de-dup repeated state publishes; configPublished gates the (one-shot)

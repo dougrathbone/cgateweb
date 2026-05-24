@@ -81,6 +81,27 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.treeNetwork).toBeNull();
             expect(haDiscovery.discoveryCount).toBe(0);
         });
+
+        it('should default tree retry tuning when settings omit the keys', () => {
+            const d = new HaDiscovery({}, mockPublishFn, mockSendCommandFn);
+            expect(d._maxTreeRetryAttempts).toBe(8);
+            expect(d._treeRetryInitialDelayMs).toBe(2000);
+            expect(d._treeRetryMaxDelayMs).toBe(60000);
+            expect(d._treeRequestTimeoutMs).toBe(8000);
+        });
+
+        it('should honor settings overrides for tree retry tuning', () => {
+            const d = new HaDiscovery({
+                haDiscoveryMaxTreeRetryAttempts: 3,
+                haDiscoveryTreeRetryInitialDelayMs: 500,
+                haDiscoveryTreeRetryMaxDelayMs: 10000,
+                haDiscoveryTreeRequestTimeoutMs: 4000
+            }, mockPublishFn, mockSendCommandFn);
+            expect(d._maxTreeRetryAttempts).toBe(3);
+            expect(d._treeRetryInitialDelayMs).toBe(500);
+            expect(d._treeRetryMaxDelayMs).toBe(10000);
+            expect(d._treeRequestTimeoutMs).toBe(4000);
+        });
     });
 
     describe('trigger()', () => {

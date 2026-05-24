@@ -429,6 +429,23 @@ describe('WebServer', () => {
             expect(authorized.status).toBe(200);
         });
 
+        it('should honor maxBodySizeBytes override for body-size enforcement', () => {
+            const tiny = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({}),
+                maxBodySizeBytes: 4096
+            });
+            expect(tiny.maxBodySizeBytes).toBe(4096);
+
+            const defaultBody = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            expect(defaultBody.maxBodySizeBytes).toBe(10 * 1024 * 1024);
+        });
+
         it('should reject mutating routes by default when no API key is configured', async () => {
             const defaultServer = new WebServer({
                 port: 0,

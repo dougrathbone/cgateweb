@@ -65,7 +65,17 @@ const defaultSettings = {
     web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120,
-    relativeLevelTimeoutMs: 5000
+    relativeLevelTimeoutMs: 5000,
+    // HA Discovery TreeXML retry tuning. C-Gate accepts connections on the
+    // command port before its networks are loaded, so an initial TREEXML can
+    // return 401 "Network not found". These control the retry budget.
+    haDiscoveryMaxTreeRetryAttempts: 8,
+    haDiscoveryTreeRetryInitialDelayMs: 2000,
+    haDiscoveryTreeRetryMaxDelayMs: 60000,
+    haDiscoveryTreeRequestTimeoutMs: 8000,
+    // Maximum size (bytes) for POST/PUT/PATCH request bodies on the web UI's
+    // label-editing API. Default 10MB covers typical .cbz uploads.
+    webMaxBodySizeBytes: 10 * 1024 * 1024
 };
 
 module.exports = { defaultSettings };

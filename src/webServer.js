@@ -6,7 +6,7 @@ const CbusProjectParser = require('./cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('./constants');
 
 const STATIC_DIR = path.join(__dirname, '..', 'public');
-const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 const CBUS_APP_NAMES = {
     56: 'Lighting',
@@ -63,6 +63,9 @@ class WebServer {
                 ? options.maxMutationRequestsPerWindow
                 : 120
         );
+        this.maxBodySizeBytes = Number.isFinite(options.maxBodySizeBytes) && options.maxBodySizeBytes > 0
+            ? options.maxBodySizeBytes
+            : DEFAULT_MAX_BODY_SIZE;
         this._mutationRequestLog = new Map();
         this._haAreasCache = null;
         this._haAreasCacheTime = 0;
@@ -686,7 +689,7 @@ class WebServer {
             let size = 0;
             req.on('data', (chunk) => {
                 size += chunk.length;
-                if (size > MAX_BODY_SIZE) {
+                if (size > this.maxBodySizeBytes) {
                     req.destroy();
                     done(null);
                     return;
@@ -706,7 +709,7 @@ class WebServer {
             let size = 0;
             req.on('data', (chunk) => {
                 size += chunk.length;
-                if (size > MAX_BODY_SIZE) {
+                if (size > this.maxBodySizeBytes) {
                     req.destroy();
                     done(null);
                     return;
