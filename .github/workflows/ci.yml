@@ -9,9 +9,28 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
+  version-sync:
+    name: package.json / config.yaml version sync
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v5
+    - name: Verify versions match
+      run: |
+        pkg_version=$(node -p "require('./package.json').version")
+        cfg_version=$(grep -E '^version:' homeassistant-addon/config.yaml | sed -E 's/^version:[[:space:]]*"?([^"]+)"?$/\1/')
+        echo "package.json version: ${pkg_version}"
+        echo "config.yaml  version: ${cfg_version}"
+        if [[ "${pkg_version}" != "${cfg_version}" ]]; then
+          echo "::error::package.json version (${pkg_version}) does not match homeassistant-addon/config.yaml version (${cfg_version})."
+          echo "::error::Bump both files together before pushing (see CLAUDE.md release process)."
+          exit 1
+        fi
+
   test:
     name: Lint, Test & Coverage
     runs-on: ubuntu-latest
+    needs: version-sync
 
     strategy:
       matrix:
