@@ -159,7 +159,7 @@ class BridgeInitializationService {
         }
         this.bridge.log(`Starting periodic 'get all' for ${networkAppPath} every ${intervalMs / 1000} seconds.`);
         const handle = setInterval(() => {
-            this.bridge.log(`Getting all periodic values for ${networkAppPath}...`);
+            this.logger.debug(`Getting all periodic values for ${networkAppPath}...`);
             this.bridge.cgateCommandQueue.add(
                 `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${networkAppPath}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
             );

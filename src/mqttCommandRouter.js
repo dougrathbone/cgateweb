@@ -88,7 +88,7 @@ class MqttCommandRouter extends EventEmitter {
      * @param {string} payload - MQTT payload
      */
     routeMessage(topic, payload) {
-        this.logger.info(`MQTT Recv: ${topic} -> ${payload}`);
+        this.logger.debug(`MQTT Recv: ${topic} -> ${payload}`);
 
         // Handle manual HA discovery trigger
         if (topic === MQTT_TOPIC_MANUAL_TRIGGER) {

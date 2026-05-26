@@ -5,6 +5,14 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.2] - 2026-05-26
+
+### Changed
+
+- **Log noise reduction**: demoted two high-volume INFO log lines to DEBUG. Both fire per-event and dominated production log volume (~45% of lines in a typical sampled window). Real startup/shutdown/state-transition messages stay at INFO so they remain easy to spot; users who need the per-command trace can set `log_level: debug` in the add-on config.
+  - `MqttCommandRouter` "MQTT Recv: ..." (every received MQTT write/switch/ramp command)
+  - `BridgeInitializationService` "Getting all periodic values for ..." (every periodic getall poll fire)
+
 ## [1.9.1] - 2026-05-24
 
 ### Performance
