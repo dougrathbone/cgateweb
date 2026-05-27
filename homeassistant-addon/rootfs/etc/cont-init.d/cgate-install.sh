@@ -26,6 +26,25 @@ _cgateweb_resolve_download_sha256() {
     printf '%s' "${sha}"
 }
 
+# Inspect a zip's central directory and reject any entry name that contains
+# path-traversal (..) or starts with an absolute path. Modern unzip ignores
+# these by default, but explicit pre-extract validation is defence-in-depth
+# and guards against future unzip-variant behaviour changes.
+_cgateweb_verify_zip_safe() {
+    local zip_path="$1"
+    local bad_entries
+    bad_entries=$(unzip -Z1 "${zip_path}" 2>/dev/null | awk '
+        $0 ~ /(^|\/)\.\.(\/|$)/ { print; next }
+        /^\// { print; next }
+    ')
+    if [[ -n "${bad_entries}" ]]; then
+        bashio::log.error "Archive rejected: contains path-traversal or absolute entry names:"
+        bashio::log.error "${bad_entries}"
+        return 1
+    fi
+    return 0
+}
+
 # Allow tests to source this script for unit testing the helpers above without
 # running the install flow.
 if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
@@ -116,6 +135,7 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     fi
 
     bashio::log.info "Download complete (${DOWNLOAD_SIZE} bytes), extracting..."
+    _cgateweb_verify_zip_safe "${TEMP_ZIP}" || exit 1
     if ! unzip -o "${TEMP_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
         bashio::log.error "Failed to extract C-Gate zip file"
         exit 1
@@ -150,6 +170,7 @@ elif [[ "${INSTALL_SOURCE}" == "upload" ]]; then
         bashio::log.info "Checksum verification passed"
     fi
 
+    _cgateweb_verify_zip_safe "${ZIP_FILE}" || exit 1
     if ! unzip -o "${ZIP_FILE}" -d "${WORK_DIR}/extract" 2>&1; then
         bashio::log.error "Failed to extract ${ZIP_FILE}"
         exit 1
@@ -180,6 +201,7 @@ if [[ -z "${NESTED_JAR}" ]]; then
         NESTED_NAME=$(basename "${NESTED_ZIP}" .zip)
         CGATE_VERSION="${NESTED_NAME#cgate-}"
         bashio::log.info "Extracting nested archive: $(basename "${NESTED_ZIP}")"
+        _cgateweb_verify_zip_safe "${NESTED_ZIP}" || exit 1
         if ! unzip -o "${NESTED_ZIP}" -d "${WORK_DIR}/extract" 2>&1; then
             bashio::log.error "Failed to extract nested zip: ${NESTED_ZIP}"
             exit 1

@@ -1,10 +1,30 @@
+const path = require('path');
 const AdmZip = require('adm-zip');
 const { parseString } = require('xml2js');
 const { createLogger } = require('./logger');
 
+// Maximum total decompressed bytes we will pull out of a .cbz archive.
+// .cbz files are XML payloads zipped together; typical real files are well
+// under 5MB extracted. Cap defends against zip-bomb uploads that could
+// otherwise exhaust process memory before xml2js parsing fails.
+const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024; // 100MB
+
+// Defence-in-depth: reject ZIP entry names containing path-traversal or
+// absolute paths. The parser does not write extracted files to disk, but
+// guarding here means a future change can't accidentally introduce one.
+// Pure-function form so it's directly unit-testable; AdmZip sanitises bad
+// names on write, so we can't reach this path from a JS-built archive.
+function _isSafeZipEntryName(name) {
+    if (typeof name !== 'string' || name.length === 0) return false;
+    if (path.isAbsolute(name)) return false;
+    const parts = name.split(/[/\\]/);
+    return !parts.includes('..');
+}
+
 class CbusProjectParser {
-    constructor() {
+    constructor(options = {}) {
         this.logger = createLogger({ component: 'CbusProjectParser' });
+        this.maxDecompressedBytes = options.maxDecompressedBytes || MAX_DECOMPRESSED_BYTES;
     }
 
     /**
@@ -54,9 +74,29 @@ class CbusProjectParser {
         const zip = new AdmZip(buffer);
         const entries = zip.getEntries();
 
+        // Pre-flight against zip-bomb uploads: sum every entry's declared
+        // uncompressed size before we decompress anything. ZIP headers
+        // include the uncompressed size so this check costs nothing.
+        let totalUncompressed = 0;
+        for (const entry of entries) {
+            const size = entry.header && entry.header.size;
+            if (typeof size === 'number' && size > 0) {
+                totalUncompressed += size;
+                if (totalUncompressed > this.maxDecompressedBytes) {
+                    throw new Error(
+                        `CBZ archive decompressed size exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
+                    );
+                }
+            }
+        }
+
         const xmlEntry = entries.find(e => e.entryName.endsWith('.xml'));
         if (!xmlEntry) {
             throw new Error('CBZ archive does not contain an XML file');
+        }
+
+        if (!_isSafeZipEntryName(xmlEntry.entryName)) {
+            throw new Error(`CBZ archive entry name rejected: ${xmlEntry.entryName}`);
         }
 
         this.logger.info(`Extracting ${xmlEntry.entryName} from CBZ`);
@@ -212,3 +252,4 @@ class CbusProjectParser {
 }
 
 module.exports = CbusProjectParser;
+module.exports._isSafeZipEntryName = _isSafeZipEntryName;

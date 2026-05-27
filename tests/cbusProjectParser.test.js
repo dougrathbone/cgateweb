@@ -239,5 +239,34 @@ describe('CbusProjectParser', () => {
             await expect(parser.parse(zipBuffer, 'bad.cbz'))
                 .rejects.toThrow('does not contain an XML file');
         });
+
+        it('rejects a CBZ whose declared decompressed total exceeds the cap (zip-bomb protection)', async () => {
+            // Build a real zip and configure the parser with a tiny cap so a
+            // single small entry triggers the guard. The production default
+            // is 100MB; we shrink it to 10 bytes here to exercise the same
+            // code path without needing a malicious compressor.
+            const tinyCapParser = new (require('../src/cbusProjectParser'))({ maxDecompressedBytes: 10 });
+            const zip = new AdmZip();
+            zip.addFile('project.xml', Buffer.from('<x>this content is more than 10 bytes</x>'));
+            const zipBuffer = zip.toBuffer();
+
+            await expect(tinyCapParser.parse(zipBuffer, 'bomb.cbz'))
+                .rejects.toThrow(/zip-bomb protection|decompressed size exceeds/i);
+        });
+
+        // AdmZip's addFile sanitises path-traversal on write, so we cannot
+        // craft a malicious archive from JS. Test the validator directly -
+        // it's the same predicate _extractCBZ calls in production.
+        it('_isSafeZipEntryName rejects path-traversal / absolute paths', () => {
+            const { _isSafeZipEntryName } = require('../src/cbusProjectParser');
+            expect(_isSafeZipEntryName('project.xml')).toBe(true);
+            expect(_isSafeZipEntryName('subdir/project.xml')).toBe(true);
+            expect(_isSafeZipEntryName('../etc/passwd')).toBe(false);
+            expect(_isSafeZipEntryName('foo/../../etc/passwd')).toBe(false);
+            expect(_isSafeZipEntryName('/etc/passwd')).toBe(false);
+            expect(_isSafeZipEntryName('foo\\..\\..\\bar')).toBe(false);
+            expect(_isSafeZipEntryName('')).toBe(false);
+            expect(_isSafeZipEntryName(undefined)).toBe(false);
+        });
     });
 });

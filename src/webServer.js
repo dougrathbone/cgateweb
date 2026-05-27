@@ -1,6 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { createLogger } = require('./logger');
 const CbusProjectParser = require('./cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('./constants');
@@ -120,6 +121,25 @@ class WebServer {
 
             this._setCorsHeaders(req, res);
             res.setHeader('X-Content-Type-Options', 'nosniff');
+            // Don't leak the addon's URL (which includes the HA Ingress token
+            // in the path) to any external resource the UI fetches.
+            res.setHeader('Referrer-Policy', 'no-referrer');
+            // Defence-in-depth CSP. The bundled UI uses inline <script>/<style>
+            // so we keep 'unsafe-inline' for those - but everything else is
+            // locked to same-origin, which kills the most common XSS payloads
+            // (loading attacker-controlled JS from a third-party host).
+            // frame-ancestors is intentionally omitted because HA Ingress
+            // embeds the addon from a different host.
+            res.setHeader(
+                'Content-Security-Policy',
+                "default-src 'self'; " +
+                "script-src 'self' 'unsafe-inline'; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "img-src 'self' data:; " +
+                "connect-src 'self'; " +
+                "object-src 'none'; " +
+                "base-uri 'self'"
+            );
 
             if (req.method === 'OPTIONS') {
                 res.writeHead(204);
@@ -634,8 +654,15 @@ class WebServer {
         const rawAuth = req.headers.authorization || '';
         const bearer = rawAuth.startsWith('Bearer ') ? rawAuth.slice('Bearer '.length).trim() : null;
         const headerKey = req.headers['x-api-key'];
-        const provided = bearer || headerKey;
-        return provided === this.apiKey;
+        const provided = bearer || headerKey || '';
+
+        // Constant-time compare to remove the timing oracle that === would expose.
+        // timingSafeEqual requires equal-length buffers, so reject mismatched
+        // lengths up-front (also done in constant time relative to the secret).
+        const providedBuf = Buffer.from(String(provided));
+        const expectedBuf = Buffer.from(this.apiKey);
+        if (providedBuf.length !== expectedBuf.length) return false;
+        return crypto.timingSafeEqual(providedBuf, expectedBuf);
     }
 
     _setCorsHeaders(req, res) {
