@@ -5,6 +5,25 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.4] - 2026-05-27
+
+### Security
+
+- **API key comparison is now constant-time** (`crypto.timingSafeEqual`). Removes the timing oracle the previous `===` comparison exposed.
+- **`.cbz` import is guarded against zip-bombs**. The parser pre-flights the sum of declared decompressed sizes for every ZIP entry against a 100MB cap (overridable via constructor) before extracting anything, so a small upload cannot blow up RAM. Defence-in-depth path-traversal guard on internal entry names extracted alongside.
+- **HTTP security headers** added on every response: `Content-Security-Policy` (locks resource loading to same-origin, killing the common third-party-script XSS payload pattern without breaking the bundled inline UI) and `Referrer-Policy: no-referrer` (prevents leaking the HA Ingress-tokenised URL to any external resource).
+- **Managed-mode install pre-flights ZIP entry names** for path-traversal (`..`) or absolute paths via a new `_cgateweb_verify_zip_safe` helper in `cgate-install.sh`. Runs before each `unzip` call. Modern unzip already strips these but the explicit guard makes any future tooling regression visible.
+
+### Mobile / Responsive
+
+- **Web UI is now responsive across all common viewport sizes** for both direct LAN access and HA Companion App (iframe-embedded via HA Ingress). Previously had zero `@media` breakpoints. Includes:
+  - `viewport-fit=cover` + `env(safe-area-inset-*)` padding for notched phones.
+  - `font-size: 16px` on all form inputs - eliminates the iOS auto-zoom-on-focus behaviour that previously fired every time a user tapped a label.
+  - Touch targets enlarged on touch-primary devices (row checkboxes 22×22, buttons min-height 44px) per WCAG 2.5.5 / iOS HIG. Desktop mouse users keep the compact layout.
+  - `<= 768px`: main labels table becomes horizontally scrollable; Entity ID and "unsaved" columns hide; tab bar tightens; toast spans full width.
+  - `<= 480px`: Type column also hides; add-row and bulk toolbar stack vertically; header collapses; status bar single-column.
+  - Area dropdown is constrained to viewport width on narrow screens so it can't shoot off the right edge.
+
 ## [1.9.3] - 2026-05-27
 
 ### Fixed
