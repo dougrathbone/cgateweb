@@ -5,6 +5,14 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.3] - 2026-05-27
+
+### Fixed
+
+- **Editing labels (or areas / type overrides / entity IDs / exclusions) via the Web UI did not update Home Assistant device names**. `LabelLoader.save()` wrote the file and updated internal state but never emitted `labels-changed` directly. The only emit site was the `fs.watch` callback, which is gated by a 1000ms self-write grace period to prevent double-processing - so for in-process saves (PUT/PATCH `/api/labels`, POST `/api/labels/import`), the event was silently suppressed. The downstream listener that re-triggers HA Discovery therefore never fired, and HA never saw the updated entity configs.
+  - `save()` now emits `labels-changed` directly with the full `getLabelData()` payload (labels, areas, typeOverrides, entityIds, exclude). The file-watcher path still correctly suppresses the resulting fs event within the grace window, so there's no double-fire.
+  - The same fix automatically covers areas, type overrides, entity IDs, and the exclude list - all flow through the single `save()` codepath.
+
 ## [1.9.2] - 2026-05-26
 
 ### Changed

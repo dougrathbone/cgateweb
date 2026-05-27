@@ -159,6 +159,12 @@ class LabelLoader extends EventEmitter {
         }
 
         this.logger.info(`Saved ${this._labels.size} labels to ${this.filePath}`);
+
+        // Notify in-process listeners (HA Discovery re-trigger, the Web UI
+        // SSE event stream) directly. The file-watcher path will see the
+        // same write but suppress it via SELF_WRITE_GRACE_MS - that grace
+        // period prevents a double-fire here, it doesn't replace this emit.
+        this.emit('labels-changed', this.getLabelData());
     }
 
     /**

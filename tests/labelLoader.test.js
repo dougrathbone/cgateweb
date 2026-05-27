@@ -122,6 +122,53 @@ describe('LabelLoader', () => {
             const loader = new LabelLoader(null);
             expect(() => loader.save({})).toThrow('No label file path configured');
         });
+
+        it('emits labels-changed synchronously after save so in-process callers (web UI) trigger HA Discovery refresh', () => {
+            // Regression for the bug where editing labels via the Web UI did
+            // NOT update Home Assistant device names. save() wrote the file
+            // and updated internal state but never emitted labels-changed -
+            // the watcher's self-write grace period then suppressed the
+            // file-event-driven emit, so the bridge's HA Discovery
+            // re-trigger listener never fired.
+            const loader = new LabelLoader(labelFile);
+            const events = [];
+            loader.on('labels-changed', (labelData) => events.push(labelData));
+
+            loader.save({ '254/56/10': 'Kitchen Bench', '254/56/11': 'Hallway' });
+
+            expect(events.length).toBe(1);
+            expect(events[0].labels.get('254/56/10')).toBe('Kitchen Bench');
+            expect(events[0].labels.get('254/56/11')).toBe('Hallway');
+        });
+
+        it('labels-changed payload carries areas / type_overrides / entity_ids / exclude in addition to labels', () => {
+            // The bridge's listener pipes getLabelData() into HaDiscovery.updateLabels,
+            // which consumes all five sections. If save() ever stops including any of
+            // them in the emit payload, HA entity area assignments / type overrides /
+            // explicit unique-id-suffixes / exclusion lists silently stop applying on
+            // edit. Lock the full contract here.
+            const loader = new LabelLoader(labelFile);
+            const events = [];
+            loader.on('labels-changed', (labelData) => events.push(labelData));
+
+            loader.save({
+                version: 1,
+                labels: { '254/56/10': 'Kitchen' },
+                type_overrides: { '254/203/15': 'cover' },
+                entity_ids: { '254/56/10': 'kitchen_main' },
+                exclude: ['254/56/250'],
+                areas: { '254/56/10': 'Kitchen', '254/56/11': 'Hallway' }
+            });
+
+            expect(events.length).toBe(1);
+            const payload = events[0];
+            expect(payload.labels.get('254/56/10')).toBe('Kitchen');
+            expect(payload.typeOverrides.get('254/203/15')).toBe('cover');
+            expect(payload.entityIds.get('254/56/10')).toBe('kitchen_main');
+            expect(payload.exclude.has('254/56/250')).toBe(true);
+            expect(payload.areas.get('254/56/10')).toBe('Kitchen');
+            expect(payload.areas.get('254/56/11')).toBe('Hallway');
+        });
     });
 
     describe('getLabelsObject', () => {
@@ -390,7 +437,11 @@ describe('LabelLoader', () => {
             }, 100);
         }, 5000);
 
-        it('should not emit when file is written by save() within grace period', (done) => {
+        it('save() emits labels-changed exactly once even with the watcher running (no double-fire)', (done) => {
+            // The watcher's SELF_WRITE_GRACE_MS exists to prevent a SECOND
+            // labels-changed firing from the fs.watch callback after our own
+            // write. The FIRST emit comes from save() directly so the in-
+            // process listeners (HA Discovery refresh, web UI SSE) wake up.
             const data = { version: 1, labels: { '254/56/10': 'Init' } };
             fs.writeFileSync(labelFile, JSON.stringify(data));
 
@@ -401,16 +452,17 @@ describe('LabelLoader', () => {
             const handler = jest.fn();
             loader.on('labels-changed', handler);
 
-            // save() sets _lastSaveTime; fs.watch events within 1s grace are suppressed
             loader.save({ '254/56/10': 'Via Save' });
 
-            // Wait longer than debounce (500ms) but within the grace period (1000ms)
+            // Wait longer than debounce (500ms) and longer than grace (1000ms)
+            // to confirm only the direct emit fired, not the file-watcher path.
             setTimeout(() => {
-                expect(handler).not.toHaveBeenCalled();
+                expect(handler).toHaveBeenCalledTimes(1);
+                expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Via Save');
                 loader.unwatch();
                 done();
-            }, 800);
-        }, 3000);
+            }, 1500);
+        }, 5000);
 
         it('should do nothing when no file path is configured', () => {
             const loader = new LabelLoader(null);
