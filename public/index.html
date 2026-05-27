@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>C-Bus Web - cgateweb</title>
 <style>
 :root {
@@ -583,6 +583,120 @@ th.cb-col, td.cb-col {
   color: var(--text-muted);
   padding: 20px;
   font-size: 0.85rem;
+}
+
+/* ============================================================
+ * Responsive / mobile
+ * Targets HA Companion App (iframe-embedded via HA Ingress) and
+ * direct phone access on the LAN. Two breakpoints:
+ *   <= 768px: tablet, narrow desktop window
+ *   <= 480px: phone (iPhone SE 375, Pixel 412, etc.)
+ * ============================================================ */
+
+/* Prevent iOS Safari from auto-zooming when a form field is focused.
+ * iOS triggers zoom when the focused input has font-size < 16px. Apply
+ * to every interactive form element regardless of viewport. */
+input, select, textarea {
+  font-size: 16px;
+}
+
+/* Safe-area padding for notched phones (iPhone 12+ etc.) embedded in
+ * HA Companion App with viewport-fit=cover. */
+.app {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+@media (max-width: 768px) {
+  .app { padding: 12px; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+
+  /* The main labels table is rendered inside #tabLabels via innerHTML, so
+   * we let the panel itself become the horizontal scroll container when
+   * narrow. min-width on the table forces a scroll rather than a squeeze
+   * that breaks visual alignment. */
+  #tabLabels { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #tabLabels > table { min-width: 640px; }
+
+  /* Hide the lowest-priority columns. Header + tbody indices must match -
+   * see the renderTable() innerHTML in the labels render path: 1=select,
+   * 2=Address, 3=Label, 4=Type, 5=Entity ID, 6=Area, 7=Excl, 8=unsaved,
+   * 9=actions. Drop 5 (Entity ID) and 8 (source/unsaved badge) on tablet. */
+  #tabLabels th:nth-child(5), #tabLabels td:nth-child(5),
+  #tabLabels th:nth-child(8), #tabLabels td:nth-child(8) { display: none; }
+
+  /* Tabs: tighter padding so 4 fit on a 768-wide viewport. */
+  .tab-btn { padding: 10px 12px; font-size: 0.85rem; }
+
+  /* Toast: span full width on narrow screens so it doesn't crowd the corner. */
+  .toast { left: 12px; right: 12px; bottom: 12px; }
+
+  /* Status bar items wrap tighter. */
+  .diag-grid { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+
+  /* Event log: hide the level-bar visualisation (col 5) on narrow
+   * screens; Time/Address/Label/Level still convey the info. */
+  .event-log-table th:nth-child(5), .event-log-table td:nth-child(5) { display: none; }
+}
+
+@media (max-width: 480px) {
+  .app { padding: 8px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right)); }
+
+  /* Drop the Type column too on phone-narrow widths. Type is rarely
+   * edited and is still settable via the bulk toolbar after select. */
+  #tabLabels th:nth-child(4), #tabLabels td:nth-child(4) { display: none; }
+
+  /* The add-row at the bottom of the labels tab has fixed-width inputs
+   * that overlap on narrow screens. Stack them. */
+  .add-row { flex-direction: column; align-items: stretch; }
+  .add-row > * { width: 100% !important; }
+
+  /* Bulk toolbar: stack vertical too, more touch-friendly. */
+  .bulk-toolbar { flex-direction: column; align-items: stretch; }
+  .bulk-toolbar > button { width: 100%; }
+
+  /* Tabs: even tighter, but still must remain tappable (>=44px). */
+  .tab-btn { padding: 12px 8px; font-size: 0.8rem; min-height: 44px; }
+
+  /* Status bar collapses to a single column for legibility. */
+  .diag-grid { grid-template-columns: 1fr; }
+
+  /* Header collapses to stacked layout - actions move below the title. */
+  header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+}
+
+/* ============================================================
+ * Touch targets (apply at all widths - WCAG 2.5.5 + iOS HIG)
+ * ============================================================ */
+
+/* Enlarge tap area on the row select / exclude checkboxes without
+ * making them visually huge. Apply only on touch primary devices so
+ * desktop mouse users keep the compact layout. */
+@media (hover: none) and (pointer: coarse) {
+  .select-cb, .exclude-cb {
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+  }
+  .cb-col, td:has(.exclude-cb) { padding: 12px 8px; }
+  /* Buttons in the table get a tap-friendly minimum. */
+  button, .tab-btn { min-height: 44px; }
+  button.small { min-height: 38px; padding: 6px 12px; }
+}
+
+/* ============================================================
+ * Area dropdown: prevent off-screen overflow on narrow viewports
+ * ============================================================ */
+@media (max-width: 480px) {
+  .area-dropdown {
+    /* Constrain so it can't shoot off the right edge. The renderer
+     * sets left: -8px; we override to allow the browser to right-
+     * align via auto. */
+    left: auto !important;
+    right: 0;
+    max-width: calc(100vw - 32px);
+    min-width: auto;
+  }
 }
 </style>
 </head>
