@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-05-30
+
+### Added
+
+- **Automatic cover detection.** Groups on the Lighting application (56) whose label contains a cover keyword (`blind`, `shutter`, `shade`, `awning`, `curtain`, `roller`, `garage door`) are now discovered as Home Assistant `cover` entities instead of `light`. This fixes the common case where shutter relays share the lighting application with real lights and previously all appeared as lights. Classification is conservative and label-only: a manual `type_overrides` entry and application-id mappings always take precedence; auto-detection only ever upgrades the default `light`. Configurable via `ha_discovery_auto_type` (default on), `ha_discovery_auto_type_name_heuristics`, and `ha_discovery_auto_type_cover_keywords`.
+
+### Fixed
+
+- **`.cbz` import "Failed Unauthorised" through HA Ingress.** The web UI import endpoint now trusts requests proxied through Home Assistant Ingress when no API key is configured, so importing a C-Bus project from the add-on UI works out of the box. A configured `web_api_key` is still always enforced, and direct (non-ingress) requests remain blocked unless explicitly allowed.
+- **HVAC type overrides produced a broken thermostat.** Reclassifying a lighting group to `hvac` via `type_overrides` now publishes a full climate payload (temperature/mode topics) instead of a generic payload missing the thermostat controls.
+
 ## [1.9.4] - 2026-05-27
 
 ### Security
