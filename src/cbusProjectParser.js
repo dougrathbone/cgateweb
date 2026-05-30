@@ -16,7 +16,12 @@ const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024; // 100MB
 // names on write, so we can't reach this path from a JS-built archive.
 function _isSafeZipEntryName(name) {
     if (typeof name !== 'string' || name.length === 0) return false;
-    if (path.isAbsolute(name)) return false;
+    // ZIP entry names use forward slashes regardless of platform, and a
+    // malicious archive can embed any separator or drive letter. `path.isAbsolute`
+    // is host-OS specific (e.g. on POSIX it misses `C:\...` and `\\server\...`),
+    // so test both conventions and reject any drive-letter prefix explicitly.
+    if (path.posix.isAbsolute(name) || path.win32.isAbsolute(name)) return false;
+    if (/^[A-Za-z]:/.test(name)) return false;
     const parts = name.split(/[/\\]/);
     return !parts.includes('..');
 }

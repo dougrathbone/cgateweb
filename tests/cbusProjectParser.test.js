@@ -265,6 +265,14 @@ describe('CbusProjectParser', () => {
             expect(_isSafeZipEntryName('foo/../../etc/passwd')).toBe(false);
             expect(_isSafeZipEntryName('/etc/passwd')).toBe(false);
             expect(_isSafeZipEntryName('foo\\..\\..\\bar')).toBe(false);
+            // Windows-style absolute paths must be rejected on every host OS,
+            // not just Windows: path.isAbsolute() is platform-specific and a
+            // POSIX host would otherwise let these through.
+            expect(_isSafeZipEntryName('C:\\Windows\\system32')).toBe(false);
+            expect(_isSafeZipEntryName('C:/Windows/system32')).toBe(false);
+            expect(_isSafeZipEntryName('\\\\server\\share\\file')).toBe(false);
+            expect(_isSafeZipEntryName('\\foo')).toBe(false);
+            expect(_isSafeZipEntryName('D:relative')).toBe(false);
             expect(_isSafeZipEntryName('')).toBe(false);
             expect(_isSafeZipEntryName(undefined)).toBe(false);
         });
