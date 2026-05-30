@@ -1,6 +1,7 @@
 const parseString = require('xml2js').parseString;
 const { createLogger } = require('./logger');
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
+const { classifyLightingGroup } = require('./deviceTypeClassifier');
 const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
 const { backoffDelay } = require('./backoff');
 const {
@@ -670,11 +671,20 @@ class HaDiscovery {
                 return;
             }
 
-            const typeOverride = typeOverrides.get(labelKey);
-            if (typeOverride && typeOverride !== 'light') {
-                const config = getDiscoveryConfig(typeOverride);
+            // Resolve an effective type. Manual type_overrides have absolute
+            // priority; auto-detection only fills in when there is no override
+            // and only ever upgrades the lighting fallback (it never returns
+            // 'light'). Application-id mappings are handled in
+            // _processEnableControlGroups and never reach this lighting path.
+            const labelForClassification = labelMap.get(labelKey) || group.Label || '';
+            let resolvedType = typeOverrides.get(labelKey);
+            if (!resolvedType) {
+                resolvedType = classifyLightingGroup(labelForClassification, this.settings);
+            }
+            if (resolvedType && resolvedType !== 'light') {
+                const config = getDiscoveryConfig(resolvedType);
                 if (config) {
-                    this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
+                    this.logger.debug(`Resolved type: ${labelKey} -> ${resolvedType}`);
                     if (config.isHvac) {
                         // HVAC needs the dedicated climate payload (temperature/mode
                         // topics); the generic builder would publish a broken
@@ -685,7 +695,7 @@ class HaDiscovery {
                     }
                     // Remove any stale retained light config for this group.
                     // This covers the case where the type changes within the same session
-                    // (e.g. first run saw it as a light; this run sees the type override).
+                    // (e.g. first run saw it as a light; this run resolves a non-light type).
                     const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
                     const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
                     this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
@@ -693,7 +703,7 @@ class HaDiscovery {
                     this._publishedTopics.delete(staleTopic);
                     return;
                 }
-                this.logger.warn(`Unknown type override "${typeOverride}" for ${labelKey}, falling back to light`);
+                this.logger.warn(`Unknown resolved type "${resolvedType}" for ${labelKey}, falling back to light`);
             }
 
             const customLabel = labelMap.get(labelKey);

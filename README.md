@@ -164,9 +164,17 @@ The crucial step is setting the correct `ha_discovery_*_app_id` values to match 
 **Important Notes:**
 
 *   Discovery for Covers, Switches, Relays, PIRs, and HVAC is **disabled by default** (`null`). Only the Lighting application (56) is discovered automatically, and **every** Lighting group is published as a `light`. You *must* set the corresponding `ha_discovery_*_app_id` in `settings.js` to the correct C-Bus Application ID to enable the other types.
-*   **Devices that live on the Lighting application (56) but are not lights** — e.g. shutter-relay units (blinds use lighting group addresses) or a thermostat exposed on app 56 — will appear as `light` entities because classification is purely by Application ID. To reclassify an individual group, add a per-group `type_overrides` entry in your labels file (`"<net>/<app>/<group>": "cover" | "switch" | "relay" | "pir" | "hvac"`) or via the web UI; this is the only way to change the type of a group that shares the Lighting application with real lights.
+*   **Devices that live on the Lighting application (56) but are not lights** — e.g. shutter-relay units (blinds use lighting group addresses) or a thermostat exposed on app 56 — are classified by Application ID and so default to `light`. Motorised covers whose label contains a cover keyword are now auto-detected (see *Automatic cover detection* below). For anything auto-detection can't infer, add a per-group `type_overrides` entry in your labels file (`"<net>/<app>/<group>": "cover" | "switch" | "relay" | "pir" | "hvac"`) or via the web UI; an override always wins.
 *   If multiple discovery types (e.g., Cover and Switch) are configured with the *same* Application ID, `cgateweb` prioritizes discovery in this order: Cover > Switch > Relay > PIR. Only the first matching type will be discovered for a given C-Bus group using that Application ID.
 *   For more technical details, see `docs/project-homeassistant-discovery.md`.
+
+#### Automatic cover detection
+
+Groups on the Lighting application (56) whose label contains a cover keyword (`blind`, `shutter`, `shade`, `awning`, `curtain`, `roller`, `garage door`) are published as Home Assistant `cover` entities instead of `light`. This is on by default (`ha_discovery_auto_type: true`).
+
+Precedence: a manual `type_overrides` entry always wins, then application-id mappings, then this automatic detection, then the default `light`. To disable auto-detection set `ha_discovery_auto_type: false`; to keep it on but turn off keyword matching set `ha_discovery_auto_type_name_heuristics: false`. Customise the keyword list with `ha_discovery_auto_type_cover_keywords` (matching is case-insensitive and catches plurals).
+
+Note: a shutter relay with a non-descriptive name still appears as a light — add a `type_overrides` entry (e.g. `"254/56/15": "cover"`) for those.
 
 ### Testing
 

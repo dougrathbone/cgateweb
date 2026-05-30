@@ -1187,6 +1187,95 @@ describe('HaDiscovery', () => {
             expect(payload.modes).toEqual(expect.arrayContaining(['off', 'auto', 'cool', 'heat', 'fan_only']));
         });
 
+        describe('Auto device-type detection (cover name-heuristic)', () => {
+            function makeHa(settings, labelData) {
+                return new HaDiscovery(settings, mockPublishFn, mockSendCommandFn, labelData);
+            }
+
+            it('publishes a cover (not light) when a lighting group label looks like a blind', () => {
+                const settings = { ...mockSettings, ha_discovery_auto_type: true, ha_discovery_cover_app_id: null };
+                const labelData = {
+                    labels: new Map([['254/56/10', 'Master Bedroom Blinds']]),
+                    typeOverrides: new Map(),
+                    entityIds: new Map(),
+                    exclude: new Set()
+                };
+                const ha = makeHa(settings, labelData);
+                ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+                const coverCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
+                );
+                expect(coverCall).toBeDefined();
+                const payload = JSON.parse(coverCall[1]);
+                expect(payload.device.name).toBe('Master Bedroom Blinds');
+
+                // The stale light config must be cleared with an empty retained payload.
+                const lightCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+                );
+                expect(lightCall).toBeDefined();
+                expect(lightCall[1]).toBe('');
+            });
+
+            it('leaves ordinary lighting labels as lights', () => {
+                const settings = { ...mockSettings, ha_discovery_auto_type: true };
+                const labelData = {
+                    labels: new Map([['254/56/10', 'Kitchen Downlights']]),
+                    typeOverrides: new Map(), entityIds: new Map(), exclude: new Set()
+                };
+                const ha = makeHa(settings, labelData);
+                ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+                const lightCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+                );
+                expect(lightCall).toBeDefined();
+                expect(lightCall[1]).not.toBe('');
+                const coverCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
+                );
+                expect(coverCall).toBeUndefined();
+            });
+
+            it('does nothing when auto_type is disabled (no behaviour change)', () => {
+                const settings = { ...mockSettings, ha_discovery_auto_type: false };
+                const labelData = {
+                    labels: new Map([['254/56/10', 'Master Bedroom Blinds']]),
+                    typeOverrides: new Map(), entityIds: new Map(), exclude: new Set()
+                };
+                const ha = makeHa(settings, labelData);
+                ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+                const lightCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+                );
+                expect(lightCall).toBeDefined();
+                expect(lightCall[1]).not.toBe('');
+            });
+
+            it('manual type_overrides win over auto-detection', () => {
+                // Label looks like a blind, but the user explicitly forces 'switch'.
+                const settings = { ...mockSettings, ha_discovery_auto_type: true };
+                const labelData = {
+                    labels: new Map([['254/56/10', 'Master Bedroom Blinds']]),
+                    typeOverrides: new Map([['254/56/10', 'switch']]),
+                    entityIds: new Map(), exclude: new Set()
+                };
+                const ha = makeHa(settings, labelData);
+                ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+                const switchCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/switch/cgateweb_254_56_10/config'
+                );
+                expect(switchCall).toBeDefined();
+                const coverCall = mockPublishFn.mock.calls.find(
+                    c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
+                );
+                expect(coverCall).toBeUndefined();
+            });
+        });
+
         it('should inject default_entity_id with domain prefix when entity_ids has an entry', () => {
             const labelData = {
                 labels: new Map([['254/56/10', 'Kitchen']]),

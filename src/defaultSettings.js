@@ -51,6 +51,15 @@ const defaultSettings = {
     ha_discovery_pir_app_id: null,
     ha_discovery_trigger_app_id: null,
     ha_discovery_scene_enabled: true,
+    // Automatic device-type detection for groups on the Lighting application
+    // (56). Phase 1: detect motorised covers (blinds/shutters) from the group
+    // label. Only ever upgrades the lighting fallback — manual type_overrides
+    // and application-id mappings always take precedence.
+    ha_discovery_auto_type: true,
+    ha_discovery_auto_type_name_heuristics: true,
+    ha_discovery_auto_type_cover_keywords: [
+        'blind', 'shutter', 'shade', 'awning', 'curtain', 'roller', 'garage door'
+    ],
     ha_discovery_hvac_app_id: null,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
