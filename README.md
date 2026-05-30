@@ -119,13 +119,14 @@ When enabled, `cgateweb` queries the C-Gate network structure (`TREEXML`) and pu
 Supported Device Types:
 
 *   **Lights:** C-Bus Lighting Application groups (typically App ID 56) are discovered as Home Assistant `light` entities, supporting on/off and brightness control.
-*   **Covers:** Devices using the configured `ha_discovery_cover_app_id` (default: `203`) are discovered as `cover` entities (device class `shutter`), supporting:
+*   **Covers:** Devices using the configured `ha_discovery_cover_app_id` (default: `null` — disabled; commonly set to `203` for Enable Control) are discovered as `cover` entities (device class `shutter`), supporting:
     - **Position control:** Set position 0-100% (0=closed, 100=fully open)
     - **Stop:** Stop the cover at its current position
     - **Open/Close:** Basic open/close commands
 *   **Switches:** Devices using the configured `ha_discovery_switch_app_id` (default: `null`) are discovered as `switch` entities.
 *   **Relays:** Devices using the configured `ha_discovery_relay_app_id` (default: `null`) are discovered as `switch` entities with device class `outlet`.
 *   **PIR Motion Sensors:** Devices using the configured `ha_discovery_pir_app_id` (default: `null`) are discovered as `binary_sensor` entities with device class `motion`.
+*   **HVAC / Climate:** Devices using the configured `ha_discovery_hvac_app_id` (default: `null` — disabled; commonly Air Conditioning App `201`) are discovered as `climate` entities.
 
 **Configuration (`settings.js`):**
 
@@ -138,11 +139,14 @@ module.exports = {
     ha_discovery_prefix: 'homeassistant', // Default HA discovery topic prefix
     ha_discovery_networks: ['254'],     // List C-Bus network IDs to scan (e.g., ['254', '200'])
     
-    // Application IDs for specific device types (MUST match your C-Bus project configuration)
-    ha_discovery_cover_app_id: '203',   // App ID for Covers (e.g., Enable Control)
+    // Application IDs for specific device types (MUST match your C-Bus project configuration).
+    // All of these default to `null` (disabled). Only the Lighting application (56) is
+    // discovered out of the box, and every Lighting group is published as a `light`.
+    ha_discovery_cover_app_id: '203',   // App ID for Covers (e.g., Enable Control) - null to disable (default)
     ha_discovery_switch_app_id: null,   // App ID for Switches (e.g., Enable Control, Trigger Control) - null to disable
     ha_discovery_relay_app_id: null,    // App ID for Relays (e.g., Enable Control) - null to disable
-    ha_discovery_pir_app_id: null      // App ID for PIR Motion Sensors (e.g., Trigger Control) - null to disable
+    ha_discovery_pir_app_id: null,     // App ID for PIR Motion Sensors (e.g., Trigger Control) - null to disable
+    ha_discovery_hvac_app_id: null     // App ID for HVAC/climate zones (e.g., Air Conditioning 201) - null to disable
 };
 ```
 
@@ -159,7 +163,8 @@ The crucial step is setting the correct `ha_discovery_*_app_id` values to match 
 
 **Important Notes:**
 
-*   Discovery for Switches, Relays, and PIRs is **disabled by default** (`null`). You *must* set the corresponding `ha_discovery_*_app_id` in `settings.js` to the correct C-Bus Application ID to enable discovery for these types.
+*   Discovery for Covers, Switches, Relays, PIRs, and HVAC is **disabled by default** (`null`). Only the Lighting application (56) is discovered automatically, and **every** Lighting group is published as a `light`. You *must* set the corresponding `ha_discovery_*_app_id` in `settings.js` to the correct C-Bus Application ID to enable the other types.
+*   **Devices that live on the Lighting application (56) but are not lights** — e.g. shutter-relay units (blinds use lighting group addresses) or a thermostat exposed on app 56 — will appear as `light` entities because classification is purely by Application ID. To reclassify an individual group, add a per-group `type_overrides` entry in your labels file (`"<net>/<app>/<group>": "cover" | "switch" | "relay" | "pir" | "hvac"`) or via the web UI; this is the only way to change the type of a group that shares the Lighting application with real lights.
 *   If multiple discovery types (e.g., Cover and Switch) are configured with the *same* Application ID, `cgateweb` prioritizes discovery in this order: Cover > Switch > Relay > PIR. Only the first matching type will be discovered for a given C-Bus group using that Application ID.
 *   For more technical details, see `docs/project-homeassistant-discovery.md`.
 

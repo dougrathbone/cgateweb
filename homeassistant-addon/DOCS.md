@@ -158,8 +158,8 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `web_api_key` | password | (empty) | API key required for write operations (`PUT/PATCH/POST`) on label-management endpoints. |
-| `web_allow_unauthenticated_mutations` | boolean | `false` | Unsafe override to allow write operations without API key authentication. |
+| `web_api_key` | password | (empty) | API key required for write operations (`PUT/PATCH/POST`) on label-management endpoints when accessed **directly** (not via Ingress). Requests through Home Assistant Ingress are already authenticated by HA and do not need this key. |
+| `web_allow_unauthenticated_mutations` | boolean | `false` | Unsafe override to allow write operations without authentication on the **directly-exposed** port. Not needed for the Ingress UI. |
 | `web_allowed_origins` | list | `[]` | Optional CORS allowlist of browser origins (e.g. `https://ha.example.com`). Empty disables cross-origin access. |
 | `web_mutation_rate_limit_per_minute` | integer | `120` | Per-client write rate limit for label mutation endpoints. |
 
@@ -360,11 +360,11 @@ Set `ha_discovery_hvac_app_id: 201` to enable HVAC discovery. Use `ha_hvac_tempe
 
 This add-on runs with `host_network: false`.
 
-- Ingress is enabled and routes the label editor UI through Home Assistant.
+- Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (the Supervisor injects an `X-Ingress-Path` header), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`.
 - Port `8080/tcp` is exposed by the add-on for direct access if needed.
 - Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
 
-If you expose `8080`, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`.
+If you expose `8080` for direct (non-Ingress) access, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`. Direct requests never carry the Ingress header, so they always require the key.
 
 ## Stale Device Detection
 

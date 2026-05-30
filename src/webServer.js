@@ -648,6 +648,16 @@ class WebServer {
 
     _isAuthorizedMutation(req) {
         if (!this.apiKey) {
+            // Requests proxied through Home Assistant Ingress have already been
+            // authenticated by HA (only logged-in HA users can reach the ingress
+            // URL). The Supervisor injects an X-Ingress-Path header on every such
+            // request, which the directly-exposed port never carries. Trusting it
+            // lets the bundled label UI import/edit on a default add-on install
+            // (no web_api_key) without opening up the raw port. A configured
+            // web_api_key still takes precedence below.
+            if (this._isIngressRequest(req)) {
+                return true;
+            }
             return this.allowUnauthenticatedMutations;
         }
 
@@ -663,6 +673,16 @@ class WebServer {
         const expectedBuf = Buffer.from(this.apiKey);
         if (providedBuf.length !== expectedBuf.length) return false;
         return crypto.timingSafeEqual(providedBuf, expectedBuf);
+    }
+
+    _isIngressRequest(req) {
+        // Only trust the ingress marker when the server was actually started in
+        // ingress mode (INGRESS_ENTRY -> basePath). This prevents a spoofed
+        // X-Ingress-Path header from bypassing auth on a standalone deployment
+        // that is not fronted by the Supervisor proxy.
+        if (!this.basePath) return false;
+        const ingressPath = req.headers['x-ingress-path'];
+        return typeof ingressPath === 'string' && ingressPath.length > 0;
     }
 
     _setCorsHeaders(req, res) {

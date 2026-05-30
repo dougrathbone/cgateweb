@@ -1152,6 +1152,41 @@ describe('HaDiscovery', () => {
             expect(payload.device.name).toBe('Pond Pump');
         });
 
+        it('should override a lighting group to hvac (climate) type with a full climate payload', () => {
+            // A thermostat wired on the lighting application (app 56) can only be
+            // reclassified via a per-group type override. The resulting entity must
+            // be a real HA climate device with temperature/mode topics — not a
+            // generic payload published to the climate component (which renders as a
+            // broken thermostat in HA).
+            const labelData = {
+                labels: new Map([['254/56/12', 'Hallway Thermostat']]),
+                typeOverrides: new Map([['254/56/12', 'hvac']]),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
+            ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // The stale light config for this group should be cleared.
+            const lightCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_12/config'
+            );
+            expect(lightCall).toBeDefined();
+            expect(lightCall[1]).toBe('');
+
+            const climateCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/climate/cgateweb_254_56_12/config'
+            );
+            expect(climateCall).toBeDefined();
+            const payload = JSON.parse(climateCall[1]);
+            expect(payload.device.name).toBe('Hallway Thermostat');
+            expect(payload.current_temperature_topic).toBe('cbus/read/254/56/12/current_temperature');
+            expect(payload.temperature_command_topic).toBe('cbus/write/254/56/12/setpoint');
+            expect(payload.temperature_state_topic).toBe('cbus/read/254/56/12/setpoint');
+            expect(payload.mode_command_topic).toBe('cbus/write/254/56/12/hvacmode');
+            expect(payload.modes).toEqual(expect.arrayContaining(['off', 'auto', 'cool', 'heat', 'fan_only']));
+        });
+
         it('should inject default_entity_id with domain prefix when entity_ids has an entry', () => {
             const labelData = {
                 labels: new Map([['254/56/10', 'Kitchen']]),

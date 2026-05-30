@@ -675,7 +675,14 @@ class HaDiscovery {
                 const config = getDiscoveryConfig(typeOverride);
                 if (config) {
                     this.logger.debug(`Type override: ${labelKey} -> ${typeOverride}`);
-                    this._createDiscovery(networkId, appId, groupId, group.Label, config);
+                    if (config.isHvac) {
+                        // HVAC needs the dedicated climate payload (temperature/mode
+                        // topics); the generic builder would publish a broken
+                        // climate entity with no thermostat controls.
+                        this._createHvacDiscovery(networkId, appId, groupId, group.Label);
+                    } else {
+                        this._createDiscovery(networkId, appId, groupId, group.Label, config);
+                    }
                     // Remove any stale retained light config for this group.
                     // This covers the case where the type changes within the same session
                     // (e.g. first run saw it as a light; this run sees the type override).
@@ -857,6 +864,7 @@ class HaDiscovery {
         };
 
         this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
         this.discoveryCount++;
     }
 

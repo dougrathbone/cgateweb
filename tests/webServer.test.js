@@ -541,6 +541,120 @@ describe('WebServer', () => {
         });
     });
 
+    describe('Ingress authentication (HA-authenticated requests)', () => {
+        let ingressServer;
+        let ingressPort;
+        const BASE = '/api/hassio_ingress/abc123';
+
+        afterEach(async () => {
+            if (ingressServer) await ingressServer.close();
+            ingressServer = null;
+        });
+
+        const patchThroughIngress = (port, headers = {}) => new Promise((resolve, reject) => {
+            const req = http.request({
+                hostname: '127.0.0.1',
+                port,
+                path: `${BASE}/api/labels`,
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', ...headers }
+            }, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+            });
+            req.on('error', reject);
+            req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+            req.end();
+        });
+
+        it('allows a mutation that arrives via HA Ingress when no API key is set (default add-on install)', async () => {
+            // Reproduces the user bug: a default HA add-on install has no
+            // web_api_key and web_allow_unauthenticated_mutations=false. The
+            // bundled UI is served through ingress, which HA has already
+            // authenticated, so the Supervisor-injected X-Ingress-Path header
+            // must be trusted. Previously this returned 401 "Unauthorized".
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE });
+            expect(res.status).toBe(200);
+        });
+
+        it('still rejects a non-ingress unauthenticated mutation when no API key is set', async () => {
+            // A direct request (no X-Ingress-Path) must remain blocked so an
+            // exposed port is not opened up by the ingress trust.
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await patchThroughIngress(ingressPort);
+            expect(res.status).toBe(401);
+        });
+
+        it('ignores X-Ingress-Path when the server is not running in ingress mode', async () => {
+            // Without basePath the server is not behind ingress; a spoofed
+            // X-Ingress-Path header must not grant access.
+            ingressServer = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: ingressPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'X-Ingress-Path': '/spoofed' }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+                req.end();
+            });
+
+            expect(res.status).toBe(401);
+        });
+
+        it('still enforces a configured API key even for ingress requests', async () => {
+            // When an operator has explicitly set web_api_key (e.g. to harden an
+            // exposed port), it must always win over ingress trust.
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                apiKey: 'secret-key',
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE });
+            expect(res.status).toBe(401);
+
+            const ok = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE, 'X-API-Key': 'secret-key' });
+            expect(ok.status).toBe(200);
+        });
+    });
+
     describe('Mutation rate limiting', () => {
         let limitedServer;
         let limitedPort;
