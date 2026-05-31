@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-05-31
+
+### Fixed
+
+- **Cover "stop" button did nothing.** Home Assistant's MQTT cover platform has no dedicated stop topic — it publishes `payload_stop` ("STOP") to the cover's command (`switch`) topic, not the `stop` topic cgateweb advertised in discovery. The bridge previously treated `STOP` as an invalid switch payload and silently dropped it, so blinds would open/close but never stop mid-travel. `STOP` on the switch topic is now routed to the cover-stop handler (`TERMINATERAMP`), which also cancels any in-progress interpolated position ramp.
+
 ## [1.10.0] - 2026-05-30
 
 ### Added
