@@ -20,6 +20,7 @@ const {
     MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_COMMAND_STOP,
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
     CGATE_CMD_ON,
@@ -205,9 +206,18 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleSwitch(command, payload) {
-        const cbusPath = this._buildCGatePath(command);
         const action = payload.toUpperCase();
-        
+
+        // Home Assistant's MQTT cover platform publishes payload_stop ("STOP") to
+        // the command (switch) topic rather than a dedicated stop topic, so a STOP
+        // on the switch topic must be routed to the cover-stop (TERMINATERAMP) path.
+        if (action === MQTT_COMMAND_STOP) {
+            this._handleStop(command, command.getTopic());
+            return;
+        }
+
+        const cbusPath = this._buildCGatePath(command);
+
         let cgateCommand;
         if (action === MQTT_STATE_ON) {
             cgateCommand = `${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`;

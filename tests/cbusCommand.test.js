@@ -40,6 +40,17 @@ describe('CBusCommand', () => {
         expect(command.getLevel()).toBe(0);
     });
 
+    it('should accept a "switch STOP" command (HA cover payload_stop on command topic)', () => {
+        const topic = 'cbus/write/254/56/53/switch';
+        const message = Buffer.from('STOP');
+        const command = new CBusCommand(topic, message);
+
+        expect(command.isValid()).toBe(true);
+        expect(command.getCommandType()).toBe('switch');
+        expect(command.getPayload()).toBe('STOP');
+        expect(command.getLevel()).toBeNull();
+    });
+
     it('should parse a valid "ramp" command with percentage level', () => {
         const topic = 'cbus/write/254/56/8/ramp';
         const message = Buffer.from('50'); // 50%

@@ -100,6 +100,15 @@ describe('MqttCommandRouter', () => {
                 
                 expect(queueSpy).not.toHaveBeenCalled();
             });
+
+            it('should treat a STOP payload on the switch topic as a cover stop', () => {
+                // Home Assistant's MQTT cover platform has no separate stop topic;
+                // it publishes payload_stop ("STOP") to the command (switch) topic.
+                // cgateweb must route that to TERMINATERAMP rather than dropping it.
+                router.routeMessage('cbus/write/254/56/53/switch', 'STOP');
+
+                expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/56/53\n', { priority: 'critical' });
+            });
         });
 
         describe('Ramp Commands', () => {

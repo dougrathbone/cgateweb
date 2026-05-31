@@ -13,6 +13,7 @@ const {
     MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_COMMAND_STOP,
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
     CGATE_LEVEL_MIN,
@@ -179,6 +180,11 @@ class CBusCommand {
             this._level = CGATE_LEVEL_MAX;
         } else if (upperPayload === MQTT_STATE_OFF) {
             this._level = CGATE_LEVEL_MIN;
+        } else if (upperPayload === MQTT_COMMAND_STOP) {
+            // Home Assistant's MQTT cover platform has no separate stop topic; it
+            // publishes payload_stop ("STOP") to the command (switch) topic. Keep
+            // the command valid (level stays null) so the router can route STOP to
+            // the cover-stop handler instead of dropping it as an invalid payload.
         } else {
             this._isValid = false;
         }
