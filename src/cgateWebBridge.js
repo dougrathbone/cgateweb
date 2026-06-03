@@ -394,7 +394,7 @@ class CgateWebBridge {
             return;
         }
 
-        this.publishRawEventCapture(line);
+        this._publishRawEventCapture(line);
 
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`C-Gate Recv (Evt): ${line}`);
@@ -421,7 +421,7 @@ class CgateWebBridge {
      * protocol capture. Cheap, allocation-light app extraction so it can safely
      * run on every event line (including ones the standard parser can't decode).
      */
-    publishRawEventCapture(line) {
+    _publishRawEventCapture(line) {
         const apps = this.settings.cbusRawEventLogApps;
         if (!apps || apps.length === 0) return;
 
@@ -429,7 +429,7 @@ class CgateWebBridge {
         const match = line.match(/(\d+)\/(\d+)\/(\d+)/);
         if (!match) return;
         const application = match[2];
-        if (!apps.map(String).includes(String(application))) return;
+        if (!apps.some(a => String(a) === application)) return;
 
         this.logger.info(`C-Gate raw capture [app ${application}]: ${line}`);
         try {

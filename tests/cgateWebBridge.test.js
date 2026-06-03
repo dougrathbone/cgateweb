@@ -662,6 +662,16 @@ describe('CgateWebBridge', () => {
                 expect(publishEventSpy).not.toHaveBeenCalled();
                 publishEventSpy.mockRestore();
             });
+
+            it('should call _publishRawEventCapture with the event line', () => {
+                const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
+                const line = 'lighting on 254/56/1';
+
+                bridge._processEventLine(line);
+
+                expect(rawCaptureSpy).toHaveBeenCalledWith(line);
+                rawCaptureSpy.mockRestore();
+            });
         });
 
         describe('EventPublisher integration', () => {
