@@ -426,6 +426,9 @@ class CgateWebBridge {
         if (!apps || apps.length === 0) return;
 
         // Extract the first network/application/group token; application is field 2.
+        // Assumes the address is the first numeric triple on the line, which holds
+        // for every known C-Gate event/status shape (e.g. "lighting on 254/56/4",
+        // "//CLIPSAL/254/56/10", "300 //HOME/254/203/5: level=128").
         const match = line.match(/(\d+)\/(\d+)\/(\d+)/);
         if (!match) return;
         const application = match[2];
