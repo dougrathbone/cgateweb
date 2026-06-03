@@ -356,6 +356,26 @@ describe('SettingsValidator', () => {
     });
 });
 
+describe('cbusRawEventLogApps validation', () => {
+    const base = { mqtt: 'localhost:1883', cbusname: 'HOME', cbusip: '192.168.1.100', cbuscommandport: 20023, cbuseventport: 20025, messageinterval: 200, ha_discovery_enabled: false, ha_discovery_prefix: 'homeassistant', ha_discovery_networks: [254] };
+    it('accepts an array of app IDs', () => {
+        const v = new SettingsValidator({ exitOnError: false });
+        expect(v.validate({ ...base, cbusRawEventLogApps: ['172', 228] })).toBe(true);
+    });
+    it('accepts an empty array (default)', () => {
+        const v = new SettingsValidator({ exitOnError: false });
+        expect(v.validate({ ...base, cbusRawEventLogApps: [] })).toBe(true);
+    });
+    it('rejects a non-array value', () => {
+        const v = new SettingsValidator({ exitOnError: false });
+        expect(v.validate({ ...base, cbusRawEventLogApps: '172' })).toBe(false);
+    });
+    it('rejects array entries that are not string/number', () => {
+        const v = new SettingsValidator({ exitOnError: false });
+        expect(v.validate({ ...base, cbusRawEventLogApps: [{}] })).toBe(false);
+    });
+});
+
 describe('Module exports', () => {
     let validSettings;
 

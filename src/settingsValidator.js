@@ -47,6 +47,7 @@ class SettingsValidator {
         this._validateMqttSetting(settings, errors);
         this._validatePortSettings(settings, errors);
         this._validateHomeAssistantSettings(settings, errors);
+        this._validateRawEventCaptureSettings(settings, errors);
 
         // Handle validation results
         if (errors.length > 0) {
@@ -114,6 +115,20 @@ class SettingsValidator {
 
             if (settings.ha_discovery_networks && !Array.isArray(settings.ha_discovery_networks)) {
                 errors.push('ha_discovery_networks must be an array when specified');
+            }
+        }
+    }
+
+    /**
+     * Validate raw event capture settings (general, not gated on HA discovery)
+     * @private
+     */
+    _validateRawEventCaptureSettings(settings, errors) {
+        if (settings.cbusRawEventLogApps !== undefined && settings.cbusRawEventLogApps !== null) {
+            if (!Array.isArray(settings.cbusRawEventLogApps)) {
+                errors.push('cbusRawEventLogApps must be an array of application IDs when specified');
+            } else if (!settings.cbusRawEventLogApps.every(e => typeof e === 'string' || typeof e === 'number')) {
+                errors.push('cbusRawEventLogApps entries must be strings or numbers');
             }
         }
     }
