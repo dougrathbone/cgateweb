@@ -126,7 +126,9 @@ Supported Device Types:
 *   **Switches:** Devices using the configured `ha_discovery_switch_app_id` (default: `null`) are discovered as `switch` entities.
 *   **Relays:** Devices using the configured `ha_discovery_relay_app_id` (default: `null`) are discovered as `switch` entities with device class `outlet`.
 *   **PIR Motion Sensors:** Devices using the configured `ha_discovery_pir_app_id` (default: `null`) are discovered as `binary_sensor` entities with device class `motion`.
-*   **HVAC / Climate:** Devices using the configured `ha_discovery_hvac_app_id` (default: `null` — disabled; commonly Air Conditioning App `201`) are discovered as `climate` entities.
+*   **HVAC / Climate (via lighting):** Devices using the configured `ha_discovery_hvac_app_id` (default: `null` — disabled) are discovered as `climate` entities. This drives a **lighting-compatible group**, not the native C-Bus Air Conditioning application — use the app ID of a PAC/touchscreen-exposed HVAC group (e.g. an "HVAC Actuator" lighting-style app), NOT the Air Conditioning app 172. See "HVAC notes" below.
+
+> **HVAC notes:** The real C-Bus *Air Conditioning* application (172) and *Heating* (136) are not driven by C-Gate's lighting verbs, so cgateweb cannot control a native thermostat directly through `ha_discovery_hvac_app_id`. The supported pattern is to program a Pascal Logic Controller (PAC) or touchscreen to mirror HVAC control onto a lighting-compatible group/application, then point `ha_discovery_hvac_app_id` at that app. Native *reading* of Temperature Broadcast (25) and Measurement (228) sensors is available via `ha_discovery_temperature_app_id` / `ha_discovery_measurement_app_id` (see below).
 
 **Configuration (`settings.js`):**
 
@@ -146,7 +148,7 @@ module.exports = {
     ha_discovery_switch_app_id: null,   // App ID for Switches (e.g., Enable Control, Trigger Control) - null to disable
     ha_discovery_relay_app_id: null,    // App ID for Relays (e.g., Enable Control) - null to disable
     ha_discovery_pir_app_id: null,     // App ID for PIR Motion Sensors (e.g., Trigger Control) - null to disable
-    ha_discovery_hvac_app_id: null     // App ID for HVAC/climate zones (e.g., Air Conditioning 201) - null to disable
+    ha_discovery_hvac_app_id: null     // App ID of a lighting-compatible HVAC group (PAC/touchscreen-exposed); NOT the Air Conditioning app 172 - null to disable
 };
 ```
 
