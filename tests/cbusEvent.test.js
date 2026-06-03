@@ -373,5 +373,13 @@ describe('CBusEvent', () => {
             expect(event.getReading()).toBeNull();
             expect(event.getLevel()).toBe(128);
         });
+
+        it('yields a null reading when the temperature value is out of range', () => {
+            const event = new CBusEvent('temperature broadcast 254/25/3 999');
+            expect(event.isValid()).toBe(true);
+            expect(event.getApplication()).toBe('25');
+            expect(event.getReading()).toBeNull();
+        });
     });
-}); 
+});
+ 
