@@ -519,17 +519,17 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles HVAC temperature setpoint commands from Home Assistant.
+     * Handles HVAC setpoint commands for the "HVAC-via-lighting" pattern.
      *
-     * Converts a temperature value (°C) to a C-Bus level (0-255) and sends a
-     * RAMP command to the HVAC group address.
+     * This is NOT the native C-Bus Air Conditioning ($AC/172) protocol — C-Gate
+     * exposes no command verb for that application. Instead this maps a target
+     * temperature onto a lighting-style group level, which works when a PAC or
+     * touchscreen has been programmed to expose HVAC control as a lighting-
+     * compatible group (the common real-world setup; see the project README).
      *
-     * Temperature encoding: level = round(temperature_celsius * 2)
-     *   25°C → level 50, 20°C → level 40, 0°C → level 0, 50°C → level 100
-     *
-     * TODO: Hardware validation required. This encoding is based on community
-     * reports for the C-Bus 5000CT2 thermostat series. Validate against real
-     * hardware before deployment.
+     * Mapping: level = round(clamp(temp, 0, 50) * 2)  →  0.5°C resolution.
+     * The receiving logic block in the PAC interprets the level. Adjust the PAC
+     * logic, not this code, if your resolution differs.
      *
      * @param {CBusCommand} command - The setpoint command
      * @param {string} payload - Temperature value as a string (e.g., "22.5")
@@ -560,19 +560,12 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles HVAC mode commands from Home Assistant.
+     * Handles HVAC mode commands for the "HVAC-via-lighting" pattern.
      *
-     * Supported HA climate modes and their C-Gate equivalents:
-     *   'off'      → C-Gate OFF command
-     *   'auto'     → C-Gate ON command (thermostat controls mode automatically)
-     *   'cool'     → C-Gate ON command (TODO: hardware-specific command if available)
-     *   'heat'     → C-Gate ON command (TODO: hardware-specific command if available)
-     *   'fan_only' → C-Gate ON command (TODO: hardware-specific command if available)
-     *
-     * TODO: Hardware validation required. Full mode discrimination (cool vs heat vs
-     * fan_only) requires vendor-specific C-Gate extensions or additional group
-     * addresses that are not yet documented in publicly available C-Gate references.
-     * Currently all 'on' modes map to a simple ON command.
+     * As with the setpoint handler, this drives a lighting-compatible group, not
+     * the native Air Conditioning application. 'off' → C-Gate OFF; any active
+     * mode ('auto'/'cool'/'heat'/'fan_only') → C-Gate ON, leaving mode selection
+     * to the PAC/touchscreen logic that the group feeds.
      *
      * @param {CBusCommand} command - The mode command
      * @param {string} payload - Mode string (e.g., "off", "auto", "cool")
