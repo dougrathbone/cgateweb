@@ -350,4 +350,28 @@ describe('CBusEvent', () => {
             expect(event.toString()).toContain('Invalid');
         });
     });
+
+    // === Specialised application delegation ===
+
+    describe('specialised application delegation', () => {
+        it('decodes a temperature broadcast event into a reading', () => {
+            // Format grounded in C-Gate's "TEMPERATURE BROADCAST" command verb.
+            // Whether 86 is raw (÷4 ⇒ 21.5) or pre-converted is confirmed in a later task.
+            const event = new CBusEvent('temperature broadcast 254/25/3 86');
+            expect(event.isValid()).toBe(true);
+            expect(event.getApplication()).toBe('25');
+            expect(event.getReading()).toEqual({ kind: 'temperature', group: '3', celsius: 21.5, unit: 'C' });
+        });
+
+        it('leaves lighting events with no reading (fast path unchanged)', () => {
+            const event = new CBusEvent('lighting on 254/56/4');
+            expect(event.getReading()).toBeNull();
+        });
+
+        it('leaves a lighting ramp event with no reading', () => {
+            const event = new CBusEvent('lighting ramp 254/56/4 128');
+            expect(event.getReading()).toBeNull();
+            expect(event.getLevel()).toBe(128);
+        });
+    });
 }); 

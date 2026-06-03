@@ -1,5 +1,6 @@
 const { createLogger } = require('./logger');
 const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS } = require('./constants');
+const applicationDecoders = require('./applicationDecoders');
 
 const logger = createLogger({ component: 'CBusEvent' });
 
@@ -42,6 +43,7 @@ class CBusEvent {
         this._application = null;
         this._group = null;
         this._isValid = false;
+        this._reading = null;
         this._logger = logger;
 
         if (this._rawEvent) {
@@ -68,6 +70,7 @@ class CBusEvent {
             }
 
             if (this._parseStandardEventFastPath()) {
+                this._applyDecoder();
                 this._parsed = true;
                 return;
             }
@@ -93,6 +96,7 @@ class CBusEvent {
                 this._logger.warn(`Missing address in C-Bus event: ${this._rawEvent}`);
             }
 
+            this._applyDecoder();
             this._parsed = true;
         } catch (error) {
             this._logger.error(`Error parsing C-Bus event: ${this._rawEvent}`, { error });
@@ -243,6 +247,19 @@ class CBusEvent {
         return true;
     }
 
+    /**
+     * If the parsed application has a specialised decoder (temperature, etc.),
+     * decode the trailing value into a structured reading. No-op for lighting/
+     * cover/PIR/trigger (no decoder registered) and for status-only parses.
+     */
+    _applyDecoder() {
+        if (!this._isValid || this._statusDataOnly) return;
+        const decoder = applicationDecoders.getDecoder(this._application);
+        if (decoder) {
+            this._reading = decoder.decodeValue({ group: this._group, rawByte: this._level });
+        }
+    }
+
     _parseStatusResponse() {
         // Example: "300 //PROJECT/254/56/1: level=255"
         const markerIndex = this._rawEvent.indexOf('//');
@@ -367,8 +384,17 @@ class CBusEvent {
     }
 
     /**
+     * Structured reading for specialised applications (temperature, etc.),
+     * or null for lighting/cover/PIR/trigger events.
+     * @returns {object|null}
+     */
+    getReading() {
+        return this._reading;
+    }
+
+    /**
      * Gets the original raw event string that was parsed.
-     * 
+     *
      * @returns {string} The original event string from C-Gate
      */
     getRawEvent() {
