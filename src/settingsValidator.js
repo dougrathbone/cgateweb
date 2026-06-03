@@ -121,6 +121,8 @@ class SettingsValidator {
 
     /**
      * Validate raw event capture settings (general, not gated on HA discovery)
+     * @param {Object} settings - Settings object to validate
+     * @param {Array} errors - Array to push error messages into
      * @private
      */
     _validateRawEventCaptureSettings(settings, errors) {
