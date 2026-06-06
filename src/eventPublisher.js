@@ -228,15 +228,17 @@ class EventPublisher {
     /**
      * Convert a C-Bus level value (0-255) to a temperature in °C.
      *
-     * C-Bus HVAC (Application 201) temperature encoding:
-     *   The C-Bus HVAC thermostat (5000CT2 series) encodes temperature using a
-     *   fixed-point scheme with 0.5°C resolution across a 0–50°C range:
+     * HVAC-via-lighting temperature encoding (the ha_discovery_hvac_app_id
+     * lighting-bridge pattern — NOT the native Air Conditioning app 172):
+     *   A lighting group level (0-255) is mapped to a setpoint/temperature using
+     *   a 0.5°C-resolution fixed-point scheme across a 0–50°C range:
      *     temperature_celsius = level / 2
      *   This gives: level 0 = 0.0°C, level 100 = 50.0°C, level 50 = 25.0°C
      *
-     * TODO: Hardware validation required. This formula is based on community
-     * reports for the 5000CT2 thermostat. Other HVAC units on App 201 may use
-     * different encoding. Validate against real hardware before deployment.
+     * This mapping is interpreted by the PAC/touchscreen logic that the group
+     * feeds; adjust that logic, not this code, if your resolution differs.
+     * (Native read-only Air Conditioning temperature decoding lives separately
+     * in src/applicationDecoders/airconDecoder.js.)
      *
      * @param {number} level - C-Bus raw level (0-255)
      * @returns {number} Temperature in degrees Celsius

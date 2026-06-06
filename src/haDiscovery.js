@@ -787,7 +787,12 @@ class HaDiscovery {
     /**
      * Publish a Home Assistant climate entity discovery payload for an HVAC group.
      *
-     * C-Bus HVAC (Application 201) protocol notes:
+     * HVAC-via-lighting protocol notes (configured via ha_discovery_hvac_app_id):
+     *   This drives a lighting-compatible group, NOT the native C-Bus Air
+     *   Conditioning application (172) — C-Gate exposes no lighting-style verb for
+     *   that app. The pattern relies on a PAC/touchscreen mirroring HVAC control
+     *   onto a lighting group. (Native read-only AC temperature is separate; see
+     *   cbus_aircon_app_id.)
      *   - Each HVAC zone maps to one C-Bus group address.
      *   - Level 0-255 is used for the temperature setpoint (0.5°C resolution, 0-50°C range):
      *       raw_value = round(temperature_celsius * 2)  →  0°C = 0, 25°C = 50, 50°C = 100

@@ -11,7 +11,8 @@ const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 const CBUS_APP_NAMES = {
     56: 'Lighting',
-    201: 'HVAC',
+    136: 'Heating',
+    172: 'Air Conditioning',
     202: 'Trigger Groups',
     203: 'Blinds'
 };
