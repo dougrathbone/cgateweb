@@ -128,7 +128,7 @@ configuration:
     name: Intervaly dotazování dle aplikace
     description: >-
       Přepsat interval dotazování pro konkrétní aplikace C-Bus. Každý
-      záznam má app_id (např. "201" pro HVAC) a period_sec (0 pro
+      záznam má app_id (např. "56" pro Osvětlení) a period_sec (0 pro
       zakázání).
 
   # ── Publikování MQTT ──
@@ -186,8 +186,11 @@ configuration:
   ha_discovery_hvac_app_id:
     name: ID aplikace HVAC
     description: >-
-      ID aplikace C-Bus pro zóny HVAC/klimatu. Standardní aplikace HVAC
-      C-Bus: 201. Ponechte prázdné pro přeskočení objevování HVAC.
+      ID aplikace C-Bus pro osvětlením-kompatibilní skupinu HVAC
+      (PAC/přes dotykový displej). NENÍ to nativní aplikace Air Conditioning
+      172 — používejte pouze pro skupiny zrcadlené na osvětlení-styl
+      aplikaci PAC nebo dotykovým displejem. Ponechte prázdné pro
+      přeskočení objevování HVAC.
   ha_hvac_temperature_unit:
     name: Jednotka teploty HVAC
     description: >-

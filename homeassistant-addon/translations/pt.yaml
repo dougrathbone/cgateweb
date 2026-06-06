@@ -132,7 +132,7 @@ configuration:
     name: Intervalos de Consulta por Aplicação
     description: >-
       Substituir o intervalo de consulta para aplicações C-Bus específicas.
-      Cada entrada tem um app_id (ex.: "201" para HVAC) e period_sec
+      Cada entrada tem um app_id (ex.: "56" para Iluminação) e period_sec
       (0 para desativar).
 
   # ── Publicação MQTT ──
@@ -190,8 +190,10 @@ configuration:
   ha_discovery_hvac_app_id:
     name: ID de Aplicação HVAC
     description: >-
-      ID de app C-Bus para zonas HVAC/clima. App HVAC C-Bus padrão: 201.
-      Deixe vazio para ignorar a descoberta HVAC.
+      ID de app C-Bus para um grupo HVAC compatível com iluminação
+      (PAC/exposto em ecrã tátil). NÃO é a app nativa Air Conditioning
+      172 — use apenas para grupos refletidos numa app de estilo iluminação
+      por um PAC ou ecrã tátil. Deixe vazio para ignorar a descoberta HVAC.
   ha_hvac_temperature_unit:
     name: Unidade de Temperatura HVAC
     description: >-

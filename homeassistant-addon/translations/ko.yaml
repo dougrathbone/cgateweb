@@ -124,7 +124,7 @@ configuration:
     name: 앱별 폴링 간격
     description: >-
       특정 C-Bus 애플리케이션의 폴링 간격을 재정의합니다. 각 항목에는
-      app_id (예: HVAC의 경우 "201")와 period_sec (비활성화의 경우 0)이
+      app_id (예: 조명의 경우 "56")와 period_sec (비활성화의 경우 0)이
       있습니다.
 
   # ── MQTT 게시 ──
@@ -177,8 +177,10 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC 애플리케이션 ID
     description: >-
-      HVAC/기후 영역용 C-Bus 앱 ID. 표준 C-Bus HVAC 앱: 201.
-      HVAC 검색을 건너뛰려면 비워 두세요.
+      조명 호환 HVAC 그룹(PAC/터치스크린 노출)용 C-Bus 앱 ID. 네이티브
+      Air Conditioning 앱 172가 아닙니다 — PAC 또는 터치스크린에 의해
+      조명 스타일 앱으로 미러링된 그룹에만 사용하세요. HVAC 검색을
+      건너뛰려면 비워 두세요.
   ha_hvac_temperature_unit:
     name: HVAC 온도 단위
     description: >-

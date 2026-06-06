@@ -129,7 +129,7 @@ configuration:
     name: Hentingsintervaller per applikasjon
     description: >-
       Overstyr hentingsintervallet for spesifikke C-Bus applikasjoner.
-      Hver oppføring har en app_id (f.eks. "201" for HVAC) og period_sec
+      Hver oppføring har en app_id (f.eks. "56" for Belysning) og period_sec
       (0 for å deaktivere).
 
   # ── MQTT publisering ──
@@ -184,8 +184,11 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC applikasjons-ID
     description: >-
-      C-Bus app-ID for HVAC/klimasoner. Standard C-Bus HVAC app: 201.
-      La stå tomt for å hoppe over HVAC-oppdagelse.
+      C-Bus app-ID for en belysningskompatibel HVAC-gruppe
+      (PAC/touchscreen-eksponert). IKKE den innebygde Air Conditioning-appen
+      172 — bruk kun for grupper som speiles til en belysningsstil-app av
+      en PAC eller touchscreen. La stå tomt for å hoppe over
+      HVAC-oppdagelse.
   ha_hvac_temperature_unit:
     name: HVAC temperaturenhet
     description: >-

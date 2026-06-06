@@ -128,7 +128,7 @@ configuration:
     name: アプリごとのポーリング間隔
     description: >-
       特定の C-Bus アプリケーションのポーリング間隔を上書きします。
-      各エントリには app_id（例："201" は HVAC）と period_sec（0 で
+      各エントリには app_id（例："56" は Lighting）と period_sec（0 で
       無効化）があります。
 
   # ── MQTT パブリッシング ──
@@ -188,8 +188,11 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC アプリケーション ID
     description: >-
-      HVAC/空調ゾーン用の C-Bus アプリ ID。標準 C-Bus HVAC アプリ：201。
-      HVAC 検出をスキップするには空のままにしてください。
+      照明互換 HVAC グループ（PAC/タッチスクリーン経由で公開）用の
+      C-Bus アプリ ID。ネイティブ Air Conditioning アプリ 172 ではありません
+      — PAC またはタッチスクリーンによって照明スタイルアプリにミラーされた
+      グループにのみ使用してください。HVAC 検出をスキップするには空のまま
+      にしてください。
   ha_hvac_temperature_unit:
     name: HVAC 温度単位
     description: >-

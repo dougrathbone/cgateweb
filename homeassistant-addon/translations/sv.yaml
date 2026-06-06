@@ -128,7 +128,7 @@ configuration:
     name: Hämtningsintervall per applikation
     description: >-
       Åsidosätt hämtningsintervallet för specifika C-Bus applikationer.
-      Varje post har ett app_id (t.ex. "201" för HVAC) och period_sec
+      Varje post har ett app_id (t.ex. "56" för Belysning) och period_sec
       (0 för att inaktivera).
 
   # ── MQTT publicering ──
@@ -183,8 +183,11 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC applikations-ID
     description: >-
-      C-Bus app-ID för HVAC/klimatzoner. Standard C-Bus HVAC app: 201.
-      Lämna tomt för att hoppa över HVAC-upptäckt.
+      C-Bus app-ID för en belysningskompatibel HVAC-grupp
+      (PAC/touchscreen-exponerad). INTE den inbyggda Air Conditioning-appen
+      172 — använd endast för grupper som speglas till en belysningsstil-app
+      av en PAC eller touchscreen. Lämna tomt för att hoppa över
+      HVAC-upptäckt.
   ha_hvac_temperature_unit:
     name: HVAC temperaturenhet
     description: >-

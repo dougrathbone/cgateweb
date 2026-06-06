@@ -124,7 +124,7 @@ configuration:
     name: Per-App Poll Intervals
     description: >-
       Override the poll interval for specific C-Bus applications. Each entry
-      has an app_id (e.g., "201" for HVAC) and period_sec (0 to disable).
+      has an app_id (e.g., "56" for Lighting) and period_sec (0 to disable).
 
   # ── MQTT Publishing ──
   retain_reads:

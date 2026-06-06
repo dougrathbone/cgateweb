@@ -112,8 +112,8 @@ configuration:
   getall_app_periods:
     name: 按应用的轮询间隔
     description: >-
-      覆盖特定 C-Bus 应用的轮询间隔。每个条目有一个 app_id（例如 "201"
-      用于 HVAC）和 period_sec（0 表示禁用）。
+      覆盖特定 C-Bus 应用的轮询间隔。每个条目有一个 app_id（例如 "56"
+      用于照明）和 period_sec（0 表示禁用）。
 
   # ── MQTT 发布 ──
   retain_reads:
@@ -165,8 +165,9 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC 应用程序 ID
     description: >-
-      用于 HVAC/气候区域的 C-Bus 应用 ID。标准 C-Bus HVAC 应用：201。
-      留空以跳过 HVAC 发现。
+      用于照明兼容 HVAC 组（PAC/触摸屏暴露）的 C-Bus 应用 ID。不是原生
+      Air Conditioning 应用 172 — 仅用于由 PAC 或触摸屏镜像到照明风格应用
+      的组。留空以跳过 HVAC 发现。
   ha_hvac_temperature_unit:
     name: HVAC 温度单位
     description: >-

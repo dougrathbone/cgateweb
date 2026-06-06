@@ -132,7 +132,7 @@ configuration:
     name: Opvraagintervallen per applicatie
     description: >-
       Het opvraaginterval overschrijven voor specifieke C-Bus applicaties.
-      Elke vermelding heeft een app_id (bijv. "201" voor HVAC) en
+      Elke vermelding heeft een app_id (bijv. "56" voor Verlichting) en
       period_sec (0 om uit te schakelen).
 
   # ── MQTT Publicatie ──
@@ -189,8 +189,11 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC Applicatie-ID
     description: >-
-      C-Bus app-ID voor HVAC/klimaatzones. Standaard C-Bus HVAC app: 201.
-      Laat leeg om HVAC-detectie over te slaan.
+      C-Bus app-ID voor een verlichtingscompatibele HVAC-groep
+      (PAC/touchscreen-blootgesteld). NIET de native Air Conditioning app
+      172 — gebruik alleen voor groepen die door een PAC of touchscreen
+      worden gespiegeld op een verlichtingsstijl app. Laat leeg om
+      HVAC-detectie over te slaan.
   ha_hvac_temperature_unit:
     name: HVAC Temperatuureenheid
     description: >-
