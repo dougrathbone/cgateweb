@@ -214,6 +214,18 @@ class EventPublisher {
     }
 
     /**
+     * Publishes a structured reading produced by a specialised application
+     * decoder (e.g. Air Conditioning temperature). Temperature readings go to
+     * cbus/read/{network}/{application}/{group}/current_temperature.
+     */
+    publishReading(network, application, group, reading) {
+        if (reading && reading.kind === 'temperature') {
+            const topic = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`;
+            this._publishIfNeeded(topic, String(reading.celsius), this.mqttOptions);
+        }
+    }
+
+    /**
      * Convert a C-Bus level value (0-255) to a temperature in °C.
      *
      * C-Bus HVAC (Application 201) temperature encoding:

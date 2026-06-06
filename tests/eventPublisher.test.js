@@ -982,6 +982,36 @@ describe('EventPublisher', () => {
         });
     });
 
+    describe('publishReading', () => {
+        it('should publish to current_temperature topic for temperature reading', () => {
+            eventPublisher.publishReading('254', '172', '1', {
+                kind: 'temperature',
+                celsius: 17.3
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/1/current_temperature',
+                '17.3',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish nothing for a non-temperature reading', () => {
+            eventPublisher.publishReading('254', '172', '1', {
+                kind: 'mode'
+            });
+
+            expect(mockPublishFn).not.toHaveBeenCalled();
+        });
+
+        it('should publish nothing when reading is null', () => {
+            eventPublisher.publishReading('254', '172', '1', null);
+
+            expect(mockPublishFn).not.toHaveBeenCalled();
+        });
+    });
+
     describe('Tilt App Events', () => {
         let tiltPublisher;
 

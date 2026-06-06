@@ -717,6 +717,79 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    describe('Aircon (172) event routing via _handleAirconLine', () => {
+        const AIRCON_TEMP_LINE = '# aircon zone_temperature //THEGAFF/254/172 1 0,1,2,3,4 4431 0 #sourceunit=250 OID=x';
+        const AIRCON_MODE_LINE = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 0 0 0 0 1 255 0 0 #sourceunit=250 OID=x';
+        const LIGHTING_LINE = 'lighting on //TestProject/254/56/1';
+
+        describe('with cbus_aircon_app_id set', () => {
+            beforeEach(() => {
+                bridge.settings.cbus_aircon_app_id = '172';
+            });
+
+            it('should publish current_temperature to MQTT for a zone_temperature line', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(AIRCON_TEMP_LINE);
+
+                const tempPublish = publishSpy.mock.calls.find(call =>
+                    call[0].endsWith('/current_temperature')
+                );
+                expect(tempPublish).toBeDefined();
+                expect(tempPublish[0]).toBe('cbus/read/254/172/1/current_temperature');
+                expect(tempPublish[1]).toBe('17.3');
+
+                publishSpy.mockRestore();
+            });
+
+            it('should consume aircon non-temperature line without throwing and without current_temperature publish', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                expect(() => bridge._processEventLine(AIRCON_MODE_LINE)).not.toThrow();
+
+                const tempPublish = publishSpy.mock.calls.find(call =>
+                    call[0].endsWith('/current_temperature')
+                );
+                expect(tempPublish).toBeUndefined();
+
+                publishSpy.mockRestore();
+            });
+        });
+
+        describe('with cbus_aircon_app_id unset (default)', () => {
+            it('should NOT publish current_temperature when setting is null', () => {
+                bridge.settings.cbus_aircon_app_id = null;
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(AIRCON_TEMP_LINE);
+
+                const tempPublish = publishSpy.mock.calls.find(call =>
+                    call[0].endsWith('/current_temperature')
+                );
+                expect(tempPublish).toBeUndefined();
+
+                publishSpy.mockRestore();
+            });
+        });
+
+        describe('regression: normal lighting events still flow through', () => {
+            it('should still publish state/level for non-aircon lighting events', () => {
+                bridge.settings.cbus_aircon_app_id = '172';
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(LIGHTING_LINE);
+
+                const statePublish = publishSpy.mock.calls.find(call =>
+                    call[0].endsWith('/state')
+                );
+                expect(statePublish).toBeDefined();
+                expect(statePublish[0]).toBe('cbus/read/254/56/1/state');
+
+                publishSpy.mockRestore();
+            });
+        });
+    });
+
     describe('Queue Processing', () => {
         describe('_sendCgateCommand()', () => {
             it('should send commands via connection pool', async () => {

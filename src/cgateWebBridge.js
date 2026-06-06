@@ -1,4 +1,5 @@
 const CgateConnection = require('./cgateConnection');
+const airconDecoder = require('./applicationDecoders/airconDecoder');
 const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');
 const BridgeInitializationService = require('./bridgeInitializationService');
@@ -383,7 +384,33 @@ class CgateWebBridge {
         });
     }
 
+    /**
+     * Handles C-Bus Air Conditioning (app 172) event lines, which C-Gate renders
+     * as "[# ]aircon <verb> //PROJECT/<net>/<app> <params>" — a shape the standard
+     * event parser can't handle (no group; often #-comment-prefixed). Gated behind
+     * settings.cbus_aircon_app_id; when unset, returns false so these lines fall
+     * through to the normal (comment-dropping) path, preserving current behaviour.
+     * Returns true when the line was an aircon line and was consumed here.
+     */
+    _handleAirconLine(line) {
+        const appId = this.settings.cbus_aircon_app_id;
+        if (!appId) return false;
+        let s = line.trim();
+        if (s.startsWith('#')) s = s.slice(1).trim();
+        if (!s.startsWith('aircon ')) return false;
+        // Aircon traffic and the feature is enabled — consume it here.
+        const reading = airconDecoder.decodeLine(line);
+        if (reading && reading.kind === 'temperature' && reading.application === String(appId)) {
+            this.eventPublisher.publishReading(reading.network, reading.application, reading.zoneGroup, reading);
+        } else if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
+        }
+        return true;
+    }
+
     _processEventLine(line) {
+        if (this._handleAirconLine(line)) return;
+
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${line}`);
             return;
