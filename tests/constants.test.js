@@ -6,6 +6,13 @@ describe('constants HVAC cleanup', () => {
     });
 });
 
+describe('aircon constants', () => {
+    it('exports DEFAULT_CBUS_APP_AIRCON as string "172"', () => {
+        const c = require('../src/constants');
+        expect(c.DEFAULT_CBUS_APP_AIRCON).toBe('172');
+    });
+});
+
 describe('temperature constants', () => {
     it('exports the Temperature Broadcast app id and current_temperature suffix', () => {
         const c = require('../src/constants');

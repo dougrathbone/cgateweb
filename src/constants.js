@@ -5,6 +5,7 @@ const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting de
 const DEFAULT_CBUS_APP_TRIGGER = '202'; // C-Bus application ID for trigger groups (keypads, scenes)
 const DEFAULT_CBUS_APP_TEMPERATURE = '25';   // C-Bus Temperature Broadcast application ($19)
 const DEFAULT_CBUS_APP_MEASUREMENT = '228';  // C-Bus Measurement application ($E4)
+const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning application ($AC)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -136,6 +137,7 @@ module.exports = {
     DEFAULT_CBUS_APP_TRIGGER,
     DEFAULT_CBUS_APP_TEMPERATURE,
     DEFAULT_CBUS_APP_MEASUREMENT,
+    DEFAULT_CBUS_APP_AIRCON,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
