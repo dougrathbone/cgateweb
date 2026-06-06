@@ -257,6 +257,10 @@ class ConfigLoader {
                 config.ha_discovery_hvac_app_id = String(options.ha_discovery_hvac_app_id);
             }
 
+            if (options.cbus_aircon_app_id) {
+                config.cbus_aircon_app_id = String(options.cbus_aircon_app_id);
+            }
+
             if (options.ha_hvac_temperature_unit) {
                 config.ha_hvac_temperature_unit = options.ha_hvac_temperature_unit;
             }

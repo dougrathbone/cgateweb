@@ -417,6 +417,27 @@ describe('ConfigLoader', () => {
             expect(config.healthCheckInterval).toBeUndefined();
             expect(config.keepAliveInterval).toBeUndefined();
         });
+
+        test('should map cbus_aircon_app_id to config as a string', () => {
+            const options = { ...mockAddonOptions, cbus_aircon_app_id: 172 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_aircon_app_id).toBe('172');
+        });
+
+        test('should not set cbus_aircon_app_id when option is absent', () => {
+            const options = { ...mockAddonOptions };
+            delete options.cbus_aircon_app_id;
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_aircon_app_id).toBeUndefined();
+        });
     });
 
     describe('load() - Standalone Configuration', () => {
