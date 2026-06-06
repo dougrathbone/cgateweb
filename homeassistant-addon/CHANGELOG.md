@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-06-06
+
+### Added
+
+- **Native C-Bus Air Conditioning (172) room temperature.** cgateweb now decodes the C-Bus Air Conditioning application's `zone_temperature` broadcasts (encoding °C = raw/256) and publishes the reading to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Enable by setting `cbus_aircon_app_id` to your Air Conditioning app id (typically `172`); it is off by default. This is read-only temperature for now — HVAC mode and setpoint are not yet decoded. Note this is the *real* C-Bus Air Conditioning application, distinct from the lighting-bridge "HVAC-via-lighting" pattern used by `ha_discovery_hvac_app_id`.
+
+### Fixed
+
+- **Add-on docs incorrectly cited C-Bus application `201` as the HVAC app.** Application 201 does not exist in standard C-Bus; the real Air Conditioning application is `172`. Documentation corrected.
+
 ## [1.10.1] - 2026-05-31
 
 ### Fixed

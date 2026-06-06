@@ -840,3 +840,15 @@ Each decoder follows the same task shape as Tasks 7–8 (pure decode test → re
 - **Spec coverage:** Foundation fix (Tasks 1–3), raw capture (4–5), temperature read incl. discovery (6–10), measurement/172 gated (11) — all spec sections mapped. The "read-only, no writes" non-goal is enforced in Tasks 2, 11. The additive-settings rule and config.yaml rules are covered in Tasks 4/10/release task.
 - **Type consistency:** reading shape `{ kind, group, celsius, unit }` is consistent across temperatureDecoder (Task 7), CBusEvent delegation (Task 8), and publishReading (Task 10). Registry method `getDecoder` used consistently. Decoder property `appId` and method `decodeValue` consistent across Tasks 7/8.
 - **Verification-first:** Task 9 is an explicit gate preventing temperature shipping on an unconfirmed format; Task 11 is blocked by design.
+
+---
+
+## Update 2026-06-06 — Air-Con (172) temperature shipped
+
+**Confirmed via user's PICED log:** C-Gate renders Air Conditioning application 172 events as `[# ]aircon <verb> //PROJECT/<net>/172 …` — specifically `zone_temperature` events carry the raw integer value from which temperature is derived.
+
+**Temperature encoding verified:** `°C = raw / 256` — confirmed against 581 samples from a real installation. This differs from the Temperature Broadcast (25) encoding (`°C = raw / 4`); the Air Conditioning application uses a higher-precision 16-bit fixed-point encoding.
+
+**Shipped:** Read-only room temperature via `cbus_aircon_app_id` (default: null, off). When set to the AC application id (e.g. `172`), cgateweb decodes `aircon zone_temperature` broadcasts and publishes to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Released in v1.11.0.
+
+**Still blocked — mode/setpoint:** The capture used for verification was taken while all units were in "Off" state. `zone_mode`, `zone_setpoint`, and other Air Conditioning verbs have not been captured while the unit is actively running. Do not implement mode/setpoint decode until a running-state capture is available.

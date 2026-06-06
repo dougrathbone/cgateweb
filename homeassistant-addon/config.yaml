@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.10.1"
+version: "1.11.0"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -111,6 +111,7 @@ schema:
   ha_discovery_trigger_app_id: "int(1,255)?"
   ha_discovery_scene_enabled: "bool?"
   ha_discovery_hvac_app_id: "int(1,255)?"
+  cbus_aircon_app_id: "int(1,255)?"
   ha_hvac_temperature_unit: "list(C|F)?"
 
   # ── Bridge Diagnostics ──

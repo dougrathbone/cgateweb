@@ -177,8 +177,9 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_auto_type` | boolean | `true` | Auto-detect device types for Lighting-application (56) groups. Currently detects motorised covers (blinds/shutters) from the group label. A manual `type_overrides` entry and application-id mappings always take precedence; auto-detection only upgrades the default `light`. |
 | `ha_discovery_auto_type_name_heuristics` | boolean | `true` | When `ha_discovery_auto_type` is on, classify covers by matching the group label against the cover keyword list. Set to `false` to turn keyword matching off. |
 | `ha_discovery_auto_type_cover_keywords` | list | `[blind, shutter, shade, awning, curtain, roller, garage door]` | Keywords that mark a Lighting group as a cover. Matching is case-insensitive and catches plurals. |
-| `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for HVAC/climate zones. The standard C-Bus HVAC application is `201`. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
+| `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for a **lighting-compatible** HVAC group (PAC/touchscreen-exposed). This is NOT the native Air Conditioning application (172) — use it only for groups mirrored onto a lighting-style app by a PAC or touchscreen. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
 | `ha_hvac_temperature_unit` | list | `C` | Temperature unit for HVAC climate entities: `C` for Celsius, `F` for Fahrenheit. |
+| `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native read-only room-temperature. Decodes `zone_temperature` broadcasts and publishes `current_temperature` to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Off by default. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -326,7 +327,7 @@ When `ha_discovery_enabled` is true, the add-on automatically:
    - **Covers** (App 203 or configured): Blinds, shutters, garage doors
    - **Switches** (configurable app): Generic on/off devices
    - **Triggers** (App 202 or configured): Keypads and scene buttons, exposed as HA `event` + `button` entity pairs — opt-in via `ha_discovery_trigger_app_id`
-   - **HVAC zones** (App 201 or configured): Heating/cooling zones as HA `climate` entities — opt-in via `ha_discovery_hvac_app_id`
+   - **HVAC zones** (lighting-compatible HVAC group, configured): Heating/cooling zones as HA `climate` entities — opt-in via `ha_discovery_hvac_app_id` (PAC/touchscreen-exposed lighting-style group, NOT native Air Conditioning app 172)
 3. Updates device names from C-Gate labels
 4. Publishes discovery configuration to MQTT
 
@@ -337,10 +338,11 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | App ID | C-Bus Application | HA Entity Type | Discovery setting |
 |--------|-------------------|----------------|-------------------|
 | 56 | Lighting | `light` | Always enabled |
-| 201 | HVAC | `climate` | Opt-in via `ha_discovery_hvac_app_id` |
+| 172 | Air Conditioning (native, read-only temperature) | `current_temperature` topic | `cbus_aircon_app_id: 172` |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
+| Custom | Lighting-compatible HVAC group (PAC/touchscreen-exposed) | `climate` | Opt-in via `ha_discovery_hvac_app_id` |
 
 The app ID values above are the C-Bus standard defaults. Some installations use non-standard IDs — check your C-Bus Toolkit project if a device type is not being discovered.
 
@@ -357,7 +359,9 @@ To enable trigger discovery, set `ha_discovery_trigger_app_id: 202` (or your act
 
 HVAC climate entities use a temperature encoding based on community reports: 0.5 °C resolution across a 0–50 °C range (or equivalent in Fahrenheit). **Hardware validation is strongly recommended** before relying on HVAC setpoints, as the exact encoding may vary between thermostat models. Do not change a setpoint until you have confirmed that the encoding matches your specific hardware.
 
-Set `ha_discovery_hvac_app_id: 201` to enable HVAC discovery. Use `ha_hvac_temperature_unit` to select `C` (Celsius, default) or `F` (Fahrenheit).
+Set `ha_discovery_hvac_app_id` to the app ID of your lighting-compatible HVAC group (the app your PAC or touchscreen uses to expose HVAC control) to enable HVAC discovery — do NOT use the native Air Conditioning app `172` here. Use `ha_hvac_temperature_unit` to select `C` (Celsius, default) or `F` (Fahrenheit).
+
+To read native room temperature from the real C-Bus Air Conditioning application, set `cbus_aircon_app_id: 172` instead. This is read-only (temperature only — mode and setpoint are not yet decoded).
 
 ## Networking
 

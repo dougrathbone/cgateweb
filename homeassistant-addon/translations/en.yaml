@@ -176,13 +176,21 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC Application ID
     description: >-
-      C-Bus app ID for HVAC/climate zones. Standard C-Bus HVAC app: 201.
-      Leave empty to skip HVAC discovery.
+      C-Bus app ID for a lighting-compatible HVAC group (PAC/touchscreen-exposed).
+      NOT the native Air Conditioning app 172 — use only for groups mirrored onto
+      a lighting-style app by a PAC or touchscreen. Leave empty to skip.
   ha_hvac_temperature_unit:
     name: HVAC Temperature Unit
     description: >-
       Temperature unit for HVAC climate entities. C for Celsius, F for
       Fahrenheit. Default: C.
+  cbus_aircon_app_id:
+    name: Air Conditioning Application ID
+    description: >-
+      C-Bus Air Conditioning application id (e.g. 172) for native read-only
+      room-temperature. Decodes zone_temperature broadcasts and publishes
+      current_temperature to cbus/read/{network}/172/{zone}/current_temperature.
+      Off by default.
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:
