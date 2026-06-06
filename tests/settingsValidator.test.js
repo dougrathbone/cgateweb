@@ -355,6 +355,43 @@ describe('SettingsValidator', () => {
         });
     });
 
+    describe('cbus_aircon_app_id validation', () => {
+        it('accepts a string app id like "172"', () => {
+            const result = validator.validate({ ...validSettings, cbus_aircon_app_id: '172' });
+            expect(result).toBe(true);
+        });
+
+        it('accepts a numeric app id like 172', () => {
+            const result = validator.validate({ ...validSettings, cbus_aircon_app_id: 172 });
+            expect(result).toBe(true);
+        });
+
+        it('accepts absent / null (disabled by default)', () => {
+            expect(validator.validate({ ...validSettings })).toBe(true);
+            expect(validator.validate({ ...validSettings, cbus_aircon_app_id: null })).toBe(true);
+        });
+
+        it('rejects an object value', () => {
+            const result = validator.validate({ ...validSettings, cbus_aircon_app_id: { id: 172 } });
+            expect(result).toBe(false);
+        });
+
+        it('rejects an array value', () => {
+            const result = validator.validate({ ...validSettings, cbus_aircon_app_id: ['172'] });
+            expect(result).toBe(false);
+        });
+
+        it('is not gated behind ha_discovery_enabled', () => {
+            // validation should run even when HA discovery is disabled
+            const result = validator.validate({
+                ...validSettings,
+                ha_discovery_enabled: false,
+                cbus_aircon_app_id: { bad: true }
+            });
+            expect(result).toBe(false);
+        });
+    });
+
     describe('cbusRawEventLogApps validation', () => {
         const base = { mqtt: 'localhost:1883', cbusname: 'HOME', cbusip: '192.168.1.100', cbuscommandport: 20023, cbuseventport: 20025, messageinterval: 200, ha_discovery_enabled: false, ha_discovery_prefix: 'homeassistant', ha_discovery_networks: [254] };
         it('accepts an array of app IDs', () => {

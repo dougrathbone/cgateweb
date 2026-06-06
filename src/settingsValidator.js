@@ -48,6 +48,7 @@ class SettingsValidator {
         this._validatePortSettings(settings, errors);
         this._validateHomeAssistantSettings(settings, errors);
         this._validateRawEventCaptureSettings(settings, errors);
+        this._validateAirconSettings(settings, errors);
 
         // Handle validation results
         if (errors.length > 0) {
@@ -188,6 +189,21 @@ class SettingsValidator {
             'commandMinIntervalMs': 'Lower bound for adaptive command pacing (recommended 10ms)'
         };
         return suggestions[setting] || null;
+    }
+
+    /**
+     * Validate Air Conditioning settings (general, not gated on HA discovery)
+     * @param {Object} settings - Settings object to validate
+     * @param {Array} errors - Array to push error messages into
+     * @private
+     */
+    _validateAirconSettings(settings, errors) {
+        const val = settings.cbus_aircon_app_id;
+        if (val !== undefined && val !== null) {
+            if (typeof val !== 'string' && typeof val !== 'number') {
+                errors.push('cbus_aircon_app_id must be a string or number when specified');
+            }
+        }
     }
 
     /**

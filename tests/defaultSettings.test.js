@@ -1,5 +1,11 @@
 const { defaultSettings } = require('../src/defaultSettings');
 
+describe('aircon app id default', () => {
+    it('defaults cbus_aircon_app_id to null (disabled)', () => {
+        expect(defaultSettings.cbus_aircon_app_id).toBeNull();
+    });
+});
+
 describe('raw event capture defaults', () => {
     it('defaults cbusRawEventLogApps to an empty array (capture off)', () => {
         expect(defaultSettings.cbusRawEventLogApps).toEqual([]);

@@ -61,6 +61,8 @@ const defaultSettings = {
         'blind', 'shutter', 'shade', 'awning', 'curtain', 'roller', 'garage door'
     ],
     ha_discovery_hvac_app_id: null,
+    // C-Bus Air Conditioning app ID for native temperature reads (e.g. 172); null disables.
+    cbus_aircon_app_id: null,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
     ha_bridge_diagnostics_interval_sec: 60,
