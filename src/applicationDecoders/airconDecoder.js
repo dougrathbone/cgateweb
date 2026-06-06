@@ -25,8 +25,8 @@ const appId = DEFAULT_CBUS_APP_AIRCON;
  *   A reading object for `zone_temperature` lines, or null for everything else.
  */
 function decodeLine(line) {
-    // Guard against null / undefined / non-string input
-    if (line == null || typeof line !== 'string') return null;
+    // Guard against null / undefined / non-string input (typeof covers all three)
+    if (typeof line !== 'string') return null;
 
     // 1. Trim whitespace
     let text = line.trim();
