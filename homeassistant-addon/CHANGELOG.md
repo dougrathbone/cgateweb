@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-06-06
+
+### Fixed
+
+- **Restore add-on distribution for the 1.11.0 Air Conditioning feature.** The 1.11.0 tag failed its distribution build on a strict-equality (`eqeqeq`) lint warning in the new Air Conditioning decoder, so the add-on never updated. Corrected the comparison; the native Air Conditioning (172) temperature feature from 1.11.0 ships in 1.11.1.
+
 ## [1.11.0] - 2026-06-06
 
 ### Added
