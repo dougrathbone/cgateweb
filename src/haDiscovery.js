@@ -732,7 +732,8 @@ class HaDiscovery {
                 state_value_template: '{{ value }}',
                 brightness_value_template: '{{ value }}',
                 qos: 0,
-                retain: true,
+                // command topics must NOT be retained: a retained command replays to
+                // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
                 device: {
                     identifiers: [uniqueId],
                     name: finalLabel,
@@ -862,7 +863,7 @@ class HaDiscovery {
             temp_step: 0.5,
 
             qos: 0,
-            retain: true,
+            // command topics must NOT be retained (see _createDiscovery note)
             device: {
                 identifiers: [uniqueId],
                 name: finalLabel,
@@ -931,7 +932,10 @@ class HaDiscovery {
                 tilt_optimistic: false
             }),
             qos: 0,
-            ...(config.isTrigger ? {} : { retain: true }),
+            // NOTE: command topics must NOT be retained. A retained command sits on the
+            // broker and is redelivered to cgateweb on every (re)connect, replaying stale
+            // ON/OFF/RAMP commands that toggle devices unexpectedly. State retention is
+            // handled separately by the read/state publish options, not here.
             ...(config.deviceClass && { device_class: config.deviceClass }),
             device: {
                 identifiers: [uniqueId],

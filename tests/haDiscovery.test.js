@@ -270,6 +270,42 @@ describe('HaDiscovery', () => {
             expect(payload.state_closed).toBe('OFF');
         });
 
+        it('should NOT mark light configs as retained (retained commands replay on reconnect and toggle devices)', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const lightCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
+            );
+            expect(lightCall).toBeDefined();
+            const payload = JSON.parse(lightCall[1]);
+            // Sanity: this entity has a command topic, so its commands must never be retained
+            expect(payload.command_topic).toBe('cbus/write/254/56/10/ramp');
+            expect(payload.retain).not.toBe(true);
+        });
+
+        it('should NOT mark switch configs as retained', () => {
+            mockSettings.ha_discovery_switch_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const switchCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/switch/cgateweb_254_203_15/config'
+            );
+            expect(switchCall).toBeDefined();
+            expect(JSON.parse(switchCall[1]).retain).not.toBe(true);
+        });
+
+        it('should NOT mark cover configs as retained', () => {
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            const coverCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
+            );
+            expect(coverCall).toBeDefined();
+            expect(JSON.parse(coverCall[1]).retain).not.toBe(true);
+        });
+
         it('should publish PIR configs when PIR app ID is configured', () => {
             mockSettings.ha_discovery_pir_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;

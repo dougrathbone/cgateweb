@@ -324,6 +324,16 @@ describe('HaDiscovery — HVAC climate entity discovery', () => {
         expect(topics).toContain('homeassistant/climate/cgateweb_254_201_2/config');
     });
 
+    test('climate config does NOT mark commands as retained (retained commands replay on reconnect)', () => {
+        runDiscovery(MOCK_TREE_WITH_HVAC);
+
+        const climateCall = mockPublishFn.mock.calls.find(c =>
+            c[0] === 'homeassistant/climate/cgateweb_254_201_1/config'
+        );
+        expect(climateCall).toBeDefined();
+        expect(JSON.parse(climateCall[1]).retain).not.toBe(true);
+    });
+
     test('climate entity payload has required Home Assistant climate fields', () => {
         runDiscovery(MOCK_TREE_WITH_HVAC);
 
