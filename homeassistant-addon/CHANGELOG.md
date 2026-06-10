@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-06-10
+
+### Added
+
+- **Air Conditioning (172): mode, setpoint, and multiple thermostats.** Building on 1.11.x's temperature reading, cgateweb now also decodes the operating **mode** (`off`/`heat` verified; `cool`/`auto`/`fan_only` best-effort pending hardware confirmation), the target **setpoint** (°C = raw/256), and the zone-group on/off **state** from the C-Bus Air Conditioning application. Multiple thermostats on the same network/application are now supported: topics are keyed by the thermostat's **source unit** so two units sharing a zone group no longer collide.
+
+### Changed
+
+- **Air Conditioning read topics are now keyed by source unit, not zone group.** Temperature now publishes to `cbus/read/{network}/172/{sourceUnit}/current_temperature` (plus `/setpoint`, `/mode`, `/state`). This corrects multi-thermostat collisions. Only affects the opt-in `cbus_aircon_app_id` feature introduced in 1.11.0.
+
 ## [1.11.1] - 2026-06-06
 
 ### Fixed

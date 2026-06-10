@@ -179,7 +179,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_auto_type_cover_keywords` | list | `[blind, shutter, shade, awning, curtain, roller, garage door]` | Keywords that mark a Lighting group as a cover. Matching is case-insensitive and catches plurals. |
 | `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for a **lighting-compatible** HVAC group (PAC/touchscreen-exposed). This is NOT the native Air Conditioning application (172) — use it only for groups mirrored onto a lighting-style app by a PAC or touchscreen. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
 | `ha_hvac_temperature_unit` | list | `C` | Temperature unit for HVAC climate entities: `C` for Celsius, `F` for Fahrenheit. |
-| `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native read-only room-temperature. Decodes `zone_temperature` broadcasts and publishes `current_temperature` to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Off by default. |
+| `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native read-only thermostat data. Decodes `zone_temperature`, `set_zone_hvac_mode`, `zone_setpoint`, and zone on/off broadcasts from the Air Conditioning application. Topics are keyed by the thermostat's **source unit** (not zone group) to support multiple thermostats: `cbus/read/{network}/172/{sourceUnit}/current_temperature`, `/setpoint`, `/mode` (`off`/`heat` verified; `cool`/`auto`/`fan_only` best-effort), and `/state` (`ON`/`OFF`). Read-only — no control commands. Off by default. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -338,7 +338,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | App ID | C-Bus Application | HA Entity Type | Discovery setting |
 |--------|-------------------|----------------|-------------------|
 | 56 | Lighting | `light` | Always enabled |
-| 172 | Air Conditioning (native, read-only temperature) | `current_temperature` topic | `cbus_aircon_app_id: 172` |
+| 172 | Air Conditioning (native, read-only) | `current_temperature`, `setpoint`, `mode`, `state` topics (keyed by source unit) | `cbus_aircon_app_id: 172` |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
@@ -361,7 +361,14 @@ HVAC climate entities use a temperature encoding based on community reports: 0.5
 
 Set `ha_discovery_hvac_app_id` to the app ID of your lighting-compatible HVAC group (the app your PAC or touchscreen uses to expose HVAC control) to enable HVAC discovery — do NOT use the native Air Conditioning app `172` here. Use `ha_hvac_temperature_unit` to select `C` (Celsius, default) or `F` (Fahrenheit).
 
-To read native room temperature from the real C-Bus Air Conditioning application, set `cbus_aircon_app_id: 172` instead. This is read-only (temperature only — mode and setpoint are not yet decoded).
+To read native thermostat data from the real C-Bus Air Conditioning application, set `cbus_aircon_app_id: 172`. This is **read-only** (no control commands). When set, cgateweb decodes room temperature, setpoint, operating mode, and zone on/off state from the AC application and publishes them keyed by the thermostat's source unit address:
+
+- `cbus/read/{network}/172/{sourceUnit}/current_temperature` — room temperature in °C
+- `cbus/read/{network}/172/{sourceUnit}/setpoint` — target setpoint in °C
+- `cbus/read/{network}/172/{sourceUnit}/mode` — `off` or `heat` (verified); `cool`, `auto`, `fan_only` (best-effort, not confirmed on all hardware)
+- `cbus/read/{network}/172/{sourceUnit}/state` — `ON` / `OFF` (zone-group master on/off)
+
+Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) rather than zone group, so installations with multiple thermostats sharing a zone group are correctly handled.
 
 ## Networking
 

@@ -128,7 +128,18 @@ Supported Device Types:
 *   **PIR Motion Sensors:** Devices using the configured `ha_discovery_pir_app_id` (default: `null`) are discovered as `binary_sensor` entities with device class `motion`.
 *   **HVAC / Climate (via lighting):** Devices using the configured `ha_discovery_hvac_app_id` (default: `null` — disabled) are discovered as `climate` entities. This drives a **lighting-compatible group**, not the native C-Bus Air Conditioning application — use the app ID of a PAC/touchscreen-exposed HVAC group (e.g. an "HVAC Actuator" lighting-style app), NOT the Air Conditioning app 172. See "HVAC notes" below.
 
-> **HVAC notes:** The real C-Bus *Air Conditioning* application (172) and *Heating* (136) are not driven by C-Gate's lighting verbs, so cgateweb cannot control a native thermostat directly through `ha_discovery_hvac_app_id`. The supported pattern is to program a Pascal Logic Controller (PAC) or touchscreen to mirror HVAC control onto a lighting-compatible group/application, then point `ha_discovery_hvac_app_id` at that app. Native read-only room temperature from the C-Bus Air Conditioning application (172) is now available: set `cbus_aircon_app_id: 172` (or your actual AC app id) and cgateweb will decode `zone_temperature` broadcasts and publish readings to `cbus/read/{net}/172/{zoneGroup}/current_temperature`. To help capture raw event samples for other specialised applications (e.g. Temperature Broadcast app 25, Measurement app 228), set `cbusRawEventLogApps` to a list of app IDs (e.g. `['25', '228']`) — cgateweb will then log each matching C-Gate event line verbatim and publish it to `cbus/read/{net}/{app}/{group}/raw`. Defaults to `[]` (off).
+> **HVAC notes:** The real C-Bus *Air Conditioning* application (172) and *Heating* (136) are not driven by C-Gate's lighting verbs, so cgateweb cannot control a native thermostat directly through `ha_discovery_hvac_app_id`. The supported pattern is to program a Pascal Logic Controller (PAC) or touchscreen to mirror HVAC control onto a lighting-compatible group/application, then point `ha_discovery_hvac_app_id` at that app.
+>
+> **Native read-only Air Conditioning (172) data** is available via `cbus_aircon_app_id`. Set it to your AC application id (typically `172`) and cgateweb will decode broadcasts from the C-Bus Air Conditioning application and publish to the following topics — keyed by the thermostat's **source unit** (e.g. `201`, `202`), not the zone group, so multiple thermostats on the same network never collide:
+>
+> | Topic | Value |
+> |-------|-------|
+> | `cbus/read/{net}/172/{sourceUnit}/current_temperature` | Room temperature in °C (raw / 256) |
+> | `cbus/read/{net}/172/{sourceUnit}/setpoint` | Target setpoint in °C (raw / 256) |
+> | `cbus/read/{net}/172/{sourceUnit}/mode` | `off` or `heat` (verified); `cool`, `auto`, `fan_only` (best-effort, not yet confirmed on hardware) |
+> | `cbus/read/{net}/172/{sourceUnit}/state` | `ON` / `OFF` (zone-group master on/off) |
+>
+> This is **read-only** — no HVAC control commands are sent. To help capture raw event samples for other specialised applications (e.g. Temperature Broadcast app 25, Measurement app 228), set `cbusRawEventLogApps` to a list of app IDs (e.g. `['25', '228']`) — cgateweb will then log each matching C-Gate event line verbatim and publish it to `cbus/read/{net}/{app}/{group}/raw`. Defaults to `[]` (off).
 
 **Configuration (`settings.js`):**
 
