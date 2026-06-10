@@ -852,3 +852,17 @@ Each decoder follows the same task shape as Tasks 7–8 (pure decode test → re
 **Shipped:** Read-only room temperature via `cbus_aircon_app_id` (default: null, off). When set to the AC application id (e.g. `172`), cgateweb decodes `aircon zone_temperature` broadcasts and publishes to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Released in v1.11.0.
 
 **Still blocked — mode/setpoint:** The capture used for verification was taken while all units were in "Off" state. `zone_mode`, `zone_setpoint`, and other Air Conditioning verbs have not been captured while the unit is actively running. Do not implement mode/setpoint decode until a running-state capture is available.
+
+## Update 2026-06-10 — Air-Con mode/setpoint + multi-thermostat (1.11.3)
+
+**Verified from a 2nd PICED log** covering two thermostats (units 201 and 202) on the same network/application, both sharing zone group 1, operating in heat mode.
+
+**New verbs decoded:**
+
+- `set_zone_hvac_mode` — mode field `f0` encodes operating mode as a single byte: `0` = off, `1` = heat (both confirmed on hardware). Values `2` (cool), `3` (auto), `4` (fan_only) are inferred from Clipsal documentation and mminehanNZ/cgateweb; not confirmed on this installation (units are heat-only).
+- `zone_setpoint` — setpoint field `f6` encodes the target temperature as a fixed-point integer; `°C = raw / 256` (same encoding as `zone_temperature`). Confirmed against observed values.
+- `set_ward_on` / `set_ward_off` — zone-group on/off commands; mapped to `state` topic as `ON` / `OFF`.
+
+**Multi-thermostat collision fix:** The original 1.11.0 implementation keyed topics on `zoneGroup`. Because both unit 201 and unit 202 reported zone group `1`, their readings overwrote each other. Topics are now keyed on `sourceUnit` (the thermostat's physical unit address, e.g. `201`), which is unique per thermostat. This is a breaking change for `cbus_aircon_app_id` users upgrading from 1.11.x — any Home Assistant automations or sensors pointed at the old `...172/{zoneGroup}/...` topic shape must be updated to `...172/{sourceUnit}/...`.
+
+**Remaining unknowns:** `cool`, `auto`, and `fan_only` mode values are best-effort (Clipsal spec + mminehanNZ inference). Write/control commands for the Air Conditioning application remain unverified and unimplemented — still read-only.
