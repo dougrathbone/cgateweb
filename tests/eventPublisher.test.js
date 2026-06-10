@@ -984,25 +984,95 @@ describe('EventPublisher', () => {
 
     describe('publishReading', () => {
         it('should publish to current_temperature topic for temperature reading', () => {
-            eventPublisher.publishReading('254', '172', '1', {
+            eventPublisher.publishReading('254', '172', '201', {
                 kind: 'temperature',
-                celsius: 17.3
+                celsius: 17.4
             });
 
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/1/current_temperature',
-                '17.3',
+                'cbus/read/254/172/201/current_temperature',
+                '17.4',
                 mockMqttOptions
             );
         });
 
-        it('should publish nothing for a non-temperature reading', () => {
-            eventPublisher.publishReading('254', '172', '1', {
-                kind: 'mode'
+        it('should publish mode and setpoint for a mode reading with heat + setpoint', () => {
+            eventPublisher.publishReading('254', '172', '202', {
+                kind: 'mode',
+                mode: 'heat',
+                setpoint: 22
             });
 
-            expect(mockPublishFn).not.toHaveBeenCalled();
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/202/mode',
+                'heat',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/202/setpoint',
+                '22',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish mode=off and no setpoint when mode is off and setpoint is null', () => {
+            eventPublisher.publishReading('254', '172', '202', {
+                kind: 'mode',
+                mode: 'off',
+                setpoint: null
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/202/mode',
+                'off',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish only setpoint when mode is null (unknown code) but setpoint is present', () => {
+            eventPublisher.publishReading('254', '172', '202', {
+                kind: 'mode',
+                mode: null,
+                setpoint: 23
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/202/setpoint',
+                '23',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish ON for a state reading with on=true', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'state',
+                on: true
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/state',
+                'ON',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish OFF for a state reading with on=false', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'state',
+                on: false
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/state',
+                'OFF',
+                mockMqttOptions
+            );
         });
 
         it('should publish nothing when reading is null', () => {

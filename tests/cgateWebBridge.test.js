@@ -718,16 +718,25 @@ describe('CgateWebBridge', () => {
     });
 
     describe('Aircon (172) event routing via _handleAirconLine', () => {
+        // Existing fixture uses sourceunit=250 — topic now keyed on sourceUnit, not zoneGroup
         const AIRCON_TEMP_LINE = '# aircon zone_temperature //THEGAFF/254/172 1 0,1,2,3,4 4431 0 #sourceunit=250 OID=x';
+        // Mode line with mode code 0 (off) — existing fixture, sourceunit=250
         const AIRCON_MODE_LINE = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 0 0 0 0 1 255 0 0 #sourceunit=250 OID=x';
         const LIGHTING_LINE = 'lighting on //TestProject/254/56/1';
+
+        // Real-world fixtures from PICED captures (two thermostats, same zoneGroup=1)
+        const REAL_TEMP_201 = '# aircon zone_temperature //THEGAFF/254/172 1 0,1,2,3,4 4467 0 #sourceunit=201 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
+        const REAL_TEMP_202 = '# aircon zone_temperature //THEGAFF/254/172 1 0 4545 0 #sourceunit=202 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
+        const REAL_MODE_202 = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 1 0 0 0 1 1 5632 0 #sourceunit=202 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
+        // Unknown mode code (99) — not in the 0-4 map, modeRaw=99
+        const UNKNOWN_MODE_LINE = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 99 0 0 0 1 1 5632 0 #sourceunit=201 OID=x';
 
         describe('with cbus_aircon_app_id set', () => {
             beforeEach(() => {
                 bridge.settings.cbus_aircon_app_id = '172';
             });
 
-            it('should publish current_temperature to MQTT for a zone_temperature line', () => {
+            it('should publish current_temperature keyed by sourceUnit (not zoneGroup)', () => {
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
 
                 bridge._processEventLine(AIRCON_TEMP_LINE);
@@ -736,23 +745,86 @@ describe('CgateWebBridge', () => {
                     call[0].endsWith('/current_temperature')
                 );
                 expect(tempPublish).toBeDefined();
-                expect(tempPublish[0]).toBe('cbus/read/254/172/1/current_temperature');
+                // Topic uses sourceUnit=250, not zoneGroup=1
+                expect(tempPublish[0]).toBe('cbus/read/254/172/250/current_temperature');
                 expect(tempPublish[1]).toBe('17.3');
 
                 publishSpy.mockRestore();
             });
 
-            it('should consume aircon non-temperature line without throwing and without current_temperature publish', () => {
+            it('should publish mode to sourceUnit-keyed topic for a mode line', () => {
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
 
                 expect(() => bridge._processEventLine(AIRCON_MODE_LINE)).not.toThrow();
 
-                const tempPublish = publishSpy.mock.calls.find(call =>
-                    call[0].endsWith('/current_temperature')
+                const modePublish = publishSpy.mock.calls.find(call =>
+                    call[0].endsWith('/mode')
                 );
-                expect(tempPublish).toBeUndefined();
+                expect(modePublish).toBeDefined();
+                expect(modePublish[0]).toBe('cbus/read/254/172/250/mode');
+                expect(modePublish[1]).toBe('off');
 
                 publishSpy.mockRestore();
+            });
+
+            it('two thermostats with same zoneGroup produce distinct sourceUnit-keyed topics', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(REAL_TEMP_201);
+                bridge._processEventLine(REAL_TEMP_202);
+
+                const allTempTopics = publishSpy.mock.calls
+                    .filter(call => call[0].endsWith('/current_temperature'))
+                    .map(call => call[0]);
+
+                expect(allTempTopics).toContain('cbus/read/254/172/201/current_temperature');
+                expect(allTempTopics).toContain('cbus/read/254/172/202/current_temperature');
+
+                const pub201 = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/172/201/current_temperature'
+                );
+                const pub202 = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/172/202/current_temperature'
+                );
+                expect(pub201[1]).toBe('17.4');
+                expect(pub202[1]).toBe('17.8');
+
+                publishSpy.mockRestore();
+            });
+
+            it('should publish mode and setpoint to sourceUnit-keyed topics for a heat mode line', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(REAL_MODE_202);
+
+                const modePublish = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/172/202/mode'
+                );
+                const setpointPublish = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/172/202/setpoint'
+                );
+                expect(modePublish).toBeDefined();
+                expect(modePublish[1]).toBe('heat');
+                expect(setpointPublish).toBeDefined();
+                expect(setpointPublish[1]).toBe('22');
+
+                publishSpy.mockRestore();
+            });
+
+            it('should log a warning for unknown mode codes and still consume the line', () => {
+                const warnSpy = jest.spyOn(bridge.logger, 'warn');
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                let result;
+                expect(() => { result = bridge._handleAirconLine(UNKNOWN_MODE_LINE); }).not.toThrow();
+                expect(result).toBe(true);
+
+                expect(warnSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('Unmapped C-Bus HVAC mode code 99')
+                );
+
+                publishSpy.mockRestore();
+                warnSpy.mockRestore();
             });
         });
 

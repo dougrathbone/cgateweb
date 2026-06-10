@@ -215,13 +215,45 @@ class EventPublisher {
 
     /**
      * Publishes a structured reading produced by a specialised application
-     * decoder (e.g. Air Conditioning temperature). Temperature readings go to
-     * cbus/read/{network}/{application}/{group}/current_temperature.
+     * decoder (e.g. Air Conditioning). Routes by reading.kind:
+     *
+     *   temperature → cbus/read/{net}/{app}/{group}/current_temperature
+     *   mode        → cbus/read/{net}/{app}/{group}/mode  (if mode non-null)
+     *               → cbus/read/{net}/{app}/{group}/setpoint (if setpoint non-null)
+     *   state       → cbus/read/{net}/{app}/{group}/state  ('ON'|'OFF')
      */
     publishReading(network, application, group, reading) {
-        if (reading && reading.kind === 'temperature') {
-            const topic = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`;
-            this._publishIfNeeded(topic, String(reading.celsius), this.mqttOptions);
+        if (!reading) return;
+
+        const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
+
+        if (reading.kind === 'temperature') {
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+                String(reading.celsius),
+                this.mqttOptions
+            );
+        } else if (reading.kind === 'mode') {
+            if (reading.mode !== null && reading.mode !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+                    reading.mode,
+                    this.mqttOptions
+                );
+            }
+            if (reading.setpoint !== null && reading.setpoint !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+                    String(reading.setpoint),
+                    this.mqttOptions
+                );
+            }
+        } else if (reading.kind === 'state') {
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                reading.on ? 'ON' : 'OFF',
+                this.mqttOptions
+            );
         }
     }
 

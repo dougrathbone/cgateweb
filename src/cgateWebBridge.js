@@ -400,8 +400,18 @@ class CgateWebBridge {
         if (!s.startsWith('aircon ')) return false;
         // Aircon traffic and the feature is enabled — consume it here.
         const reading = airconDecoder.decodeLine(line);
-        if (reading && reading.kind === 'temperature' && reading.application === String(appId)) {
-            this.eventPublisher.publishReading(reading.network, reading.application, reading.zoneGroup, reading);
+        if (reading && reading.application === String(appId)) {
+            const group = reading.sourceUnit || reading.zoneGroup;
+            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state') {
+                this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
+            }
+            if (reading.kind === 'mode' && reading.mode === null) {
+                this.logger.warn(
+                    'Unmapped C-Bus HVAC mode code ' + reading.modeRaw +
+                    ' on unit ' + reading.sourceUnit +
+                    ' — please report. Line: ' + line
+                );
+            }
         } else if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
         }
