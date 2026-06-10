@@ -131,19 +131,19 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
  *   f0 = mode code (0=off, 1=heat, 2=cool, 3=auto, 4=fan_only)
  *   f6 = setpoint raw (°C = f6/256); 0 means no setpoint
  *
- * Requires at least zoneGroup + zones + f0..f6 (9 params total).
+ * Requires params indices 0–8 (zoneGroup, zones, f0–f6) — at least 9 params.
  *
  * @private
  */
 function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) {
-    // Need zoneGroup(0), zones(1), f0(2)..f6(8) — at least 9 params
+    // Need indices 0–8: zoneGroup(0), zones(1), f0(2)..f6(8)
     if (params.length < 9) return null;
 
     const zoneGroup = params[0];
     const zones = params[1];
     const modeRaw = parseInt(params[2], 10); // f0
 
-    if (!Number.isInteger(modeRaw) || modeRaw < 0) return null;
+    if (!Number.isInteger(modeRaw)) return null;
 
     const mode = Object.prototype.hasOwnProperty.call(HVAC_MODE_BY_CODE, modeRaw)
         ? HVAC_MODE_BY_CODE[modeRaw]

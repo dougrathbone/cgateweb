@@ -136,14 +136,9 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
         });
     });
 
-    it('decodes off mode (sourceunit=201, setpoint null because f6=255 sentinel)', () => {
-        // Off line: 0 0 0 0 1 255 0 0  → f0=0 (off), f6=255 (no valid setpoint when off)
-        // Per spec: setpoint null when f6=0; but here f6=255 which is non-zero.
-        // The off fixture has trailing fields: 0 0 0 0 1 255 0 0
-        // f0=0, f1=0, f2=0, f3=0, f4=1, f5=255, f6=0, f7=0
-        // Wait — re-read spec: "Off line trailing fields: 0 0 0 0 1 255 0 0"
-        // That means f0=0 f1=0 f2=0 f3=0 f4=1 f5=255 f6=0 f7=0
-        // So f6=0 → setpoint null. Confirmed.
+    it('decodes off mode (sourceunit=201, setpoint null because f6=0)', () => {
+        // Off fixture trailing fields: f0=0(off) f1=0 f2=0 f3=0 f4=1 f5=255 f6=0 f7=0.
+        // The 255 sits at f5 (not the setpoint); f6=0 → setpoint null.
         const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 0 0 0 0 1 255 0 0 #sourceunit=201 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
         expect(decodeLine(line)).toEqual({
             kind: 'mode',
