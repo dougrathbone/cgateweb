@@ -479,6 +479,30 @@ describe('WebServer', () => {
             expect(authorized.status).toBe(200);
         });
 
+        // Unit-level coverage of the authorization logic (no live server needed).
+        const mkReq = (headers = {}) => ({ headers });
+
+        it('does not let a spoofed X-Ingress-Path bypass auth on a standalone deployment', () => {
+            // No api key, no ingress basePath, no unauthenticated override.
+            const standalone = new WebServer({ port: 0, labelLoader, getStatus: () => ({}) });
+            expect(standalone._isAuthorizedMutation(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(false);
+        });
+
+        it('trusts X-Ingress-Path only when actually started in ingress mode (basePath set)', () => {
+            const ingress = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), basePath: '/api/hassio_ingress/abc' });
+            expect(ingress._isAuthorizedMutation(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(true);
+            expect(ingress._isAuthorizedMutation(mkReq({}))).toBe(false);
+        });
+
+        it('accepts the API key via Bearer or X-API-Key and rejects wrong/short keys', () => {
+            const s = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), apiKey: 'secret-key' });
+            expect(s._isAuthorizedMutation(mkReq({ authorization: 'Bearer secret-key' }))).toBe(true);
+            expect(s._isAuthorizedMutation(mkReq({ 'x-api-key': 'secret-key' }))).toBe(true);
+            expect(s._isAuthorizedMutation(mkReq({ authorization: 'Bearer nope' }))).toBe(false);
+            expect(s._isAuthorizedMutation(mkReq({ 'x-api-key': 'short' }))).toBe(false); // length-mismatch path
+            expect(s._isAuthorizedMutation(mkReq({}))).toBe(false);
+        });
+
         it('should honor maxBodySizeBytes override for body-size enforcement', () => {
             const tiny = new WebServer({
                 port: 0,
