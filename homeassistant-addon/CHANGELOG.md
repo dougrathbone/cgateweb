@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-06-13
+
+### Added
+
+- **Air Conditioning (172): thermostats now appear automatically in Home Assistant.** When the native Air Conditioning feature is enabled (`cbus_aircon_app_id`) and HA Discovery is on, cgateweb now publishes a Home Assistant **climate** entity for each thermostat the first time it is seen on the bus (event-driven, keyed by the thermostat's source unit). The entity shows current temperature, target setpoint, operating mode (`off`/`heat`/`cool`/`auto`/`fan_only`), and the live running action (`heating`/`cooling`/`fan`/`idle`). Custom names from the label file are used (key `{network}/172/{sourceUnit}`).
+
+### Notes
+
+- This first release is **read-only** — the thermostat card displays state but does not yet send control commands. Write control (set mode/setpoint from HA) is a deliberate next step pending verification of the native app-172 command format against hardware.
+
 ## [1.11.4] - 2026-06-13
 
 ### Fixed
