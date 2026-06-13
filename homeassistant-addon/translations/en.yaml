@@ -203,6 +203,12 @@ configuration:
     description: >-
       How often bridge diagnostic states are refreshed. Default: 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: CNI Offline Notification
+    description: >-
+      Raise a Home Assistant persistent notification if a C-Bus network’s CNI/PCI link goes offline, and dismiss it when it reconnects. Requires the Home Assistant add-on environment. Off by default.
+
   # ── Stale Device Detection ──
   stale_device_detection_enabled:
     name: Enable Stale Device Detection

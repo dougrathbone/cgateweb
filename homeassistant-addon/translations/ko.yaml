@@ -202,6 +202,12 @@ configuration:
     description: >-
       Bridge 진단 상태가 새로 고침되는 빈도. 기본값: 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: CNI 오프라인 알림
+    description: >-
+      C-Bus 네트워크의 CNI/PCI 링크가 오프라인이 되면 Home Assistant 알림을 표시하고 다시 연결되면 해제합니다. Home Assistant 애드온 환경이 필요합니다. 기본값은 비활성화입니다.
+
   # ── 오래된 장치 감지 ──
   stale_device_detection_enabled:
     name: 오래된 장치 감지 활성화

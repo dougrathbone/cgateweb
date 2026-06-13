@@ -80,6 +80,10 @@ const defaultSettings = {
     // dropout between C-Gate and the C-Bus network surfaces on the status page.
     // Set to 0 to disable. Default 30s.
     cniMonitorIntervalMs: 30000,
+    // When true, raise a Home Assistant persistent notification (via the
+    // Supervisor API) if a C-Bus network's CNI/PCI goes offline, and dismiss it
+    // on recovery. Requires the add-on environment (SUPERVISOR_TOKEN).
+    cni_offline_notification: false,
     // Web diagnostics: window (ms) within which a device counts as "active" in
     // the status page's device list. Default 24h.
     web_active_device_window_ms: 24 * 60 * 60 * 1000,

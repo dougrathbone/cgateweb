@@ -189,6 +189,12 @@ configuration:
     description: >-
       Bridge 诊断状态的刷新频率。默认：60。
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: CNI 离线通知
+    description: >-
+      当 C-Bus 网络的 CNI/PCI 连接离线时显示 Home Assistant 通知，并在重新连接时关闭。需要 Home Assistant 加载项环境。默认关闭。
+
   # ── 过时设备检测 ──
   stale_device_detection_enabled:
     name: 启用过时设备检测

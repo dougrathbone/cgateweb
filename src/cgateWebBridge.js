@@ -15,9 +15,10 @@ const WebServer = require('./webServer');
 const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
 const StaleDeviceDetector = require('./staleDeviceDetector');
 const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
+const haNotifier = require('./haNotifier');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
-const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
+const { MQTT_RETAINED_STATE_OPTIONS, MQTT_TOPIC_PREFIX_READ, MQTT_STATE_ON, MQTT_STATE_OFF } = require('./constants');
 const { clampSetting } = require('./utils');
 
 /**
@@ -192,7 +193,7 @@ class CgateWebBridge {
             eventPublisher: this.eventPublisher,
             haDiscovery: null, // Will be set after haDiscovery is initialized
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
-            onNetworkState: (networkId, reading) => this.networkInterfaceMonitor.update(networkId, reading),
+            onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
             logger: this.logger
         });
 
@@ -556,6 +557,67 @@ class CgateWebBridge {
      */
     error(message, meta = {}) {
         this.logger.error(message, meta);
+    }
+
+    /**
+     * Handle a network InterfaceState/State reading: track it, publish the
+     * retained connectivity state for the binary_sensor, ensure the discovery
+     * entity exists, and (optionally) raise/clear an HA notification on
+     * transitions.
+     */
+    _handleNetworkInterfaceReading(networkId, reading) {
+        const result = this.networkInterfaceMonitor.update(networkId, reading);
+
+        // Keep the connectivity binary_sensor's discovery config present (idempotent).
+        if (this.haDiscovery) {
+            this.haDiscovery.ensureNetworkConnectivityDiscovery(networkId);
+        }
+
+        if (result.changed && result.online !== null) {
+            this.mqttManager.publish(
+                `${MQTT_TOPIC_PREFIX_READ}/${networkId}/cni/state`,
+                result.online ? MQTT_STATE_ON : MQTT_STATE_OFF,
+                { ...this._mqttOptions, retain: true }
+            );
+
+            if (this.settings.cni_offline_notification) {
+                if (result.online === false) {
+                    this._notifyCniOffline(networkId, result.interfaceState);
+                } else {
+                    this._dismissCniNotification(networkId);
+                }
+            }
+        }
+    }
+
+    _notifyCniOffline(networkId, interfaceState) {
+        const token = process.env.SUPERVISOR_TOKEN;
+        if (!token) {
+            this.logger.debug('cni_offline_notification enabled but no SUPERVISOR_TOKEN available; skipping HA notification.');
+            return;
+        }
+        haNotifier.createPersistentNotification({
+            notificationId: `cgateweb_cni_${networkId}`,
+            title: 'C-Bus network offline',
+            message: `The CNI/PCI link for C-Bus network ${networkId} has gone offline (InterfaceState=${interfaceState}). ` +
+                'C-Bus devices on this network are unreachable until it reconnects.',
+            token
+        }).then((r) => {
+            if (r.statusCode >= 200 && r.statusCode < 300) {
+                this.logger.info(`Raised Home Assistant notification: C-Bus network ${networkId} offline.`);
+            } else {
+                this.logger.warn(`HA persistent_notification.create returned ${r.statusCode} for network ${networkId}.`);
+            }
+        }).catch((e) => this.logger.warn(`Failed to send HA CNI notification for network ${networkId}: ${e.message}`));
+    }
+
+    _dismissCniNotification(networkId) {
+        const token = process.env.SUPERVISOR_TOKEN;
+        if (!token) return;
+        haNotifier.dismissPersistentNotification({
+            notificationId: `cgateweb_cni_${networkId}`,
+            token
+        }).catch((e) => this.logger.debug(`Failed to dismiss HA CNI notification for network ${networkId}: ${e.message}`));
     }
 
     _getBridgeStatus() {

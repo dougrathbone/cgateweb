@@ -34,6 +34,7 @@ const {
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_CLIMATE,
+    HA_COMPONENT_BINARY_SENSOR,
     HA_COMPONENT_SCENE,
     HA_COMPONENT_SENSOR,
     HA_DISCOVERY_SUFFIX,
@@ -103,6 +104,10 @@ class HaDiscovery {
         // in the aircon stream we publish its climate entity once. Tracks
         // "network/app/sourceUnit" keys already published this session.
         this._nativeAirconSeen = new Set();
+
+        // Network IDs whose CNI/PCI connectivity binary_sensor config has been
+        // published this session (event-driven, idempotent).
+        this._cniDiscoverySeen = new Set();
     }
 
     /**
@@ -807,6 +812,53 @@ class HaDiscovery {
      * @param {string|number} sourceUnit - thermostat unit address (e.g. 201)
      * @returns {boolean} true if a new climate entity was published this call
      */
+    /**
+     * Publish a Home Assistant binary_sensor (device_class=connectivity) for a
+     * C-Bus network's CNI/PCI link, once per network. ON = the interface is
+     * connected, OFF = the CNI/PCI link to the C-Bus network is down. Fed by the
+     * retained state topic cbus/read/{network}/cni/state (see cgateWebBridge).
+     *
+     * @param {string|number} networkId
+     * @returns {boolean} true if a new entity was published this call
+     */
+    ensureNetworkConnectivityDiscovery(networkId) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (networkId === null || networkId === undefined) return false;
+        const net = String(networkId);
+        if (this._cniDiscoverySeen.has(net)) return false;
+
+        const uniqueId = `cgateweb_${net}_cni`;
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const payload = {
+            name: 'CNI Connectivity',
+            unique_id: uniqueId,
+            device_class: 'connectivity',
+            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${net}/cni/state`,
+            payload_on: MQTT_STATE_ON,
+            payload_off: MQTT_STATE_OFF,
+            qos: 0,
+            device: {
+                identifiers: [`cgateweb_network_${net}`],
+                name: `C-Bus Network ${net}`,
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: 'C-Bus Network Interface',
+                via_device: HA_DEVICE_VIA
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
+            }
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.add(discoveryTopic);
+        this._cniDiscoverySeen.add(net);
+        this.discoveryCount++;
+        this.logger.info(`CNI connectivity binary_sensor published for network ${net}`);
+        return true;
+    }
+
     ensureNativeAirconDiscovery(network, appId, sourceUnit) {
         if (!this.settings.ha_discovery_enabled) return false;
         if (appId === null || appId === undefined || sourceUnit === null || sourceUnit === undefined) return false;

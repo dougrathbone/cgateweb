@@ -123,6 +123,9 @@ schema:
   stale_device_threshold_hours: "int(1,720)?"
   stale_device_check_interval_sec: "int(60,86400)?"
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification: "bool?"
+
   # ── Advanced: Connection Pool ──
   connection_pool_size: "int(1,10)?"
   connection_health_check_interval_sec: "int(5,300)?"

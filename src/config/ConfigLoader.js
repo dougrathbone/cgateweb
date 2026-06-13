@@ -286,6 +286,10 @@ class ConfigLoader {
             config.stale_device_check_interval_sec = options.stale_device_check_interval_sec;
         }
 
+        if (options.cni_offline_notification !== undefined && options.cni_offline_notification !== null) {
+            config.cni_offline_notification = options.cni_offline_notification === true;
+        }
+
         // Connection pool settings (advanced)
         if (options.connection_pool_size !== undefined) {
             config.connectionPoolSize = options.connection_pool_size;

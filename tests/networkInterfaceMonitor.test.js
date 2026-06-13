@@ -77,6 +77,14 @@ describe('NetworkInterfaceMonitor', () => {
         expect(snap.online).toBe(true); // unchanged by a State-only reading
     });
 
+    it('returns the online verdict and a changed flag for transitions', () => {
+        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: true, interfaceState: 'running' });
+        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: false, interfaceState: 'running' });
+        expect(monitor.update('254', { interfaceState: 'closed' })).toEqual({ online: false, changed: true, interfaceState: 'closed' });
+        // State-only reading doesn't change the InterfaceState-derived verdict
+        expect(monitor.update('254', { state: 'sync' })).toEqual({ online: false, changed: false, interfaceState: 'closed' });
+    });
+
     it('tracks multiple networks independently', () => {
         monitor.update('254', { interfaceState: 'running' });
         monitor.update('250', { interfaceState: 'closed' });

@@ -217,6 +217,12 @@ configuration:
     description: >-
       Hoe vaak bridge-diagnostiekstatussen worden vernieuwd. Standaard: 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: CNI-offline melding
+    description: >-
+      Een Home Assistant-melding tonen als de CNI/PCI-verbinding van een C-Bus-netwerk offline gaat, en deze verwijderen bij herverbinding. Vereist de Home Assistant add-on-omgeving. Standaard uitgeschakeld.
+
   # ── Detectie van verouderde apparaten ──
   stale_device_detection_enabled:
     name: Detectie van verouderde apparaten inschakelen

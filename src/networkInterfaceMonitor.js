@@ -34,6 +34,9 @@ class NetworkInterfaceMonitor {
      *
      * @param {string|number} networkId
      * @param {{interfaceState?: string, state?: string}} reading
+     * @returns {{online: ?boolean, changed: boolean, interfaceState: ?string}}
+     *          changed=true when the online verdict flipped (incl. first
+     *          definite reading), so callers can publish/notify on transitions.
      */
     update(networkId, reading = {}) {
         const id = String(networkId);
@@ -55,8 +58,9 @@ class NetworkInterfaceMonitor {
         const online = next.interfaceState === null ? prev.online : (next.interfaceState === RUNNING_STATE);
         const wasOnline = prev.online;
         next.online = online;
+        const changed = online !== wasOnline;
 
-        if (online !== wasOnline) {
+        if (changed) {
             next.since = ts;
             if (online === false) {
                 this.logger.warn(
@@ -69,6 +73,7 @@ class NetworkInterfaceMonitor {
         }
 
         this._networks.set(id, next);
+        return { online, changed, interfaceState: next.interfaceState };
     }
 
     /**

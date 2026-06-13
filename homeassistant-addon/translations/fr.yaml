@@ -226,6 +226,12 @@ configuration:
       Fréquence de rafraîchissement des états de diagnostic du bridge.
       Par défaut : 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: Notification CNI hors ligne
+    description: >-
+      Émettre une notification Home Assistant si le lien CNI/PCI d’un réseau C-Bus passe hors ligne, et la supprimer à la reconnexion. Nécessite l’environnement de module complémentaire Home Assistant. Désactivé par défaut.
+
   # ── Détection d'appareils inactifs ──
   stale_device_detection_enabled:
     name: Activer la détection d'appareils inactifs

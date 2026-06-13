@@ -214,6 +214,12 @@ configuration:
     description: >-
       Bridge 診断状態の更新頻度。デフォルト：60。
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: CNI オフライン通知
+    description: >-
+      C-Bus ネットワークの CNI/PCI リンクがオフラインになった場合に Home Assistant 通知を表示し、再接続時に解除します。Home Assistant アドオン環境が必要です。デフォルトは無効です。
+
   # ── 古いデバイスの検出 ──
   stale_device_detection_enabled:
     name: 古いデバイスの検出を有効化

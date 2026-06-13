@@ -240,6 +240,28 @@ describe('CgateWebBridge', () => {
             expect(net).toMatchObject({ network: '254', interfaceState: 'closed', online: false });
         });
 
+        it('publishes retained CNI connectivity state on a transition', () => {
+            const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' });
+            const offCall = publishSpy.mock.calls.find(c => c[0] === 'cbus/read/254/cni/state');
+            expect(offCall).toBeDefined();
+            expect(offCall[1]).toBe('OFF');
+            expect(offCall[2].retain).toBe(true);
+
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
+            const onCall = publishSpy.mock.calls.reverse().find(c => c[0] === 'cbus/read/254/cni/state');
+            expect(onCall[1]).toBe('ON');
+            publishSpy.mockRestore();
+        });
+
+        it('does not throw raising a CNI notification when SUPERVISOR_TOKEN is absent', () => {
+            const prev = process.env.SUPERVISOR_TOKEN;
+            delete process.env.SUPERVISOR_TOKEN;
+            bridge.settings.cni_offline_notification = true;
+            expect(() => bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' })).not.toThrow();
+            if (prev !== undefined) process.env.SUPERVISOR_TOKEN = prev;
+        });
+
 
         it('should set MQTT options based on retainreads setting', () => {
             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });

@@ -220,6 +220,12 @@ configuration:
       Con quale frequenza vengono aggiornati gli stati di diagnostica del
       bridge. Predefinito: 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: Notifica CNI offline
+    description: >-
+      Mostra una notifica di Home Assistant se il collegamento CNI/PCI di una rete C-Bus va offline e rimuovila alla riconnessione. Richiede l’ambiente add-on di Home Assistant. Disattivato per impostazione predefinita.
+
   # ── Rilevamento dispositivi inattivi ──
   stale_device_detection_enabled:
     name: Abilita rilevamento dispositivi inattivi

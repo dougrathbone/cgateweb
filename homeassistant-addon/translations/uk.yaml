@@ -216,6 +216,12 @@ configuration:
     description: >-
       Як часто оновлюються діагностичні стани bridge. За замовчуванням: 60.
 
+  # ── C-Bus Network (CNI) Monitoring ──
+  cni_offline_notification:
+    name: Сповіщення про офлайн CNI
+    description: >-
+      Показувати сповіщення Home Assistant, якщо зв’язок CNI/PCI мережі C-Bus переходить в офлайн, і відхиляти його після відновлення. Потребує середовища додатка Home Assistant. Вимкнено за замовчуванням.
+
   # ── Виявлення застарілих пристроїв ──
   stale_device_detection_enabled:
     name: Увімкнути виявлення застарілих пристроїв
