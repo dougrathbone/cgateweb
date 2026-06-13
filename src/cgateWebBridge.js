@@ -402,7 +402,7 @@ class CgateWebBridge {
         const reading = airconDecoder.decodeLine(line);
         if (reading && reading.application === String(appId)) {
             const group = reading.sourceUnit || reading.zoneGroup;
-            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state') {
+            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {
                 this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
             }
             if (reading.kind === 'mode' && reading.mode === null) {

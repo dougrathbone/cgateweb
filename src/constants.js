@@ -43,6 +43,7 @@ const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP = 'current_temperature'; // Current te
 const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target temperature setpoint
 const MQTT_TOPIC_SUFFIX_HVAC_MODE = 'mode';                        // HVAC operating mode
 const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan speed/mode
+const MQTT_TOPIC_SUFFIX_HVAC_ACTION = 'action';                   // Current running action (heating/cooling/fan/idle)
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 
@@ -175,6 +176,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_ACTION,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_RETAINED_STATE_OPTIONS,

@@ -811,6 +811,22 @@ describe('CgateWebBridge', () => {
                 publishSpy.mockRestore();
             });
 
+            it('should publish hvac_action to a sourceUnit-keyed topic for a zone_hvac_plant_status line', () => {
+                // Real capture 2026-06-11: bitmask 14 = heating+fan+damper, not busy → action heating
+                const REAL_PLANT_STATUS_201 = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 14 0 #sourceunit=201 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(REAL_PLANT_STATUS_201);
+
+                const actionPublish = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/172/201/action'
+                );
+                expect(actionPublish).toBeDefined();
+                expect(actionPublish[1]).toBe('heating');
+
+                publishSpy.mockRestore();
+            });
+
             it('should log a warning for unknown mode codes and still consume the line', () => {
                 const warnSpy = jest.spyOn(bridge.logger, 'warn');
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');

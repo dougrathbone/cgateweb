@@ -10,6 +10,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_ACTION,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -252,6 +253,13 @@ class EventPublisher {
             this._publishIfNeeded(
                 `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
                 reading.on ? 'ON' : 'OFF',
+                this.mqttOptions
+            );
+        } else if (reading.kind === 'action') {
+            // Live plant running state → Home Assistant climate hvac_action.
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
+                reading.action,
                 this.mqttOptions
             );
         }

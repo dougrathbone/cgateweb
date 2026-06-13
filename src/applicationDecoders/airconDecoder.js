@@ -4,10 +4,11 @@ const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
  * C-Bus Air Conditioning application (172 / $AC) line decoder.
  *
  * Decodes the following verbs from the C-Gate event stream:
- *   - zone_temperature  → { kind:'temperature', …, celsius, unit:'C' }
- *   - set_zone_hvac_mode → { kind:'mode', …, mode, modeRaw, setpoint }
- *   - set_ward_on       → { kind:'state', …, on:true }
- *   - set_ward_off      → { kind:'state', …, on:false }
+ *   - zone_temperature      → { kind:'temperature', …, celsius, unit:'C' }
+ *   - set_zone_hvac_mode    → { kind:'mode', …, mode, modeRaw, setpoint }
+ *   - set_ward_on           → { kind:'state', …, on:true }
+ *   - set_ward_off          → { kind:'state', …, on:false }
+ *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy, action }
  *
  * Temperature encoding: °C = rawTemp / 256
  * Setpoint encoding:    °C = rawSetpoint / 256 (null when rawSetpoint === 0)
@@ -20,9 +21,10 @@ const appId = DEFAULT_CBUS_APP_AIRCON;
 
 /**
  * HVAC mode map: C-Bus integer code → HA climate mode string.
- * Verified from real captures: 0=off, 1=heat.
- * 2/3/4 are the standard C-Bus Air Conditioning codes, best-effort
- * (not yet seen on real hardware). Unknown codes → null (caller should warn).
+ * All codes verified against real PICED captures (2026-06-11, units 201/202
+ * cycled through every mode): 0=off, 1=heat, 2=cool, 3=auto, 4=fan_only.
+ * PICED labels code 3 "Heat/Cool (Auto)"; we publish HA mode "auto".
+ * Unknown codes → null (caller should warn).
  */
 const HVAC_MODE_BY_CODE = { 0: 'off', 1: 'heat', 2: 'cool', 3: 'auto', 4: 'fan_only' };
 
@@ -100,6 +102,10 @@ function decodeLine(line) {
         return decodeWardState({ network, application, params, sourceUnit, verb });
     }
 
+    if (verb === 'zone_hvac_plant_status') {
+        return decodeZonePlantStatus({ network, application, params, sourceUnit, verb });
+    }
+
     return null;
 }
 
@@ -149,13 +155,49 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
         ? HVAC_MODE_BY_CODE[modeRaw]
         : null;
 
-    // f6 is at params index 8 (zoneGroup + zones + f0..f5 = 8 items before f6)
+    // f6 is at params index 8 (zoneGroup + zones + f0..f5 = 8 items before f6).
+    // Setpoint raw is °C × 256. Fan Only mode (and some idle states) send the
+    // 0x7F00 (32512) "no setpoint" sentinel — guard with a plausible-range check
+    // (>0 °C and ≤ 50 °C) so we never publish a bogus 127 °C target.
     const f6Raw = parseInt(params[8], 10);
-    const setpoint = (Number.isInteger(f6Raw) && f6Raw > 0)
+    const setpoint = (Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 12800)
         ? Math.round(f6Raw / 256 * 10) / 10
         : null;
 
     return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, verb };
+}
+
+/**
+ * Decode a zone_hvac_plant_status event — the live plant running state.
+ * Params layout: [zoneGroup, zoneList, statusValid, bitmask, reserved]
+ *   bitmask bits: 1=cooling, 2=heating, 4=fan, 8=damper, 32=busy
+ *   (heating/fan/damper/busy verified against PICED text in the 2026-06-11
+ *    captures; cooling=bit0 is inferred by position — the plant never asserted
+ *    cooling in the capture, so that bit is best-effort.)
+ *
+ * Derives `action` for Home Assistant's climate hvac_action:
+ *   cooling → 'cooling', else heating → 'heating', else fan → 'fan', else 'idle'.
+ *
+ * @private
+ */
+function decodeZonePlantStatus({ network, application, params, sourceUnit, verb }) {
+    // Need at least zoneGroup, zones, statusValid, bitmask
+    if (params.length < 4) return null;
+
+    const zoneGroup = params[0];
+    const zones = params[1];
+    const bits = parseInt(params[3], 10);
+    if (!Number.isInteger(bits)) return null;
+
+    const cooling = (bits & 1) !== 0;
+    const heating = (bits & 2) !== 0;
+    const fan = (bits & 4) !== 0;
+    const damper = (bits & 8) !== 0;
+    const busy = (bits & 32) !== 0;
+
+    const action = cooling ? 'cooling' : heating ? 'heating' : fan ? 'fan' : 'idle';
+
+    return { kind: 'action', network, application, zoneGroup, zones, sourceUnit, cooling, heating, fan, damper, busy, action, verb };
 }
 
 /**
