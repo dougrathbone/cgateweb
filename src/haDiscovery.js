@@ -666,105 +666,139 @@ class HaDiscovery {
     }
 
     _processLightingGroups(networkId, appId, groups) {
-        const { labelMap, typeOverrides, entityIds, exclude, areas } = this._labelSnapshot;
         const groupArray = Array.isArray(groups) ? groups : [groups];
-        
-        groupArray.forEach(group => {
-            const groupId = group.GroupAddress;
-            if (groupId === undefined || groupId === null || groupId === '') {
-                this.logger.warn(`Skipping lighting group in HA Discovery due to missing/invalid GroupAddress`, { group });
-                return;
+        for (const group of groupArray) {
+            this._processOneLightingGroup(networkId, appId, group);
+        }
+    }
+
+    /**
+     * Discover a single lighting-application group: skip invalid/excluded
+     * groups, publish a typed entity (cover/switch/HVAC/…) when the label or a
+     * manual override resolves to a non-light type, otherwise publish a light.
+     * @private
+     */
+    _processOneLightingGroup(networkId, appId, group) {
+        const { labelMap, entityIds, exclude, areas } = this._labelSnapshot;
+
+        const groupId = group.GroupAddress;
+        if (groupId === undefined || groupId === null || groupId === '') {
+            this.logger.warn(`Skipping lighting group in HA Discovery due to missing/invalid GroupAddress`, { group });
+            return;
+        }
+
+        const labelKey = `${networkId}/${appId}/${groupId}`;
+        if (exclude.has(labelKey)) {
+            this.logger.debug(`Excluding group ${labelKey} from discovery`);
+            return;
+        }
+
+        // A manual override or auto-classification can turn a lighting group into
+        // a cover/switch/HVAC/etc. entity; that path also clears any stale light
+        // config and we're done.
+        if (this._tryCreateTypedEntity(networkId, appId, groupId, group, labelKey)) {
+            return;
+        }
+
+        // Default: a dimmable light entity.
+        const customLabel = labelMap.get(labelKey);
+        const groupLabel = group.Label;
+        const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
+        if (customLabel) this.labelStats.custom++;
+        else if (groupLabel) this.labelStats.treexml++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const entityId = entityIds.get(labelKey);
+        const area = areas && areas.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(HA_COMPONENT_LIGHT, entityId)),
+            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
+            brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
+            brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
+            brightness_scale: 100,
+            on_command_type: 'brightness',
+            payload_on: MQTT_STATE_ON,
+            payload_off: MQTT_STATE_OFF,
+            state_value_template: '{{ value }}',
+            brightness_value_template: '{{ value }}',
+            qos: 0,
+            // command topics must NOT be retained: a retained command replays to
+            // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
+            device: {
+                identifiers: [uniqueId],
+                name: finalLabel,
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: HA_MODEL_LIGHTING,
+                via_device: HA_DEVICE_VIA,
+                ...(area && { suggested_area: area })
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
             }
+        };
 
-            const labelKey = `${networkId}/${appId}/${groupId}`;
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
+        this.discoveryCount++;
+    }
 
-            if (exclude.has(labelKey)) {
-                this.logger.debug(`Excluding group ${labelKey} from discovery`);
-                return;
-            }
+    /**
+     * If the group's resolved type (manual override first, else
+     * auto-classification) is a non-light type, publish that entity, clear any
+     * stale retained light config, and return true. Returns false to fall
+     * through to light discovery.
+     *
+     * Manual type_overrides have absolute priority; auto-detection only fills in
+     * when there is no override and never returns 'light'. Application-id
+     * mappings are handled in _processEnableControlGroups, not here.
+     * @private
+     */
+    _tryCreateTypedEntity(networkId, appId, groupId, group, labelKey) {
+        const { labelMap, typeOverrides } = this._labelSnapshot;
+        const labelForClassification = labelMap.get(labelKey) || group.Label || '';
+        const resolvedType = typeOverrides.get(labelKey) || classifyLightingGroup(labelForClassification, this.settings);
 
-            // Resolve an effective type. Manual type_overrides have absolute
-            // priority; auto-detection only fills in when there is no override
-            // and only ever upgrades the lighting fallback (it never returns
-            // 'light'). Application-id mappings are handled in
-            // _processEnableControlGroups and never reach this lighting path.
-            const labelForClassification = labelMap.get(labelKey) || group.Label || '';
-            let resolvedType = typeOverrides.get(labelKey);
-            if (!resolvedType) {
-                resolvedType = classifyLightingGroup(labelForClassification, this.settings);
-            }
-            if (resolvedType && resolvedType !== 'light') {
-                const config = getDiscoveryConfig(resolvedType);
-                if (config) {
-                    this.logger.debug(`Resolved type: ${labelKey} -> ${resolvedType}`);
-                    if (config.isHvac) {
-                        // HVAC needs the dedicated climate payload (temperature/mode
-                        // topics); the generic builder would publish a broken
-                        // climate entity with no thermostat controls.
-                        this._createHvacDiscovery(networkId, appId, groupId, group.Label);
-                    } else {
-                        this._createDiscovery(networkId, appId, groupId, group.Label, config);
-                    }
-                    // Remove any stale retained light config for this group.
-                    // This covers the case where the type changes within the same session
-                    // (e.g. first run saw it as a light; this run resolves a non-light type).
-                    const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-                    const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-                    this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
-                    // Ensure the stale light topic is not retained in _publishedTopics
-                    this._publishedTopics.delete(staleTopic);
-                    return;
-                }
-                this.logger.warn(`Unknown resolved type "${resolvedType}" for ${labelKey}, falling back to light`);
-            }
+        if (!resolvedType || resolvedType === 'light') {
+            return false;
+        }
 
-            const customLabel = labelMap.get(labelKey);
-            const groupLabel = group.Label;
-            const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
-            if (customLabel) this.labelStats.custom++;
-            else if (groupLabel) this.labelStats.treexml++;
-            else this.labelStats.fallback++;
-            const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-            const entityId = entityIds.get(labelKey);
-            const area = areas && areas.get(labelKey);
-            const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const config = getDiscoveryConfig(resolvedType);
+        if (!config) {
+            this.logger.warn(`Unknown resolved type "${resolvedType}" for ${labelKey}, falling back to light`);
+            return false;
+        }
 
-            const payload = {
-                name: null,
-                unique_id: uniqueId,
-                ...(entityId && entityIdFields(HA_COMPONENT_LIGHT, entityId)),
-                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
-                brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
-                brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
-                brightness_scale: 100,
-                on_command_type: 'brightness',
-                payload_on: MQTT_STATE_ON,
-                payload_off: MQTT_STATE_OFF,
-                state_value_template: '{{ value }}',
-                brightness_value_template: '{{ value }}',
-                qos: 0,
-                // command topics must NOT be retained: a retained command replays to
-                // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
-                device: {
-                    identifiers: [uniqueId],
-                    name: finalLabel,
-                    manufacturer: HA_DEVICE_MANUFACTURER,
-                    model: HA_MODEL_LIGHTING,
-                    via_device: HA_DEVICE_VIA,
-                    ...(area && { suggested_area: area })
-                },
-                origin: {
-                    name: HA_ORIGIN_NAME,
-                    sw_version: HA_ORIGIN_SW_VERSION,
-                    support_url: HA_ORIGIN_SUPPORT_URL
-                }
-            };
+        this.logger.debug(`Resolved type: ${labelKey} -> ${resolvedType}`);
+        if (config.isHvac) {
+            // HVAC needs the dedicated climate payload (temperature/mode topics);
+            // the generic builder would publish a climate entity with no controls.
+            this._createHvacDiscovery(networkId, appId, groupId, group.Label);
+        } else {
+            this._createDiscovery(networkId, appId, groupId, group.Label, config);
+        }
+        this._clearStaleLightConfig(networkId, appId, groupId);
+        return true;
+    }
 
-            this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-            if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
-            this.discoveryCount++;
-        });
+    /**
+     * Remove a stale retained light discovery config for a group that has
+     * resolved to a non-light type (e.g. it was published as a light on an
+     * earlier run, before an override/classification changed it).
+     * @private
+     */
+    _clearStaleLightConfig(networkId, appId, groupId) {
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.delete(staleTopic);
     }
 
     _processEnableControlGroups(networkId, appAddress, groups) {
