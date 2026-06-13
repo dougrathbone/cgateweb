@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-06-13
+
+### Added
+
+- **C-Bus network / CNI connectivity on the status page.** cgateweb now detects when the CNI (or PCI) link between C-Gate and the C-Bus network drops — an outage that was previously invisible because C-Gate keeps its connection to cgateweb up the whole time. It polls each network's interface state (read-only) and shows a **"C-Bus Networks (CNI)"** indicator on the status page (highlighted when a link is down), and logs a warning on dropout and an info message on recovery. Poll interval is configurable via `cniMonitorIntervalMs` (default 30s; set to 0 to disable).
+
 ## [1.12.1] - 2026-06-13
 
 ### Fixed
