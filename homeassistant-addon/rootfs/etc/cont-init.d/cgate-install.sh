@@ -2,6 +2,12 @@
 # ==============================================================================
 # Install C-Gate if running in managed mode
 # ==============================================================================
+# Strict-ish mode: -u catches unset-variable typos and pipefail surfaces
+# mid-pipeline failures. We deliberately omit -e here: this installer already
+# checks and exits explicitly at every step, and -e interacts badly with the
+# `find ... | head` command substitutions (SIGPIPE) and the default-less
+# bashio::config calls below. The short service scripts use full `set -euo pipefail`.
+set -uo pipefail
 
 CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
 

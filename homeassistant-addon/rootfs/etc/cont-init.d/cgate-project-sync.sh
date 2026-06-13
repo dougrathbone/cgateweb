@@ -6,6 +6,7 @@
 # without rebuilding the C-Gate image. Uses `cp -u` so we never clobber a
 # newer .db that running C-Gate may have written.
 # ==============================================================================
+set -euo pipefail
 
 # Paths are overridable for unit tests.
 SHARE_TAG_DIR="${CGATEWEB_SHARE_TAG_DIR:-/share/cgate/tag}"
