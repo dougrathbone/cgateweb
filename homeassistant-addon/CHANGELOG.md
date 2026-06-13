@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.1] - 2026-06-13
+
+### Fixed
+
+- **Air Conditioning option now translated in every language.** The `cbus_aircon_app_id` setting (added in 1.11.0) was only present in English, so non-English users saw an untranslated label. Added translations for all 16 other supported languages.
+- **Hardened the label edit API.** `PATCH /api/labels` now skips prototype-polluting keys (`__proto__`/`constructor`/`prototype`) from request bodies as defence in depth.
+
+### Changed
+
+- **Web UI timeouts are now tunable.** Three previously-hardcoded web-server values are configurable settings (defaults unchanged): the diagnostics "active device" window (`web_active_device_window_ms`), the HA areas cache TTL (`web_ha_areas_cache_ttl_ms`), and the HA Supervisor API timeout (`web_ha_api_timeout_ms`).
+
 ## [1.12.0] - 2026-06-13
 
 ### Added
