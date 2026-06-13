@@ -278,6 +278,9 @@ class WebServer {
         try {
             const existing = this.labelLoader.getLabelsObject();
             for (const [key, value] of Object.entries(patch)) {
+                // Defence in depth: never let untrusted input write prototype-
+                // polluting keys, even though label values are strings.
+                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
                 if (value === null || value === '') {
                     delete existing[key];
                 } else {

@@ -213,6 +213,22 @@ describe('WebServer', () => {
             expect(res.body.labels['254/56/10']).toBeUndefined();
             expect(res.body.labels['254/56/11']).toBe('Living Room');
         });
+
+        it('ignores prototype-polluting keys and does not pollute Object.prototype', async () => {
+            const res = await request('PATCH', '/api/labels',
+                JSON.stringify({ '__proto__': 'x', 'constructor': 'y', 'prototype': 'z', '254/56/13': 'Hall' }));
+
+            expect(res.status).toBe(200);
+            // The legitimate key is written; the dangerous ones are skipped (no own props).
+            expect(res.body.labels['254/56/13']).toBe('Hall');
+            const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+            expect(hasOwn(res.body.labels, '__proto__')).toBe(false);
+            expect(hasOwn(res.body.labels, 'constructor')).toBe(false);
+            expect(hasOwn(res.body.labels, 'prototype')).toBe(false);
+            // Nothing leaked onto the global prototype.
+            expect(({}).x).toBeUndefined();
+            expect(({}).y).toBeUndefined();
+        });
     });
 
     describe('GET /api/status', () => {
