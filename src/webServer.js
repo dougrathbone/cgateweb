@@ -68,6 +68,15 @@ class WebServer {
         this.maxBodySizeBytes = Number.isFinite(options.maxBodySizeBytes) && options.maxBodySizeBytes > 0
             ? options.maxBodySizeBytes
             : DEFAULT_MAX_BODY_SIZE;
+        this.activeDeviceWindowMs = Number.isFinite(options.activeDeviceWindowMs) && options.activeDeviceWindowMs > 0
+            ? options.activeDeviceWindowMs
+            : 86400000;
+        this.haAreasCacheTtlMs = Number.isFinite(options.haAreasCacheTtlMs) && options.haAreasCacheTtlMs > 0
+            ? options.haAreasCacheTtlMs
+            : 30000;
+        this.haApiTimeoutMs = Number.isFinite(options.haApiTimeoutMs) && options.haApiTimeoutMs > 0
+            ? options.haApiTimeoutMs
+            : 5000;
         this._mutationRequestLog = new Map();
         this._haAreasCache = null;
         this._haAreasCacheTime = 0;
@@ -450,7 +459,7 @@ class WebServer {
             labels: { count: labelCount },
             devices: {
                 total: devices.length,
-                active: devices.filter(d => d.lastSeen > Date.now() - 86400000).length,
+                active: devices.filter(d => d.lastSeen > Date.now() - this.activeDeviceWindowMs).length,
                 list: devices.slice(0, 200)
             },
             recentEvents: recentEvents.length
@@ -475,11 +484,10 @@ class WebServer {
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
         if (supervisorToken) {
             const now = Date.now();
-            if (this._haAreasCache && now - this._haAreasCacheTime < 30000) {
+            if (this._haAreasCache && now - this._haAreasCacheTime < this.haAreasCacheTtlMs) {
                 haAreas = this._haAreasCache;
             } else {
                 try {
-                    const http = require('http');
                     const data = await new Promise((resolve) => {
                         const tmpl = '{{ areas() | map("area_name") | list | to_json }}';
                         const postBody = JSON.stringify({ template: tmpl });
@@ -490,7 +498,7 @@ class WebServer {
                                 'Content-Type': 'application/json',
                                 'Content-Length': Buffer.byteLength(postBody)
                             },
-                            timeout: 5000
+                            timeout: this.haApiTimeoutMs
                         }, (resp) => {
                             let body = '';
                             resp.on('data', (chunk) => { body += chunk; });

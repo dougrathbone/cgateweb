@@ -76,6 +76,13 @@ const defaultSettings = {
     web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120,
+    // Web diagnostics: window (ms) within which a device counts as "active" in
+    // the status page's device list. Default 24h.
+    web_active_device_window_ms: 24 * 60 * 60 * 1000,
+    // TTL (ms) for the cached Home Assistant areas list (Supervisor template API).
+    web_ha_areas_cache_ttl_ms: 30000,
+    // Timeout (ms) for outbound calls to the HA Supervisor API from the web UI.
+    web_ha_api_timeout_ms: 5000,
     relativeLevelTimeoutMs: 5000,
     // HA Discovery TreeXML retry tuning. C-Gate accepts connections on the
     // command port before its networks are loaded, so an initial TREEXML can

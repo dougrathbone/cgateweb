@@ -480,6 +480,25 @@ describe('WebServer', () => {
             expect(defaultBody.maxBodySizeBytes).toBe(10 * 1024 * 1024);
         });
 
+        it('honors web timeout/window overrides and falls back to documented defaults', () => {
+            const custom = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({}),
+                activeDeviceWindowMs: 3600000,
+                haAreasCacheTtlMs: 5000,
+                haApiTimeoutMs: 1000
+            });
+            expect(custom.activeDeviceWindowMs).toBe(3600000);
+            expect(custom.haAreasCacheTtlMs).toBe(5000);
+            expect(custom.haApiTimeoutMs).toBe(1000);
+
+            const defaults = new WebServer({ port: 0, labelLoader, getStatus: () => ({}) });
+            expect(defaults.activeDeviceWindowMs).toBe(86400000);
+            expect(defaults.haAreasCacheTtlMs).toBe(30000);
+            expect(defaults.haApiTimeoutMs).toBe(5000);
+        });
+
         it('should reject mutating routes by default when no API key is configured', async () => {
             const defaultServer = new WebServer({
                 port: 0,
