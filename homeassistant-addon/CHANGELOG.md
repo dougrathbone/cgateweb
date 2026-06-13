@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.4] - 2026-06-13
+
+### Fixed
+
+- **Air Conditioning (172): no bogus setpoint in Fan Only mode.** In Fan Only mode the thermostat reports the `0x7F00` (32512) "no setpoint" sentinel; cgateweb was decoding this as a spurious 127 °C target. The setpoint is now correctly omitted when outside the plausible range (>0 °C and ≤50 °C). Only affects the opt-in `cbus_aircon_app_id` feature.
+
+### Added
+
+- **Air Conditioning (172): live running action (`hvac_action`).** cgateweb now decodes the `zone_hvac_plant_status` broadcast and publishes the plant's current activity to `cbus/read/{network}/172/{sourceUnit}/action` (`heating`/`cooling`/`fan`/`idle`) — suitable for a Home Assistant climate entity's `hvac_action`.
+- **Verified HVAC mode codes.** The `cool` (2), `auto`/heat-cool (3) and `fan_only` (4) operating modes — previously best-effort — are now confirmed against real thermostat captures (Clipsal 5070THP / 5070THB).
+
 ## [1.11.3] - 2026-06-10
 
 ### Added
