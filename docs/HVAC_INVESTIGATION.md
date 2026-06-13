@@ -20,15 +20,16 @@ cgateweb has **two unrelated HVAC paths**. Confusing them wastes time.
 | Source | Real C-Bus AC app `aircon …` event verbs | A lighting-style app where a PAC/touchscreen mirrors HVAC onto lighting groups |
 | Temp encoding | `°C = raw / 256` (decoded from `zone_temperature`) | level 0–255 mapped to a temperature via template |
 | Keyed by | **source unit** (the thermostat unit addr, e.g. 201/202) | **group** address |
-| HA climate entity | **not yet auto-created** (publishes raw topics only) | auto-created by `_createHvacDiscovery` |
-| Code | `src/applicationDecoders/airconDecoder.js` | `src/haDiscovery.js` `_createHvacDiscovery` |
+| HA climate entity | **auto-created, read-only** (event-driven, keyed by source unit) | auto-created by `_createHvacDiscovery` (group-keyed) |
+| Code | `airconDecoder.js` + `haDiscovery.ensureNativeAirconDiscovery` | `src/haDiscovery.js` `_createHvacDiscovery` |
 
-**Known gap:** the native path publishes to `cbus/read/{net}/172/{sourceUnit}/…`, but
-`_createHvacDiscovery` (`src/haDiscovery.js:812`) builds its climate entity keyed by
-**group** (`cbus/read/{net}/{app}/{group}/…`) for the via-lighting pattern. So enabling
-`ha_discovery_hvac_app_id=172` does **not** produce a working entity for native
-thermostats — the topics don't line up. Closing this (a native climate entity keyed by
-source unit) is the main outstanding work — see §7.
+**History / why two paths:** the native path publishes to
+`cbus/read/{net}/172/{sourceUnit}/…`, but `_createHvacDiscovery` builds its climate
+entity keyed by **group** for the via-lighting pattern — so enabling
+`ha_discovery_hvac_app_id=172` never produced a working entity for native thermostats.
+This is now solved by a dedicated **event-driven** discovery for the native path
+(`ensureNativeAirconDiscovery`, see §7.1) that keys entities by source unit. The entity
+is currently **read-only**; write control is pending (§7.2).
 
 ---
 
@@ -184,13 +185,13 @@ C-Gate event line
 
 ## 7. Known gaps / future work
 
-1. **Native HVAC auto-discovery (biggest item).** Emit one HA `climate` entity per
-   thermostat (keyed by `sourceUnit`), pointing at the §4 topics incl. `action`, with the
-   verified mode list. This is what makes thermostats appear in HA — the via-lighting
-   `_createHvacDiscovery` does not serve the native path (§1).
-   **Decision (2026-06-13): event-driven auto-create** (publish the climate config the
-   first time a thermostat's source unit is seen in the aircon stream), **with read+write
-   control**; Karl to beta-test.
+1. **Native HVAC auto-discovery — DONE (read-only), shipped 1.12.0.**
+   `haDiscovery.ensureNativeAirconDiscovery` publishes one HA `climate` entity per
+   thermostat the first time its source unit is seen in the aircon stream (event-driven,
+   keyed by `sourceUnit`), wired to the §4 state topics incl. `action`, with the verified
+   mode list. Triggered from `cgateWebBridge._handleAirconLine`; gated on
+   `ha_discovery_enabled` + `cbus_aircon_app_id`. **Read-only** — command topics are
+   intentionally omitted until §7.2 is resolved.
 2. **Write/control command format — UNRESOLVED (blocker for the write half).** The existing
    handlers `_handleHvacSetpoint` / `_handleHvacMode` (`src/mqttCommandRouter.js:539/575`)
    emit a lighting **`RAMP`** command (`level = temp × 2`). That is the *via-lighting*

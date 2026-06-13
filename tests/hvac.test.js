@@ -420,6 +420,91 @@ describe('HaDiscovery — HVAC climate entity discovery', () => {
 });
 
 // ============================================================
+// HaDiscovery — native Air Conditioning (172) event-driven discovery
+// ============================================================
+
+describe('HaDiscovery — native Air Conditioning (172) event-driven discovery', () => {
+    let haDiscovery;
+    let mockPublishFn;
+
+    beforeEach(() => {
+        mockPublishFn = jest.fn();
+        haDiscovery = new HaDiscovery(
+            {
+                ha_discovery_enabled: true,
+                ha_discovery_prefix: 'homeassistant',
+                ha_hvac_temperature_unit: 'C'
+            },
+            mockPublishFn,
+            jest.fn(),
+            {
+                labels: new Map([['254/172/202', 'Master Bedroom AC']]),
+                exclude: new Set(['254/172/250'])
+            }
+        );
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    afterEach(() => jest.restoreAllMocks());
+
+    test('publishes a climate entity the first time a thermostat unit is seen, keyed by source unit', () => {
+        const published = haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        expect(published).toBe(true);
+
+        const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_201/config');
+        expect(call).toBeDefined();
+        const payload = JSON.parse(call[1]);
+        expect(payload.current_temperature_topic).toBe('cbus/read/254/172/201/current_temperature');
+        expect(payload.temperature_state_topic).toBe('cbus/read/254/172/201/setpoint');
+        expect(payload.mode_state_topic).toBe('cbus/read/254/172/201/mode');
+        expect(payload.action_topic).toBe('cbus/read/254/172/201/action');
+        expect(payload.modes).toEqual(['off', 'heat', 'cool', 'auto', 'fan_only']);
+        expect(payload.temperature_unit).toBe('C');
+    });
+
+    test('is read-only (no command topics) until the native 172 write format is verified', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const call = mockPublishFn.mock.calls.find(c => c[0].includes('/climate/'));
+        const payload = JSON.parse(call[1]);
+        expect(payload.temperature_command_topic).toBeUndefined();
+        expect(payload.mode_command_topic).toBeUndefined();
+    });
+
+    test('publishes only once per unit (idempotent across repeated events)', () => {
+        expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(true);
+        expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(false);
+        const climateCalls = mockPublishFn.mock.calls.filter(c => c[0].includes('/climate/'));
+        expect(climateCalls).toHaveLength(1);
+    });
+
+    test('creates distinct entities for two thermostats sharing a zone group', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '202');
+        const topics = mockPublishFn.mock.calls.map(c => c[0]);
+        expect(topics).toContain('homeassistant/climate/cgateweb_254_172_201/config');
+        expect(topics).toContain('homeassistant/climate/cgateweb_254_172_202/config');
+    });
+
+    test('uses a custom label for the device name when one is configured', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '202');
+        const call = mockPublishFn.mock.calls.find(c => c[0].includes('cgateweb_254_172_202'));
+        expect(JSON.parse(call[1]).device.name).toBe('Master Bedroom AC');
+    });
+
+    test('respects the exclude list', () => {
+        expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '250')).toBe(false);
+        expect(mockPublishFn).not.toHaveBeenCalled();
+    });
+
+    test('does nothing when ha_discovery_enabled is false', () => {
+        haDiscovery.settings.ha_discovery_enabled = false;
+        expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(false);
+        expect(mockPublishFn).not.toHaveBeenCalled();
+    });
+});
+
+// ============================================================
 // MqttCommandRouter — HVAC command routing
 // ============================================================
 

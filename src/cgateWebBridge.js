@@ -405,6 +405,12 @@ class CgateWebBridge {
             if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {
                 this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
             }
+            // Event-driven HA discovery: announce the thermostat (keyed by source unit)
+            // the first time we see it. ensureNativeAirconDiscovery is idempotent and
+            // gated on ha_discovery_enabled internally.
+            if (this.haDiscovery && reading.sourceUnit) {
+                this.haDiscovery.ensureNativeAirconDiscovery(reading.network, reading.application, reading.sourceUnit);
+            }
             if (reading.kind === 'mode' && reading.mode === null) {
                 this.logger.warn(
                     'Unmapped C-Bus HVAC mode code ' + reading.modeRaw +

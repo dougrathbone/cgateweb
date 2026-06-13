@@ -16,6 +16,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_ACTION,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
@@ -96,6 +97,12 @@ class HaDiscovery {
         // HA Discovery config payload so we don't republish it on every
         // transition. networkId -> { status, configPublished }
         this._networkDiscoveryEntities = new Map();
+
+        // Native Air Conditioning (172) thermostats are discovered event-driven
+        // (not from TREEXML) — the first time a thermostat's source unit appears
+        // in the aircon stream we publish its climate entity once. Tracks
+        // "network/app/sourceUnit" keys already published this session.
+        this._nativeAirconSeen = new Set();
     }
 
     /**
@@ -783,6 +790,105 @@ class HaDiscovery {
                 this._createDiscovery(networkId, appAddress, groupId, group.Label, getDiscoveryConfig(discoveryType));
             }
         });
+    }
+
+    /**
+     * Event-driven discovery for native C-Bus Air Conditioning (172) thermostats.
+     * Called whenever an aircon reading with a source unit is decoded; publishes
+     * the thermostat's HA climate entity the first time that unit is seen.
+     *
+     * Distinct from {@link _createHvacDiscovery} (the HVAC-via-lighting pattern):
+     * here entities are keyed by **source unit** to match the native decoder's
+     * topics (cbus/read/{net}/172/{sourceUnit}/…), and there is no TREEXML group
+     * to enumerate from — thermostats announce themselves on the bus.
+     *
+     * @param {string} network
+     * @param {string|number} appId      - aircon app id (e.g. 172)
+     * @param {string|number} sourceUnit - thermostat unit address (e.g. 201)
+     * @returns {boolean} true if a new climate entity was published this call
+     */
+    ensureNativeAirconDiscovery(network, appId, sourceUnit) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (appId === null || appId === undefined || sourceUnit === null || sourceUnit === undefined) return false;
+
+        const key = `${network}/${appId}/${sourceUnit}`;
+        if (this._nativeAirconSeen.has(key)) return false;
+
+        if (this.exclude.has(key)) {
+            this.logger.debug(`Excluding native HVAC unit ${key} from discovery`);
+            this._nativeAirconSeen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        this._createNativeAirconDiscovery(String(network), String(appId), String(sourceUnit));
+        this._nativeAirconSeen.add(key);
+        return true;
+    }
+
+    /**
+     * Build and publish the climate discovery payload for one native AC thermostat.
+     *
+     * Read-only for now: current temperature, setpoint, mode and running action
+     * are wired as state topics, but command topics are intentionally omitted
+     * until the native 172 write-command format is verified against hardware
+     * (see docs/HVAC_INVESTIGATION.md §7). Adding control later means adding the
+     * temperature_command_topic / mode_command_topic here.
+     *
+     * @private
+     */
+    _createNativeAirconDiscovery(networkId, appId, sourceUnit) {
+        const labelKey = `${networkId}/${appId}/${sourceUnit}`;
+        const customLabel = this.labelMap.get(labelKey);
+        const finalLabel = customLabel || `CBus HVAC ${networkId}/${appId}/${sourceUnit}`;
+        if (customLabel) this.labelStats.custom++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${sourceUnit}`;
+        const entityId = this.entityIds.get(labelKey);
+        const area = this.areas && this.areas.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${sourceUnit}`;
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(HA_COMPONENT_CLIMATE, entityId)),
+
+            // State topics published by the native aircon decoder (read-only).
+            current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+            temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+            mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+            action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
+
+            // Verified against real hardware (captures 2026-06-11).
+            modes: ['off', 'heat', 'cool', 'auto', 'fan_only'],
+
+            temperature_unit: temperatureUnit,
+            min_temp: 0,
+            max_temp: 50,
+            temp_step: 0.5,
+
+            qos: 0,
+            device: {
+                identifiers: [uniqueId],
+                name: finalLabel,
+                manufacturer: HA_DEVICE_MANUFACTURER,
+                model: 'C-Bus Air Conditioning Thermostat',
+                via_device: HA_DEVICE_VIA,
+                ...(area && { suggested_area: area })
+            },
+            origin: {
+                name: HA_ORIGIN_NAME,
+                sw_version: HA_ORIGIN_SW_VERSION,
+                support_url: HA_ORIGIN_SUPPORT_URL
+            }
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.add(discoveryTopic);
+        this.discoveryCount++;
+        this.logger.info(`Native HVAC climate entity published: ${labelKey} (${finalLabel})`);
     }
 
     /**

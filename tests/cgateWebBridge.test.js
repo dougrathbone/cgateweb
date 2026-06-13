@@ -827,6 +827,15 @@ describe('CgateWebBridge', () => {
                 publishSpy.mockRestore();
             });
 
+            it('triggers native HVAC auto-discovery for the thermostat source unit', () => {
+                bridge.haDiscovery = { ensureNativeAirconDiscovery: jest.fn() };
+                bridge.settings.ha_discovery_enabled = true;
+
+                bridge._processEventLine(AIRCON_TEMP_LINE); // sourceunit=250, net 254, app 172
+
+                expect(bridge.haDiscovery.ensureNativeAirconDiscovery).toHaveBeenCalledWith('254', '172', '250');
+            });
+
             it('should log a warning for unknown mode codes and still consume the line', () => {
                 const warnSpy = jest.spyOn(bridge.logger, 'warn');
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
