@@ -90,6 +90,13 @@ Handles general automation triggers and sensors.
 - `trigger on <network>/<app>/<group>` - Trigger activated
 - `trigger off <network>/<app>/<group>` - Trigger deactivated
 
+### Air Conditioning Application (172)
+Native C-Bus HVAC thermostats. Unlike the apps above, C-Gate emits these as
+`[# ]aircon <verb> //<project>/<net>/172 …` event lines (often comment-prefixed),
+keyed by the thermostat's source unit. Decoded fields, the mode-code table, the
+plant-status bitmask, the Fan-Only setpoint sentinel, and the full code map are
+documented separately — see [`HVAC_INVESTIGATION.md`](./HVAC_INVESTIGATION.md).
+
 ## Command Protocol
 
 ### Command Format
