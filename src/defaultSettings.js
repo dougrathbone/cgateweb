@@ -76,6 +76,10 @@ const defaultSettings = {
     web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120,
+    // How often (ms) to poll each C-Bus network's CNI/PCI interface state so a
+    // dropout between C-Gate and the C-Bus network surfaces on the status page.
+    // Set to 0 to disable. Default 30s.
+    cniMonitorIntervalMs: 30000,
     // Web diagnostics: window (ms) within which a device counts as "active" in
     // the status page's device list. Default 24h.
     web_active_device_window_ms: 24 * 60 * 60 * 1000,

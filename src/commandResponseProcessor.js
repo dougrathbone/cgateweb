@@ -30,13 +30,17 @@ class CommandResponseProcessor {
      * @param {Function} options.onObjectStatus - Callback for object status events
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
         this._maxPendingTreeMessages = 500;
         this.onObjectStatus = onObjectStatus;
         this.onCommandError = onCommandError || null;
+        // Called for network-level interface/state responses
+        // ("//PROJECT/254: InterfaceState=running"), used to track CNI/PCI
+        // connectivity. Signature: (networkId, { interfaceState?|state? }).
+        this.onNetworkState = onNetworkState || null;
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -230,6 +234,15 @@ class CommandResponseProcessor {
      * @param {string} statusData - Object status data from C-Gate
      */
     _processCommandObjectStatus(statusData) {
+        // Network-level interface/state responses ("//PROJECT/254: InterfaceState=running",
+        // "//PROJECT/254: State=ok") have no group address and are not CBusEvents —
+        // route them to the network-interface monitor before attempting event parsing.
+        const netState = this._parseNetworkStateStatus(statusData);
+        if (netState) {
+            if (this.onNetworkState) this.onNetworkState(netState.networkId, netState.reading);
+            return;
+        }
+
         const event = new CBusEvent(statusData, { statusDataOnly: true });
         if (event.isValid()) {
             this.eventPublisher.publishEvent(event, '(Cmd)');
@@ -239,6 +252,23 @@ class CommandResponseProcessor {
         } else {
             this.logger.warn(`Could not parse object status: ${statusData}`);
         }
+    }
+
+    /**
+     * Parses a network-level interface/state status response, e.g.
+     *   "//5COGAN/254: InterfaceState=running"
+     *   "//5COGAN/254: State=ok"
+     * Distinguished from object (group) status by having no group address after
+     * the network id. Returns { networkId, reading } or null.
+     *
+     * @private
+     */
+    _parseNetworkStateStatus(statusData) {
+        const m = /^\/\/[^/]+\/(\d+):\s*(InterfaceState|State)=(\S+)\s*$/.exec(statusData || '');
+        if (!m) return null;
+        const [, networkId, key, value] = m;
+        const reading = key === 'InterfaceState' ? { interfaceState: value } : { state: value };
+        return { networkId, reading };
     }
 
     /**

@@ -45,6 +45,37 @@ describe('CommandResponseProcessor', () => {
         });
     });
 
+    describe('network interface state (CNI) responses', () => {
+        let onNetworkState;
+        beforeEach(() => {
+            onNetworkState = jest.fn();
+            processor.onNetworkState = onNetworkState;
+        });
+
+        it('routes a 300 InterfaceState response to onNetworkState (not object status)', () => {
+            processor.processLine('300 //5COGAN/254: InterfaceState=running');
+            expect(onNetworkState).toHaveBeenCalledWith('254', { interfaceState: 'running' });
+            expect(mockOnObjectStatus).not.toHaveBeenCalled();
+            expect(mockEventPublisher.publishEvent).not.toHaveBeenCalled();
+        });
+
+        it('routes a 300 State response to onNetworkState', () => {
+            processor.processLine('300 //5COGAN/254: State=ok');
+            expect(onNetworkState).toHaveBeenCalledWith('254', { state: 'ok' });
+        });
+
+        it('routes a closed InterfaceState (CNI down)', () => {
+            processor.processLine('300 //5COGAN/254: InterfaceState=closed');
+            expect(onNetworkState).toHaveBeenCalledWith('254', { interfaceState: 'closed' });
+        });
+
+        it('still routes a real group object-status (with group address) to object status, not network state', () => {
+            processor.processLine('300 //5COGAN/254/56/4: level=255');
+            expect(onNetworkState).not.toHaveBeenCalled();
+            // object-status path attempted (CBusEvent parse) — onObjectStatus or warn, but NOT network state
+        });
+    });
+
     describe('processLine', () => {
         it('should log received line at debug level', () => {
             processor.processLine('200-OK');

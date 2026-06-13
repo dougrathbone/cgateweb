@@ -14,6 +14,7 @@ const LabelLoader = require('./labelLoader');
 const WebServer = require('./webServer');
 const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
 const StaleDeviceDetector = require('./staleDeviceDetector');
+const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
@@ -183,11 +184,15 @@ class CgateWebBridge {
             onEventLog: this._onEventLog
         });
 
+        // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
+        this.networkInterfaceMonitor = new NetworkInterfaceMonitor({ logger: this.logger });
+
         // Command response processor for handling C-Gate command responses
         this.commandResponseProcessor = new CommandResponseProcessor({
             eventPublisher: this.eventPublisher,
             haDiscovery: null, // Will be set after haDiscovery is initialized
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
+            onNetworkState: (networkId, reading) => this.networkInterfaceMonitor.update(networkId, reading),
             logger: this.logger
         });
 
@@ -591,7 +596,8 @@ class CgateWebBridge {
             discovery: this.haDiscovery ? {
                 count: this.haDiscovery.discoveryCount,
                 labelStats: this.haDiscovery.labelStats
-            } : null
+            } : null,
+            cbusNetworks: this.networkInterfaceMonitor.getSnapshot()
         };
     }
 

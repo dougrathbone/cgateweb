@@ -231,6 +231,15 @@ describe('CgateWebBridge', () => {
             expect(status.lifecycle.transitions).toBe(0);
         });
 
+        it('surfaces C-Bus network interface (CNI) state in the bridge status', () => {
+            // Empty until the first poll response arrives.
+            expect(bridge._getBridgeStatus().cbusNetworks).toEqual([]);
+            // A network-state response flows through to the monitor and the status.
+            bridge.networkInterfaceMonitor.update('254', { interfaceState: 'closed' });
+            const net = bridge._getBridgeStatus().cbusNetworks.find(n => n.network === '254');
+            expect(net).toMatchObject({ network: '254', interfaceState: 'closed', online: false });
+        });
+
 
         it('should set MQTT options based on retainreads setting', () => {
             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });

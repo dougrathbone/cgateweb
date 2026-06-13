@@ -53,6 +53,9 @@ class BridgeInitializationService {
             this._scheduleAllGetalls(getallNetworks);
         }
 
+        // Monitor CNI/PCI connectivity per network (independent of getall).
+        this._startNetworkInterfaceMonitoring();
+
         if (!this.bridge.haDiscovery) {
             this.bridge.haDiscovery = new HaDiscovery(
                 this.bridge.settings,
@@ -271,6 +274,67 @@ class BridgeInitializationService {
         });
     }
 
+    /**
+     * Resolve the C-Bus network IDs to monitor for CNI/PCI connectivity:
+     * auto-discovered networks first, then configured getall/discovery networks,
+     * finally the network from getallnetapp. Returns unique numeric-id strings.
+     */
+    _resolveMonitorNetworkIds() {
+        const s = this.bridge.settings;
+        const ids = new Set();
+        const add = (arr) => {
+            if (!Array.isArray(arr)) return;
+            for (const n of arr) {
+                const m = String(n).match(/\d+/);
+                if (m) ids.add(m[0]);
+            }
+        };
+        if (this.bridge.discoveredNetworks && this.bridge.discoveredNetworks.length > 0) {
+            add(this.bridge.discoveredNetworks);
+        }
+        add(s.getall_networks);
+        add(s.ha_discovery_networks);
+        if (ids.size === 0 && s.getallnetapp) {
+            const m = String(s.getallnetapp).match(/^(\d+)/);
+            if (m) ids.add(m[1]);
+        }
+        return [...ids];
+    }
+
+    /**
+     * Queue read-only GETs for each network's InterfaceState + State. Responses
+     * flow back through CommandResponseProcessor → NetworkInterfaceMonitor.
+     */
+    _pollNetworkInterfaceStates(networkIds) {
+        for (const net of networkIds) {
+            const base = `//${this.bridge.settings.cbusname}/${net}`;
+            this.bridge.cgateCommandQueue.add(`${CGATE_CMD_GET} ${base} InterfaceState${NEWLINE}`);
+            this.bridge.cgateCommandQueue.add(`${CGATE_CMD_GET} ${base} State${NEWLINE}`);
+        }
+    }
+
+    /**
+     * Poll network interface (CNI) state once now and then on an interval, so a
+     * CNI dropout between C-Gate and the C-Bus network surfaces on the status
+     * page even though cgateweb's TCP link to C-Gate stays up.
+     */
+    _startNetworkInterfaceMonitoring() {
+        const intervalMs = this.bridge.settings.cniMonitorIntervalMs;
+        if (!intervalMs || intervalMs <= 0) return;
+        const networkIds = this._resolveMonitorNetworkIds();
+        if (networkIds.length === 0) {
+            this.logger.debug('CNI monitoring: no networks resolved; skipping.');
+            return;
+        }
+        this._pollNetworkInterfaceStates(networkIds); // initial reading
+        if (this.bridge._cniMonitorTimer) clearInterval(this.bridge._cniMonitorTimer);
+        this.bridge._cniMonitorTimer = setInterval(
+            () => this._pollNetworkInterfaceStates(networkIds),
+            intervalMs
+        ).unref();
+        this.bridge.log(`Monitoring C-Bus network interface (CNI) state for [${networkIds.join(', ')}] every ${intervalMs / 1000}s.`);
+    }
+
     _resolveGetallNetworks() {
         const settings = this.bridge.settings;
 
@@ -345,6 +409,11 @@ class BridgeInitializationService {
             clearInterval(handle);
         }
         this._perAppTimers.clear();
+
+        if (this.bridge._cniMonitorTimer) {
+            clearInterval(this.bridge._cniMonitorTimer);
+            this.bridge._cniMonitorTimer = null;
+        }
 
         if (this.bridge._onLabelsChanged) {
             this.bridge.labelLoader.removeListener('labels-changed', this.bridge._onLabelsChanged);

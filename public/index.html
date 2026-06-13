@@ -730,6 +730,7 @@ input, select, textarea {
         <div class="diag-item"><div class="diag-label">Reconnects</div><div class="diag-value" id="diagReconnects">-</div></div>
         <div class="diag-item"><div class="diag-label">Cmd Pool Healthy</div><div class="diag-value" id="diagHealthy">-</div></div>
         <div class="diag-item"><div class="diag-label">Queue Depth</div><div class="diag-value" id="diagQueueDepth">-</div></div>
+        <div class="diag-item"><div class="diag-label">C-Bus Networks (CNI)</div><div class="diag-value" id="diagNetworks">-</div></div>
       </div>
     <div class="status-bar" id="statusBar" style="margin-top:14px">
       <div class="status-item">Labels: <span class="status-value" id="statTotal">-</span></div>
@@ -1051,6 +1052,20 @@ input, select, textarea {
       document.getElementById('diagQueueDepth').textContent = (status.metrics && status.metrics.commandQueue)
         ? String(status.metrics.commandQueue.depth || 0)
         : '0';
+      var nets = status.cbusNetworks || [];
+      var netEl = document.getElementById('diagNetworks');
+      if (!nets.length) {
+        netEl.textContent = '-';
+        netEl.style.color = '';
+      } else {
+        netEl.textContent = nets.map(function (n) {
+          var label = n.online === false ? 'DOWN' : (n.online === true ? 'connected' : 'unknown');
+          return n.network + ': ' + label + (n.interfaceState ? ' (' + n.interfaceState + ')' : '');
+        }).join('   ');
+        var anyDown = nets.some(function (n) { return n.online === false; });
+        netEl.style.color = anyDown ? '#c0392b' : '';
+        netEl.title = anyDown ? 'A CNI/PCI link between C-Gate and the C-Bus network is down' : '';
+      }
     } catch (_e) {
       document.getElementById('diagVersion').textContent = '-';
       document.getElementById('diagUptime').textContent = '-';
@@ -1062,6 +1077,8 @@ input, select, textarea {
       document.getElementById('diagReconnects').textContent = '-';
       document.getElementById('diagHealthy').textContent = '-';
       document.getElementById('diagQueueDepth').textContent = '-';
+      document.getElementById('diagNetworks').textContent = '-';
+      document.getElementById('diagNetworks').style.color = '';
     }
   }
 
