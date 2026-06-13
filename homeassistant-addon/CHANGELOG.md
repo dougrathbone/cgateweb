@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-06-13
+
+### Added
+
+- **C-Bus network connectivity binary sensor.** Each monitored C-Bus network now also exposes a Home Assistant `binary_sensor` (device class *connectivity*) reflecting its CNI/PCI link — so you can alert or automate on a network going offline, not just read it on the status page.
+- **Optional offline notification.** New `cni_offline_notification` setting (off by default): when enabled, cgateweb raises a Home Assistant persistent notification if a network's CNI/PCI link goes offline and dismisses it when the link recovers.
+
 ## [1.13.0] - 2026-06-13
 
 ### Added
