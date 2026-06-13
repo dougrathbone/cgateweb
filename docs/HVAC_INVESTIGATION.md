@@ -187,12 +187,19 @@ C-Gate event line
 1. **Native HVAC auto-discovery (biggest item).** Emit one HA `climate` entity per
    thermostat (keyed by `sourceUnit`), pointing at the §4 topics incl. `action`, with the
    verified mode list. This is what makes thermostats appear in HA — the via-lighting
-   `_createHvacDiscovery` does not serve the native path (§1). Decide enumeration:
-   event-driven auto-create (recommended) vs. a configured unit list.
-2. **Write/control verification.** `mqttCommandRouter` has setpoint/mode handlers, but the
-   exact `aircon` *write* command format for app 172 hasn't been confirmed against live
-   hardware. Treat as a cautious phase (writing to a live HVAC) — capture the command a
-   PAC sends, or verify carefully on one unit. Read-only is the safe default.
+   `_createHvacDiscovery` does not serve the native path (§1).
+   **Decision (2026-06-13): event-driven auto-create** (publish the climate config the
+   first time a thermostat's source unit is seen in the aircon stream), **with read+write
+   control**; Karl to beta-test.
+2. **Write/control command format — UNRESOLVED (blocker for the write half).** The existing
+   handlers `_handleHvacSetpoint` / `_handleHvacMode` (`src/mqttCommandRouter.js:539/575`)
+   emit a lighting **`RAMP`** command (`level = temp × 2`). That is the *via-lighting*
+   format and is **not** valid for native app 172 — sending it to a real 172 thermostat
+   will not control it. The correct native control command is unknown. **Resolve before
+   shipping writes:** capture the C-Gate **Tx** line while controlling a thermostat from
+   PICED/Toolkit (PICED logs Tx as well as Rx), to learn the exact command (likely a
+   symmetric `aircon set_zone_hvac_mode …` / setpoint command on the command port, but
+   confirm). Writing to a live HVAC warrants getting this right rather than guessing.
 3. **Fan speed (Auto vs 1).** ❓ Not captured — in the 2026-06-11 log the fan-speed change
    did not surface as a distinct field/verb (`f5` stayed `3` across on-modes). Needs a
    targeted capture or the protocol spec before a `fan_mode` can be decoded.
