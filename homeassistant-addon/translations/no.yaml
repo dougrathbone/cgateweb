@@ -195,6 +195,11 @@ configuration:
       Temperaturenhet for HVAC klimaentiteter. C for Celsius, F for
       Fahrenheit. Standard: C.
 
+  cbus_aircon_app_id:
+    name: Applikasjons-ID for klimaanlegg
+    description: >-
+      C-Bus Air Conditioning-applikasjons-id (f.eks. 172) for innebygd skrivebeskyttet romtemperatur. Dekoder zone_temperature-kringkastinger og publiserer current_temperature til cbus/read/{network}/172/{zone}/current_temperature. Av som standard.
+
   # ── Bridge diagnostikk ──
   ha_bridge_diagnostics_enabled:
     name: Aktiver bridge-diagnostikk

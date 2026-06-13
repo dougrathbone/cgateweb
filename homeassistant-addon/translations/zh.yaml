@@ -173,6 +173,11 @@ configuration:
     description: >-
       HVAC 气候实体的温度单位。C 表示摄氏度，F 表示华氏度。默认：C。
 
+  cbus_aircon_app_id:
+    name: 空调应用 ID
+    description: >-
+      C-Bus 空调（Air Conditioning）应用 ID（例如 172），用于原生只读室温。解码 zone_temperature 广播并将 current_temperature 发布到 cbus/read/{network}/172/{zone}/current_temperature。默认关闭。
+
   # ── Bridge 诊断 ──
   ha_bridge_diagnostics_enabled:
     name: 启用 Bridge 诊断

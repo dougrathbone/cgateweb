@@ -200,6 +200,11 @@ configuration:
       Одиниця температури для кліматичних об'єктів HVAC. C для Цельсія,
       F для Фаренгейта. За замовчуванням: C.
 
+  cbus_aircon_app_id:
+    name: ID застосунку кондиціонування
+    description: >-
+      ID застосунку Air Conditioning C-Bus (наприклад, 172) для нативної кімнатної температури лише для читання. Декодує широкомовлення zone_temperature і публікує current_temperature у cbus/read/{network}/172/{zone}/current_temperature. Вимкнено за замовчуванням.
+
   # ── Діагностика bridge ──
   ha_bridge_diagnostics_enabled:
     name: Увімкнути діагностику bridge

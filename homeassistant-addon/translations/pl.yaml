@@ -196,6 +196,11 @@ configuration:
       Jednostka temperatury dla encji klimatu HVAC. C dla Celsjusza, F
       dla Fahrenheita. Domyślnie: C.
 
+  cbus_aircon_app_id:
+    name: ID aplikacji klimatyzacji
+    description: >-
+      ID aplikacji Air Conditioning C-Bus (np. 172) dla natywnej temperatury pokojowej tylko do odczytu. Dekoduje komunikaty zone_temperature i publikuje current_temperature w cbus/read/{network}/172/{zone}/current_temperature. Domyślnie wyłączone.
+
   # ── Diagnostyka bridge ──
   ha_bridge_diagnostics_enabled:
     name: Włącz diagnostykę bridge

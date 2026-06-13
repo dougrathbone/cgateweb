@@ -200,6 +200,11 @@ configuration:
       Unidade de temperatura para entidades de clima HVAC. C para Celsius,
       F para Fahrenheit. Predefinido: C.
 
+  cbus_aircon_app_id:
+    name: ID da aplicação de ar condicionado
+    description: >-
+      ID da aplicação Air Conditioning do C-Bus (ex.: 172) para temperatura ambiente nativa só de leitura. Descodifica as transmissões zone_temperature e publica current_temperature em cbus/read/{network}/172/{zone}/current_temperature. Desativado por predefinição.
+
   # ── Diagnósticos do Bridge ──
   ha_bridge_diagnostics_enabled:
     name: Ativar Diagnósticos do Bridge

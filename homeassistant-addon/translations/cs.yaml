@@ -197,6 +197,11 @@ configuration:
       Jednotka teploty pro klimatické entity HVAC. C pro Celsius, F pro
       Fahrenheit. Výchozí: C.
 
+  cbus_aircon_app_id:
+    name: ID aplikace klimatizace
+    description: >-
+      ID aplikace Air Conditioning C-Bus (např. 172) pro nativní pokojovou teplotu jen pro čtení. Dekóduje vysílání zone_temperature a publikuje current_temperature do cbus/read/{network}/172/{zone}/current_temperature. Ve výchozím nastavení vypnuto.
+
   # ── Diagnostika bridge ──
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge

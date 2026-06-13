@@ -198,6 +198,11 @@ configuration:
     description: >-
       HVAC 空調エンティティの温度単位。C は摂氏、F は華氏。デフォルト：C。
 
+  cbus_aircon_app_id:
+    name: 空調アプリケーション ID
+    description: >-
+      ネイティブの読み取り専用の室温のための C-Bus 空調（Air Conditioning）アプリケーション ID（例: 172）。zone_temperature ブロードキャストをデコードし、current_temperature を cbus/read/{network}/172/{zone}/current_temperature に公開します。デフォルトは無効です。
+
   # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:
     name: Bridge 診断を有効化

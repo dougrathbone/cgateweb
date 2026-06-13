@@ -200,6 +200,11 @@ configuration:
       Temperatuureenheid voor HVAC klimaat-entiteiten. C voor Celsius, F
       voor Fahrenheit. Standaard: C.
 
+  cbus_aircon_app_id:
+    name: Applicatie-ID voor airconditioning
+    description: >-
+      C-Bus Air Conditioning applicatie-id (bijv. 172) voor native alleen-lezen kamertemperatuur. Decodeert zone_temperature-broadcasts en publiceert current_temperature naar cbus/read/{network}/172/{zone}/current_temperature. Standaard uitgeschakeld.
+
   # ── Bridge Diagnostiek ──
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen

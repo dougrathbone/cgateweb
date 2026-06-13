@@ -186,6 +186,11 @@ configuration:
     description: >-
       HVAC 기후 엔티티의 온도 단위. C는 섭씨, F는 화씨. 기본값: C.
 
+  cbus_aircon_app_id:
+    name: 공조 애플리케이션 ID
+    description: >-
+      네이티브 읽기 전용 실내 온도를 위한 C-Bus 공조(Air Conditioning) 애플리케이션 ID(예: 172). zone_temperature 브로드캐스트를 디코딩하여 current_temperature를 cbus/read/{network}/172/{zone}/current_temperature에 게시합니다. 기본값은 비활성화입니다.
+
   # ── Bridge 진단 ──
   ha_bridge_diagnostics_enabled:
     name: Bridge 진단 활성화
