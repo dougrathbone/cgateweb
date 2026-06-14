@@ -15,6 +15,7 @@ const WebServer = require('./webServer');
 const HaBridgeDiagnostics = require('./haBridgeDiagnostics');
 const StaleDeviceDetector = require('./staleDeviceDetector');
 const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
+const { AirconControlRegistry } = require('./airconControlRegistry');
 const haNotifier = require('./haNotifier');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
@@ -118,6 +119,9 @@ class CgateWebBridge {
             logger: this.logger
         });
 
+        // Tracks per-thermostat ward/zone/type state for native HVAC write control.
+        this.airconControlRegistry = new AirconControlRegistry();
+
         // MQTT command router
         this.mqttCommandRouter = new MqttCommandRouter({
             cbusname: this.settings.cbusname,
@@ -126,7 +130,8 @@ class CgateWebBridge {
             cgateCommandQueue: this.cgateCommandQueue,
             deviceStateManager: this.deviceStateManager,
             mqttClient: { publish: (topic, payload, opts) => this.mqttManager.publish(topic, payload, opts) },
-            settings: this.settings
+            settings: this.settings,
+            airconControlRegistry: this.airconControlRegistry
         });
 
         // Per-connection line processors to prevent data interleaving across pool connections.
@@ -413,6 +418,11 @@ class CgateWebBridge {
             const group = reading.sourceUnit || reading.zoneGroup;
             if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {
                 this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
+            }
+            // Remember ward/zones/type so HA can control this thermostat (writes
+            // target ward+zone-list, not the source unit). See airconControlRegistry.
+            if (reading.kind === 'mode') {
+                this.airconControlRegistry.recordModeReading(reading);
             }
             // Event-driven HA discovery: announce the thermostat (keyed by source unit)
             // the first time we see it. ensureNativeAirconDiscovery is idempotent and

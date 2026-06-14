@@ -191,6 +191,11 @@ configuration:
     description: >-
       네이티브 읽기 전용 실내 온도를 위한 C-Bus 공조(Air Conditioning) 애플리케이션 ID(예: 172). zone_temperature 브로드캐스트를 디코딩하여 current_temperature를 cbus/read/{network}/172/{zone}/current_temperature에 게시합니다. 기본값은 비활성화입니다.
 
+  cbus_aircon_control_enabled:
+    name: 공조 제어
+    description: >-
+      Home Assistant가 네이티브 C-Bus 온도조절기를 제어(모드 및 온도 설정)하도록 허용합니다. 기본값은 비활성화입니다. 작동 중인 난방/냉방에 기록합니다. 공조 애플리케이션 ID 설정이 필요합니다.
+
   # ── Bridge 진단 ──
   ha_bridge_diagnostics_enabled:
     name: Bridge 진단 활성화

@@ -34,6 +34,13 @@ const {
     RAMP_STEP,
     NEWLINE
 } = require('./constants');
+const {
+    HVAC_CODE_BY_MODE,
+    FAN_LEVEL_SENTINEL,
+    DEFAULT_SETPOINT_C,
+    buildSetZoneHvacMode,
+    buildSetWardOff
+} = require('./airconControlRegistry');
 
 class MqttCommandRouter extends EventEmitter {
     /**
@@ -59,6 +66,8 @@ class MqttCommandRouter extends EventEmitter {
         this.deviceStateManager = options.deviceStateManager || null;
         this.mqttClient = options.mqttClient || null;
         this.settings = options.settings || {};
+        // Per-thermostat ward/zone/type state for native Air Conditioning writes.
+        this.airconControlRegistry = options.airconControlRegistry || null;
 
         // Use shared tracker if provided, otherwise create a private one
         this._coverRampTracker = options.coverRampTracker || new CoverRampTracker();
@@ -536,7 +545,25 @@ class MqttCommandRouter extends EventEmitter {
      * @param {string} topic - Original topic for error logging
      * @private
      */
+    /**
+     * True when the command targets the native Air Conditioning application
+     * (cbus_aircon_app_id) rather than the HVAC-via-lighting pattern.
+     * @private
+     */
+    _isNativeAircon(command) {
+        return !!this.settings.cbus_aircon_app_id &&
+            String(command.getApplication()) === String(this.settings.cbus_aircon_app_id);
+    }
+
     _handleHvacSetpoint(command, payload, topic) {
+        if (this._isNativeAircon(command)) {
+            if (!this.settings.cbus_aircon_control_enabled) {
+                this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring setpoint on ${topic}`);
+                return;
+            }
+            return this._handleNativeAirconSetpoint(command, payload, topic);
+        }
+
         if (!command.getGroup()) {
             this.logger.warn(`HVAC setpoint command requires device ID on topic ${topic}`);
             return;
@@ -573,6 +600,14 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleHvacMode(command, payload, topic) {
+        if (this._isNativeAircon(command)) {
+            if (!this.settings.cbus_aircon_control_enabled) {
+                this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring mode on ${topic}`);
+                return;
+            }
+            return this._handleNativeAirconMode(command, payload, topic);
+        }
+
         if (!command.getGroup()) {
             this.logger.warn(`HVAC mode command requires device ID on topic ${topic}`);
             return;
@@ -596,6 +631,98 @@ class MqttCommandRouter extends EventEmitter {
 
         this._queueCommand(cgateCommand);
         this.logger.debug(`HVAC mode: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} mode=${mode}`);
+    }
+
+    /**
+     * Native Air Conditioning setpoint: keep the thermostat's current mode and
+     * change the target temperature, via AIRCON SET_ZONE_HVAC_MODE. Needs the
+     * thermostat's ward/zones/type, learned from its broadcasts (registry).
+     * @private
+     */
+    _handleNativeAirconSetpoint(command, payload, topic) {
+        const network = command.getNetwork();
+        const unit = command.getGroup();
+        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
+        if (!state) {
+            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set setpoint until the thermostat reports once (${topic})`);
+            return;
+        }
+        const tempC = parseFloat(payload);
+        if (isNaN(tempC)) {
+            this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
+            return;
+        }
+        const clamped = Math.max(5, Math.min(40, tempC));
+        const level = Math.round(clamped * 256); // °C × 256, temperature value (rawlevel=0)
+        const cmd = buildSetZoneHvacMode({
+            cbusname: this.cbusname,
+            network,
+            application: command.getApplication(),
+            ward: state.ward,
+            zones: state.zones,
+            modeRaw: (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
+                ? state.modeRaw : HVAC_CODE_BY_MODE.heat,
+            rawlevel: 0,
+            type: (state.type !== null && state.type !== undefined) ? state.type : 0,
+            level
+        });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C (ward ${state.ward}, zones ${state.zones})`);
+    }
+
+    /**
+     * Native Air Conditioning mode change via AIRCON SET_WARD_OFF (off) or
+     * SET_ZONE_HVAC_MODE (any active mode, keeping the last setpoint; Fan Only
+     * uses the raw "no level" sentinel).
+     * @private
+     */
+    _handleNativeAirconMode(command, payload, topic) {
+        const network = command.getNetwork();
+        const unit = command.getGroup();
+        const application = command.getApplication();
+        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
+        if (!state) {
+            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set mode until the thermostat reports once (${topic})`);
+            return;
+        }
+
+        const mode = String(payload).toLowerCase();
+        if (mode === 'off') {
+            this._queueCommand(buildSetWardOff({ cbusname: this.cbusname, network, application, ward: state.ward }) + NEWLINE);
+            this.logger.info(`Native HVAC mode: ${network}/${unit} -> off (ward ${state.ward})`);
+            return;
+        }
+
+        const code = HVAC_CODE_BY_MODE[mode];
+        if (code === undefined) {
+            this.logger.warn(`Unknown HVAC mode "${payload}" on topic ${topic}`);
+            return;
+        }
+
+        let rawlevel;
+        let level;
+        if (mode === 'fan_only') {
+            rawlevel = 1;
+            level = FAN_LEVEL_SENTINEL;
+        } else {
+            rawlevel = 0;
+            level = (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= 12800)
+                ? state.setpointRaw
+                : Math.round(DEFAULT_SETPOINT_C * 256);
+        }
+        const cmd = buildSetZoneHvacMode({
+            cbusname: this.cbusname,
+            network,
+            application,
+            ward: state.ward,
+            zones: state.zones,
+            modeRaw: code,
+            rawlevel,
+            type: (state.type !== null && state.type !== undefined) ? state.type : 0,
+            level
+        });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Native HVAC mode: ${network}/${unit} -> ${mode} (ward ${state.ward}, zones ${state.zones})`);
     }
 
     /**

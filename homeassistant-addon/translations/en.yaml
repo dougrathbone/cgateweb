@@ -192,6 +192,11 @@ configuration:
       current_temperature to cbus/read/{network}/172/{zone}/current_temperature.
       Off by default.
 
+  cbus_aircon_control_enabled:
+    name: Air Conditioning Control
+    description: >-
+      Allow Home Assistant to control native C-Bus thermostats (set mode and temperature). Off by default — it writes to live heating/cooling. Requires the Air Conditioning Application ID to be set.
+
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics

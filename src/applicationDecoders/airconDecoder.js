@@ -163,8 +163,14 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     const setpoint = (Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 12800)
         ? Math.round(f6Raw / 256 * 10) / 10
         : null;
+    // setpointRaw (f6) and type (f5) are retained verbatim so write-back can echo
+    // the thermostat's own ward/zone/type when controlling it (see
+    // airconControlRegistry / AIRCON SET_ZONE_HVAC_MODE).
+    const setpointRaw = Number.isInteger(f6Raw) ? f6Raw : null;
+    const typeParsed = parseInt(params[7], 10); // f5
+    const type = Number.isInteger(typeParsed) ? typeParsed : null;
 
-    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, verb };
+    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, setpointRaw, type, verb };
 }
 
 /**

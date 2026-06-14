@@ -202,6 +202,11 @@ configuration:
     description: >-
       ID aplikace Air Conditioning C-Bus (např. 172) pro nativní pokojovou teplotu jen pro čtení. Dekóduje vysílání zone_temperature a publikuje current_temperature do cbus/read/{network}/172/{zone}/current_temperature. Ve výchozím nastavení vypnuto.
 
+  cbus_aircon_control_enabled:
+    name: Ovládání klimatizace
+    description: >-
+      Povolit Home Assistant ovládat nativní termostaty C-Bus (režim a teplotu). Ve výchozím nastavení vypnuto — zapisuje do aktivního vytápění/chlazení. Vyžaduje nastavené ID aplikace klimatizace.
+
   # ── Diagnostika bridge ──
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge

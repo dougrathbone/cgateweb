@@ -261,6 +261,10 @@ class ConfigLoader {
                 config.cbus_aircon_app_id = String(options.cbus_aircon_app_id);
             }
 
+            if (options.cbus_aircon_control_enabled !== undefined && options.cbus_aircon_control_enabled !== null) {
+                config.cbus_aircon_control_enabled = options.cbus_aircon_control_enabled === true;
+            }
+
             if (options.ha_hvac_temperature_unit) {
                 config.ha_hvac_temperature_unit = options.ha_hvac_temperature_unit;
             }

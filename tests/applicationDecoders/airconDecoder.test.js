@@ -132,6 +132,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             mode: 'heat',
             modeRaw: 1,
             setpoint: 22,
+            setpointRaw: 5632,
+            type: 1,
             verb: 'set_zone_hvac_mode'
         });
     });
@@ -150,6 +152,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             mode: 'off',
             modeRaw: 0,
             setpoint: null,
+            setpointRaw: 0,
+            type: 255,
             verb: 'set_zone_hvac_mode'
         });
     });

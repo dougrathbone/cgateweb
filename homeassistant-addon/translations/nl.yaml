@@ -205,6 +205,11 @@ configuration:
     description: >-
       C-Bus Air Conditioning applicatie-id (bijv. 172) voor native alleen-lezen kamertemperatuur. Decodeert zone_temperature-broadcasts en publiceert current_temperature naar cbus/read/{network}/172/{zone}/current_temperature. Standaard uitgeschakeld.
 
+  cbus_aircon_control_enabled:
+    name: Airconditioning-besturing
+    description: >-
+      Sta Home Assistant toe om native C-Bus-thermostaten te bedienen (modus en temperatuur). Standaard uitgeschakeld — het schrijft naar de actieve verwarming/koeling. Vereist een ingestelde airconditioning-applicatie-id.
+
   # ── Bridge Diagnostiek ──
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen

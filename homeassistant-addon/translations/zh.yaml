@@ -178,6 +178,11 @@ configuration:
     description: >-
       C-Bus 空调（Air Conditioning）应用 ID（例如 172），用于原生只读室温。解码 zone_temperature 广播并将 current_temperature 发布到 cbus/read/{network}/172/{zone}/current_temperature。默认关闭。
 
+  cbus_aircon_control_enabled:
+    name: 空调控制
+    description: >-
+      允许 Home Assistant 控制原生 C-Bus 温控器（设置模式和温度）。默认关闭——它会写入正在运行的供暖/制冷。需要设置空调应用 ID。
+
   # ── Bridge 诊断 ──
   ha_bridge_diagnostics_enabled:
     name: 启用 Bridge 诊断

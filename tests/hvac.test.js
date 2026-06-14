@@ -463,12 +463,25 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.temperature_unit).toBe('C');
     });
 
-    test('is read-only (no command topics) until the native 172 write format is verified', () => {
+    test('is read-only (no command topics) when control is not enabled', () => {
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         const call = mockPublishFn.mock.calls.find(c => c[0].includes('/climate/'));
         const payload = JSON.parse(call[1]);
         expect(payload.temperature_command_topic).toBeUndefined();
         expect(payload.mode_command_topic).toBeUndefined();
+    });
+
+    test('adds command topics when cbus_aircon_control_enabled is set', () => {
+        const controlDiscovery = new HaDiscovery(
+            { ha_discovery_enabled: true, ha_discovery_prefix: 'homeassistant', ha_hvac_temperature_unit: 'C', cbus_aircon_control_enabled: true },
+            mockPublishFn,
+            jest.fn()
+        );
+        controlDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_201/config');
+        const payload = JSON.parse(call[1]);
+        expect(payload.temperature_command_topic).toBe('cbus/write/254/172/201/setpoint');
+        expect(payload.mode_command_topic).toBe('cbus/write/254/172/201/hvacmode');
     });
 
     test('publishes only once per unit (idempotent across repeated events)', () => {

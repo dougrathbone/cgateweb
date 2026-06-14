@@ -213,6 +213,11 @@ configuration:
     description: >-
       ID de l'application Air Conditioning C-Bus (p. ex. 172) pour la température ambiante native en lecture seule. Décode les diffusions zone_temperature et publie current_temperature sur cbus/read/{network}/172/{zone}/current_temperature. Désactivé par défaut.
 
+  cbus_aircon_control_enabled:
+    name: Contrôle de la climatisation
+    description: >-
+      Autoriser Home Assistant à contrôler les thermostats C-Bus natifs (mode et température). Désactivé par défaut : écrit sur le chauffage/la climatisation en service. Nécessite un ID d’application de climatisation défini.
+
   # ── Diagnostics du bridge ──
   ha_bridge_diagnostics_enabled:
     name: Activer les diagnostics du bridge

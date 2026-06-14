@@ -112,6 +112,7 @@ schema:
   ha_discovery_scene_enabled: "bool?"
   ha_discovery_hvac_app_id: "int(1,255)?"
   cbus_aircon_app_id: "int(1,255)?"
+  cbus_aircon_control_enabled: "bool?"
   ha_hvac_temperature_unit: "list(C|F)?"
 
   # ── Bridge Diagnostics ──

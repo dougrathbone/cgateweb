@@ -914,11 +914,11 @@ class HaDiscovery {
     /**
      * Build and publish the climate discovery payload for one native AC thermostat.
      *
-     * Read-only for now: current temperature, setpoint, mode and running action
-     * are wired as state topics, but command topics are intentionally omitted
-     * until the native 172 write-command format is verified against hardware
-     * (see docs/HVAC_INVESTIGATION.md §7). Adding control later means adding the
-     * temperature_command_topic / mode_command_topic here.
+     * State topics (current temperature, setpoint, mode, running action) are
+     * always wired. Command topics (set temperature/mode) are added only when
+     * cbus_aircon_control_enabled — control writes to live heating, so it is
+     * opt-in. The router turns those into AIRCON SET_ZONE_HVAC_MODE / SET_WARD_*
+     * commands (see mqttCommandRouter / airconControlRegistry).
      *
      * @private
      */
@@ -935,17 +935,25 @@ class HaDiscovery {
         const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${sourceUnit}`;
+        const writeBase = `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${sourceUnit}`;
+        const controlEnabled = !!this.settings.cbus_aircon_control_enabled;
 
         const payload = {
             name: null,
             unique_id: uniqueId,
             ...(entityId && entityIdFields(HA_COMPONENT_CLIMATE, entityId)),
 
-            // State topics published by the native aircon decoder (read-only).
+            // State topics published by the native aircon decoder.
             current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
             temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
             mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
             action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
+
+            // Command topics — only when control is opt-in enabled.
+            ...(controlEnabled && {
+                temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
+                mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`
+            }),
 
             // Verified against real hardware (captures 2026-06-11).
             modes: ['off', 'heat', 'cool', 'auto', 'fan_only'],

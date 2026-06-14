@@ -203,6 +203,11 @@ configuration:
     description: >-
       ネイティブの読み取り専用の室温のための C-Bus 空調（Air Conditioning）アプリケーション ID（例: 172）。zone_temperature ブロードキャストをデコードし、current_temperature を cbus/read/{network}/172/{zone}/current_temperature に公開します。デフォルトは無効です。
 
+  cbus_aircon_control_enabled:
+    name: 空調制御
+    description: >-
+      Home Assistant がネイティブ C-Bus サーモスタットを制御（モードと温度の設定）できるようにします。デフォルトは無効です。稼働中の暖房/冷房に書き込みます。空調アプリケーション ID の設定が必要です。
+
   # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:
     name: Bridge 診断を有効化

@@ -204,6 +204,11 @@ configuration:
     description: >-
       C-Bus Air Conditioning-applikations-id (f.eks. 172) til indbygget skrivebeskyttet rumtemperatur. Afkoder zone_temperature-udsendelser og udgiver current_temperature til cbus/read/{network}/172/{zone}/current_temperature. Slået fra som standard.
 
+  cbus_aircon_control_enabled:
+    name: Styring af klimaanlæg
+    description: >-
+      Tillad Home Assistant at styre indbyggede C-Bus-termostater (tilstand og temperatur). Slået fra som standard — det skriver til aktiv opvarmning/køling. Kræver, at applikations-id for klimaanlæg er angivet.
+
   # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:
     name: Aktivér bridge-diagnostik
