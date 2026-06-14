@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-06-14
+
+### Added
+
+- **Control your C-Bus thermostats from Home Assistant.** Building on the read-only HVAC support, you can now set the **mode and target temperature** of native C-Bus Air Conditioning thermostats directly from the Home Assistant climate card. It's **opt-in** via the new **Air Conditioning Control** option (`cbus_aircon_control_enabled`, off by default) because it writes to live heating/cooling. When enabled, cgateweb sends the native C-Gate `AIRCON` commands, targeting each thermostat correctly even when several share a zone group. No touchscreen, Wiser, or extra hardware required.
+
+### Internal
+
+- Hardened the add-on startup scripts with shell strict mode and refactored the HA-discovery lighting path for clarity (no functional change).
+
 ## [1.13.1] - 2026-06-13
 
 ### Added
