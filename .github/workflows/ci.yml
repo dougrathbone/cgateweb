@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [ "main", "master" ]
 
+# Restrict the default GITHUB_TOKEN to read-only. No job here writes to the
+# repository via GITHUB_TOKEN (artifact upload does not require contents:write).
+permissions:
+  contents: read
+
 jobs:
   version-sync:
     name: package.json / config.yaml version sync

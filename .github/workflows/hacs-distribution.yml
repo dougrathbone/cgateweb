@@ -9,6 +9,11 @@ on:
 env:
   DISTRIBUTION_REPO: 'dougrathbone/cgateweb-homeassistant'
 
+# Restrict the default GITHUB_TOKEN to read-only. Cross-repo push and release
+# creation use the HACS_DEPLOY_TOKEN PAT, not GITHUB_TOKEN, so read is enough.
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
