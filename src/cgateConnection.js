@@ -198,7 +198,16 @@ class CgateConnection extends EventEmitter {
     }
 
     _handleTimeout() {
-        this.logger.warn(`C-Gate ${this.type} socket timed out after ${this.connectionTimeout}ms`);
+        // The idle timeout is disabled in _handleConnect (setTimeout(0)), so a timeout
+        // here means the TCP connection never established within connectionTimeout. A
+        // silent timeout (rather than ECONNREFUSED via _handleError) means SYN packets
+        // are not being answered: typically a firewall dropping inbound traffic, C-Gate's
+        // access.txt not permitting this host, or an unreachable/incorrect host address.
+        if (this.connected) {
+            this.logger.warn(`C-Gate ${this.type} socket timed out after ${this.connectionTimeout}ms (connection idle)`);
+        } else {
+            this.logger.warn(`C-Gate ${this.type} connection to ${this.host}:${this.port} timed out after ${this.connectionTimeout}ms (could not establish connection). The host did not respond. Check that the host/port are correct and reachable, the C-Gate machine's firewall allows inbound TCP on this port, and C-Gate's access.txt permits this client.`);
+        }
         if (this.socket && !this.socket.destroyed) {
             this.socket.destroy();
         }

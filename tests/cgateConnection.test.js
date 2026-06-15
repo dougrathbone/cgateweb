@@ -250,6 +250,29 @@ describe('CgateConnection', () => {
             });
         });
 
+        describe('timeout event', () => {
+            it('should log an establishment-failure message when not yet connected', () => {
+                const loggerSpy = jest.spyOn(connection.logger, 'warn');
+                connection.connected = false;
+
+                mockSocket.emit('timeout');
+
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('could not establish connection'));
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('firewall'));
+                expect(mockSocket.destroy).toHaveBeenCalled();
+            });
+
+            it('should log an idle-timeout message when already connected', () => {
+                const loggerSpy = jest.spyOn(connection.logger, 'warn');
+                connection.connected = true;
+
+                mockSocket.emit('timeout');
+
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('connection idle'));
+                expect(mockSocket.destroy).toHaveBeenCalled();
+            });
+        });
+
         describe('close event', () => {
             it('should handle connection close', () => {
                 const loggerSpy = jest.spyOn(connection.logger, 'warn');
