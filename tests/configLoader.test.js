@@ -51,4 +51,36 @@ describe('ConfigLoader', () => {
             expect(warnSpy).not.toHaveBeenCalled();
         });
     });
+
+    describe('string boolean coercion in standalone settings', () => {
+        const newLoader = () => new ConfigLoader({
+            environmentDetector: {
+                detect: () => ({ type: 'standalone', isAddon: false, settingsPath: '/fake/path' })
+            }
+        });
+
+        it('should coerce cbus_aircon_control_enabled "false" string to boolean false', () => {
+            const config = newLoader()._convertSettingsToStandardFormat({
+                cbus_aircon_control_enabled: 'false'
+            });
+
+            expect(config.cbus_aircon_control_enabled).toBe(false);
+        });
+
+        it('should coerce cbus_aircon_control_enabled "true" string to boolean true', () => {
+            const config = newLoader()._convertSettingsToStandardFormat({
+                cbus_aircon_control_enabled: 'true'
+            });
+
+            expect(config.cbus_aircon_control_enabled).toBe(true);
+        });
+
+        it('should leave a real boolean cbus_aircon_control_enabled untouched', () => {
+            const config = newLoader()._convertSettingsToStandardFormat({
+                cbus_aircon_control_enabled: true
+            });
+
+            expect(config.cbus_aircon_control_enabled).toBe(true);
+        });
+    });
 });

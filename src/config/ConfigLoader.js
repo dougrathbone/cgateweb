@@ -390,6 +390,12 @@ class ConfigLoader {
             config.eventPublishCoalesce = config.eventPublishCoalesce.toLowerCase() === 'true';
         }
 
+        // Coerce here too: this guards live HVAC writes, so a string like "false"
+        // (e.g. from an env var) must not stay truthy and silently enable control.
+        if (typeof config.cbus_aircon_control_enabled === 'string') {
+            config.cbus_aircon_control_enabled = config.cbus_aircon_control_enabled.toLowerCase() === 'true';
+        }
+
         return config;
     }
 
