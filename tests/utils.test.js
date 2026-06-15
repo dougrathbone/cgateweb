@@ -1,4 +1,4 @@
-const { clampSetting, evictOldestFifo } = require('../src/utils');
+const { clampSetting, evictOldestFifo, temperatureToCbusLevel } = require('../src/utils');
 
 describe('clampSetting', () => {
     it('uses default when value is undefined', () => {
@@ -49,5 +49,23 @@ describe('evictOldestFifo', () => {
         m.set('b', 2);
         m.set('a', 99); // update in place; does NOT move to end
         expect(evictOldestFifo(m)).toBe('a');
+    });
+});
+
+describe('temperatureToCbusLevel', () => {
+    it('encodes at 0.5°C resolution (level = temp * 2)', () => {
+        expect(temperatureToCbusLevel(0)).toBe(0);
+        expect(temperatureToCbusLevel(21)).toBe(42);
+        expect(temperatureToCbusLevel(21.5)).toBe(43);
+    });
+
+    it('rounds to the nearest level', () => {
+        expect(temperatureToCbusLevel(21.2)).toBe(42); // 42.4 -> 42
+        expect(temperatureToCbusLevel(21.3)).toBe(43); // 42.6 -> 43
+    });
+
+    it('clamps to the valid 0-255 range', () => {
+        expect(temperatureToCbusLevel(-5)).toBe(0);
+        expect(temperatureToCbusLevel(200)).toBe(255);
     });
 });

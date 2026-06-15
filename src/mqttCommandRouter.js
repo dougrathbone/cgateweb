@@ -2,6 +2,7 @@ const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
+const { temperatureToCbusLevel } = require('./utils');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_TOPIC_PREFIX_READ,
@@ -575,10 +576,10 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
-        // Clamp to valid C-Bus HVAC temperature range
+        // Clamp to valid C-Bus HVAC temperature range, then encode at 0.5°C
+        // resolution (level = temperature * 2) via the shared helper.
         const clampedTemp = Math.max(0, Math.min(50, tempCelsius));
-        // Convert to C-Bus level: 0.5°C resolution → level = temperature * 2
-        const cbusLevel = Math.max(0, Math.min(255, Math.round(clampedTemp * 2)));
+        const cbusLevel = temperatureToCbusLevel(clampedTemp);
 
         const cbusPath = this._buildCGatePath(command);
         const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${cbusLevel}${NEWLINE}`;

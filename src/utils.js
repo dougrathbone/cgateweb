@@ -27,4 +27,19 @@ function evictOldestFifo(map) {
     return oldestKey;
 }
 
-module.exports = { clampSetting, evictOldestFifo };
+/**
+ * Encode a temperature (°C) as an 8-bit C-Bus level for the lighting-style HVAC
+ * application, which uses 0.5°C resolution (level = temperature × 2), clamped to
+ * the valid 0-255 range. This is the inverse of `level / 2`.
+ *
+ * Note: the native C-Bus air-conditioning application uses a different 16-bit
+ * (×256) encoding and is intentionally not handled here.
+ *
+ * @param {number} tempCelsius
+ * @returns {number} C-Bus raw level (0-255)
+ */
+function temperatureToCbusLevel(tempCelsius) {
+    return Math.max(0, Math.min(255, Math.round(tempCelsius * 2)));
+}
+
+module.exports = { clampSetting, evictOldestFifo, temperatureToCbusLevel };

@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { clampSetting, evictOldestFifo } = require('./utils');
+const { clampSetting, evictOldestFifo, temperatureToCbusLevel } = require('./utils');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
@@ -297,7 +297,7 @@ class EventPublisher {
      * @private
      */
     _temperatureToCbusLevel(tempCelsius) {
-        return Math.max(0, Math.min(255, Math.round(tempCelsius * 2)));
+        return temperatureToCbusLevel(tempCelsius);
     }
 
     /**
