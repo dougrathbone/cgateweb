@@ -17,6 +17,7 @@ const StaleDeviceDetector = require('./staleDeviceDetector');
 const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
 const { AirconControlRegistry } = require('./airconControlRegistry');
 const CniNotificationManager = require('./cniNotificationManager');
+const BridgeReadiness = require('./bridgeReadiness');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
@@ -141,13 +142,11 @@ class CgateWebBridge {
         this.eventLineProcessor = new LineProcessor();
         this.periodicGetAllInterval = null;
         this._lastInitTime = 0;
-        this._hasEverBeenReady = false;
-        this._lifecycle = {
-            state: 'booting',
-            reason: 'startup',
-            since: Date.now(),
-            transitions: 0
-        };
+
+        // Owns lifecycle state + readiness reason; emits 'readinessChanged' which
+        // the bridge subscribes to (after haBridgeDiagnostics is built) to drive
+        // the hello/cgateweb status publish and diagnostics refresh.
+        this.bridgeReadiness = new BridgeReadiness();
 
         // MQTT options
         this._mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
@@ -255,6 +254,15 @@ class CgateWebBridge {
             settings: this.settings,
             labelLoader: this.labelLoader,
             logger: this.logger
+        });
+
+        // Drive the side effects of a readiness change: publish the bridge's
+        // online/offline status (hello/cgateweb via mqttManager) and refresh the
+        // HA bridge diagnostics. Fires on every update() so behaviour matches the
+        // original _updateBridgeReadiness, which always invoked both.
+        this.bridgeReadiness.on('readinessChanged', ({ ready, reason }) => {
+            this.mqttManager.setBridgeReady(ready, reason);
+            this.haBridgeDiagnostics.publishNow(reason);
         });
 
         this.initializationService = new BridgeInitializationService(this);
@@ -574,12 +582,7 @@ class CgateWebBridge {
             version: require('../package.json').version,
             uptime: process.uptime(),
             ready,
-            lifecycle: {
-                state: this._lifecycle.state,
-                reason: this._lifecycle.reason,
-                since: this._lifecycle.since,
-                transitions: this._lifecycle.transitions
-            },
+            lifecycle: this.bridgeReadiness.getLifecycleSnapshot(),
             connections: {
                 mqtt: mqttConnected,
                 commandPool: {
@@ -608,30 +611,15 @@ class CgateWebBridge {
 
     _updateBridgeReadiness(reason = 'state-change') {
         const commandStats = this.commandConnectionPool ? this.commandConnectionPool.getStats() : null;
-        const ready = !!(
-            this.mqttManager.connected &&
-            this.eventConnection.connected &&
-            commandStats &&
-            commandStats.healthyConnections > 0
-        );
-        if (ready) {
-            this._hasEverBeenReady = true;
-            this._setLifecycleState('ready', reason);
-        } else if (this._lifecycle.state !== 'stopping') {
-            this._setLifecycleState(this._hasEverBeenReady ? 'degraded' : 'booting', reason);
-        }
-        this.mqttManager.setBridgeReady(ready, reason);
-        this.haBridgeDiagnostics.publishNow(reason);
+        return this.bridgeReadiness.update({
+            mqttConnected: this.mqttManager.connected,
+            eventConnected: this.eventConnection.connected,
+            healthyCommandConnections: commandStats ? commandStats.healthyConnections : 0
+        }, reason);
     }
 
     _setLifecycleState(state, reason) {
-        if (this._lifecycle.state === state && this._lifecycle.reason === reason) return;
-        if (this._lifecycle.state !== state) {
-            this._lifecycle.transitions += 1;
-        }
-        this._lifecycle.state = state;
-        this._lifecycle.reason = reason;
-        this._lifecycle.since = Date.now();
+        return this.bridgeReadiness.setLifecycleState(state, reason);
     }
 
     // Hot-reloads settings that can be applied without reconnecting.
