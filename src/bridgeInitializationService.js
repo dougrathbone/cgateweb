@@ -7,21 +7,80 @@ const {
     DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
 
+/**
+ * Drives post-connection initialization (auto-discovery, initial/periodic
+ * getall, CNI monitoring, HA Discovery setup) without reaching into and
+ * mutating bridge internals.
+ *
+ * The service owns its own lifecycle state (debounce timestamp, periodic/CNI
+ * timers, the labels-changed listener it registers). State the bridge owns and
+ * exposes to other collaborators -- `discoveredNetworks` and `haDiscovery` --
+ * is read back through injected getters and written back through injected
+ * setters at the exact point in the init flow it changes today, so the bridge's
+ * live accessors (`getHaDiscovery`, `_getBridgeStatus`, the mqttCommandRouter
+ * handlers) keep observing the same values at the same moments.
+ *
+ * `handleAllConnected()` additionally returns an InitResult describing the state
+ * it produced so the bridge has an explicit contract to apply, in addition to
+ * the in-flight setter calls that preserve timing.
+ */
 class BridgeInitializationService {
-    constructor(bridge) {
-        this.bridge = bridge;
-        this.logger = createLogger({ component: 'BridgeInitializationService' });
+    /**
+     * @param {Object} deps
+     * @param {Object} deps.settings - bridge settings (shared reference; read live)
+     * @param {Object} deps.commandQueue - C-Gate command queue ({ add })
+     * @param {Object} deps.mqttManager - MQTT manager ({ publish })
+     * @param {Object} deps.labelLoader - label loader for HA Discovery labels
+     * @param {Object} [deps.logger] - logger; defaults to a component logger
+     * @param {Function} deps.getCommandResponseProcessor - () => commandResponseProcessor (live)
+     * @param {Function} deps.getDiscoveredNetworks - () => current discovered networks (live)
+     * @param {Function} deps.getHaDiscovery - () => current haDiscovery instance (live)
+     * @param {Function} deps.applyDiscoveredNetworks - (networks) => set bridge.discoveredNetworks now
+     * @param {Function} deps.applyHaDiscovery - (haDiscovery) => set bridge.haDiscovery (+ wire processor) now
+     * @param {Function} deps.updateReadiness - (reason) => signal bridge readiness
+     */
+    constructor(deps) {
+        this.settings = deps.settings;
+        this.commandQueue = deps.commandQueue;
+        this.mqttManager = deps.mqttManager;
+        this.labelLoader = deps.labelLoader;
+        this.logger = deps.logger || createLogger({ component: 'BridgeInitializationService' });
+        // The bridge's logger (component 'bridge'); used for the handful of
+        // messages that historically went through bridge.log so the log
+        // component label is unchanged. Falls back to this.logger.info.
+        this._log = deps.log || ((message) => this.logger.info(message));
+        this._getCommandResponseProcessor = deps.getCommandResponseProcessor;
+        this._getDiscoveredNetworks = deps.getDiscoveredNetworks;
+        this._getHaDiscovery = deps.getHaDiscovery;
+        this._applyDiscoveredNetworks = deps.applyDiscoveredNetworks;
+        this._applyHaDiscovery = deps.applyHaDiscovery;
+        this._updateReadiness = deps.updateReadiness;
+
+        // Service-owned lifecycle state (nothing outside the service reads these).
+        this._lastInitTime = 0;
+        this._periodicGetAllInterval = null;
+        this._cniMonitorTimer = null;
+        this._onLabelsChanged = null;
         this._perAppTimers = new Map();
     }
 
+    /**
+     * Runs the post-connect initialization sequence and returns an InitResult
+     * describing the state the bridge owns. The same state is also applied
+     * in-flight through the injected setters so the bridge's live accessors see
+     * it at the exact moment it changes today.
+     *
+     * @returns {Promise<{discoveredNetworks: (number[]|null), haDiscovery: (Object|null), onLabelsChanged: (Function|null)}>}
+     *          An InitResult, or null when the call was debounced (no work ran).
+     */
     async handleAllConnected() {
         const now = Date.now();
-        if (now - this.bridge._lastInitTime < 10000) {
-            this.bridge.log('ALL CONNECTED (duplicate within 10s, skipping re-initialization)');
-            return;
+        if (now - this._lastInitTime < 10000) {
+            this._log('ALL CONNECTED (duplicate within 10s, skipping re-initialization)');
+            return null;
         }
-        this.bridge._lastInitTime = now;
-        this.bridge.log('ALL CONNECTED - Initializing services...');
+        this._lastInitTime = now;
+        this._log('ALL CONNECTED - Initializing services...');
 
         // Signal readiness up-front. All connection-health checks have already
         // passed by the time this handler fires, and the post-connect work
@@ -31,58 +90,68 @@ class BridgeInitializationService {
         // up lets the readiness MQTT publish land on the wire before the
         // (potentially 5s) auto-discovery wait. Tests that await the function
         // still observe all work completing as before.
-        this.bridge._updateBridgeReadiness('all-connected');
+        this._updateReadiness('all-connected');
 
         // Auto-discover networks from C-Gate if enabled and no explicit config overrides it
-        if (this.bridge.settings.autoDiscoverNetworks) {
+        if (this.settings.autoDiscoverNetworks) {
             await this._discoverNetworks();
         }
 
         const getallNetworks = this._resolveGetallNetworks();
 
-        if (getallNetworks.length > 0 && this.bridge.settings.getallonstart) {
-            this.bridge.log(`Getting all initial values for networks: ${getallNetworks.join(', ')}...`);
+        if (getallNetworks.length > 0 && this.settings.getallonstart) {
+            this._log(`Getting all initial values for networks: ${getallNetworks.join(', ')}...`);
             for (const netapp of getallNetworks) {
-                this.bridge.cgateCommandQueue.add(
-                    `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
+                this.commandQueue.add(
+                    `${CGATE_CMD_GET} //${this.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
                 );
             }
         }
 
-        if (getallNetworks.length > 0 && (this.bridge.settings.getallperiod || this.bridge.settings.getall_app_periods)) {
+        if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
             this._scheduleAllGetalls(getallNetworks);
         }
 
         // Monitor CNI/PCI connectivity per network (independent of getall).
         this._startNetworkInterfaceMonitoring();
 
-        if (!this.bridge.haDiscovery) {
-            this.bridge.haDiscovery = new HaDiscovery(
-                this.bridge.settings,
-                (topic, payload, options) => this.bridge.mqttManager.publish(topic, payload, options),
-                (command) => this.bridge.cgateCommandQueue.add(command, { priority: 'bulk' }),
-                this.bridge.labelLoader.getLabelData()
+        if (!this._getHaDiscovery()) {
+            const haDiscovery = new HaDiscovery(
+                this.settings,
+                (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
+                (command) => this.commandQueue.add(command, { priority: 'bulk' }),
+                this.labelLoader.getLabelData()
             );
-            this.bridge.commandResponseProcessor.haDiscovery = this.bridge.haDiscovery;
+            // Apply at the same moment it became non-null before: this wires the
+            // command response processor and makes the bridge's live haDiscovery
+            // accessors return the instance for the remainder of init.
+            this._applyHaDiscovery(haDiscovery);
 
-            this.bridge._onLabelsChanged = (labelData) => {
-                this.bridge.logger.info(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
-                this.bridge.haDiscovery.updateLabels(labelData);
-                this.bridge.haDiscovery.trigger(this.bridge.discoveredNetworks || null);
+            this._onLabelsChanged = (labelData) => {
+                this._log(`Labels reloaded (${labelData.labels.size} labels), re-triggering HA Discovery`);
+                const hd = this._getHaDiscovery();
+                hd.updateLabels(labelData);
+                hd.trigger(this._getDiscoveredNetworks() || null);
             };
-            this.bridge.labelLoader.on('labels-changed', this.bridge._onLabelsChanged);
-            this.bridge.labelLoader.watch();
+            this.labelLoader.on('labels-changed', this._onLabelsChanged);
+            this.labelLoader.watch();
         }
 
-        if (this.bridge.settings.ha_discovery_enabled) {
-            this.bridge.haDiscovery.trigger(this.bridge.discoveredNetworks || null);
+        if (this.settings.ha_discovery_enabled) {
+            this._getHaDiscovery().trigger(this._getDiscoveredNetworks() || null);
         }
 
         this._logStartupSummary();
+
+        return {
+            discoveredNetworks: this._getDiscoveredNetworks(),
+            haDiscovery: this._getHaDiscovery(),
+            onLabelsChanged: this._onLabelsChanged
+        };
     }
 
     _logStartupSummary() {
-        const s = this.bridge.settings;
+        const s = this.settings;
         const lines = ['--- Startup Summary ---'];
 
         // Connections
@@ -90,7 +159,7 @@ class BridgeInitializationService {
         lines.push(`  MQTT: ${s.mqtt}${s.mqttusername ? ' (authenticated)' : ''}`);
 
         // Networks
-        const nets = this.bridge.discoveredNetworks;
+        const nets = this._getDiscoveredNetworks();
         if (nets && nets.length > 0) {
             lines.push(`  Networks: ${nets.join(', ')} (auto-discovered)`);
         } else if (s.ha_discovery_networks && s.ha_discovery_networks.length > 0) {
@@ -120,7 +189,7 @@ class BridgeInitializationService {
         }
 
         // Labels
-        const labelCount = this.bridge.labelLoader.getLabelsObject ? Object.keys(this.bridge.labelLoader.getLabelsObject()).length : 0;
+        const labelCount = this.labelLoader.getLabelsObject ? Object.keys(this.labelLoader.getLabelsObject()).length : 0;
         if (labelCount > 0) {
             lines.push(`  Labels: ${labelCount} custom labels loaded`);
         }
@@ -140,12 +209,12 @@ class BridgeInitializationService {
      * Returns 0 if the app should not be polled.
      */
     _getIntervalForApp(appId) {
-        const appPeriods = this.bridge.settings.getall_app_periods;
+        const appPeriods = this.settings.getall_app_periods;
         const key = String(appId);
         if (appPeriods && Object.prototype.hasOwnProperty.call(appPeriods, key)) {
             return appPeriods[key] * 1000;
         }
-        return (this.bridge.settings.getallperiod || 0) * 1000;
+        return (this.settings.getallperiod || 0) * 1000;
     }
 
     /**
@@ -160,11 +229,11 @@ class BridgeInitializationService {
         if (!intervalMs) {
             return;
         }
-        this.bridge.log(`Starting periodic 'get all' for ${networkAppPath} every ${intervalMs / 1000} seconds.`);
+        this._log(`Starting periodic 'get all' for ${networkAppPath} every ${intervalMs / 1000} seconds.`);
         const handle = setInterval(() => {
             this.logger.debug(`Getting all periodic values for ${networkAppPath}...`);
-            this.bridge.cgateCommandQueue.add(
-                `${CGATE_CMD_GET} //${this.bridge.settings.cbusname}/${networkAppPath}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
+            this.commandQueue.add(
+                `${CGATE_CMD_GET} //${this.settings.cbusname}/${networkAppPath}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
             );
         }, intervalMs).unref();
         this._perAppTimers.set(networkAppPath, handle);
@@ -176,9 +245,9 @@ class BridgeInitializationService {
      */
     _scheduleAllGetalls(getallNetworks) {
         // Clear old single-interval timer (backwards-compat)
-        if (this.bridge.periodicGetAllInterval) {
-            clearInterval(this.bridge.periodicGetAllInterval);
-            this.bridge.periodicGetAllInterval = null;
+        if (this._periodicGetAllInterval) {
+            clearInterval(this._periodicGetAllInterval);
+            this._periodicGetAllInterval = null;
         }
         // Clear existing per-app timers
         for (const handle of this._perAppTimers.values()) {
@@ -195,11 +264,11 @@ class BridgeInitializationService {
 
     /**
      * Sends `tree //PROJECT` to C-Gate and parses the response to find all network IDs.
-     * Stores discovered network IDs on `this.bridge.discoveredNetworks`.
+     * Applies the discovered network IDs to the bridge.
      * Falls back silently if the command fails or returns no networks.
      */
     async _discoverNetworks() {
-        const cbusname = this.bridge.settings.cbusname;
+        const cbusname = this.settings.cbusname;
         const command = `tree //${cbusname}${NEWLINE}`;
 
         return new Promise((resolve) => {
@@ -207,7 +276,7 @@ class BridgeInitializationService {
             const TIMEOUT_MS = 5000;
 
             // Register a handler on the command response processor to intercept responses
-            const processor = this.bridge.commandResponseProcessor;
+            const processor = this._getCommandResponseProcessor();
             if (!processor) {
                 this.logger.warn('Network auto-discovery: commandResponseProcessor not available, skipping');
                 resolve();
@@ -239,11 +308,11 @@ class BridgeInitializationService {
                 }
 
                 if (networks.length > 0) {
-                    this.bridge.discoveredNetworks = networks;
+                    this._applyDiscoveredNetworks(networks);
                     this.logger.info(`Auto-discovered C-Bus networks: [${networks.join(', ')}]`);
                 } else {
                     this.logger.info('Network auto-discovery returned no networks; falling back to configured values');
-                    this.bridge.discoveredNetworks = null;
+                    this._applyDiscoveredNetworks(null);
                 }
                 resolve();
             };
@@ -272,7 +341,7 @@ class BridgeInitializationService {
             timeoutRef.handle.unref?.();
 
             // Queue the tree command (direct add, bypassing throttle priority so it runs first)
-            this.bridge.cgateCommandQueue.add(command);
+            this.commandQueue.add(command);
         });
     }
 
@@ -282,7 +351,7 @@ class BridgeInitializationService {
      * finally the network from getallnetapp. Returns unique numeric-id strings.
      */
     _resolveMonitorNetworkIds() {
-        const s = this.bridge.settings;
+        const s = this.settings;
         const ids = new Set();
         const add = (arr) => {
             if (!Array.isArray(arr)) return;
@@ -291,8 +360,9 @@ class BridgeInitializationService {
                 if (m) ids.add(m[0]);
             }
         };
-        if (this.bridge.discoveredNetworks && this.bridge.discoveredNetworks.length > 0) {
-            add(this.bridge.discoveredNetworks);
+        const discoveredNetworks = this._getDiscoveredNetworks();
+        if (discoveredNetworks && discoveredNetworks.length > 0) {
+            add(discoveredNetworks);
         }
         add(s.getall_networks);
         add(s.ha_discovery_networks);
@@ -309,9 +379,9 @@ class BridgeInitializationService {
      */
     _pollNetworkInterfaceStates(networkIds) {
         for (const net of networkIds) {
-            const base = `//${this.bridge.settings.cbusname}/${net}`;
-            this.bridge.cgateCommandQueue.add(`${CGATE_CMD_GET} ${base} InterfaceState${NEWLINE}`);
-            this.bridge.cgateCommandQueue.add(`${CGATE_CMD_GET} ${base} State${NEWLINE}`);
+            const base = `//${this.settings.cbusname}/${net}`;
+            this.commandQueue.add(`${CGATE_CMD_GET} ${base} InterfaceState${NEWLINE}`);
+            this.commandQueue.add(`${CGATE_CMD_GET} ${base} State${NEWLINE}`);
         }
     }
 
@@ -321,7 +391,7 @@ class BridgeInitializationService {
      * page even though cgateweb's TCP link to C-Gate stays up.
      */
     _startNetworkInterfaceMonitoring() {
-        const intervalMs = this.bridge.settings.cniMonitorIntervalMs;
+        const intervalMs = this.settings.cniMonitorIntervalMs;
         if (!intervalMs || intervalMs <= 0) return;
         const networkIds = this._resolveMonitorNetworkIds();
         if (networkIds.length === 0) {
@@ -329,23 +399,24 @@ class BridgeInitializationService {
             return;
         }
         this._pollNetworkInterfaceStates(networkIds); // initial reading
-        if (this.bridge._cniMonitorTimer) clearInterval(this.bridge._cniMonitorTimer);
-        this.bridge._cniMonitorTimer = setInterval(
+        if (this._cniMonitorTimer) clearInterval(this._cniMonitorTimer);
+        this._cniMonitorTimer = setInterval(
             () => this._pollNetworkInterfaceStates(networkIds),
             intervalMs
         ).unref();
-        this.bridge.log(`Monitoring C-Bus network interface (CNI) state for [${networkIds.join(', ')}] every ${intervalMs / 1000}s.`);
+        this._log(`Monitoring C-Bus network interface (CNI) state for [${networkIds.join(', ')}] every ${intervalMs / 1000}s.`);
     }
 
     _resolveGetallNetworks() {
-        const settings = this.bridge.settings;
+        const settings = this.settings;
 
         // Determine effective network list: explicit config takes priority, then auto-discovered
         let networks = null;
+        const discoveredNetworks = this._getDiscoveredNetworks();
         if (Array.isArray(settings.getall_networks) && settings.getall_networks.length > 0) {
             networks = settings.getall_networks;
-        } else if (this.bridge.discoveredNetworks && this.bridge.discoveredNetworks.length > 0) {
-            networks = this.bridge.discoveredNetworks;
+        } else if (discoveredNetworks && discoveredNetworks.length > 0) {
+            networks = discoveredNetworks;
         }
 
         if (networks) {
@@ -384,8 +455,9 @@ class BridgeInitializationService {
      * that fail because C-Gate hasn't finished loading networks at startup.
      */
     handleCommandError(code, statusData) {
-        if (this.bridge.haDiscovery) {
-            this.bridge.haDiscovery.handleCommandError(code, statusData);
+        const haDiscovery = this._getHaDiscovery();
+        if (haDiscovery) {
+            haDiscovery.handleCommandError(code, statusData);
         }
 
         if (code !== '401') return;
@@ -402,9 +474,9 @@ class BridgeInitializationService {
     }
 
     stop() {
-        if (this.bridge.periodicGetAllInterval) {
-            clearInterval(this.bridge.periodicGetAllInterval);
-            this.bridge.periodicGetAllInterval = null;
+        if (this._periodicGetAllInterval) {
+            clearInterval(this._periodicGetAllInterval);
+            this._periodicGetAllInterval = null;
         }
 
         for (const handle of this._perAppTimers.values()) {
@@ -412,22 +484,23 @@ class BridgeInitializationService {
         }
         this._perAppTimers.clear();
 
-        if (this.bridge._cniMonitorTimer) {
-            clearInterval(this.bridge._cniMonitorTimer);
-            this.bridge._cniMonitorTimer = null;
+        if (this._cniMonitorTimer) {
+            clearInterval(this._cniMonitorTimer);
+            this._cniMonitorTimer = null;
         }
 
-        if (this.bridge._onLabelsChanged) {
-            this.bridge.labelLoader.removeListener('labels-changed', this.bridge._onLabelsChanged);
-            this.bridge._onLabelsChanged = null;
+        if (this._onLabelsChanged) {
+            this.labelLoader.removeListener('labels-changed', this._onLabelsChanged);
+            this._onLabelsChanged = null;
         }
-        this.bridge.labelLoader.unwatch();
+        this.labelLoader.unwatch();
 
-        if (this.bridge.haDiscovery) {
-            this.bridge.haDiscovery.stop();
-            this.bridge.haDiscovery.removeAllListeners?.();
-            this.bridge.haDiscovery = null;
-            this.bridge.commandResponseProcessor.haDiscovery = null;
+        const haDiscovery = this._getHaDiscovery();
+        if (haDiscovery) {
+            haDiscovery.stop();
+            haDiscovery.removeAllListeners?.();
+            // Clearing the bridge's haDiscovery + processor wiring on stop.
+            this._applyHaDiscovery(null);
         }
     }
 }

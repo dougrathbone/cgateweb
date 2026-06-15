@@ -372,11 +372,11 @@ describe('CgateWebBridge', () => {
 
         describe('stop()', () => {
             it('should stop all connections and clear resources', async () => {
-                // Set up some state to clean up
-                const intervalId = setInterval(() => {}, 1000);
-                bridge.periodicGetAllInterval = intervalId;
+                // The init service owns the periodic-getall interval; bridge.stop()
+                // must delegate teardown of that to initializationService.stop().
+                const initStopSpy = jest.spyOn(bridge.initializationService, 'stop');
 
-                const mqttDisconnectSpy = jest.spyOn(bridge.mqttManager, 'disconnect');  
+                const mqttDisconnectSpy = jest.spyOn(bridge.mqttManager, 'disconnect');
                 const cmdPoolStopSpy = jest.spyOn(bridge.commandConnectionPool, 'stop');
                 const evtDisconnectSpy = jest.spyOn(bridge.eventConnection, 'disconnect');
                 const clearQueuesSpy = jest.spyOn(bridge.cgateCommandQueue, 'clear');
@@ -384,13 +384,15 @@ describe('CgateWebBridge', () => {
                 await bridge.stop();
 
                 expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Stopping cgateweb bridge'));
-                expect(bridge.periodicGetAllInterval).toBeNull();
+                expect(initStopSpy).toHaveBeenCalled();
+                expect(bridge.initializationService._periodicGetAllInterval).toBeNull();
                 expect(bridge.connectionManager.isAllConnected).toBe(false);
                 expect(clearQueuesSpy).toHaveBeenCalled();
                 expect(mqttDisconnectSpy).toHaveBeenCalled();
                 expect(cmdPoolStopSpy).toHaveBeenCalled();
                 expect(evtDisconnectSpy).toHaveBeenCalled();
 
+                initStopSpy.mockRestore();
                 mqttDisconnectSpy.mockRestore();
                 cmdPoolStopSpy.mockRestore();
                 evtDisconnectSpy.mockRestore();
@@ -398,10 +400,10 @@ describe('CgateWebBridge', () => {
             });
 
             it('should handle stop when no periodic interval is set', () => {
-                bridge.periodicGetAllInterval = null;
-                
+                bridge.initializationService._periodicGetAllInterval = null;
+
                 expect(() => bridge.stop()).not.toThrow();
-                expect(bridge.periodicGetAllInterval).toBeNull();
+                expect(bridge.initializationService._periodicGetAllInterval).toBeNull();
             });
         });
     });
@@ -421,7 +423,7 @@ describe('CgateWebBridge', () => {
 
         describe('_handleAllConnected()', () => {
             beforeEach(() => {
-                bridge._lastInitTime = 0;
+                bridge.initializationService._lastInitTime = 0;
             });
 
             it('should initialize services when all connections are ready', () => {

@@ -5,6 +5,13 @@ jest.mock('../src/haDiscovery');
 const BridgeInitializationService = require('../src/bridgeInitializationService');
 const HaDiscovery = require('../src/haDiscovery');
 
+// Builds the collaborator dependencies the service now takes instead of a
+// bridge reference. `state` stands in for the bridge-owned fields the service
+// reads/writes through getters/setters (discoveredNetworks, haDiscovery,
+// onLabelsChanged); applying them via the apply* setters mirrors what the real
+// bridge does. The returned `bridge` shim is a thin facade so existing tests
+// can keep referring to bridge.haDiscovery / bridge.discoveredNetworks etc. and
+// observe the applied state, without the service touching it directly.
 function makeBridge(settingsOverrides = {}) {
     const settings = {
         cbusname: 'HOME',
@@ -28,18 +35,19 @@ function makeBridge(settingsOverrides = {}) {
         haDiscovery: null
     };
 
-    const bridge = {
-        settings,
-        _lastInitTime: 0,
-        periodicGetAllInterval: null,
-        _onLabelsChanged: null,
+    // Bridge-owned mutable state the service reads/writes through accessors.
+    const state = {
         haDiscovery: null,
         discoveredNetworks: null,
-        commandResponseProcessor,
-        log: jest.fn(),
-        logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+        onLabelsChanged: null
+    };
+
+    const updateBridgeReadiness = jest.fn();
+
+    const deps = {
+        settings,
+        commandQueue: { add: commandQueueAdd },
         mqttManager: { publish: mqttPublish },
-        cgateCommandQueue: { add: commandQueueAdd },
         labelLoader: {
             getLabelData: labelLoaderGetLabelData,
             on: labelLoaderOn,
@@ -47,9 +55,49 @@ function makeBridge(settingsOverrides = {}) {
             watch: labelLoaderWatch,
             unwatch: labelLoaderUnwatch
         },
-        _updateBridgeReadiness: jest.fn()
+        logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+        log: jest.fn(),
+        // Resolve at call time so tests that null out the processor take effect.
+        getCommandResponseProcessor: () => bridge.commandResponseProcessor,
+        getDiscoveredNetworks: () => state.discoveredNetworks,
+        getHaDiscovery: () => state.haDiscovery,
+        applyDiscoveredNetworks: (networks) => { state.discoveredNetworks = networks; },
+        applyHaDiscovery: (haDiscovery) => {
+            state.haDiscovery = haDiscovery;
+            commandResponseProcessor.haDiscovery = haDiscovery;
+        },
+        // Resolve bridge._updateBridgeReadiness at call time so tests that
+        // reassign it (e.g. to capture call ordering) take effect.
+        updateReadiness: (reason) => bridge._updateBridgeReadiness(reason)
     };
-    return { bridge, commandQueueAdd, mqttPublish, commandResponseProcessor };
+
+    // Facade so existing assertions on bridge.* keep working. Reads reflect the
+    // applied state; writes (used by some tests to pre-seed discoveredNetworks)
+    // flow into the same backing state the service sees. `__deps` carries the
+    // collaborator deps the service is now constructed from.
+    const bridge = {
+        __deps: deps,
+        settings,
+        commandResponseProcessor,
+        log: deps.log,
+        logger: deps.logger,
+        mqttManager: deps.mqttManager,
+        cgateCommandQueue: deps.commandQueue,
+        labelLoader: deps.labelLoader,
+        _updateBridgeReadiness: updateBridgeReadiness,
+        get haDiscovery() { return state.haDiscovery; },
+        set haDiscovery(v) { state.haDiscovery = v; },
+        get discoveredNetworks() { return state.discoveredNetworks; },
+        set discoveredNetworks(v) { state.discoveredNetworks = v; }
+    };
+
+    return { bridge, deps, state, commandQueueAdd, mqttPublish, commandResponseProcessor };
+}
+
+// All existing tests construct `makeService(bridge)`; the
+// service now takes a deps object, so route construction through this helper.
+function makeService(bridge) {
+    return new BridgeInitializationService(bridge.__deps);
 }
 
 describe('BridgeInitializationService', () => {
@@ -71,7 +119,7 @@ describe('BridgeInitializationService', () => {
     describe('_resolveGetallNetworks', () => {
         it('returns only lighting app when no optional apps are configured', () => {
             const { bridge } = makeBridge({ getall_networks: [254, 1] });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual(['254/56', '1/56']);
         });
 
@@ -80,7 +128,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_cover_app_id: '203'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toContain('254/56');
             expect(result).toContain('254/203');
@@ -92,7 +140,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_hvac_app_id: '201'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toContain('254/56');
             expect(result).toContain('254/201');
@@ -106,7 +154,7 @@ describe('BridgeInitializationService', () => {
                 ha_discovery_switch_app_id: '88',
                 ha_discovery_relay_app_id: '99'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toContain('254/56');
             expect(result).toContain('254/202');
@@ -120,7 +168,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_switch_app_id: '56'  // same as lighting app ID
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toEqual(['254/56']);
         });
@@ -130,7 +178,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254, 1],
                 ha_discovery_cover_app_id: '203'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toContain('254/56');
             expect(result).toContain('254/203');
@@ -141,33 +189,33 @@ describe('BridgeInitializationService', () => {
 
         it('falls back to getallnetapp when getall_networks absent', () => {
             const { bridge } = makeBridge({ getallnetapp: '254/56' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual(['254/56']);
         });
 
         it('returns empty array when neither is set', () => {
             const { bridge } = makeBridge({});
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual([]);
         });
 
         it('returns empty array when getall_networks is empty', () => {
             const { bridge } = makeBridge({ getall_networks: [] });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual([]);
         });
 
         it('uses discoveredNetworks when getall_networks is not configured', () => {
             const { bridge } = makeBridge({});
             bridge.discoveredNetworks = [254, 1];
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual(['254/56', '1/56']);
         });
 
         it('explicit getall_networks overrides discoveredNetworks', () => {
             const { bridge } = makeBridge({ getall_networks: [100] });
             bridge.discoveredNetworks = [254, 1];
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._resolveGetallNetworks()).toEqual(['100/56']);
         });
     });
@@ -175,7 +223,7 @@ describe('BridgeInitializationService', () => {
     describe('_discoverNetworks', () => {
         it('parses network IDs from tree response lines and stores on bridge', async () => {
             const { bridge, commandQueueAdd } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
 
@@ -197,7 +245,7 @@ describe('BridgeInitializationService', () => {
 
         it('ignores non-network lines in the tree response', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -215,7 +263,7 @@ describe('BridgeInitializationService', () => {
 
         it('deduplicates duplicate network IDs', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -231,7 +279,7 @@ describe('BridgeInitializationService', () => {
 
         it('sets discoveredNetworks to null and warns when no networks found', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -246,7 +294,7 @@ describe('BridgeInitializationService', () => {
 
         it('finishes early on C-Gate error response', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -264,7 +312,7 @@ describe('BridgeInitializationService', () => {
 
         it('handler returns true on 4xx/5xx so default error logger is suppressed', async () => {
             const { bridge } = makeBridge({ cbusname: 'CLIPSAL' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -277,7 +325,7 @@ describe('BridgeInitializationService', () => {
 
         it('handler returns false on 200 so default routing still runs', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -290,7 +338,7 @@ describe('BridgeInitializationService', () => {
 
         it('resolves after timeout even if no terminating response', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
@@ -307,7 +355,7 @@ describe('BridgeInitializationService', () => {
 
         it('clears networkDiscoveryHandler from processor after finishing', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             const promise = svc._discoverNetworks();
             jest.advanceTimersByTime(6000);
@@ -319,7 +367,7 @@ describe('BridgeInitializationService', () => {
         it('resolves immediately when commandResponseProcessor is not available', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
             bridge.commandResponseProcessor = null;
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
 
             await expect(svc._discoverNetworks()).resolves.toBeUndefined();
         });
@@ -328,9 +376,10 @@ describe('BridgeInitializationService', () => {
     describe('handleAllConnected', () => {
         it('skips re-initialization within 10s debounce window', async () => {
             const { bridge } = makeBridge({ getallonstart: true, getall_networks: [254] });
-            bridge._lastInitTime = Date.now();
-            const svc = new BridgeInitializationService(bridge);
-            await svc.handleAllConnected();
+            const svc = makeService(bridge);
+            svc._lastInitTime = Date.now();
+            const result = await svc.handleAllConnected();
+            expect(result).toBeNull();
             expect(bridge._updateBridgeReadiness).not.toHaveBeenCalled();
         });
 
@@ -339,7 +388,7 @@ describe('BridgeInitializationService', () => {
                 getallonstart: true,
                 getall_networks: [254, 1]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(commandQueueAdd).toHaveBeenCalledTimes(2);
             expect(commandQueueAdd.mock.calls[0][0]).toContain('//HOME/254/56/*');
@@ -351,7 +400,7 @@ describe('BridgeInitializationService', () => {
                 getallonstart: true,
                 getallnetapp: '254/56'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(commandQueueAdd).toHaveBeenCalledTimes(1);
             expect(commandQueueAdd.mock.calls[0][0]).toContain('//HOME/254/56/*');
@@ -362,7 +411,7 @@ describe('BridgeInitializationService', () => {
                 getallonstart: false,
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(commandQueueAdd).not.toHaveBeenCalled();
         });
@@ -373,7 +422,7 @@ describe('BridgeInitializationService', () => {
                 getallperiod: 3600,
                 getall_networks: [254, 1]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(svc._perAppTimers.size).toBe(2);
 
@@ -392,18 +441,18 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254]
             });
             const oldInterval = setInterval(() => {}, 99999);
-            bridge.periodicGetAllInterval = oldInterval;
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
+            svc._periodicGetAllInterval = oldInterval;
             await svc.handleAllConnected();
             // Legacy interval cleared, new per-app timers created
-            expect(bridge.periodicGetAllInterval).toBeNull();
+            expect(svc._periodicGetAllInterval).toBeNull();
             expect(svc._perAppTimers.size).toBe(1);
             svc.stop();
         });
 
         it('initializes HaDiscovery and sets up labels listener on first call', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: true });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(HaDiscovery).toHaveBeenCalledTimes(1);
             expect(bridge.labelLoader.on).toHaveBeenCalledWith('labels-changed', expect.any(Function));
@@ -413,16 +462,16 @@ describe('BridgeInitializationService', () => {
 
         it('does not re-create HaDiscovery on subsequent calls', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: false });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
-            bridge._lastInitTime = 0;
+            svc._lastInitTime = 0;
             await svc.handleAllConnected();
             expect(HaDiscovery).toHaveBeenCalledTimes(1);
         });
 
         it('calls _updateBridgeReadiness', async () => {
             const { bridge } = makeBridge();
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(bridge._updateBridgeReadiness).toHaveBeenCalledWith('all-connected');
         });
@@ -447,7 +496,7 @@ describe('BridgeInitializationService', () => {
                 return { trigger: jest.fn(() => eventOrder.push('discovery-trigger')) };
             });
 
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             // Verify the actual ordering constraint (readiness before each
@@ -462,7 +511,7 @@ describe('BridgeInitializationService', () => {
 
         it('passes working publish callback to HaDiscovery', async () => {
             const { bridge, mqttPublish } = makeBridge({ ha_discovery_enabled: true });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             const [, publishFn] = HaDiscovery.mock.calls[0];
             publishFn('topic/x', 'payload', { retain: true });
@@ -471,7 +520,7 @@ describe('BridgeInitializationService', () => {
 
         it('passes working command callback to HaDiscovery', async () => {
             const { bridge, commandQueueAdd } = makeBridge({ ha_discovery_enabled: true });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             const [, , commandFn] = HaDiscovery.mock.calls[0];
             commandFn('GET //HOME/254/56/* level');
@@ -480,10 +529,10 @@ describe('BridgeInitializationService', () => {
 
         it('invokes haDiscovery.updateLabels and trigger when labels change', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: true });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             const labelData = { labels: new Map([['key', 'val']]) };
-            bridge._onLabelsChanged(labelData);
+            svc._onLabelsChanged(labelData);
             expect(bridge.haDiscovery.updateLabels).toHaveBeenCalledWith(labelData);
             expect(bridge.haDiscovery.trigger).toHaveBeenCalledTimes(2); // once on connect, once on labels change
         });
@@ -491,7 +540,7 @@ describe('BridgeInitializationService', () => {
         it('passes discoveredNetworks to haDiscovery.trigger', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: true });
             bridge.discoveredNetworks = [254, 1];
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(bridge.haDiscovery.trigger).toHaveBeenCalledWith([254, 1]);
         });
@@ -501,7 +550,7 @@ describe('BridgeInitializationService', () => {
                 autoDiscoverNetworks: true,
                 cbusname: 'HOME'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const discoverSpy = jest.spyOn(svc, '_discoverNetworks').mockResolvedValue(undefined);
             await svc.handleAllConnected();
             expect(discoverSpy).toHaveBeenCalled();
@@ -509,7 +558,7 @@ describe('BridgeInitializationService', () => {
 
         it('does not call _discoverNetworks when autoDiscoverNetworks is false', async () => {
             const { bridge } = makeBridge({ autoDiscoverNetworks: false });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             const discoverSpy = jest.spyOn(svc, '_discoverNetworks').mockResolvedValue(undefined);
             await svc.handleAllConnected();
             expect(discoverSpy).not.toHaveBeenCalled();
@@ -521,7 +570,7 @@ describe('BridgeInitializationService', () => {
                 // no getall_networks
             });
             bridge.discoveredNetworks = [254];
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(commandQueueAdd).toHaveBeenCalledTimes(1);
             expect(commandQueueAdd.mock.calls[0][0]).toContain('//HOME/254/56/*');
@@ -531,31 +580,31 @@ describe('BridgeInitializationService', () => {
     describe('_getIntervalForApp', () => {
         it('returns global default * 1000 when no per-app override is set', () => {
             const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: {} });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._getIntervalForApp('56')).toBe(3600000);
         });
 
         it('returns per-app override * 1000 when set for the given app ID', () => {
             const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: { '201': 300 } });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._getIntervalForApp('201')).toBe(300000);
         });
 
         it('returns 0 (skip) when app is explicitly set to 0', () => {
             const { bridge } = makeBridge({ getallperiod: 3600, getall_app_periods: { '56': 0 } });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._getIntervalForApp('56')).toBe(0);
         });
 
         it('falls back to global default when app not present in getall_app_periods', () => {
             const { bridge } = makeBridge({ getallperiod: 120, getall_app_periods: { '201': 60 } });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._getIntervalForApp('56')).toBe(120000);
         });
 
         it('returns 0 when neither getallperiod nor getall_app_periods is set', () => {
             const { bridge } = makeBridge({ getallperiod: 0, getall_app_periods: {} });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             expect(svc._getIntervalForApp('56')).toBe(0);
         });
     });
@@ -569,7 +618,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254, 1],
                 ha_discovery_cover_app_id: '203'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             // 2 networks × 2 apps (56 + 203) = 4 timers
             expect(svc._perAppTimers.size).toBe(4);
@@ -588,7 +637,7 @@ describe('BridgeInitializationService', () => {
                 getall_app_periods: { '56': 0 },
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(svc._perAppTimers.has('254/56')).toBe(false);
             svc.stop();
@@ -601,7 +650,7 @@ describe('BridgeInitializationService', () => {
                 getall_app_periods: {},
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             jest.advanceTimersByTime(3600 * 1000);
@@ -618,7 +667,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_hvac_app_id: '201'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             // After 5 minutes: app 201 fires once, app 56 has not fired yet
@@ -642,13 +691,13 @@ describe('BridgeInitializationService', () => {
                 getall_app_periods: {},
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             const firstTimer = svc._perAppTimers.get('254/56');
             expect(firstTimer).toBeDefined();
 
             // Trigger a second initialization
-            bridge._lastInitTime = 0;
+            svc._lastInitTime = 0;
             await svc.handleAllConnected();
             const secondTimer = svc._perAppTimers.get('254/56');
             // Timer handle should be a new one (old was cleared and replaced)
@@ -665,7 +714,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_cover_app_id: '203'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(svc._perAppTimers.has('254/203')).toBe(true);
 
@@ -682,7 +731,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_cover_app_id: '203'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             svc.handleCommandError('500', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
@@ -697,7 +746,7 @@ describe('BridgeInitializationService', () => {
                 getallperiod: 3600,
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             expect(() => {
@@ -713,7 +762,7 @@ describe('BridgeInitializationService', () => {
                 getallperiod: 3600,
                 getall_networks: [254]
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             // Path 254/203 is not in the timer map (no cover app configured)
@@ -726,7 +775,7 @@ describe('BridgeInitializationService', () => {
 
         it('does nothing when statusData is null or undefined', async () => {
             const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
 
             expect(() => svc.handleCommandError('401', null)).not.toThrow();
@@ -738,10 +787,10 @@ describe('BridgeInitializationService', () => {
     describe('stop', () => {
         it('clears periodic interval on stop', async () => {
             const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             svc.stop();
-            expect(bridge.periodicGetAllInterval).toBeNull();
+            expect(svc._periodicGetAllInterval).toBeNull();
         });
 
         it('clears all per-app timers on stop', async () => {
@@ -752,7 +801,7 @@ describe('BridgeInitializationService', () => {
                 getall_networks: [254],
                 ha_discovery_hvac_app_id: '201'
             });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
             expect(svc._perAppTimers.size).toBeGreaterThan(0);
             svc.stop();
@@ -761,19 +810,88 @@ describe('BridgeInitializationService', () => {
 
         it('removes labels-changed listener on stop', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: false });
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             await svc.handleAllConnected();
-            const listener = bridge._onLabelsChanged;
+            const listener = svc._onLabelsChanged;
             svc.stop();
             expect(bridge.labelLoader.removeListener).toHaveBeenCalledWith('labels-changed', listener);
-            expect(bridge._onLabelsChanged).toBeNull();
+            expect(svc._onLabelsChanged).toBeNull();
         });
 
         it('calls labelLoader.unwatch on stop', async () => {
             const { bridge } = makeBridge();
-            const svc = new BridgeInitializationService(bridge);
+            const svc = makeService(bridge);
             svc.stop();
             expect(bridge.labelLoader.unwatch).toHaveBeenCalled();
+        });
+    });
+
+    describe('InitResult contract', () => {
+        it('returns an InitResult describing the produced state instead of holding a bridge ref', async () => {
+            const { bridge } = makeBridge({ ha_discovery_enabled: true });
+            const svc = makeService(bridge);
+
+            const result = await svc.handleAllConnected();
+
+            // The service exposes its results explicitly; it never holds a bare
+            // bridge reference to mutate.
+            expect(svc.bridge).toBeUndefined();
+            expect(result).toHaveProperty('discoveredNetworks');
+            expect(result).toMatchObject({
+                haDiscovery: expect.anything(),
+                onLabelsChanged: expect.any(Function)
+            });
+            // The haDiscovery in the result is the same instance the service
+            // applied to the bridge in-flight.
+            expect(result.haDiscovery).toBe(bridge.haDiscovery);
+        });
+
+        it('returns null and does no init work when debounced', async () => {
+            const { bridge, commandQueueAdd } = makeBridge({ getallonstart: true, getall_networks: [254] });
+            const svc = makeService(bridge);
+            svc._lastInitTime = Date.now();
+
+            const result = await svc.handleAllConnected();
+
+            expect(result).toBeNull();
+            expect(commandQueueAdd).not.toHaveBeenCalled();
+        });
+
+        it('applies haDiscovery to the bridge in-flight (before returning), wiring the command response processor', async () => {
+            const { bridge, commandResponseProcessor } = makeBridge({ ha_discovery_enabled: true });
+            const svc = makeService(bridge);
+
+            // Capture the state at the exact moment haDiscovery is constructed.
+            let haDiscoveryAtTriggerTime = null;
+            HaDiscovery.mockImplementation(() => {
+                const instance = {
+                    trigger: jest.fn(() => { haDiscoveryAtTriggerTime = bridge.haDiscovery; }),
+                    updateLabels: jest.fn(),
+                    handleCommandError: jest.fn(),
+                    stop: jest.fn()
+                };
+                return instance;
+            });
+
+            await svc.handleAllConnected();
+
+            // By the time trigger() runs, the bridge already sees the instance
+            // (late-binding preserved) and the processor is wired to it.
+            expect(haDiscoveryAtTriggerTime).toBe(bridge.haDiscovery);
+            expect(commandResponseProcessor.haDiscovery).toBe(bridge.haDiscovery);
+        });
+
+        it('returns the discovered networks applied during auto-discovery', async () => {
+            const { bridge } = makeBridge({ autoDiscoverNetworks: true, cbusname: 'HOME' });
+            const svc = makeService(bridge);
+            jest.spyOn(svc, '_discoverNetworks').mockImplementation(async () => {
+                bridge.__deps.applyDiscoveredNetworks([254, 1]);
+            });
+
+            const result = await svc.handleAllConnected();
+
+            expect(result.discoveredNetworks).toEqual([254, 1]);
+            expect(bridge.discoveredNetworks).toEqual([254, 1]);
         });
     });
 });

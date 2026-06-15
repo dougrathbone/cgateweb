@@ -88,7 +88,28 @@ class CgateWebBridge {
             this.haBridgeDiagnostics.publishNow(reason);
         });
 
-        this.initializationService = new BridgeInitializationService(this);
+        // The init service computes and returns an InitResult instead of
+        // mutating the bridge directly. State the bridge owns and exposes to
+        // other collaborators (haDiscovery, discoveredNetworks) is read back
+        // through getters and written back through the apply* setters at the
+        // exact point in the init flow it changes, preserving the timing the
+        // bridge's live accessors depend on (e.g. getHaDiscovery for aircon/CNI).
+        this.initializationService = new BridgeInitializationService({
+            settings: this.settings,
+            commandQueue: this.cgateCommandQueue,
+            mqttManager: this.mqttManager,
+            labelLoader: this.labelLoader,
+            log: (message) => this.log(message),
+            getCommandResponseProcessor: () => this.commandResponseProcessor,
+            getDiscoveredNetworks: () => this.discoveredNetworks,
+            getHaDiscovery: () => this.haDiscovery,
+            applyDiscoveredNetworks: (networks) => { this.discoveredNetworks = networks; },
+            applyHaDiscovery: (haDiscovery) => {
+                this.haDiscovery = haDiscovery;
+                this.commandResponseProcessor.haDiscovery = haDiscovery;
+            },
+            updateReadiness: (reason) => this._updateBridgeReadiness(reason)
+        });
         this.commandResponseProcessor.onCommandError = (code, statusData) => {
             this.initializationService.handleCommandError(code, statusData);
         };
@@ -154,8 +175,9 @@ class CgateWebBridge {
         // don't corrupt lines being assembled on another.
         this.commandLineProcessors = new Map();
         this.eventLineProcessor = new LineProcessor();
-        this.periodicGetAllInterval = null;
-        this._lastInitTime = 0;
+        // Networks discovered by the init service (via auto-discovery). Read live
+        // by the init service and by _resolveGetallNetworks; starts unset.
+        this.discoveredNetworks = null;
 
         // Owns lifecycle state + readiness reason; emits 'readinessChanged' which
         // the bridge subscribes to (after haBridgeDiagnostics is built) to drive
@@ -433,7 +455,13 @@ class CgateWebBridge {
     }
 
     _handleAllConnected() {
-        this.initializationService.handleAllConnected();
+        // The init service applies the bridge-owned state (haDiscovery,
+        // discoveredNetworks) in-flight through the apply* setters wired in the
+        // constructor, so the bridge's live accessors observe it at the same
+        // moment as before. The returned InitResult is the explicit contract
+        // (used by tests and any awaiting caller); production fires this without
+        // awaiting, exactly as before.
+        return this.initializationService.handleAllConnected();
     }
 
     // MQTT message handling now delegated to MqttCommandRouter
