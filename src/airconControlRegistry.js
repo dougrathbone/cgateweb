@@ -54,7 +54,8 @@ class AirconControlRegistry {
             // different (sentinel) type that won't drive the plant on.
             type: (isOn && reading.type !== null && reading.type !== undefined) ? reading.type : prev.type,
             modeRaw: (reading.modeRaw !== null && reading.modeRaw !== undefined) ? reading.modeRaw : prev.modeRaw,
-            setpointRaw: (reading.setpointRaw !== null && reading.setpointRaw !== undefined) ? reading.setpointRaw : prev.setpointRaw
+            // Off broadcasts carry setpointRaw=0 as a sentinel; keep the last active target.
+            setpointRaw: (isOn && reading.setpointRaw > 0) ? reading.setpointRaw : prev.setpointRaw
         });
     }
 

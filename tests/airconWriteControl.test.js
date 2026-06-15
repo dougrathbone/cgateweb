@@ -45,6 +45,16 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 2 0 0 0 1 3 5632 0');
     });
 
+    it('mode cool after off broadcast keeps the last active setpoint, not the default', () => {
+        const { router, queued } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', mode: 'off', modeRaw: 0, type: 255, setpointRaw: 0
+        });
+        router.routeMessage('cbus/write/254/172/202/hvacmode', 'cool');
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 2 0 0 0 1 3 5632 0');
+    });
+
     it('mode fan_only → raw-level sentinel (rawlevel 1, level 32512)', () => {
         const { router, queued } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/hvacmode', 'fan_only');

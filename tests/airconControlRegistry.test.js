@@ -29,13 +29,14 @@ describe('AirconControlRegistry', () => {
         expect(reg.get('254', '202').zones).toBe('0');
     });
 
-    it('keeps the running plant type when a later off reading carries a sentinel type', () => {
+    it('keeps the running plant type and last setpoint when a later off reading carries sentinels', () => {
         reg.recordModeReading(heatReading); // on, type 3
         reg.recordModeReading({ ...heatReading, mode: 'off', modeRaw: 0, type: 255, setpointRaw: 0 });
-        // type stays 3 (the running type); modeRaw updates to 0
+        // type and setpoint stay from the last on reading; modeRaw updates to 0
         const s = reg.get('254', '201');
         expect(s.type).toBe(3);
         expect(s.modeRaw).toBe(0);
+        expect(s.setpointRaw).toBe(5632);
     });
 
     it('ignores non-mode readings and returns null for unknown units', () => {
