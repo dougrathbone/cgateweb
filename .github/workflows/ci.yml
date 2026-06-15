@@ -32,6 +32,22 @@ jobs:
           exit 1
         fi
 
+  validate-addon:
+    name: Validate add-on config & translations
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+    - name: Use Node.js
+      uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5
+      with:
+        node-version: 22.x
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Validate config.yaml options/schema upgrade safety
+      run: npm run validate:addon-config
+
   test:
     name: Lint, Test & Coverage
     runs-on: ubuntu-latest
