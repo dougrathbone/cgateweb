@@ -268,6 +268,8 @@ class BridgeInitializationService {
                 this.logger.debug('Network auto-discovery: timeout, resolving with collected lines');
                 finish();
             }, TIMEOUT_MS);
+            // Don't let this startup-discovery timer keep the process alive on shutdown.
+            timeoutRef.handle.unref?.();
 
             // Queue the tree command (direct add, bypassing throttle priority so it runs first)
             this.bridge.cgateCommandQueue.add(command);
