@@ -128,6 +128,51 @@ jobs:
         path: coverage/lcov.info
         retention-days: 7
 
+  addon-image:
+    name: Build add-on image (amd64)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+    - name: Assemble add-on build context
+      # The production homeassistant-addon/Dockerfile expects package.json,
+      # src/, public/, index.js and the add-on files (rootfs/, run.sh) all in
+      # one context directory — the same layout the distribution workflow ships
+      # to users. Mirror that here so CI builds the real image, not a copy.
+      run: |
+        mkdir -p ctx
+        cp -r homeassistant-addon/rootfs ctx/
+        cp homeassistant-addon/run.sh ctx/
+        cp homeassistant-addon/Dockerfile ctx/
+        cp -r src public ctx/
+        cp index.js package.json package-lock.json ctx/
+
+    - name: Build image
+      run: |
+        docker build \
+          --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19 \
+          --build-arg BUILD_ARCH=amd64 \
+          --build-arg BUILD_VERSION=ci \
+          --build-arg BUILD_DATE=ci \
+          --build-arg BUILD_REF="${GITHUB_SHA}" \
+          -t cgateweb-addon:ci \
+          ctx
+
+    - name: Smoke-check image contents
+      # Override the s6/bashio entrypoint (which needs the HA Supervisor) and
+      # assert the image is structurally sound: Node present, app files and
+      # production dependencies installed, and the entrypoint script in place.
+      run: |
+        docker run --rm --entrypoint /bin/bash cgateweb-addon:ci -c '
+          set -e
+          command -v node
+          test -f /run.sh
+          test -f /app/index.js
+          test -d /app/node_modules
+          node -e "require(\"/app/package.json\")"
+        '
+
   integration:
     name: Integration test (C-Gate)
     runs-on: ubuntu-latest
