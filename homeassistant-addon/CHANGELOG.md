@@ -5,6 +5,22 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-06-15
+
+### Fixed
+
+- **Clearer message when cgateweb can't reach C-Gate.** A connection that never establishes now logs *what to check* — host/port reachability, the C-Gate machine's firewall, and C-Gate's `access.txt` — instead of a bare "socket timed out", making setup problems far easier to diagnose.
+- **HVAC setpoint no longer lost when a thermostat turns off.** Native C-Bus thermostats broadcast a sentinel setpoint of 0 on "off"; cgateweb now keeps the last active target instead of reporting 0°C.
+- **Air Conditioning control toggle reads correctly in standalone mode.** `cbus_aircon_control_enabled` supplied as a string (e.g. a hand-edited `settings.js`) is now coerced properly.
+- **Status-page event table escapes labels and addresses.** Values in the live events table are HTML-escaped so label text can't be interpreted as markup (XSS hardening).
+- **Secrets are kept out of logs.** Any password/token/secret-keyed value passed to the logger is replaced with `[REDACTED]` before output, as defence in depth.
+- **Faster failover signalling.** When the last command connection drops, the pool is reported unhealthy immediately rather than waiting up to 30s for the next health check.
+
+### Internal
+
+- Extracted the HVAC temperature encoding into a shared helper, logged previously-swallowed errors, and stopped the network auto-discovery timer from delaying shutdown.
+- Hardened CI: the production add-on image is now built on every PR, `config.yaml` upgrade-safety and 17-language translation parity are validated, workflows/shell/Dockerfiles are linted, `GITHUB_TOKEN` is scoped read-only, and Dependabot is enabled. Added tests for the connection pool, the HA notifier error paths, and the config/translation validators. Minimum Node bumped to 20.
+
 ## [1.14.0] - 2026-06-14
 
 ### Added
