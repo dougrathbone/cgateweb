@@ -398,6 +398,32 @@ describe('CgateConnectionPool', () => {
             connections[0].emit('close', false);
             expect(scheduleSpy).toHaveBeenCalledWith(connections[0], 0);
         });
+
+        it('emits allConnectionsUnhealthy immediately when the last healthy connection closes', async () => {
+            const connections = await startWithConnections();
+            expect(pool.healthyConnections.size).toBe(3);
+            const unhealthySpy = jest.fn();
+            pool.on('allConnectionsUnhealthy', unhealthySpy);
+
+            connections[0].emit('close', false);
+            connections[1].emit('close', false);
+            expect(unhealthySpy).not.toHaveBeenCalled(); // one connection still healthy
+
+            connections[2].emit('close', false);
+            expect(unhealthySpy).toHaveBeenCalledTimes(1); // pool now empty -> immediate signal
+        });
+
+        it('does not emit allConnectionsUnhealthy when a never-healthy connection closes', async () => {
+            // All connections fail to connect: start() handles that path; closing
+            // a connection that was never in the healthy set must not emit.
+            CgateConnection.mockImplementation(() => makeMockConnection({ failConnect: true }));
+            const unhealthySpy = jest.fn();
+            const startPromise = pool.start();
+            pool.on('allConnectionsUnhealthy', unhealthySpy);
+            jest.advanceTimersByTime(pool.connectionTimeout + 100);
+            await startPromise;
+            expect(unhealthySpy).not.toHaveBeenCalled();
+        });
     });
 
     describe('stop()', () => {

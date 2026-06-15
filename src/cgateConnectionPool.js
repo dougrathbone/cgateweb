@@ -268,10 +268,20 @@ class CgateConnectionPool extends EventEmitter {
             
             connection.on('close', (hadError) => {
                 this.logger.warn(`Pool connection ${index} closed ${hadError ? 'with error' : 'normally'}`);
+                const wasHealthy = this.healthyConnections.has(connection);
                 this._removeHealthy(connection);
                 this.connectionInFlight.delete(connection);
                 this.emit('connectionLost', { index, connection, hadError });
-                
+
+                // If losing this connection emptied the pool, surface it immediately
+                // instead of waiting up to healthCheckInterval for the next periodic
+                // check, so readiness/failover reacts promptly. Guarded on wasHealthy
+                // so startup connect failures (never-healthy) don't trigger it.
+                if (wasHealthy && this.healthyConnections.size === 0 && this.isStarted && !this.isShuttingDown) {
+                    this.logger.error('No healthy connections in pool!');
+                    this.emit('allConnectionsUnhealthy');
+                }
+
                 // Attempt to reconnect if pool is still active
                 if (!this.isShuttingDown) {
                     this._scheduleReconnection(connection, index);
