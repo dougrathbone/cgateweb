@@ -21,8 +21,32 @@ describe('AirconEventHandler', () => {
         const handler = new AirconEventHandler(deps);
         const consumed = handler.handleLine(AIRCON_MODE_LINE);
         expect(consumed).toBe(true);
-        expect(deps.registry.recordModeReading).toHaveBeenCalled();
-        expect(deps.eventPublisher.publishReading).toHaveBeenCalled();
+        expect(deps.registry.recordModeReading).toHaveBeenCalledWith(
+            expect.objectContaining({ kind: 'mode', application: '172' })
+        );
+        // publishReading(network, application, group, reading) — application is
+        // guaranteed '172' by the feature gate; pin it plus the reading payload.
+        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+            expect.anything(), '172', expect.anything(), expect.objectContaining({ kind: 'mode' })
+        );
+    });
+
+    it('consults getHaDiscovery and announces the thermostat when discovery is available', () => {
+        const ensureNativeAirconDiscovery = jest.fn();
+        const getHaDiscovery = jest.fn(() => ({ ensureNativeAirconDiscovery }));
+        const deps = makeDeps({ getHaDiscovery });
+        const handler = new AirconEventHandler(deps);
+        handler.handleLine(AIRCON_MODE_LINE);
+        expect(getHaDiscovery).toHaveBeenCalled();
+        expect(ensureNativeAirconDiscovery).toHaveBeenCalled();
+    });
+
+    it('warns once on an unmapped HVAC mode code', () => {
+        const deps = makeDeps();
+        const handler = new AirconEventHandler(deps);
+        // mode code 9 is not in the HVAC map, so reading.mode resolves to null.
+        handler.handleLine('aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 9 0 0 0 1 255 0 0 #sourceunit=250 OID=x');
+        expect(deps.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Unmapped C-Bus HVAC mode code'));
     });
 
     it('returns false and does not record when the feature is disabled', () => {
@@ -36,7 +60,6 @@ describe('AirconEventHandler', () => {
     it('ignores a non-aircon line without throwing and returns false', () => {
         const deps = makeDeps();
         const handler = new AirconEventHandler(deps);
-        expect(() => handler.handleLine('garbage')).not.toThrow();
         let consumed;
         expect(() => { consumed = handler.handleLine('garbage'); }).not.toThrow();
         expect(consumed).toBe(false);
