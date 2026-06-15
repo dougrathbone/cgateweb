@@ -228,7 +228,8 @@ class WebServer {
         let data;
         try {
             data = JSON.parse(body);
-        } catch {
+        } catch (err) {
+            this.logger.debug('Rejected PUT /labels with invalid JSON', { error: err.message });
             return this._sendJSON(res, 400, { error: 'Invalid JSON' });
         }
 
@@ -267,7 +268,8 @@ class WebServer {
         let patch;
         try {
             patch = JSON.parse(body);
-        } catch {
+        } catch (err) {
+            this.logger.debug('Rejected PATCH /labels with invalid JSON', { error: err.message });
             return this._sendJSON(res, 400, { error: 'Invalid JSON' });
         }
 

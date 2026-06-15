@@ -166,7 +166,7 @@ class CgateWebBridge {
                 this._eventLogBuffer.shift();
             }
             for (const fn of this._eventLogListeners) {
-                try { fn(entry); } catch (e) { /* ignore listener errors */ void e; }
+                try { fn(entry); } catch (e) { this.logger.debug('Event-log listener threw', { error: e }); }
             }
         };
 
