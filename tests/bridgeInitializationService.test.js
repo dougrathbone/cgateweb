@@ -100,16 +100,41 @@ function makeService(bridge) {
     return new BridgeInitializationService(bridge.__deps);
 }
 
+// A complete HaDiscovery mock instance. The production code calls trigger(),
+// updateLabels(), handleCommandError() and stop() on whatever the HaDiscovery
+// constructor returns, so every mock instance MUST expose all four. Tests that
+// need to observe construction/trigger ordering pass `extra` to override or
+// append behaviour WITHOUT dropping any of the required methods (a partial
+// override is what previously caused intermittent "cannot read 'trigger'" /
+// "cannot read 'updateLabels'" failures when an implementation leaked across
+// tests). Keeping a single factory means an override can never be missing a
+// method the service depends on.
+function createHaDiscoveryMock(extra = {}) {
+    return {
+        trigger: jest.fn(),
+        updateLabels: jest.fn(),
+        handleCommandError: jest.fn(),
+        stop: jest.fn(),
+        ...extra
+    };
+}
+
+// A fixed wall-clock anchor for the fake timers. Pinning the system time makes
+// the production debounce check (`Date.now() - _lastInitTime < 10000`) exact
+// and independent of when `useFakeTimers()` happened to seed its clock, so the
+// debounce tests can never flake under CPU load / parallel workers.
+const FIXED_NOW = new Date('2026-01-01T00:00:00.000Z').getTime();
+
 describe('BridgeInitializationService', () => {
     beforeEach(() => {
         jest.useFakeTimers();
-        HaDiscovery.mockClear();
-        HaDiscovery.mockImplementation(() => ({
-            trigger: jest.fn(),
-            updateLabels: jest.fn(),
-            handleCommandError: jest.fn(),
-            stop: jest.fn()
-        }));
+        jest.setSystemTime(FIXED_NOW);
+        // mockReset (not mockClear) wipes any implementation a previous test's
+        // body installed via HaDiscovery.mockImplementation(...), so the default
+        // complete-instance factory below is the implementation every test
+        // starts from regardless of execution order.
+        HaDiscovery.mockReset();
+        HaDiscovery.mockImplementation(() => createHaDiscoveryMock());
     });
 
     afterEach(() => {
@@ -377,7 +402,9 @@ describe('BridgeInitializationService', () => {
         it('skips re-initialization within 10s debounce window', async () => {
             const { bridge } = makeBridge({ getallonstart: true, getall_networks: [254] });
             const svc = makeService(bridge);
-            svc._lastInitTime = Date.now();
+            // Frozen clock: handleAllConnected reads Date.now() === FIXED_NOW, so
+            // the window is exactly 0ms < 10000ms regardless of load timing.
+            svc._lastInitTime = FIXED_NOW;
             const result = await svc.handleAllConnected();
             expect(result).toBeNull();
             expect(bridge._updateBridgeReadiness).not.toHaveBeenCalled();
@@ -493,7 +520,12 @@ describe('BridgeInitializationService', () => {
             commandQueueAdd.mockImplementation(() => eventOrder.push('queue-add'));
             HaDiscovery.mockImplementation(() => {
                 eventOrder.push('discovery-ctor');
-                return { trigger: jest.fn(() => eventOrder.push('discovery-trigger')) };
+                // Build on the complete factory so the instance still has
+                // updateLabels/handleCommandError/stop, only overriding trigger
+                // to record ordering.
+                return createHaDiscoveryMock({
+                    trigger: jest.fn(() => eventOrder.push('discovery-trigger'))
+                });
             });
 
             const svc = makeService(bridge);
@@ -849,7 +881,8 @@ describe('BridgeInitializationService', () => {
         it('returns null and does no init work when debounced', async () => {
             const { bridge, commandQueueAdd } = makeBridge({ getallonstart: true, getall_networks: [254] });
             const svc = makeService(bridge);
-            svc._lastInitTime = Date.now();
+            // Frozen clock: 0ms since last init < 10000ms debounce window.
+            svc._lastInitTime = FIXED_NOW;
 
             const result = await svc.handleAllConnected();
 
@@ -863,15 +896,9 @@ describe('BridgeInitializationService', () => {
 
             // Capture the state at the exact moment haDiscovery is constructed.
             let haDiscoveryAtTriggerTime = null;
-            HaDiscovery.mockImplementation(() => {
-                const instance = {
-                    trigger: jest.fn(() => { haDiscoveryAtTriggerTime = bridge.haDiscovery; }),
-                    updateLabels: jest.fn(),
-                    handleCommandError: jest.fn(),
-                    stop: jest.fn()
-                };
-                return instance;
-            });
+            HaDiscovery.mockImplementation(() => createHaDiscoveryMock({
+                trigger: jest.fn(() => { haDiscoveryAtTriggerTime = bridge.haDiscovery; })
+            }));
 
             await svc.handleAllConnected();
 
