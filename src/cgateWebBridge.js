@@ -72,7 +72,38 @@ class CgateWebBridge {
         this.mqttClientFactory = mqttClientFactory;
         this.commandSocketFactory = commandSocketFactory;
         this.eventSocketFactory = eventSocketFactory;
-        
+
+        // Construct all subsystems in dependency order. _buildSubsystems invokes
+        // _buildQueues and _buildEventLogBuffer inline at the exact points they
+        // are needed, so construction order is identical to the original
+        // inline constructor.
+        this._buildSubsystems();
+
+        // Drive the side effects of a readiness change: publish the bridge's
+        // online/offline status (hello/cgateweb via mqttManager) and refresh the
+        // HA bridge diagnostics. Fires on every update() so behaviour matches the
+        // original _updateBridgeReadiness, which always invoked both.
+        this.bridgeReadiness.on('readinessChanged', ({ ready, reason }) => {
+            this.mqttManager.setBridgeReady(ready, reason);
+            this.haBridgeDiagnostics.publishNow(reason);
+        });
+
+        this.initializationService = new BridgeInitializationService(this);
+        this.commandResponseProcessor.onCommandError = (code, statusData) => {
+            this.initializationService.handleCommandError(code, statusData);
+        };
+        this._setupEventHandlers();
+    }
+
+    /**
+     * Builds all bridge subsystems in dependency order (managers, connection
+     * pool, event connection, publisher, registries, web server, diagnostics,
+     * and the extracted collaborators). Invokes _buildQueues and
+     * _buildEventLogBuffer inline at the exact positions they ran in the
+     * original constructor so initialization order is preserved.
+     * @private
+     */
+    _buildSubsystems() {
         // Connection managers
         this.mqttManager = new MqttManager(this.settings);
         
@@ -93,26 +124,9 @@ class CgateWebBridge {
         
         // Service modules (haDiscovery will be initialized after pool starts)
         this.haDiscovery = null;
-        
+
         // C-Gate command queue with throttling to avoid overwhelming serial protocol
-        const queueOptions = {
-            maxSize: this.settings.maxQueueSize || 1000,
-            getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
-            canProcessFn: () => this._canProcessCommandQueue(),
-            onDrop: (droppedCount, priority, maxSize) => {
-                this.mqttManager.publish(
-                    'hello/cgateweb/warnings',
-                    `C-Gate command queue full (max ${maxSize}), ${droppedCount} command(s) dropped`,
-                    { retain: false }
-                );
-            }
-        };
-        this.cgateCommandQueue = new ThrottledQueue(
-            (command) => this._sendCgateCommand(command),
-            this.settings.messageinterval,
-            'C-Gate Command Queue',
-            queueOptions
-        );
+        this._buildQueues();
 
         // Device state manager for coordinating device state between components
         this.deviceStateManager = new DeviceStateManager({
@@ -156,25 +170,7 @@ class CgateWebBridge {
         this.labelLoader.load();
 
         // In-memory ring buffer and fan-out for live event log streaming (SSE)
-        const EVENT_LOG_MAX = 200;
-        this._eventLogBuffer = [];
-        this._eventLogListeners = new Set();
-        this._onEventLog = (entry) => {
-            this._eventLogBuffer.push(entry);
-            if (this._eventLogBuffer.length > EVENT_LOG_MAX) {
-                this._eventLogBuffer.shift();
-            }
-            for (const fn of this._eventLogListeners) {
-                try { fn(entry); } catch (e) { this.logger.debug('Event-log listener threw', { error: e }); }
-            }
-        };
-
-        // eventStream interface for WebServer SSE endpoint
-        this.eventStream = {
-            subscribe: (fn) => { this._eventLogListeners.add(fn); },
-            unsubscribe: (fn) => { this._eventLogListeners.delete(fn); },
-            getRecent: () => [...this._eventLogBuffer]
-        };
+        this._buildEventLogBuffer();
 
         // Event publisher for MQTT messages -- publishes directly without throttling.
         // MQTT QoS 0 publishes are near-instant TCP buffer writes; the mqtt library
@@ -255,21 +251,62 @@ class CgateWebBridge {
             labelLoader: this.labelLoader,
             logger: this.logger
         });
+    }
 
-        // Drive the side effects of a readiness change: publish the bridge's
-        // online/offline status (hello/cgateweb via mqttManager) and refresh the
-        // HA bridge diagnostics. Fires on every update() so behaviour matches the
-        // original _updateBridgeReadiness, which always invoked both.
-        this.bridgeReadiness.on('readinessChanged', ({ ready, reason }) => {
-            this.mqttManager.setBridgeReady(ready, reason);
-            this.haBridgeDiagnostics.publishNow(reason);
-        });
-
-        this.initializationService = new BridgeInitializationService(this);
-        this.commandResponseProcessor.onCommandError = (code, statusData) => {
-            this.initializationService.handleCommandError(code, statusData);
+    /**
+     * Builds the throttled C-Gate command queue. Depends on mqttManager (for the
+     * onDrop warning publish) and on the _getAdaptiveQueueIntervalMs /
+     * _canProcessCommandQueue methods (available as instance methods).
+     * @private
+     */
+    _buildQueues() {
+        // C-Gate command queue with throttling to avoid overwhelming serial protocol
+        const queueOptions = {
+            maxSize: this.settings.maxQueueSize || 1000,
+            getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
+            canProcessFn: () => this._canProcessCommandQueue(),
+            onDrop: (droppedCount, priority, maxSize) => {
+                this.mqttManager.publish(
+                    'hello/cgateweb/warnings',
+                    `C-Gate command queue full (max ${maxSize}), ${droppedCount} command(s) dropped`,
+                    { retain: false }
+                );
+            }
         };
-        this._setupEventHandlers();
+        this.cgateCommandQueue = new ThrottledQueue(
+            (command) => this._sendCgateCommand(command),
+            this.settings.messageinterval,
+            'C-Gate Command Queue',
+            queueOptions
+        );
+    }
+
+    /**
+     * Sets up the in-memory ring buffer and fan-out used for live event log
+     * streaming (SSE). Establishes _eventLogBuffer, _eventLogListeners,
+     * _onEventLog and the eventStream interface consumed by the web server.
+     * @private
+     */
+    _buildEventLogBuffer() {
+        const EVENT_LOG_MAX = 200;
+        this._eventLogBuffer = [];
+        this._eventLogListeners = new Set();
+        this._onEventLog = (entry) => {
+            this._eventLogBuffer.push(entry);
+            if (this._eventLogBuffer.length > EVENT_LOG_MAX) {
+                this._eventLogBuffer.shift();
+            }
+            for (const fn of this._eventLogListeners) {
+                try { fn(entry); } catch (e) { this.logger.debug('Event-log listener threw', { error: e }); }
+            }
+        };
+
+        // eventStream interface for WebServer SSE endpoint
+        this.eventStream = {
+            subscribe: (fn) => { this._eventLogListeners.add(fn); },
+            unsubscribe: (fn) => { this._eventLogListeners.delete(fn); },
+            getRecent: () => [...this._eventLogBuffer]
+        };
     }
 
     _setupEventHandlers() {
