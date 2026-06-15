@@ -39,14 +39,17 @@ const BASHIO_STUB = `
 `;
 
 function callHelper(helperName, configObject) {
-    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1' };
+    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1', CGW_INSTALL_SCRIPT: SCRIPT };
     for (const [k, v] of Object.entries(configObject || {})) {
         env[`CGW_TEST_${k}`] = v;
     }
+    // Pass the script path via the environment rather than interpolating it into
+    // the bash -c command text, so the absolute path is never part of the
+    // executed command string.
     const script = `
         set -u
         ${BASHIO_STUB}
-        source "${SCRIPT}"
+        source "$CGW_INSTALL_SCRIPT"
         ${helperName}
     `;
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });

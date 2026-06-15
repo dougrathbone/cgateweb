@@ -44,7 +44,11 @@ function runSync({ shareTag, dataTag, configObject = {} }) {
     const env = {
         ...process.env,
         CGATEWEB_SHARE_TAG_DIR: shareTag,
-        CGATEWEB_DATA_TAG_DIR: dataTag
+        CGATEWEB_DATA_TAG_DIR: dataTag,
+        // Pass the script path via the environment rather than interpolating it
+        // into the bash -c command text, so the absolute path is never part of
+        // the executed command string.
+        CGW_SYNC_SCRIPT: SCRIPT
     };
     for (const [k, v] of Object.entries(configObject)) {
         env[`CGW_TEST_${k}`] = v;
@@ -54,7 +58,7 @@ function runSync({ shareTag, dataTag, configObject = {} }) {
     const script = `
         set -u
         ${BASHIO_STUB}
-        source "${SCRIPT}"
+        source "$CGW_SYNC_SCRIPT"
     `;
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
