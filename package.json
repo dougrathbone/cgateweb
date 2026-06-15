@@ -14,7 +14,7 @@
   ],
   "private": true,
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
