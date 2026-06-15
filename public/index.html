@@ -1938,11 +1938,11 @@ input, select, textarea {
         var row = filtered[i];
         var lbl = getLabelForAddress(row.addr);
         var pct = Math.round(row.level / 255 * 100);
-        html += '<tr data-addr="' + row.addr + '">' +
-          '<td>' + row.time + '</td>' +
-          '<td>' + row.addr + '</td>' +
-          '<td>' + (lbl ? lbl : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-          '<td>' + row.level + ' (' + pct + '%)</td>' +
+        html += '<tr data-addr="' + esc(row.addr) + '">' +
+          '<td>' + esc(row.time) + '</td>' +
+          '<td>' + esc(row.addr) + '</td>' +
+          '<td>' + (lbl ? esc(lbl) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+          '<td>' + esc(row.level) + ' (' + pct + '%)</td>' +
           '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>' +
           '</tr>';
       }
