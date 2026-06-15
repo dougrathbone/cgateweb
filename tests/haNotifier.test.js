@@ -23,6 +23,26 @@ function fakeHttp(statusCode = 200) {
     return { httpModule, calls };
 }
 
+// Fake http.request whose req event handlers can be fired by the test, to
+// exercise the 'error' and 'timeout' branches.
+function controllableHttp() {
+    const handlers = {};
+    let destroyed = false;
+    const req = {
+        on(ev, fn) { handlers[ev] = fn; return req; },
+        write() {},
+        end() {},
+        destroy() { destroyed = true; }
+    };
+    const httpModule = { request() { return req; } };
+    return {
+        httpModule,
+        fireError: (err) => handlers.error && handlers.error(err),
+        fireTimeout: () => handlers.timeout && handlers.timeout(),
+        wasDestroyed: () => destroyed
+    };
+}
+
 describe('haNotifier', () => {
     it('POSTs persistent_notification/create with id, title, message and bearer token', async () => {
         const { httpModule, calls } = fakeHttp(200);
@@ -56,5 +76,20 @@ describe('haNotifier', () => {
         const { httpModule } = fakeHttp(403);
         const res = await createPersistentNotification({ notificationId: 'x', title: 't', message: 'm', token: 'tok', httpModule });
         expect(res.statusCode).toBe(403);
+    });
+
+    it('rejects when the request emits an error', async () => {
+        const h = controllableHttp();
+        const p = createPersistentNotification({ notificationId: 'x', title: 't', message: 'm', token: 'tok', httpModule: h.httpModule });
+        h.fireError(new Error('socket fail'));
+        await expect(p).rejects.toThrow('socket fail');
+    });
+
+    it('destroys the request and rejects with Timeout when the request times out', async () => {
+        const h = controllableHttp();
+        const p = dismissPersistentNotification({ notificationId: 'x', token: 'tok', httpModule: h.httpModule });
+        h.fireTimeout();
+        await expect(p).rejects.toThrow('Timeout');
+        expect(h.wasDestroyed()).toBe(true);
     });
 });
