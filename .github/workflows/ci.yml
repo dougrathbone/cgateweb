@@ -56,6 +56,40 @@ jobs:
     - name: Validate translation key parity
       run: npm run validate:translations
 
+  static-checks:
+    name: Lint workflows, shell scripts & Dockerfiles
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      HADOLINT_VERSION: "2.14.0"
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5
+
+    - name: ShellCheck add-on scripts
+      # shellcheck is preinstalled on ubuntu-latest. SC1008 is excluded because
+      # the s6-overlay scripts use the '#!/usr/bin/with-contenv bashio' shebang.
+      run: |
+        shellcheck --shell=bash --severity=warning --exclude=SC1008 \
+          homeassistant-addon/run.sh \
+          homeassistant-addon/rootfs/etc/cont-init.d/*.sh \
+          homeassistant-addon/rootfs/etc/services.d/*/run \
+          homeassistant-addon/rootfs/etc/services.d/*/finish
+
+    - name: actionlint
+      run: |
+        curl -fsSL -o /tmp/actionlint.tar.gz \
+          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+        /tmp/actionlint -color
+
+    - name: hadolint
+      run: |
+        curl -fsSL -o /tmp/hadolint \
+          "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+        chmod +x /tmp/hadolint
+        /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
+
   test:
     name: Lint, Test & Coverage
     runs-on: ubuntu-latest

@@ -1,0 +1,8 @@
+# hadolint configuration for the add-on Dockerfiles.
+ignored:
+  # DL3018: "Pin versions in apk add". The runtime Node.js/JRE packages come
+  # from the Home Assistant base image's Alpine repository, which floats with
+  # the base image tag (build.yaml). Pinning exact apk versions here would
+  # break builds whenever the base image's repo snapshot rolls forward, so we
+  # rely on the pinned base image tag for reproducibility instead.
+  - DL3018
