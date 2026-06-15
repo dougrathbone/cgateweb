@@ -1,5 +1,4 @@
 const CgateConnection = require('./cgateConnection');
-const airconDecoder = require('./applicationDecoders/airconDecoder');
 const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');
 const BridgeInitializationService = require('./bridgeInitializationService');
@@ -8,6 +7,7 @@ const CBusEvent = require('./cbusEvent');
 const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
+const AirconEventHandler = require('./airconEventHandler');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
@@ -188,6 +188,16 @@ class CgateWebBridge {
             logger: this.logger,
             coverRampTracker: this.mqttCommandRouter.coverRampTracker,
             onEventLog: this._onEventLog
+        });
+
+        // Decodes native-aircon (app 172) event lines, records control state, and
+        // publishes readings. haDiscovery is read live as it's initialized later.
+        this.airconEventHandler = new AirconEventHandler({
+            registry: this.airconControlRegistry,
+            eventPublisher: this.eventPublisher,
+            logger: this.logger,
+            settings: this.settings,
+            getHaDiscovery: () => this.haDiscovery
         });
 
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
@@ -399,48 +409,11 @@ class CgateWebBridge {
     }
 
     /**
-     * Handles C-Bus Air Conditioning (app 172) event lines, which C-Gate renders
-     * as "[# ]aircon <verb> //PROJECT/<net>/<app> <params>" — a shape the standard
-     * event parser can't handle (no group; often #-comment-prefixed). Gated behind
-     * settings.cbus_aircon_app_id; when unset, returns false so these lines fall
-     * through to the normal (comment-dropping) path, preserving current behaviour.
-     * Returns true when the line was an aircon line and was consumed here.
+     * Delegates native-aircon (app 172) event-line handling to AirconEventHandler.
+     * Returns true when the line was an aircon line and was consumed there.
      */
     _handleAirconLine(line) {
-        const appId = this.settings.cbus_aircon_app_id;
-        if (!appId) return false;
-        let s = line.trim();
-        if (s.startsWith('#')) s = s.slice(1).trim();
-        if (!s.startsWith('aircon ')) return false;
-        // Aircon traffic and the feature is enabled — consume it here.
-        const reading = airconDecoder.decodeLine(line);
-        if (reading && reading.application === String(appId)) {
-            const group = reading.sourceUnit || reading.zoneGroup;
-            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {
-                this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
-            }
-            // Remember ward/zones/type so HA can control this thermostat (writes
-            // target ward+zone-list, not the source unit). See airconControlRegistry.
-            if (reading.kind === 'mode') {
-                this.airconControlRegistry.recordModeReading(reading);
-            }
-            // Event-driven HA discovery: announce the thermostat (keyed by source unit)
-            // the first time we see it. ensureNativeAirconDiscovery is idempotent and
-            // gated on ha_discovery_enabled internally.
-            if (this.haDiscovery && reading.sourceUnit) {
-                this.haDiscovery.ensureNativeAirconDiscovery(reading.network, reading.application, reading.sourceUnit);
-            }
-            if (reading.kind === 'mode' && reading.mode === null) {
-                this.logger.warn(
-                    'Unmapped C-Bus HVAC mode code ' + reading.modeRaw +
-                    ' on unit ' + reading.sourceUnit +
-                    ' — please report. Line: ' + line
-                );
-            }
-        } else if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
-        }
-        return true;
+        return this.airconEventHandler.handleLine(line);
     }
 
     _processEventLine(line) {
