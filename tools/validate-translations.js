@@ -33,16 +33,24 @@ function collectKeys(doc) {
     return keys;
 }
 
-function main() {
-    const sourceKeys = collectKeys(YAML.parse(fs.readFileSync(path.join(DIR, SOURCE), 'utf8')));
-    const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.yaml') && f !== SOURCE);
+// Compare one translation's keys against the source; returns { missing, extra }.
+function diffKeys(sourceKeys, keys) {
+    return {
+        missing: [...sourceKeys].filter((k) => !keys.has(k)),
+        extra: [...keys].filter((k) => !sourceKeys.has(k))
+    };
+}
+
+// docsByName: { 'en.yaml': <doc>, 'de.yaml': <doc>, ... }. Returns error strings.
+function validateTranslations(docsByName, sourceName = SOURCE) {
+    const sourceKeys = collectKeys(docsByName[sourceName]);
     const errors = [];
 
-    for (const file of files) {
-        const keys = collectKeys(YAML.parse(fs.readFileSync(path.join(DIR, file), 'utf8')));
-        const missing = [...sourceKeys].filter((k) => !keys.has(k));
-        const extra = [...keys].filter((k) => !sourceKeys.has(k));
-
+    for (const [name, doc] of Object.entries(docsByName)) {
+        if (name === sourceName) {
+            continue;
+        }
+        const { missing, extra } = diffKeys(sourceKeys, collectKeys(doc));
         if (missing.length || extra.length) {
             const parts = [];
             if (missing.length) {
@@ -51,9 +59,21 @@ function main() {
             if (extra.length) {
                 parts.push(`extra ${extra.length} (${extra.join(', ')})`);
             }
-            errors.push(`${file}: ${parts.join('; ')}`);
+            errors.push(`${name}: ${parts.join('; ')}`);
         }
     }
+
+    return errors;
+}
+
+function main() {
+    const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.yaml'));
+    const docsByName = {};
+    for (const file of files) {
+        docsByName[file] = YAML.parse(fs.readFileSync(path.join(DIR, file), 'utf8'));
+    }
+
+    const errors = validateTranslations(docsByName);
 
     if (errors.length > 0) {
         console.error(`Translation key drift against ${SOURCE}:\n`);
@@ -64,7 +84,11 @@ function main() {
         process.exit(1);
     }
 
-    console.log(`Translations OK: ${files.length + 1} files, ${sourceKeys.size} keys each.`);
+    console.log(`Translations OK: ${files.length} files, ${collectKeys(docsByName[SOURCE]).size} keys each.`);
 }
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = { collectKeys, diffKeys, validateTranslations };

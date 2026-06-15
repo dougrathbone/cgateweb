@@ -30,8 +30,8 @@ function isOptional(schemaValue) {
     return typeof schemaValue === 'string' && schemaValue.trim().endsWith('?');
 }
 
-function main() {
-    const config = YAML.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+// Returns an array of human-readable violation strings (empty when valid).
+function validateAddonConfig(config) {
     const schema = config.schema || {};
     const options = config.options || {};
     const optionKeys = new Set(Object.keys(options));
@@ -58,6 +58,15 @@ function main() {
         }
     }
 
+    return errors;
+}
+
+function main() {
+    const config = YAML.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    const schema = config.schema || {};
+    const options = config.options || {};
+    const errors = validateAddonConfig(config);
+
     if (errors.length > 0) {
         console.error('config.yaml validation FAILED:\n');
         for (const e of errors) {
@@ -68,9 +77,13 @@ function main() {
     }
 
     console.log(
-        `config.yaml OK: ${schemaKeys.size} schema fields, ${optionKeys.size} option defaults, ` +
-        'upgrade-safety rules satisfied.'
+        `config.yaml OK: ${Object.keys(schema).length} schema fields, ` +
+        `${Object.keys(options).length} option defaults, upgrade-safety rules satisfied.`
     );
 }
 
-main();
+if (require.main === module) {
+    main();
+}
+
+module.exports = { isOptional, validateAddonConfig };
