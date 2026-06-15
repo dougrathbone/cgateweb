@@ -47,6 +47,8 @@ jobs:
       run: npm ci
     - name: Validate config.yaml options/schema upgrade safety
       run: npm run validate:addon-config
+    - name: Validate translation key parity
+      run: npm run validate:translations
 
   test:
     name: Lint, Test & Coverage
