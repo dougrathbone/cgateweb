@@ -262,6 +262,37 @@ describe('CgateWebBridge', () => {
             if (prev !== undefined) process.env.SUPERVISOR_TOKEN = prev;
         });
 
+        describe('CNI offline notification with token present', () => {
+            const haNotifier = require('../src/haNotifier');
+            let notifySpy;
+            let prevToken;
+
+            beforeEach(() => {
+                prevToken = process.env.SUPERVISOR_TOKEN;
+                process.env.SUPERVISOR_TOKEN = 'test-token';
+                notifySpy = jest.spyOn(haNotifier, 'createPersistentNotification')
+                    .mockResolvedValue({ statusCode: 200 });
+            });
+
+            afterEach(() => {
+                notifySpy.mockRestore();
+                if (prevToken === undefined) {
+                    delete process.env.SUPERVISOR_TOKEN;
+                } else {
+                    process.env.SUPERVISOR_TOKEN = prevToken;
+                }
+            });
+
+            it('raises a single HA notification through the real bridge on an offline reading', () => {
+                bridge.settings.cni_offline_notification = true;
+                bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' });
+                expect(notifySpy).toHaveBeenCalledTimes(1);
+                const arg = notifySpy.mock.calls[0][0];
+                expect(arg.notificationId).toBe('cgateweb_cni_254');
+                expect(arg.message).toContain('InterfaceState=');
+            });
+        });
+
 
         it('should set MQTT options based on retainreads setting', () => {
             const bridgeRetain = new CgateWebBridge({ ...mockSettings, retainreads: true });

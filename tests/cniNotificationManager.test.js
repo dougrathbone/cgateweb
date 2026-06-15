@@ -84,6 +84,19 @@ describe('CniNotificationManager', () => {
         });
     });
 
+    it('does not re-notify or re-publish on a second consecutive offline reading', () => {
+        // The real NetworkInterfaceMonitor only flags changed:true on a transition.
+        // Two consecutive 'closed' readings => changed:true then changed:false.
+        const deps = makeDeps();
+        const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'closed' });
+        mgr.handleReading('254', { interfaceState: 'closed' });
+        // The result.changed gate must suppress everything past the first reading.
+        expect(haNotifier.createPersistentNotification).toHaveBeenCalledTimes(1);
+        const stateCalls = deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state');
+        expect(stateCalls).toHaveLength(1);
+    });
+
     it('dismisses the notification when the network comes back online', () => {
         const deps = makeDeps();
         const mgr = new CniNotificationManager(deps);
@@ -116,5 +129,17 @@ describe('CniNotificationManager', () => {
         const mgr = new CniNotificationManager(deps);
         mgr.handleReading('254', { interfaceState: 'closed' });
         expect(ensureNetworkConnectivityDiscovery).toHaveBeenCalledWith('254');
+    });
+
+    it('does not publish or notify for a transitional (online === null) reading', () => {
+        // An interfaceState that is neither 'running' nor 'closed' maps to online:null
+        // (unknown/transitional). The result.online !== null guard must skip it.
+        const deps = makeDeps();
+        const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'opening' });
+        const stateCalls = deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state');
+        expect(stateCalls).toHaveLength(0);
+        expect(haNotifier.createPersistentNotification).not.toHaveBeenCalled();
+        expect(haNotifier.dismissPersistentNotification).not.toHaveBeenCalled();
     });
 });
