@@ -68,21 +68,51 @@ class Logger {
         }
         
         let logLine = `${timestamp} ${coloredLevel} ${componentStr} ${message}`;
-        
+
         // Enhanced metadata formatting for development
         if (Object.keys(meta).length > 0) {
+            // Redact sensitive values (passwords, tokens, secrets) before they
+            // can reach the console. Credentials flow from the environment into
+            // settings, and a settings-derived object passed as meta would
+            // otherwise be logged in clear text.
+            const safeMeta = this._redactSensitive(meta);
             if (this.enableVerbose) {
                 // Pretty print in development
-                const metaStr = JSON.stringify(meta, null, 2);
+                const metaStr = JSON.stringify(safeMeta, null, 2);
                 logLine += `\n${metaStr}`;
             } else {
                 // Compact format for production
-                const metaStr = JSON.stringify(meta);
+                const metaStr = JSON.stringify(safeMeta);
                 logLine += ` ${metaStr}`;
             }
         }
-        
+
         return logLine;
+    }
+
+    /**
+     * Return a copy of a metadata value with sensitive fields redacted. Recurses
+     * into plain objects and arrays; non-plain objects (e.g. Error instances) are
+     * left untouched so they stringify exactly as before.
+     */
+    _redactSensitive(value, depth = 0) {
+        if (depth > 6 || value === null || typeof value !== 'object') {
+            return value;
+        }
+        if (Array.isArray(value)) {
+            return value.map((item) => this._redactSensitive(item, depth + 1));
+        }
+        const proto = Object.getPrototypeOf(value);
+        if (proto !== Object.prototype && proto !== null) {
+            return value;
+        }
+        const redacted = {};
+        for (const [key, val] of Object.entries(value)) {
+            redacted[key] = Logger.SENSITIVE_KEY_PATTERN.test(key)
+                ? '[REDACTED]'
+                : this._redactSensitive(val, depth + 1);
+        }
+        return redacted;
     }
 
     _log(level, message, meta = {}) {
@@ -185,6 +215,9 @@ class Logger {
         }
     }
 }
+
+// Metadata keys whose values must never be written to logs in clear text.
+Logger.SENSITIVE_KEY_PATTERN = /pass|secret|token|credential|api[-_]?key|auth/i;
 
 // Create default logger instance
 const defaultLogger = new Logger();

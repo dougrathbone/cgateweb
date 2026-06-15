@@ -104,9 +104,49 @@ describe('Logger', () => {
 
         it('should handle empty metadata', () => {
             testLogger.info('test message', {});
-            
+
             const call = consoleLogSpy.mock.calls[0][0];
             expect(call).not.toContain('{}');
+        });
+    });
+
+    describe('Sensitive metadata redaction', () => {
+        it('should redact password, token and secret values', () => {
+            testLogger.info('config', {
+                mqttpassword: 'hunter2',
+                cgatePassword: 'topsecret',
+                apiToken: 'abc123',
+                clientSecret: 'shhh'
+            });
+
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).not.toContain('hunter2');
+            expect(call).not.toContain('topsecret');
+            expect(call).not.toContain('abc123');
+            expect(call).not.toContain('shhh');
+            expect(call).toContain('[REDACTED]');
+        });
+
+        it('should redact nested sensitive values but keep non-sensitive ones', () => {
+            testLogger.info('config', {
+                mqtt: { host: 'broker.local', password: 'hunter2' },
+                port: 1883
+            });
+
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).not.toContain('hunter2');
+            expect(call).toContain('broker.local');
+            expect(call).toContain('1883');
+            expect(call).toContain('[REDACTED]');
+        });
+
+        it('should leave non-sensitive metadata unchanged', () => {
+            testLogger.info('event', { addr: '254/56/4', level: 255 });
+
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).toContain('254/56/4');
+            expect(call).toContain('255');
+            expect(call).not.toContain('[REDACTED]');
         });
     });
 
