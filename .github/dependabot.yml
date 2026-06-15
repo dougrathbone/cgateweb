@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Application dependencies. Grouped so dev-tooling bumps land in one PR.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # GitHub Actions are SHA-pinned; Dependabot keeps the pins (and their version
+  # comments) current. Grouped into a single weekly PR to reduce noise.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
