@@ -261,12 +261,19 @@ class HaDiscovery {
         this._clearTimer(state, 'retryHandle');
 
         this._setDiscoveryStatus(normalizedNetwork, DISCOVERY_STATE_DISCOVERING);
-        this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
 
-        // Avoid duplicate pending entries when a retry races a late response.
-        if (!this.pendingTreeNetworks.includes(normalizedNetwork)) {
-            this.pendingTreeNetworks.push(normalizedNetwork);
+        // If a TREEXML for this network is already in flight, don't send another.
+        // C-Gate would return a second tree for the single tracked pending entry
+        // and the extra response would be misattributed to an "unknown" network
+        // (handleTreeStart falls back to 'unknown' when the queue is empty). The
+        // in-flight request -- with its watchdog and retry -- delivers the refresh.
+        if (this.pendingTreeNetworks.includes(normalizedNetwork)) {
+            this.logger.debug(`TreeXML for network ${normalizedNetwork} already in flight; skipping duplicate request`);
+            return;
         }
+
+        this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
+        this.pendingTreeNetworks.push(normalizedNetwork);
 
         this._clearTimer(state, 'watchdogHandle');
         state.watchdogHandle = this._setTimer(this._treeRequestTimeoutMs, () => {
@@ -331,6 +338,14 @@ class HaDiscovery {
     }
 
     _handleTreeRequestFailure(networkId, reason) {
+        // Drop any in-flight queue entry for this network (the watchdog-timeout
+        // path leaves one behind) so the scheduled retry's queueTreeRequest is
+        // not suppressed by the duplicate-request guard. Idempotent for the
+        // 401/empty-tree paths, which already removed it in handleCommandError /
+        // handleTreeStart.
+        const pendingIdx = this.pendingTreeNetworks.indexOf(String(networkId));
+        if (pendingIdx >= 0) this.pendingTreeNetworks.splice(pendingIdx, 1);
+
         const state = this._getOrCreateTreeState(networkId);
         state.attempts += 1;
 
@@ -448,10 +463,17 @@ class HaDiscovery {
         const nextNetwork = this.pendingTreeNetworks.shift() || this.treeNetwork || 'unknown';
         const networkKey = String(nextNetwork);
 
-        // The request succeeded — drop watchdog and any pending retry so a
-        // late retry doesn't issue a redundant TREEXML, and reset the attempts
-        // counter for any future failure on this network.
-        this._clearTreeState(networkKey);
+        // A response started arriving — drop the watchdog and any pending retry
+        // so a late retry doesn't issue a redundant TREEXML. Keep the attempts
+        // counter: an empty/unsynced tree (handled in handleTreeEnd) is not a
+        // real success, so its backoff must keep progressing rather than reset
+        // every time C-Gate returns another empty tree. The counter is reset
+        // only once a tree with actual network data lands (handleTreeEnd).
+        const startState = this._treeRequestState.get(networkKey);
+        if (startState) {
+            this._clearTimer(startState, 'watchdogHandle');
+            this._clearTimer(startState, 'retryHandle');
+        }
 
         this.activeTreeSession = {
             network: networkKey,
@@ -521,6 +543,26 @@ class HaDiscovery {
                 this._handleTreeRequestFailure(networkForTree, `parse error: ${err.message || err}`);
             } else {
                 this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
+
+                // A network that exists in C-Gate but hasn't finished syncing
+                // its units yet returns an empty <Network></Network> (the
+                // network's State is still "new"). findNetworkData can't locate
+                // the network in that tree. Treat it as transient and retry with
+                // backoff rather than marking discovery ok with zero devices —
+                // otherwise no entities appear at startup until a manual gettree
+                // once the network has synced.
+                if (!findNetworkData(networkForTree, result)) {
+                    this.logger.info(
+                        `TreeXML for network ${networkForTree} contained no network data yet ` +
+                        `(network still syncing?); scheduling a retry.`
+                    );
+                    this._handleTreeRequestFailure(networkForTree, 'empty tree - network not synced yet');
+                    return;
+                }
+
+                // Real tree data landed: this attempt succeeded, so clear the
+                // retry/backoff state for the network before publishing.
+                this._clearTreeState(networkForTree);
 
                 // Publish standard tree topic
                 this._publish(

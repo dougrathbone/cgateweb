@@ -38,6 +38,17 @@ const MOCK_TREEXML_RESULT_NET254 = {
     }
 };
 
+// Valid C-Gate TreeXML for network 254 with one App 56 lighting group. Used by
+// tests that need handleTreeEnd's real xml2js parse to yield findable network
+// data (haDiscovery captures parseString at require time, so jest.spyOn on
+// xml2js.parseString does not take effect — the real parser runs).
+const TREEXML_NET254 =
+    '<Network><NetworkNumber>254</NetworkNumber>' +
+    '<Unit><UnitAddress>100</UnitAddress>' +
+    '<Application><ApplicationAddress>56</ApplicationAddress>' +
+    '<Group><GroupAddress>10</GroupAddress><Label>Kitchen Light</Label></Group>' +
+    '</Application></Unit></Network>';
+
 describe('HaDiscovery', () => {
     let haDiscovery;
     let mockSettings;
@@ -157,29 +168,25 @@ describe('HaDiscovery', () => {
         });
 
         it('should join buffer parts with newlines on tree end', () => {
+            // Split valid TreeXML across data parts; if they are not newline-joined
+            // into well-formed XML the real parser would fail and nothing publishes.
             haDiscovery.treeNetwork = '254';
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<xml>');
-            haDiscovery.handleTreeData('test');
-            haDiscovery.handleTreeData('</xml>');
-
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
-                expect(xml).toBe(`<xml>${NEWLINE}test${NEWLINE}</xml>${NEWLINE}`);
-                callback(null, MOCK_TREEXML_RESULT_NET254);
-            });
+            haDiscovery.handleTreeData('<Network><NetworkNumber>254</NetworkNumber>');
+            haDiscovery.handleTreeData('<Unit><UnitAddress>100</UnitAddress></Unit>');
+            haDiscovery.handleTreeData('</Network>');
 
             haDiscovery.handleTreeEnd('Tree end');
-            expect(mockPublishFn).toHaveBeenCalled();
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254///tree',
+                expect.any(String),
+                { retain: true, qos: 0 }
+            );
         });
 
         it('should process tree end and publish discovery', () => {
             haDiscovery.treeNetwork = '254';
-            haDiscovery.treeBufferParts = ['<xml>test</xml>'];
-            
-            // Mock parseString to return our test data
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
-                callback(null, MOCK_TREEXML_RESULT_NET254);
-            });
+            haDiscovery.treeBufferParts = [TREEXML_NET254];
 
             haDiscovery.handleTreeEnd('Tree end');
 
@@ -192,16 +199,12 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_networks = ['254', '200'];
             haDiscovery.trigger();
 
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, callback) => {
-                callback(null, MOCK_TREEXML_RESULT_NET254);
-            });
-
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<xml>first</xml>');
+            haDiscovery.handleTreeData(TREEXML_NET254);
             haDiscovery.handleTreeEnd('end');
 
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<xml>second</xml>');
+            haDiscovery.handleTreeData('<Network><NetworkNumber>200</NetworkNumber></Network>');
             haDiscovery.handleTreeEnd('end');
 
             expect(mockPublishFn).toHaveBeenCalledWith(
@@ -624,6 +627,95 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('TreeXML empty-tree retry (network still syncing)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('retries instead of marking ok when the tree has no network data yet', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // C-Gate returns an empty <Network></Network> because network 254
+            // exists but has not finished syncing its units (State=new) at
+            // startup. This must NOT be accepted as a (zero-device) success.
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+
+            // Status must not have reached ok.
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states).not.toContain('ok');
+
+            // Backoff fires and re-requests the tree.
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('keeps backing off across repeated empty trees (attempts not reset per tree-start)', () => {
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('end');
+            // A second empty tree must advance the counter, not reset it to 1 —
+            // otherwise retries loop forever and never pause.
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(2);
+        });
+
+        it('does not send a duplicate TREEXML while one is already in flight (avoids "unknown" network)', () => {
+            // Both the initial trigger() and a "Network created" event fire for
+            // the same network at startup. The second must not send a second
+            // TREEXML: only one entry is tracked in pendingTreeNetworks, so a
+            // second response would be misattributed to an "unknown" network.
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.queueTreeRequest('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+
+            // The single in-flight response is attributed to 254, never 'unknown'.
+            haDiscovery.handleTreeStart('start');
+            expect(haDiscovery.activeTreeSession.network).toBe('254');
+            expect(haDiscovery.pendingTreeNetworks).toEqual([]);
+        });
+
+        it('marks ok once the network has synced and the tree carries data', () => {
+            jest.spyOn(require('xml2js'), 'parseString')
+                .mockImplementation((xml, _opts, cb) => cb(null, { Network: { NetworkNumber: '254' } }));
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network><NetworkNumber>254</NetworkNumber></Network>');
+            haDiscovery.handleTreeEnd('end');
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+            // Retry state cleared on success.
+            expect(haDiscovery._treeRequestState.has('254')).toBe(false);
+        });
+    });
+
     describe('TreeXML retry on startup race (401 Network not found)', () => {
         beforeEach(() => {
             jest.useFakeTimers();
@@ -723,10 +815,10 @@ describe('HaDiscovery', () => {
             haDiscovery.handleCommandError('401', 'Bad object or device ID: Network not found');
             jest.advanceTimersByTime(2000);
 
-            // Retry sent — simulate a successful tree response.
+            // Retry sent — simulate a successful tree response carrying real
+            // network data (an empty tree would (correctly) schedule a retry).
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<xml/>');
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, {}));
+            haDiscovery.handleTreeData(TREEXML_NET254);
             haDiscovery.handleTreeEnd('end');
 
             // Watchdog and retry state should now be cleared.
@@ -805,11 +897,10 @@ describe('HaDiscovery', () => {
         });
 
         it('transitions to ok after a successful TreeXML', () => {
-            jest.spyOn(require('xml2js'), 'parseString').mockImplementation((xml, _opts, cb) => cb(null, {}));
             haDiscovery.trigger();
 
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<xml/>');
+            haDiscovery.handleTreeData(TREEXML_NET254);
             haDiscovery.handleTreeEnd('end');
 
             const stateCalls = mockPublishFn.mock.calls.filter(
