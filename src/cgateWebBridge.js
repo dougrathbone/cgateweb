@@ -73,6 +73,11 @@ class CgateWebBridge {
         this.commandSocketFactory = commandSocketFactory;
         this.eventSocketFactory = eventSocketFactory;
 
+        // Single late-binding accessor for haDiscovery, which is null at
+        // construction and assigned during init. Shared by the collaborators and
+        // the init service so they all read the live value, not a captured null.
+        this._getHaDiscovery = () => this.haDiscovery;
+
         // Construct all subsystems in dependency order. _buildSubsystems invokes
         // _buildQueues and _buildEventLogBuffer inline at the exact points they
         // are needed, so construction order is identical to the original
@@ -102,7 +107,7 @@ class CgateWebBridge {
             log: (message) => this.log(message),
             getCommandResponseProcessor: () => this.commandResponseProcessor,
             getDiscoveredNetworks: () => this.discoveredNetworks,
-            getHaDiscovery: () => this.haDiscovery,
+            getHaDiscovery: this._getHaDiscovery,
             applyDiscoveredNetworks: (networks) => { this.discoveredNetworks = networks; },
             applyHaDiscovery: (haDiscovery) => {
                 this.haDiscovery = haDiscovery;
@@ -214,7 +219,7 @@ class CgateWebBridge {
             eventPublisher: this.eventPublisher,
             logger: this.logger,
             settings: this.settings,
-            getHaDiscovery: () => this.haDiscovery
+            getHaDiscovery: this._getHaDiscovery
         });
 
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
@@ -225,7 +230,7 @@ class CgateWebBridge {
         this.cniNotificationManager = new CniNotificationManager({
             networkInterfaceMonitor: this.networkInterfaceMonitor,
             mqttManager: this.mqttManager,
-            getHaDiscovery: () => this.haDiscovery,
+            getHaDiscovery: this._getHaDiscovery,
             logger: this.logger,
             settings: this.settings,
             mqttOptions: this._mqttOptions
