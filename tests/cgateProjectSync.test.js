@@ -34,17 +34,25 @@ const BASHIO_STUB = `
 function makeTmpDirs({ withShare = true, withData = true } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-project-sync-'));
     const shareTag = path.join(root, 'share', 'cgate', 'tag');
-    const dataTag = path.join(root, 'data', 'cgate', 'tag');
+    const dataCgate = path.join(root, 'data', 'cgate');
     if (withShare) fs.mkdirSync(shareTag, { recursive: true });
-    if (withData) fs.mkdirSync(dataTag, { recursive: true });
-    return { root, shareTag, dataTag };
+    if (withData) fs.mkdirSync(dataCgate, { recursive: true });
+    // C-Gate loads projects from Projects/<NAME>/<NAME>.db, not tag/<NAME>.db.
+    const projectsDir = path.join(dataCgate, 'Projects');
+    return { root, shareTag, dataCgate, projectsDir };
 }
 
-function runSync({ shareTag, dataTag, configObject = {} }) {
+// Where the sync script must place <NAME>.db so managed C-Gate can load it.
+function projectDbPath(projectsDir, name) {
+    const base = name.replace(/\.db$/, '');
+    return path.join(projectsDir, base, `${base}.db`);
+}
+
+function runSync({ shareTag, dataCgate, configObject = {} }) {
     const env = {
         ...process.env,
         CGATEWEB_SHARE_TAG_DIR: shareTag,
-        CGATEWEB_DATA_TAG_DIR: dataTag,
+        CGATEWEB_DATA_CGATE_DIR: dataCgate,
         // Pass the script path via the environment rather than interpolating it
         // into the bash -c command text, so the absolute path is never part of
         // the executed command string.
@@ -78,22 +86,35 @@ describe('cgate-project-sync.sh', () => {
         fs.writeFileSync(path.join(dirs.shareTag, 'BURSWOOD.db'), 'fake-db');
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'remote' }
         });
-        expect(fs.existsSync(path.join(dirs.dataTag, 'BURSWOOD.db'))).toBe(false);
+        expect(fs.existsSync(projectDbPath(dirs.projectsDir, 'BURSWOOD'))).toBe(false);
     });
 
-    test('copies .db files from share into C-Gate tag dir when in managed mode', () => {
+    test('copies <NAME>.db into Projects/<NAME>/<NAME>.db when in managed mode', () => {
         fs.writeFileSync(path.join(dirs.shareTag, 'BURSWOOD.db'), 'fake-db-content');
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'managed' }
         });
-        const dest = path.join(dirs.dataTag, 'BURSWOOD.db');
+        const dest = projectDbPath(dirs.projectsDir, 'BURSWOOD');
         expect(fs.existsSync(dest)).toBe(true);
         expect(fs.readFileSync(dest, 'utf8')).toBe('fake-db-content');
+        // The file must NOT be left in the (wrong) tag dir.
+        expect(fs.existsSync(path.join(dirs.dataCgate, 'tag', 'BURSWOOD.db'))).toBe(false);
+    });
+
+    test('creates the per-project directory if it does not exist', () => {
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'home-db');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(fs.existsSync(path.join(dirs.projectsDir, 'HOME'))).toBe(true);
+        expect(fs.readFileSync(projectDbPath(dirs.projectsDir, 'HOME'), 'utf8')).toBe('home-db');
     });
 
     test('skips files that are not .db', () => {
@@ -101,11 +122,11 @@ describe('cgate-project-sync.sh', () => {
         fs.writeFileSync(path.join(dirs.shareTag, 'PROJECT.xml'), '<x/>');
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'managed' }
         });
-        expect(fs.existsSync(path.join(dirs.dataTag, 'README.txt'))).toBe(false);
-        expect(fs.existsSync(path.join(dirs.dataTag, 'PROJECT.xml'))).toBe(false);
+        expect(fs.existsSync(path.join(dirs.projectsDir, 'README'))).toBe(false);
+        expect(fs.existsSync(path.join(dirs.projectsDir, 'PROJECT'))).toBe(false);
     });
 
     test('is a no-op when the share tag dir does not exist', () => {
@@ -114,16 +135,16 @@ describe('cgate-project-sync.sh', () => {
         dirs = makeTmpDirs({ withShare: false, withData: true });
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'managed' }
         });
-        const entries = fs.readdirSync(dirs.dataTag);
-        expect(entries).toEqual([]);
+        expect(fs.existsSync(dirs.projectsDir)).toBe(false);
     });
 
     test('does not overwrite a newer destination .db (managed C-Gate may have saved state)', () => {
-        const dest = path.join(dirs.dataTag, 'BURSWOOD.db');
+        const dest = projectDbPath(dirs.projectsDir, 'BURSWOOD');
         const src = path.join(dirs.shareTag, 'BURSWOOD.db');
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(src, 'old-source');
         fs.writeFileSync(dest, 'new-cgate-state');
         // Force source mtime older than dest mtime.
@@ -134,15 +155,16 @@ describe('cgate-project-sync.sh', () => {
 
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'managed' }
         });
         expect(fs.readFileSync(dest, 'utf8')).toBe('new-cgate-state');
     });
 
     test('overwrites destination when source is newer', () => {
-        const dest = path.join(dirs.dataTag, 'BURSWOOD.db');
+        const dest = projectDbPath(dirs.projectsDir, 'BURSWOOD');
         const src = path.join(dirs.shareTag, 'BURSWOOD.db');
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, 'stale');
         fs.writeFileSync(src, 'fresh-from-user');
         const past = new Date(Date.now() - 60_000);
@@ -152,7 +174,7 @@ describe('cgate-project-sync.sh', () => {
 
         runSync({
             shareTag: dirs.shareTag,
-            dataTag: dirs.dataTag,
+            dataCgate: dirs.dataCgate,
             configObject: { cgate_mode: 'managed' }
         });
         expect(fs.readFileSync(dest, 'utf8')).toBe('fresh-from-user');
