@@ -22,6 +22,16 @@ describe('classifyLightingGroup', () => {
         expect(classifyLightingGroup('Bedroom Lamp', on)).toBeNull();
     });
 
+    it('keeps a light when a cover keyword co-occurs with a light word', () => {
+        // Regression: "Garage Door Lamps" was being classified as a cover.
+        expect(classifyLightingGroup('Garage Door Lamps', on)).toBeNull();
+        expect(classifyLightingGroup('Garage Door Light', on)).toBeNull();
+        expect(classifyLightingGroup('Awning Spotlight', on)).toBeNull();
+        // …but a real cover with no light word is still a cover.
+        expect(classifyLightingGroup('Garage Door', on)).toBe('cover');
+        expect(classifyLightingGroup('Patio Blind', on)).toBe('cover');
+    });
+
     it('returns null for empty/invalid labels', () => {
         expect(classifyLightingGroup('', on)).toBeNull();
         expect(classifyLightingGroup('   ', on)).toBeNull();

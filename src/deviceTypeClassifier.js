@@ -7,6 +7,13 @@ const DEFAULT_COVER_KEYWORDS = [
     'blind', 'shutter', 'shade', 'awning', 'curtain', 'roller', 'garage door'
 ];
 
+// If a cover keyword matches but the label ALSO clearly names a light
+// (e.g. "Garage Door Lamps"), keep it a light. Stops a substring like
+// "garage door" from turning a light group into a cover.
+const LIGHT_HINT_KEYWORDS = [
+    'lamp', 'light', 'downlight', 'globe', 'spotlight', 'sconce', 'pendant', 'chandelier'
+];
+
 function escapeRegExp(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -33,7 +40,14 @@ function classifyLightingGroup(label, settings = {}) {
     for (const kw of keywords) {
         if (typeof kw !== 'string' || !kw.trim()) continue;
         const re = new RegExp(`\\b${escapeRegExp(kw.trim())}`, 'i');
-        if (re.test(label)) return 'cover';
+        if (re.test(label)) {
+            // A cover keyword matched — but if the label also names a light,
+            // it's a light (e.g. "Garage Door Lamps", "Awning Light").
+            if (LIGHT_HINT_KEYWORDS.some(lw => new RegExp(`\\b${lw}`, 'i').test(label))) {
+                return null;
+            }
+            return 'cover';
+        }
     }
     return null;
 }
