@@ -51,6 +51,49 @@ _cgateweb_verify_zip_safe() {
     return 0
 }
 
+# Set a single C-GateConfig.txt key, anchored to start-of-line so the comment
+# headers (e.g. "#### project.default:") never match. Replaces an existing
+# key in place or appends it. Idempotent: repeated runs leave one line per key.
+_cgateweb_set_config_key() {
+    local config_file="$1" key="$2" value="$3"
+    # Escape regex-special dots in the key so "project.default" cannot also match
+    # "project.default.dir". Use | as the sed delimiter so path values are safe.
+    local key_re="${key//./\\.}"
+    if grep -q "^${key_re}=" "${config_file}"; then
+        # Temp-file rewrite instead of `sed -i`: portable across GNU and BSD sed
+        # (the latter requires an explicit backup-suffix arg to -i).
+        local tmp="${config_file}.tmp.$$"
+        sed "s|^${key_re}=.*|${key}=${value}|" "${config_file}" > "${tmp}" && mv "${tmp}" "${config_file}"
+    else
+        printf '%s=%s\n' "${key}" "${value}" >> "${config_file}"
+    fi
+}
+
+# Apply cgateweb's required C-Gate settings to C-GateConfig.txt. This MUST run
+# on every boot (not just on a fresh install) so existing/upgrading managed
+# users also get project.start — without it C-Gate never loads the project and
+# every command returns "401 Bad object or device ID" (issue #16).
+_cgateweb_apply_cgate_config() {
+    local config_file="$1"
+    local project="$2"
+    local command_port="$3"
+    local event_port="$4"
+
+    [[ -f "${config_file}" ]] || return 0
+
+    # Strip legacy invalid keys that older versions of this script appended.
+    # C-Gate doesn't recognize these and warns about them at startup.
+    local tmp="${config_file}.tmp.$$"
+    sed '/^CommandInterface\.port=/d;/^EventInterface\.port=/d' "${config_file}" > "${tmp}" && mv "${tmp}" "${config_file}"
+
+    # project.default names the project; project.start is what actually makes
+    # C-Gate load+start it at boot (project.default alone does nothing).
+    _cgateweb_set_config_key "${config_file}" "project.default" "${project}"
+    _cgateweb_set_config_key "${config_file}" "project.start" "${project}"
+    _cgateweb_set_config_key "${config_file}" "command-port" "${command_port}"
+    _cgateweb_set_config_key "${config_file}" "event-port" "${event_port}"
+}
+
 # Allow tests to source this script for unit testing the helpers above without
 # running the install flow.
 if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
@@ -75,12 +118,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Check if C-Gate is already installed
+# Install C-Gate only if it is not already present. The config block at the end
+# runs on EVERY boot regardless, so existing/upgrading installs still pick up
+# settings changes (e.g. the project.start fix in issue #16).
 if [[ -f "${CGATE_JAR}" ]]; then
-    bashio::log.info "C-Gate already installed at ${CGATE_DIR}"
-    exit 0
-fi
-
+    bashio::log.info "C-Gate already installed at ${CGATE_DIR}; skipping install, refreshing config"
+else
 bashio::log.info "C-Gate not found, installing from source: ${INSTALL_SOURCE}"
 
 mkdir -p "${CGATE_DIR}"
@@ -245,6 +288,8 @@ else
     echo "unknown" > "${CGATE_DIR}/.version"
 fi
 
+fi  # end install-if-not-present
+
 # Configure access.txt to allow local connections
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"
 if [[ ! -f "${ACCESS_FILE}" ]]; then
@@ -259,42 +304,16 @@ ACCESSEOF
     bashio::log.info "Created default access.txt"
 fi
 
-# Set the project name and port configuration in C-Gate config.
-# Keys are anchored to start-of-line so the comment headers in C-GateConfig.txt
-# (e.g. "#### command-port:") don't produce false-positive grep matches.
-# Earlier versions wrote "CommandInterface.port" / "EventInterface.port", which
-# C-Gate doesn't recognize and warns about at startup; those lines are stripped
-# here so the warnings go away on next install.
+# Set the project name and port configuration in C-Gate config. This runs on
+# every boot (see the install guard above) so settings changes and the
+# project.start fix reach existing installs, not just fresh ones.
 CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
 CGATE_EVENT_PORT=$(bashio::config 'cgate_event_port' '20025')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
 if [[ -f "${CGATE_CONFIG}" ]]; then
-    # Strip legacy invalid keys that older versions of this script appended.
-    sed -i '/^CommandInterface\.port=/d;/^EventInterface\.port=/d' "${CGATE_CONFIG}"
-
-    # project.default
-    if grep -q "^project.default=" "${CGATE_CONFIG}"; then
-        sed -i "s/^project.default=.*/project.default=${CGATE_PROJECT}/" "${CGATE_CONFIG}"
-    else
-        echo "project.default=${CGATE_PROJECT}" >> "${CGATE_CONFIG}"
-    fi
-
-    # command-port (command/program port)
-    if grep -q "^command-port=" "${CGATE_CONFIG}"; then
-        sed -i "s/^command-port=.*/command-port=${CGATE_PORT}/" "${CGATE_CONFIG}"
-    else
-        echo "command-port=${CGATE_PORT}" >> "${CGATE_CONFIG}"
-    fi
-
-    # event-port (event/monitor port)
-    if grep -q "^event-port=" "${CGATE_CONFIG}"; then
-        sed -i "s/^event-port=.*/event-port=${CGATE_EVENT_PORT}/" "${CGATE_CONFIG}"
-    else
-        echo "event-port=${CGATE_EVENT_PORT}" >> "${CGATE_CONFIG}"
-    fi
-
-    bashio::log.info "Set default project to: ${CGATE_PROJECT}"
+    _cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}" "${CGATE_EVENT_PORT}"
+    bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
     bashio::log.info "Set command port to: ${CGATE_PORT}"
     bashio::log.info "Set event port to: ${CGATE_EVENT_PORT}"
 fi
