@@ -63,7 +63,9 @@ function callHelper(helperName, configObject) {
 function applyCgateConfig({ initialConfig, project, commandPort, eventPort }) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-install-'));
     const cfg = path.join(dir, 'C-GateConfig.txt');
-    fs.writeFileSync(cfg, initialConfig);
+    // initialConfig === null models a fresh install where C-Gate has not yet
+    // generated its config file.
+    if (initialConfig !== null) fs.writeFileSync(cfg, initialConfig);
     const env = {
         ...process.env,
         CGATEWEB_INSTALL_SOURCE_ONLY: '1',
@@ -174,6 +176,21 @@ describe('cgate-install.sh helpers', () => {
             });
             expect(out).not.toMatch(/CommandInterface\.port=/);
             expect(out).not.toMatch(/EventInterface\.port=/);
+        });
+
+        test('seeds a config with project.start when none exists yet (fresh install)', () => {
+            // C-Gate generates C-GateConfig.txt only on its first start, which is
+            // after cont-init runs — so on a fresh install there is no file to
+            // edit. The helper must create one carrying our project settings so
+            // C-Gate auto-loads the project on its very first start (issue #16).
+            const out = applyCgateConfig({
+                initialConfig: null, project: 'HOME', commandPort: 20023, eventPort: 20025
+            });
+            expect(out).toMatch(/^project\.start=HOME$/m);
+            expect(out).toMatch(/^project\.default=HOME$/m);
+            expect(out).toMatch(/^project\.default\.dir=Projects\/$/m);
+            expect(out).toMatch(/^command-port=20023$/m);
+            expect(out).toMatch(/^event-port=20025$/m);
         });
 
         test('is idempotent across repeated runs (no duplicate keys)', () => {

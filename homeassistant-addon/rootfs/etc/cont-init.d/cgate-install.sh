@@ -79,7 +79,16 @@ _cgateweb_apply_cgate_config() {
     local command_port="$3"
     local event_port="$4"
 
-    [[ -f "${config_file}" ]] || return 0
+    # C-Gate generates C-GateConfig.txt on its first start, which happens AFTER
+    # cont-init runs -- so on a fresh install there is no file to edit yet. Seed
+    # a minimal config: C-Gate preserves an existing file and fills unspecified
+    # keys with its built-in defaults, so this is enough to make it auto-load the
+    # project on its very first start (project.start, below). Without it the
+    # first boot comes up with no project loaded and every command 401s (#16).
+    if [[ ! -f "${config_file}" ]]; then
+        mkdir -p "$(dirname "${config_file}")"
+        printf 'project.default.dir=Projects/\n' > "${config_file}"
+    fi
 
     # Strip legacy invalid keys that older versions of this script appended.
     # C-Gate doesn't recognize these and warns about them at startup.
@@ -311,11 +320,11 @@ CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
 CGATE_EVENT_PORT=$(bashio::config 'cgate_event_port' '20025')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
-if [[ -f "${CGATE_CONFIG}" ]]; then
-    _cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}" "${CGATE_EVENT_PORT}"
-    bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
-    bashio::log.info "Set command port to: ${CGATE_PORT}"
-    bashio::log.info "Set event port to: ${CGATE_EVENT_PORT}"
-fi
+# Always apply: the helper seeds the file if C-Gate has not generated it yet
+# (fresh install), so project.start is in place before C-Gate's first start.
+_cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}" "${CGATE_EVENT_PORT}"
+bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
+bashio::log.info "Set command port to: ${CGATE_PORT}"
+bashio::log.info "Set event port to: ${CGATE_EVENT_PORT}"
 
 bashio::log.info "C-Gate installation complete"
