@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.3] - 2026-06-16
+
+### Fixed
+
+- **Managed mode now actually loads your C-Gate project.** Project database files were being synced into C-Gate's `tag/` directory, but C-Gate 3.x loads projects from `Projects/<NAME>/<NAME>.db`. Managed C-Gate therefore started with **no project loaded** — every command returned `401 Bad object or device ID` and Home Assistant Discovery found nothing. cgateweb now places `<NAME>.db` in `Projects/<NAME>/` and sets `project.start` so C-Gate auto-loads and starts the project on boot. (#16)
+- **Project configuration is reapplied on every start.** Previously the project name / port settings were only written during a *fresh* C-Gate install, so existing and upgrading managed installs never received them. The configuration step now runs on every container start (the C-Gate download/extract is still skipped when already installed).
+
+### Internal
+
+- **End-to-end managed-mode test verifies the project loads.** The integration test now talks to C-Gate's command port and asserts the project reaches `state=started` with its database parsed (App 56 Lighting), so a "project not loaded" regression fails CI instead of silently soft-passing. A sample project fixture is committed for the test. Live entity-discovery assertions require real C-Bus hardware (`CGATEWEB_E2E_EXPECT_LIVE=1`); simulating a CNI for full discovery in CI is tracked as future work.
+
 ## [1.14.2] - 2026-06-16
 
 ### Fixed
