@@ -95,7 +95,22 @@ class CbusProjectParser {
             }
         }
 
-        const xmlEntry = entries.find(e => e.entryName.endsWith('.xml'));
+        // Find the project XML. Match the extension case-insensitively — C-Bus
+        // Toolkit on Windows (e.g. 1.17.6 on Server 2025) can emit ".XML" — and,
+        // if that fails, sniff entry contents so we still recognise the project
+        // file when a Toolkit version names it without a .xml extension.
+        const fileEntries = entries.filter(e => !e.isDirectory);
+        let xmlEntry = fileEntries.find(e => e.entryName.toLowerCase().endsWith('.xml'));
+        if (!xmlEntry) {
+            xmlEntry = fileEntries.find(e => {
+                try {
+                    const head = e.getData().slice(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+                    return head.startsWith('<?xml') || /<(Installation|Network|Project)\b/i.test(head);
+                } catch {
+                    return false;
+                }
+            });
+        }
         if (!xmlEntry) {
             throw new Error('CBZ archive does not contain an XML file');
         }

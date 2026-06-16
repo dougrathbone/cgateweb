@@ -240,6 +240,22 @@ describe('CbusProjectParser', () => {
                 .rejects.toThrow('does not contain an XML file');
         });
 
+        it('parses a CBZ whose XML entry has an uppercase .XML extension (Toolkit on Windows)', async () => {
+            const xml = '<?xml version="1.0"?><Network Address="254"><Application Address="56"><Group Address="7" TagName="Upper"/></Application></Network>';
+            const zip = new AdmZip();
+            zip.addFile('PROJECT.XML', Buffer.from(xml));
+            const result = await parser.parse(zip.toBuffer(), 'project.cbz');
+            expect(result.labels).toEqual({ '254/56/7': 'Upper' });
+        });
+
+        it('parses a CBZ where the project file has no .xml extension (content-sniffed)', async () => {
+            const xml = '<?xml version="1.0"?><Network Address="254"><Application Address="56"><Group Address="8" TagName="Sniffed"/></Application></Network>';
+            const zip = new AdmZip();
+            zip.addFile('project.cbzdata', Buffer.from(xml));
+            const result = await parser.parse(zip.toBuffer(), 'project.cbz');
+            expect(result.labels).toEqual({ '254/56/8': 'Sniffed' });
+        });
+
         it('rejects a CBZ whose declared decompressed total exceeds the cap (zip-bomb protection)', async () => {
             // Build a real zip and configure the parser with a tiny cap so a
             // single small entry triggers the guard. The production default
