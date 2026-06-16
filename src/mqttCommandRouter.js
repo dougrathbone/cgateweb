@@ -687,7 +687,7 @@ class MqttCommandRouter extends EventEmitter {
     _publishOptimisticHvacState(network, application, unit, { mode, setpointC } = {}) {
         if (!this.mqttClient || typeof this.mqttClient.publish !== 'function') return;
         const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${unit}`;
-        const opts = { ...MQTT_RETAINED_STATE_OPTIONS };
+        const opts = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
         if (setpointC !== undefined && setpointC !== null) {
             this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`, String(setpointC), opts);
         }

@@ -1,7 +1,7 @@
 const MqttCommandRouter = require('../src/mqttCommandRouter');
 const { AirconControlRegistry } = require('../src/airconControlRegistry');
 
-function makeRouter({ control = true, withState = true } = {}) {
+function makeRouter({ control = true, withState = true, retainreads = false } = {}) {
     const queued = [];
     const reg = new AirconControlRegistry();
     if (withState) {
@@ -15,8 +15,8 @@ function makeRouter({ control = true, withState = true } = {}) {
     const router = new MqttCommandRouter({
         cbusname: 'THEGAFF',
         cgateCommandQueue: { add: (c) => queued.push(c) },
-        mqttClient: { publish: (topic, payload) => published.push({ topic, payload }) },
-        settings: { cbus_aircon_app_id: '172', cbus_aircon_control_enabled: control },
+        mqttClient: { publish: (topic, payload, opts) => published.push({ topic, payload, opts }) },
+        settings: { cbus_aircon_app_id: '172', cbus_aircon_control_enabled: control, retainreads },
         airconControlRegistry: reg
     });
     jest.spyOn(router.logger, 'warn').mockImplementation(() => {});
@@ -100,8 +100,18 @@ describe('native HVAC write control (AIRCON commands)', () => {
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
         router.routeMessage('cbus/write/254/172/202/hvacmode', 'cool');
         router.routeMessage('cbus/write/254/172/202/hvacmode', 'off');
-        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/setpoint', payload: '25' });
-        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'cool' });
-        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'off' });
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/setpoint', payload: '25', opts: { qos: 0 } });
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'cool', opts: { qos: 0 } });
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'off', opts: { qos: 0 } });
+    });
+
+    it('retains optimistic HVAC state only when retainreads is enabled', () => {
+        const { router, published } = makeRouter({ retainreads: true });
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(published).toContainEqual({
+            topic: 'cbus/read/254/172/202/setpoint',
+            payload: '25',
+            opts: { retain: true, qos: 0 }
+        });
     });
 });
