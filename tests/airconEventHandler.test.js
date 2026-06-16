@@ -85,4 +85,25 @@ describe('AirconEventHandler', () => {
         expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
         expect(deps.registry.recordModeReading).not.toHaveBeenCalled();
     });
+
+    describe('isAirconLine', () => {
+        const handler = new AirconEventHandler(makeDeps());
+
+        it('recognises aircon traffic, with or without a # comment prefix', () => {
+            expect(handler.isAirconLine('aircon set_zone_hvac_mode //THEGAFF/254/172 1 0')).toBe(true);
+            expect(handler.isAirconLine('# aircon set_zone_hvac_mode //THEGAFF/254/172 1 0')).toBe(true);
+            expect(handler.isAirconLine('  aircon foo')).toBe(true);
+        });
+
+        it('returns false for non-aircon lines and other comments', () => {
+            expect(handler.isAirconLine('lighting on //THEGAFF/254/56/4')).toBe(false);
+            expect(handler.isAirconLine('# some other comment')).toBe(false);
+            expect(handler.isAirconLine('clock date 2026-06-16')).toBe(false);
+        });
+
+        it('is independent of whether the feature is enabled', () => {
+            const disabled = new AirconEventHandler(makeDeps({ settings: { cbus_aircon_app_id: null } }));
+            expect(disabled.isAirconLine('aircon set_zone_hvac_mode //THEGAFF/254/172 1 0')).toBe(true);
+        });
+    });
 });

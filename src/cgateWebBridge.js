@@ -524,6 +524,15 @@ class CgateWebBridge {
             this.logger.debug(`C-Gate Recv (Evt): ${line}`);
         }
 
+        // Aircon-format lines that weren't consumed above (feature disabled, an
+        // unsupported verb, or a different app) are surfaced in raw capture but
+        // are never valid CBusEvents — skip the parse so they don't spam a
+        // "Could not parse event line" warning on every broadcast.
+        if (this.airconEventHandler.isAirconLine(line)) {
+            this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${line}`);
+            return;
+        }
+
         try {
             const event = new CBusEvent(line);
             if (event.isValid()) {

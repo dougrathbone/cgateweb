@@ -727,6 +727,25 @@ describe('CgateWebBridge', () => {
                 publishEventSpy.mockRestore();
             });
 
+            it('captures an unconsumed aircon line but does not warn-parse it as a standard event', () => {
+                const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                // An aircon-format line that the handler doesn't consume (unsupported
+                // verb). It must still reach raw capture, but must NOT be run through
+                // CBusEvent (which would log a spurious "Could not parse" warning).
+                bridge._processEventLine('aircon some_unknown_verb //TestProject/254/172 1 0');
+
+                expect(rawCaptureSpy).toHaveBeenCalled();
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+
+                rawCaptureSpy.mockRestore();
+                warnSpy.mockRestore();
+                publishEventSpy.mockRestore();
+            });
+
             it('should call _publishRawEventCapture with the event line', () => {
                 const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
                 const line = 'lighting on 254/56/1';

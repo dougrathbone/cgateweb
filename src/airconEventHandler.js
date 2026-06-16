@@ -23,12 +23,23 @@ class AirconEventHandler {
         this.getHaDiscovery = getHaDiscovery;
     }
 
+    /**
+     * Whether a raw event line is native-aircon traffic (an `aircon <verb> ...`
+     * line, optionally `#`-comment-prefixed), regardless of whether the feature
+     * is enabled or the line can be decoded. Such lines are never valid
+     * CBusEvents, so callers use this to avoid running them through the standard
+     * parser (which would log a spurious "could not parse" warning).
+     */
+    isAirconLine(line) {
+        let s = line.trim();
+        if (s.startsWith('#')) s = s.slice(1).trim();
+        return s.startsWith('aircon ');
+    }
+
     handleLine(line) {
         const appId = this.settings.cbus_aircon_app_id;
         if (!appId) return false;
-        let s = line.trim();
-        if (s.startsWith('#')) s = s.slice(1).trim();
-        if (!s.startsWith('aircon ')) return false;
+        if (!this.isAirconLine(line)) return false;
         // Aircon traffic and the feature is enabled — consume it here.
         const reading = airconDecoder.decodeLine(line);
         if (reading && reading.application === String(appId)) {
