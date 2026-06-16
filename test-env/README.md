@@ -49,6 +49,35 @@ cp options-remote.json active-options.json
 podman compose up --build
 ```
 
+## Integration test
+
+`integration-test.js` boots the full managed stack and asserts the bridge
+reaches a working state. It includes a strict **issue #16 regression guard**:
+it talks to C-Gate's command port inside the addon container and verifies the
+project actually loaded (`project=HOME state=started`) and its real database
+parsed (App 56 Lighting present). MQTT readiness alone never caught a
+project-not-loaded failure.
+
+```bash
+cp options-managed-download.json active-options.json
+node integration-test.js                 # build → assert → teardown
+node integration-test.js --no-teardown   # leave the stack up afterwards
+```
+
+### Test project fixture
+
+`volumes/share/cgate/tag/HOME.db` is a committed sample C-Gate project. On
+startup the addon's `cgate-project-sync.sh` copies it to
+`volumes/data/cgate/Projects/HOME/HOME.db` (C-Gate loads projects from
+`Projects/<NAME>/`, **not** `tag/`), and `cgate-install.sh` sets
+`project.start=HOME` so C-Gate auto-loads it.
+
+The project's network is `type=serial` (COM1), so **without real C-Bus hardware
+it never syncs** — `TREEXML` returns an empty tree and no entities are
+discovered. Entity-discovery assertions therefore soft-pass by default. Set
+`CGATEWEB_E2E_EXPECT_LIVE=1` to make them strict when running against a live
+C-Bus. (Simulating a CNI so discovery runs end-to-end in CI is future work.)
+
 ## Watch logs
 
 ```bash

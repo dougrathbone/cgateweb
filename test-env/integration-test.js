@@ -90,6 +90,55 @@ function composeDown() {
     });
 }
 
+/**
+ * Talk to managed C-Gate's command port from *inside* the addon container.
+ * C-Gate's access.txt only permits 127.0.0.1, so we cannot reach the command
+ * port from the host — we exec a tiny bash/dev-tcp client in the container.
+ * Returns { ok, output }. Used to assert the project actually loaded (issue #16),
+ * which the MQTT surface alone can't prove without live C-Bus hardware.
+ */
+function probeCgate(commands, port = 20023) {
+    const ps = spawnSync('podman', ['ps', '--format', '{{.Names}}', '--filter', 'name=addon'], {
+        encoding: 'utf8',
+    });
+    const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+    if (!container) return { ok: false, output: '', error: 'addon container not found' };
+
+    const lines = [
+        `exec 3<>/dev/tcp/127.0.0.1/${port}`,
+        'timeout 1 head -c 600 <&3 || true',
+        ...commands.map(c => `printf '%s\\r\\n' '${c}' >&3`),
+        'timeout 5 cat <&3 || true',
+    ];
+    const res = spawnSync('podman', ['exec', '-i', container, 'bash', '-c', lines.join('\n')], {
+        encoding: 'utf8',
+    });
+    return {
+        ok: res.status === 0,
+        output: `${res.stdout || ''}${res.stderr || ''}`,
+        error: res.stderr || '',
+    };
+}
+
+/**
+ * Poll C-Gate until the named project reports state=started, or timeout.
+ * project.start auto-loads the project a few seconds *after* C-Gate begins
+ * accepting connections (the XML→SQL transform + start runs in the background),
+ * so a single immediate probe can race it. cgateweb tolerates the same window
+ * via its TREEXML retry logic. Returns the last probe result.
+ */
+async function waitForProjectStarted(projectName, commands, port, timeoutMs = 45000) {
+    const started = new RegExp(`project=${projectName}\\s+state=started`);
+    const deadline = Date.now() + timeoutMs;
+    let last = { ok: false, output: '', error: '' };
+    do {
+        last = probeCgate(commands, port);
+        if (started.test(last.output)) return last;
+        await new Promise(resolve => setTimeout(resolve, 3000));
+    } while (Date.now() < deadline);
+    return last;
+}
+
 function checkPrereqs() {
     section('Prerequisites');
 
@@ -235,15 +284,17 @@ async function runTests() {
         info('C-Gate not yet installed — waiting for download + install...');
     }
 
-    // CI fixture detection: the managed-download options install C-Gate fresh
-    // with no project loaded into tag/, so any assertion that depends on a
-    // populated project (entity counts, discovery status ok, empty retry
-    // queue) must soft-pass. Production fixtures with a real .db dropped into
-    // /share/cgate/tag/ would set this to false and exercise the strict path.
-    const fixtureHasProject = fs.existsSync(path.join(TEST_ENV_DIR, 'volumes/share/cgate/tag')) &&
-        fs.readdirSync(path.join(TEST_ENV_DIR, 'volumes/share/cgate/tag')).some(f => f.endsWith('.db'));
-    if (!fixtureHasProject) {
-        info('Fixture: fresh C-Gate, no project loaded (no .db under share/cgate/tag) — project-dependent assertions will soft-pass.');
+    // Live-C-Bus assertions (entity counts, discovery_status=ok, empty retry
+    // queue) require a *synced* C-Bus network — i.e. real hardware or a
+    // simulated CNI. The committed test project (share/cgate/tag/HOME.db) loads
+    // into C-Gate, but its network is type=serial/COM1 and never syncs in CI, so
+    // TREEXML returns an empty tree and no entities are discovered. Those
+    // assertions therefore soft-pass unless CGATEWEB_E2E_EXPECT_LIVE=1 is set
+    // (run against real hardware). The project *loading itself* is asserted
+    // strictly below via the C-Gate command port — that's the issue #16 guard.
+    const expectLiveCbus = process.env.CGATEWEB_E2E_EXPECT_LIVE === '1';
+    if (!expectLiveCbus) {
+        info('No live C-Bus expected (CGATEWEB_E2E_EXPECT_LIVE!=1) — entity-discovery assertions soft-pass; project-load is still checked strictly.');
     }
 
     const READINESS_TOPICS = [
@@ -319,6 +370,44 @@ async function runTests() {
     );
 
     // ------------------------------------------------------------------
+    // 4b. C-Gate project loaded  (issue #16 regression guard)
+    // ------------------------------------------------------------------
+    // The bridge can be "connected and ready" while C-Gate has NO project
+    // loaded — that was issue #16: the project .db was synced to tag/ instead
+    // of Projects/<NAME>/, so `project list` returned "no projects found" and
+    // every command 401'd. MQTT readiness alone never caught it. Here we talk
+    // to C-Gate's command port directly and assert the project is loaded,
+    // started, and that its real database parsed (App 56 Lighting present).
+    section('C-Gate project loaded (issue #16)');
+
+    const opts = JSON.parse(fs.readFileSync(path.join(TEST_ENV_DIR, 'active-options.json'), 'utf8'));
+    const projectName = opts.cgate_project || 'HOME';
+    const probeNetwork = (Array.isArray(opts.ha_discovery_networks) && opts.ha_discovery_networks[0]) || 254;
+    const commandPort = opts.cgate_port || 20023;
+
+    const probe = await waitForProjectStarted(
+        projectName,
+        ['project list', `dbget //${projectName}/${probeNetwork}/Application`],
+        commandPort
+    );
+
+    if (!probe.ok && !probe.output) {
+        fail(`could not probe C-Gate command port (${probe.error || 'no container'})`);
+        failed++;
+    } else {
+        assert(
+            `C-Gate reports project=${projectName} state=started`,
+            new RegExp(`project=${projectName}\\s+state=started`).test(probe.output),
+            `project list → ${probe.output.replace(/\s+/g, ' ').trim().slice(0, 160)}`
+        );
+        assert(
+            'loaded project exposes App 56 Lighting  (real .db parsed, not an empty/unloaded project)',
+            /Address=56\b/.test(probe.output) && /Lighting/.test(probe.output),
+            'dbget did not return App 56 Lighting — project failed to load from Projects/<NAME>/'
+        );
+    }
+
+    // ------------------------------------------------------------------
     // 5. Bridge lifecycle
     // ------------------------------------------------------------------
     section('Bridge lifecycle');
@@ -329,17 +418,17 @@ async function runTests() {
         `got: ${msgs['cbus/read/bridge/diagnostics/lifecycle_state/state']}`
     );
 
-    if (fixtureHasProject) {
+    if (expectLiveCbus) {
         assert(
             'command_queue_depth = 0  (no backlog)',
             msgs['cbus/read/bridge/diagnostics/command_queue_depth/state'] === '0',
             `got: ${msgs['cbus/read/bridge/diagnostics/command_queue_depth/state']}`
         );
     } else {
-        // With no project loaded, gettree/getall fail and pile up retries -
-        // a nonzero queue depth is the expected state.
-        info(`command_queue_depth = ${msgs['cbus/read/bridge/diagnostics/command_queue_depth/state']} (expected with empty project; soft pass)`);
-        pass('command_queue_depth (soft pass — no project fixture)');
+        // Without a synced C-Bus, getall/gettree against the (loaded but
+        // un-synced) network retry and pile up, so a nonzero queue is expected.
+        info(`command_queue_depth = ${msgs['cbus/read/bridge/diagnostics/command_queue_depth/state']} (expected without live C-Bus; soft pass)`);
+        pass('command_queue_depth (soft pass — no live C-Bus)');
         passed++;
     }
 
@@ -409,15 +498,17 @@ async function runTests() {
             `${formatErrors} payload(s) failed format validation`
         );
 
-        if (fixtureHasProject) {
+        if (expectLiveCbus) {
             assert(
                 `at least one light entity discovered (found ${lightCount})`,
                 lightCount > 0,
                 'expected App 56 lights; C-Gate may have no devices configured'
             );
         } else {
-            info(`No light entities expected against a no-project fixture (found ${lightCount}).`);
-            pass('light entity discovery (soft pass — no project fixture)');
+            // The project loads, but its network never syncs without real
+            // hardware, so TREEXML is empty and no light entities appear.
+            info(`No light entities expected without live C-Bus (found ${lightCount}).`);
+            pass('light entity discovery (soft pass — no live C-Bus)');
             passed++;
         }
 
@@ -446,7 +537,7 @@ async function runTests() {
         pass('Discovery diagnostic: no messages (soft pass)');
         passed++;
     } else {
-        if (fixtureHasProject) {
+        if (expectLiveCbus) {
             assert(
                 `discovery diagnostic config published (${diagConfigTopics.length} sensor config(s))`,
                 diagConfigTopics.length > 0
@@ -455,12 +546,12 @@ async function runTests() {
             // _publishDiscoveryStatusConfig fires at the first _setDiscoveryStatus
             // call, which happens at bridge startup before the test's collection
             // window opens. Retained delivery to the second collection is not
-            // reliably observed in the no-project fixture - this surfaced when
+            // reliably observed without live C-Bus - this surfaced when
             // continue-on-error was removed in May 2026 and is tracked as a
-            // separate test-design item. Soft-passing here keeps strict-fixture
-            // runs honest while not blocking the no-project CI baseline.
-            info(`Retained diag config delivery not consistently observed in no-project fixture (${diagConfigTopics.length} config(s) seen).`);
-            pass('discovery diagnostic config (soft pass — no project fixture)');
+            // separate test-design item. Soft-passing here keeps live-hardware
+            // runs honest while not blocking the no-live-C-Bus CI baseline.
+            info(`Retained diag config delivery not consistently observed without live C-Bus (${diagConfigTopics.length} config(s) seen).`);
+            pass('discovery diagnostic config (soft pass — no live C-Bus)');
             passed++;
         }
         assert(
@@ -516,15 +607,15 @@ async function runTests() {
         // intentionally has no project loaded, in which case TreeXML can't
         // succeed by definition.
         const okCount = diagStateTopics.filter(t => diagReceived[t] === 'ok').length;
-        if (fixtureHasProject) {
+        if (expectLiveCbus) {
             assert(
                 `at least one network reached discovery_status=ok  (${okCount} of ${diagStateTopics.length})`,
                 okCount > 0 || diagStateTopics.length === 0,
                 'all networks still in discovering/paused after readiness'
             );
         } else {
-            info(`discovery_status=ok not expected against a no-project fixture (${okCount} of ${diagStateTopics.length}).`);
-            pass('discovery_status reaches ok (soft pass — no project fixture)');
+            info(`discovery_status=ok not expected without live C-Bus (${okCount} of ${diagStateTopics.length}).`);
+            pass('discovery_status reaches ok (soft pass — no live C-Bus)');
             passed++;
         }
     }

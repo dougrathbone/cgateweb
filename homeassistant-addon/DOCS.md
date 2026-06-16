@@ -56,10 +56,11 @@ If you choose `upload` as the install source:
 #### Loading your C-Gate project in managed mode
 
 Installing C-Gate (above) gives you a running C-Gate process but does **not**
-populate it with your project. C-Gate stores each project as a single binary
-database file at `tag/<PROJECTNAME>.db` inside its install directory. If that
-file is missing, requests like `tree 254` return `401 Bad object or device ID`
-and Home Assistant Discovery cannot find any devices.
+populate it with your project. C-Gate loads each project from a database file
+at `Projects/<PROJECTNAME>/<PROJECTNAME>.db` inside its install directory (the
+location set by C-Gate's `project.default.dir`). If that project is missing,
+requests like `tree 254` return `401 Bad object or device ID` and Home
+Assistant Discovery cannot find any devices.
 
 The supported workflow for managed mode is:
 
@@ -70,13 +71,15 @@ The supported workflow for managed mode is:
 2. Place the `.db` file in `/share/cgate/tag/` on your Home Assistant instance
    (accessible via the Samba, SSH, or File Editor add-ons). Create the
    directory if it does not exist.
-3. Restart the add-on. On startup it syncs `/share/cgate/tag/*.db` into
-   C-Gate's `tag/` directory, then C-Gate loads `cgate_project` automatically.
+3. Restart the add-on. On startup it copies each `/share/cgate/tag/<NAME>.db`
+   into `Projects/<NAME>/<NAME>.db` where C-Gate expects it, and sets
+   `project.start=<cgate_project>` so C-Gate loads and starts the project
+   automatically.
 
-The sync only overwrites files in C-Gate's `tag/` directory when the
-`/share/cgate/tag/` copy is newer, so you will not lose state that managed
-C-Gate writes back to its own `.db` between restarts. To force a re-sync,
-`touch` the file in `/share/cgate/tag/` before restarting.
+The sync only overwrites the project `.db` when the `/share/cgate/tag/` copy is
+newer, so you will not lose state that managed C-Gate writes back between
+restarts. To force a re-sync, `touch` the file in `/share/cgate/tag/` before
+restarting.
 
 **Note on the web UI's `.cbz` / `.xml` import**: the add-on's built-in Web UI
 (C-Bus Labels) imports labels only - it extracts network/application/group
