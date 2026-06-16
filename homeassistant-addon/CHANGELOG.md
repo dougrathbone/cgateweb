@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.4] - 2026-06-17
+
+### Fixed
+
+- **HA Discovery now finds your devices on startup, not only after a manual refresh.** When a C-Bus network had not finished syncing its units yet, C-Gate returned an empty tree and cgateweb accepted it as a (zero-device) success, so no entities appeared until you published to a `gettree` topic. An empty tree is now treated as "network still syncing" and retried with backoff until the populated tree arrives. (#16)
+- **No more phantom `unknown` network.** Duplicate TreeXML requests for the same network (the initial scan plus the "network created" event) caused a second response to be misattributed to an `unknown` network, publishing a stray tree topic and discovery sensor. Duplicate in-flight requests are now suppressed.
+
 ## [1.14.3] - 2026-06-16
 
 ### Fixed
