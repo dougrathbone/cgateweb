@@ -44,6 +44,11 @@ const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target tem
 const MQTT_TOPIC_SUFFIX_HVAC_MODE = 'mode';                        // HVAC operating mode
 const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan speed/mode
 const MQTT_TOPIC_SUFFIX_HVAC_ACTION = 'action';                   // Current running action (heating/cooling/fan/idle)
+// Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
+// HA's climate card and our write clamp both use this so users can't request a
+// value the thermostat will silently reject.
+const HVAC_MIN_TEMP_C = 10;
+const HVAC_MAX_TEMP_C = 32;
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 
@@ -177,6 +182,8 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
+    HVAC_MIN_TEMP_C,
+    HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_RETAINED_STATE_OPTIONS,

@@ -17,6 +17,8 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
+    HVAC_MIN_TEMP_C,
+    HVAC_MAX_TEMP_C,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
@@ -902,6 +904,13 @@ class HaDiscovery {
 
         if (this.exclude.has(key)) {
             this.logger.debug(`Excluding native HVAC unit ${key} from discovery`);
+            // Clear any entity published on an earlier run so it disappears from
+            // HA once the user excludes it (e.g. a PAC/controller mirroring the
+            // real thermostats).
+            const excludedUniqueId = `cgateweb_${network}_${appId}_${sourceUnit}`;
+            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
+            this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.delete(excludedTopic);
             this._nativeAirconSeen.add(key); // don't re-check on every event
             return false;
         }
@@ -959,8 +968,8 @@ class HaDiscovery {
             modes: ['off', 'heat', 'cool', 'auto', 'fan_only'],
 
             temperature_unit: temperatureUnit,
-            min_temp: 0,
-            max_temp: 50,
+            min_temp: HVAC_MIN_TEMP_C,
+            max_temp: HVAC_MAX_TEMP_C,
             temp_step: 0.5,
 
             qos: 0,
@@ -1058,8 +1067,8 @@ class HaDiscovery {
             modes: ['off', 'auto', 'cool', 'heat', 'fan_only'],
 
             temperature_unit: temperatureUnit,
-            min_temp: 0,
-            max_temp: 50,
+            min_temp: HVAC_MIN_TEMP_C,
+            max_temp: HVAC_MAX_TEMP_C,
             temp_step: 0.5,
 
             qos: 0,

@@ -19,6 +19,8 @@ const {
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,
     MQTT_CMD_TYPE_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
+    MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
@@ -33,7 +35,9 @@ const {
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
-    NEWLINE
+    NEWLINE,
+    HVAC_MIN_TEMP_C,
+    HVAC_MAX_TEMP_C
 } = require('./constants');
 const {
     HVAC_CODE_BY_MODE,
@@ -653,7 +657,7 @@ class MqttCommandRouter extends EventEmitter {
             this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
             return;
         }
-        const clamped = Math.max(5, Math.min(40, tempC));
+        const clamped = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempC));
         const level = Math.round(clamped * 256); // °C × 256, temperature value (rawlevel=0)
         const cmd = buildSetZoneHvacMode({
             cbusname: this.cbusname,
@@ -668,7 +672,28 @@ class MqttCommandRouter extends EventEmitter {
             level
         });
         this._queueCommand(cmd + NEWLINE);
+        // Optimistically reflect the new target so the HA card updates instantly
+        // rather than waiting for the thermostat's next broadcast.
+        this._publishOptimisticHvacState(network, command.getApplication(), unit, { setpointC: clamped });
         this.logger.info(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C (ward ${state.ward}, zones ${state.zones})`);
+    }
+
+    /**
+     * Publish the expected HVAC state to the read topics immediately after a
+     * write, so Home Assistant's card reflects the change without waiting for
+     * the thermostat's broadcast. The real broadcast confirms it shortly after.
+     * @private
+     */
+    _publishOptimisticHvacState(network, application, unit, { mode, setpointC } = {}) {
+        if (!this.mqttClient || typeof this.mqttClient.publish !== 'function') return;
+        const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${unit}`;
+        const opts = { ...MQTT_RETAINED_STATE_OPTIONS };
+        if (setpointC !== undefined && setpointC !== null) {
+            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`, String(setpointC), opts);
+        }
+        if (mode !== undefined && mode !== null) {
+            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`, String(mode), opts);
+        }
     }
 
     /**
@@ -690,6 +715,7 @@ class MqttCommandRouter extends EventEmitter {
         const mode = String(payload).toLowerCase();
         if (mode === 'off') {
             this._queueCommand(buildSetWardOff({ cbusname: this.cbusname, network, application, ward: state.ward }) + NEWLINE);
+            this._publishOptimisticHvacState(network, application, unit, { mode: 'off' });
             this.logger.info(`Native HVAC mode: ${network}/${unit} -> off (ward ${state.ward})`);
             return;
         }
@@ -723,6 +749,7 @@ class MqttCommandRouter extends EventEmitter {
             level
         });
         this._queueCommand(cmd + NEWLINE);
+        this._publishOptimisticHvacState(network, application, unit, { mode });
         this.logger.info(`Native HVAC mode: ${network}/${unit} -> ${mode} (ward ${state.ward}, zones ${state.zones})`);
     }
 

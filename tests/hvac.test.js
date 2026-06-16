@@ -505,9 +505,21 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(JSON.parse(call[1]).device.name).toBe('Master Bedroom AC');
     });
 
-    test('respects the exclude list', () => {
+    test('respects the exclude list and clears any previously-published entity', () => {
         expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '250')).toBe(false);
-        expect(mockPublishFn).not.toHaveBeenCalled();
+        // No entity config is created — but a blank payload is published to the
+        // config topic so a stale entity (e.g. a mirroring PAC) disappears from HA.
+        const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_250/config');
+        expect(call).toBeDefined();
+        expect(call[1]).toBe('');
+    });
+
+    test('bounds the climate entity to the C-Bus thermostat range (10–32°C)', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_201/config');
+        const payload = JSON.parse(call[1]);
+        expect(payload.min_temp).toBe(10);
+        expect(payload.max_temp).toBe(32);
     });
 
     test('does nothing when ha_discovery_enabled is false', () => {

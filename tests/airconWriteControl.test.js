@@ -11,15 +11,17 @@ function makeRouter({ control = true, withState = true } = {}) {
             zoneGroup: '1', zones: '0', modeRaw: 1, type: 3, setpointRaw: 5632
         });
     }
+    const published = [];
     const router = new MqttCommandRouter({
         cbusname: 'THEGAFF',
         cgateCommandQueue: { add: (c) => queued.push(c) },
+        mqttClient: { publish: (topic, payload) => published.push({ topic, payload }) },
         settings: { cbus_aircon_app_id: '172', cbus_aircon_control_enabled: control },
         airconControlRegistry: reg
     });
     jest.spyOn(router.logger, 'warn').mockImplementation(() => {});
     jest.spyOn(router.logger, 'info').mockImplementation(() => {});
-    return { router, queued };
+    return { router, queued, published };
 }
 
 describe('native HVAC write control (AIRCON commands)', () => {
@@ -83,5 +85,23 @@ describe('native HVAC write control (AIRCON commands)', () => {
         const { router, queued } = makeRouter({ withState: false });
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
         expect(queued).toHaveLength(0);
+    });
+
+    it('clamps setpoint to the thermostat range (10–32°C)', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '50'); // → 32°C = 8192
+        router.routeMessage('cbus/write/254/172/202/setpoint', '5');  // → 10°C = 2560
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 8192 0');
+        expect(queued[1].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 2560 0');
+    });
+
+    it('optimistically publishes the new state so HA updates instantly', () => {
+        const { router, published } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        router.routeMessage('cbus/write/254/172/202/hvacmode', 'cool');
+        router.routeMessage('cbus/write/254/172/202/hvacmode', 'off');
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/setpoint', payload: '25' });
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'cool' });
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/mode', payload: 'off' });
     });
 });
