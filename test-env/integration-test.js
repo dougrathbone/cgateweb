@@ -104,10 +104,14 @@ function probeCgate(commands, port = 20023) {
     const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
     if (!container) return { ok: false, output: '', error: 'addon container not found' };
 
+    // Single-quote each command for bash, escaping any embedded single quotes
+    // ('->'\'') so a command (or a project name interpolated into one) cannot
+    // break out of the quoted context and inject shell.
+    const shQuote = s => `'${String(s).replace(/'/g, "'\\''")}'`;
     const lines = [
-        `exec 3<>/dev/tcp/127.0.0.1/${port}`,
+        `exec 3<>/dev/tcp/127.0.0.1/${Number(port)}`,
         'timeout 1 head -c 600 <&3 || true',
-        ...commands.map(c => `printf '%s\\r\\n' '${c}' >&3`),
+        ...commands.map(c => `printf '%s\\r\\n' ${shQuote(c)} >&3`),
         'timeout 5 cat <&3 || true',
     ];
     const res = spawnSync('podman', ['exec', '-i', container, 'bash', '-c', lines.join('\n')], {
@@ -122,18 +126,36 @@ function probeCgate(commands, port = 20023) {
 
 /**
  * Poll C-Gate until the named project reports state=started, or timeout.
- * project.start auto-loads the project a few seconds *after* C-Gate begins
- * accepting connections (the XML→SQL transform + start runs in the background),
- * so a single immediate probe can race it. cgateweb tolerates the same window
- * via its TREEXML retry logic. Returns the last probe result.
+ * project.start auto-loads the project *after* C-Gate begins accepting
+ * connections: on a fresh database C-Gate first runs an XML→SQL transform
+ * (tens of seconds, slower on CI runners) and only then starts the project, so
+ * an immediate probe races it — and the bridge reports "ready" well before the
+ * project is up. cgateweb tolerates the same window via its TREEXML retry
+ * logic. Generous timeout because the first-boot transform is never cached in
+ * CI. Returns the last probe result.
  */
-async function waitForProjectStarted(projectName, commands, port, timeoutMs = 45000) {
-    const started = new RegExp(`project=${projectName}\\s+state=started`);
+// Escape regex metacharacters so a value (e.g. a project name like "HOME[1]")
+// is matched literally rather than interpreted as a pattern.
+function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// True when C-Gate's `project list` output reports the named project started.
+function projectIsStarted(output, projectName) {
+    return new RegExp(`project=${escapeRegExp(projectName)}\\s+state=started`).test(output);
+}
+
+async function waitForProjectStarted(projectName, commands, port, timeoutMs = 150000) {
     const deadline = Date.now() + timeoutMs;
+    let attempt = 0;
     let last = { ok: false, output: '', error: '' };
     do {
         last = probeCgate(commands, port);
-        if (started.test(last.output)) return last;
+        if (projectIsStarted(last.output, projectName)) return last;
+        attempt++;
+        if (attempt % 4 === 0) {
+            info(`still waiting for project '${projectName}' to start (C-Gate first-boot XML→SQL transform)…`);
+        }
         await new Promise(resolve => setTimeout(resolve, 3000));
     } while (Date.now() < deadline);
     return last;
@@ -397,7 +419,7 @@ async function runTests() {
     } else {
         assert(
             `C-Gate reports project=${projectName} state=started`,
-            new RegExp(`project=${projectName}\\s+state=started`).test(probe.output),
+            projectIsStarted(probe.output, projectName),
             `project list → ${probe.output.replace(/\s+/g, ' ').trim().slice(0, 160)}`
         );
         assert(
