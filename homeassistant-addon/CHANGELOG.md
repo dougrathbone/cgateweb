@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-06-16
+
+### Fixed
+
+- **Thermostat card temperature range matches the hardware.** The HVAC climate card (and the control clamp) is now bounded to 10–32 °C instead of 0–50, so Home Assistant no longer lets you request a value the thermostat silently rejects.
+- **Thermostat cards update instantly.** When you change mode/temperature from HA, cgateweb now reflects the new state immediately instead of waiting for the thermostat's next broadcast.
+- **Mirrored controller can be hidden.** A PAC/controller that re-broadcasts a ward (showing up as a duplicate climate card) can now be removed by adding its unit to the label exclude list — its entity is cleared from HA.
+- **Lights named like covers stay lights.** A group such as "Garage Door Lamps" is no longer auto-classified as a cover when its label also names a light.
+- **CBZ import works with newer C-Bus Toolkit exports.** Archives from Toolkit 1.17.6 (e.g. an uppercase `.XML` entry) now import; the project XML is matched case-insensitively and content-sniffed as a fallback.
+- **No more spurious aircon parse warnings** for unconsumed Air Conditioning lines.
+
 ## [1.14.1] - 2026-06-15
 
 ### Fixed
