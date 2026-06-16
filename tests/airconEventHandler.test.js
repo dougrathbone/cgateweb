@@ -65,4 +65,24 @@ describe('AirconEventHandler', () => {
         expect(consumed).toBe(false);
         expect(deps.registry.recordModeReading).not.toHaveBeenCalled();
     });
+
+    it('returns false for an aircon line that fails to decode so it falls through', () => {
+        const deps = makeDeps();
+        const handler = new AirconEventHandler(deps);
+        // Unsupported verb → decoder returns null; nothing published/recorded.
+        const consumed = handler.handleLine('aircon some_unknown_verb //THEGAFF/254/172 1 0');
+        expect(consumed).toBe(false);
+        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        expect(deps.registry.recordModeReading).not.toHaveBeenCalled();
+    });
+
+    it('returns false for an aircon line whose application does not match the configured app', () => {
+        const deps = makeDeps();
+        const handler = new AirconEventHandler(deps);
+        // Decodes cleanly but app 999 != configured 172 → should fall through.
+        const consumed = handler.handleLine('aircon set_zone_hvac_mode //THEGAFF/254/999 1 0,1,2,3,4 1 0 0 0 1 3 5632 0 #sourceunit=202 OID=x');
+        expect(consumed).toBe(false);
+        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        expect(deps.registry.recordModeReading).not.toHaveBeenCalled();
+    });
 });

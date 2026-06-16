@@ -8,7 +8,9 @@ const airconDecoder = require('./applicationDecoders/airconDecoder');
  * event parser can't handle (no group; often #-comment-prefixed). Gated behind
  * settings.cbus_aircon_app_id; when unset, returns false so these lines fall
  * through to the normal (comment-dropping) path, preserving current behaviour.
- * Returns true when the line was an aircon line and was consumed here.
+ * Returns true only when the line was decoded for the configured app and
+ * consumed here; otherwise returns false so the line falls through to raw
+ * event capture and the standard parser rather than being silently dropped.
  */
 class AirconEventHandler {
     constructor({ registry, eventPublisher, logger, settings, getHaDiscovery }) {
@@ -53,10 +55,15 @@ class AirconEventHandler {
                     ' — please report. Line: ' + line
                 );
             }
-        } else if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            return true;
+        }
+        // Recognisable aircon traffic, but we couldn't decode it or it targets a
+        // different application. Don't consume it — let it fall through to raw
+        // event capture and the standard parser instead of silently dropping it.
+        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
         }
-        return true;
+        return false;
     }
 }
 
