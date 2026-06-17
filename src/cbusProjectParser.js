@@ -49,8 +49,13 @@ class CbusProjectParser {
             payload = this._extractCBZ(inputBuffer);
         } else if (this._isSqlite(inputBuffer)) {
             payload = { kind: 'sqlite', data: inputBuffer };
-        } else {
+        } else if (this._looksLikeXml(inputBuffer)) {
             payload = { kind: 'xml', data: inputBuffer.toString('utf8') };
+        } else {
+            // Not a ZIP (.cbz), SQLite (.db), or XML file. Fail with a clear,
+            // actionable message instead of handing binary to the XML parser
+            // (which produced a cryptic "Non-whitespace before first tag").
+            throw new Error(this._unsupportedFormatMessage(inputBuffer));
         }
 
         let result;
@@ -82,6 +87,23 @@ class CbusProjectParser {
         return buffer.length >= 4 &&
             buffer[0] === 0x50 && buffer[1] === 0x4B &&
             buffer[2] === 0x03 && buffer[3] === 0x04;
+    }
+
+    // Heuristic: does the buffer start (after an optional BOM/whitespace) with
+    // '<'? Used to reject binary uploads before the XML parser turns them into a
+    // cryptic "Non-whitespace before first tag" error.
+    _looksLikeXml(buffer) {
+        if (!buffer || buffer.length === 0) return false;
+        const head = buffer.slice(0, 256).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+        return head.startsWith('<');
+    }
+
+    // Clear, actionable message for an upload that is not a .cbz/.db/.xml.
+    _unsupportedFormatMessage(buffer) {
+        if (buffer.length >= 4 && buffer.slice(0, 4).toString('latin1') === 'Rar!') {
+            return 'RAR archives (.cbr) are not supported. Export your C-Bus project from Toolkit as a .cbz, .xml, or .db file.';
+        }
+        return 'Unsupported file. Import a C-Bus Toolkit project export: a .cbz, an .xml file, or a .db project database.';
     }
 
     _extractCBZ(buffer) {

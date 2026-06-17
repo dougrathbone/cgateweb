@@ -747,8 +747,11 @@ input, select, textarea {
         <button>Choose File</button>
         <!-- accept is broad on purpose: Android's file picker greys out files
              whose MIME doesn't match, and .cbz/.db have no reliable MIME there,
-             so include the generic types they get assigned. The server validates
-             the actual content (zip / SQLite / XML) regardless. -->
+             so include the generic types they get assigned. .cbr is NOT a C-Bus
+             format (it's Comic Book RAR) but is kept because transfer/email can
+             append it to a .cbz; the server validates the actual content
+             (zip / SQLite / XML) regardless and returns a clear error for a
+             genuine RAR or other unsupported upload. -->
         <input type="file" id="fileInput" accept=".cbz,.cbr,.xml,.db,application/zip,application/x-sqlite3,application/octet-stream,text/xml,application/xml">
       </div>
       <div class="import-options" id="importOptions" style="display:none">

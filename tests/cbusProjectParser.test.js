@@ -240,6 +240,30 @@ describe('CbusProjectParser', () => {
                 .rejects.toThrow('neither an XML export nor a SQLite project database');
         });
 
+        it('rejects a genuine RAR (.cbr) with a clear, actionable message — not a cryptic XML error', async () => {
+            // .cbr is Comic Book RAR, not a C-Bus format. The Android picker can
+            // offer such files; without this guard the RAR bytes fall through to
+            // the XML parser and produce "Non-whitespace before first tag".
+            const rar = Buffer.concat([Buffer.from('Rar!\x1a\x07\x01\x00', 'latin1'), Buffer.alloc(32, 0xAB)]);
+            await expect(parser.parse(rar, 'project.cbr'))
+                .rejects.toThrow('RAR archives (.cbr) are not supported');
+        });
+
+        it('rejects arbitrary binary with the generic unsupported-file message', async () => {
+            await expect(parser.parse(Buffer.alloc(40, 0x99), 'junk.bin'))
+                .rejects.toThrow('Unsupported file');
+        });
+
+        it('still parses a ZIP that was misnamed .cbr in transfer (content-based detection)', async () => {
+            // Karl-style artifact: a .cbz that gained a .cbr suffix via email.
+            // The content is a real ZIP, so it must import despite the extension.
+            const xml = '<?xml version="1.0"?><Network Address="254"><Application Address="56"><Group Address="9" TagName="Mislabelled"/></Application></Network>';
+            const zip = new AdmZip();
+            zip.addFile('project.xml', Buffer.from(xml));
+            const result = await parser.parse(zip.toBuffer(), 'THEGAFF.cbz.cbr');
+            expect(result.labels).toEqual({ '254/56/9': 'Mislabelled' });
+        });
+
         it('parses a CBZ whose XML entry has an uppercase .XML extension (Toolkit on Windows)', async () => {
             const xml = '<?xml version="1.0"?><Network Address="254"><Application Address="56"><Group Address="7" TagName="Upper"/></Application></Network>';
             const zip = new AdmZip();
