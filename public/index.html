@@ -745,7 +745,11 @@ input, select, textarea {
       <div class="drop-zone" id="dropZone">
         <p>Drag and drop a .cbz or .xml file here, or click to browse</p>
         <button>Choose File</button>
-        <input type="file" id="fileInput" accept=".cbz,.xml">
+        <!-- accept is broad on purpose: Android's file picker greys out files
+             whose MIME doesn't match, and .cbz/.db have no reliable MIME there,
+             so include the generic types they get assigned. The server validates
+             the actual content (zip / SQLite / XML) regardless. -->
+        <input type="file" id="fileInput" accept=".cbz,.cbr,.xml,.db,application/zip,application/x-sqlite3,application/octet-stream,text/xml,application/xml">
       </div>
       <div class="import-options" id="importOptions" style="display:none">
         <label><input type="checkbox" id="mergeCheck" checked> Merge with existing labels</label>
