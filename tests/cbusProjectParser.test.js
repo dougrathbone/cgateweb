@@ -231,13 +231,13 @@ describe('CbusProjectParser', () => {
             expect(result.source).toBe('project.cbz');
         });
 
-        it('should throw if CBZ contains no XML file', async () => {
+        it('should throw if CBZ contains neither XML nor a SQLite DB', async () => {
             const zip = new AdmZip();
             zip.addFile('readme.txt', Buffer.from('hello'));
             const zipBuffer = zip.toBuffer();
 
             await expect(parser.parse(zipBuffer, 'bad.cbz'))
-                .rejects.toThrow('does not contain an XML file');
+                .rejects.toThrow('neither an XML export nor a SQLite project database');
         });
 
         it('parses a CBZ whose XML entry has an uppercase .XML extension (Toolkit on Windows)', async () => {
@@ -292,5 +292,57 @@ describe('CbusProjectParser', () => {
             expect(_isSafeZipEntryName('')).toBe(false);
             expect(_isSafeZipEntryName(undefined)).toBe(false);
         });
+    });
+});
+
+describe('CbusProjectParser — SQLite project DB (C-Bus Toolkit 1.17.x)', () => {
+    const initSqlJs = require('sql.js');
+    let dbBuffer;
+
+    beforeAll(async () => {
+        const SQL = await initSqlJs({ locateFile: (f) => require.resolve(`sql.js/dist/${f}`) });
+        const db = new SQL.Database();
+        db.run(`
+            CREATE TABLE tagged_entity (id INTEGER PRIMARY KEY, tag_name TEXT, address TEXT);
+            CREATE TABLE network (id INTEGER PRIMARY KEY, tagged_entity_id INTEGER);
+            CREATE TABLE application (id INTEGER PRIMARY KEY, tagged_entity_id INTEGER, network_id INTEGER);
+            CREATE TABLE _group (id INTEGER PRIMARY KEY, tagged_entity_id INTEGER, application_id INTEGER);
+            INSERT INTO tagged_entity VALUES
+                (1,'Local','254'),(2,'Lighting','56'),(3,'Garage Door Lamps','31'),
+                (4,'Orange Wall','1'),(5,'Cooling','172'),(6,'Bedroom AC','1');
+            INSERT INTO network VALUES (1,1);
+            INSERT INTO application VALUES (1,2,1),(2,5,1);
+            INSERT INTO _group VALUES (1,3,1),(2,4,1),(3,6,2);
+        `);
+        dbBuffer = Buffer.from(db.export());
+        db.close();
+    });
+
+    it('extracts net/app/group labels from a bare SQLite .db buffer', async () => {
+        const parser = new CbusProjectParser();
+        const result = await parser.parse(dbBuffer, 'THEGAFF.db');
+        expect(result.labels).toEqual({
+            '254/56/31': 'Garage Door Lamps',
+            '254/56/1': 'Orange Wall',
+            '254/172/1': 'Bedroom AC'
+        });
+        expect(result.source).toBe('THEGAFF.db');
+        expect(result.stats.labelCount).toBe(3);
+    });
+
+    it('extracts labels from a .cbz that contains a SQLite .db (Toolkit 1.17.6)', async () => {
+        const AdmZip = require('adm-zip');
+        const zip = new AdmZip();
+        zip.addFile('THEGAFF.db', dbBuffer);
+        const parser = new CbusProjectParser();
+        const result = await parser.parse(zip.toBuffer(), 'THEGAFF.cbz');
+        expect(result.labels['254/56/31']).toBe('Garage Door Lamps');
+        expect(result.labels['254/172/1']).toBe('Bedroom AC');
+    });
+
+    it('honours the network filter', async () => {
+        const parser = new CbusProjectParser();
+        const result = await parser.parse(dbBuffer, 'x.db', { network: '999' });
+        expect(result.labels).toEqual({});
     });
 });

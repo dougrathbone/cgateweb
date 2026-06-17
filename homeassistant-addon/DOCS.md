@@ -81,12 +81,13 @@ newer, so you will not lose state that managed C-Gate writes back between
 restarts. To force a re-sync, `touch` the file in `/share/cgate/tag/` before
 restarting.
 
-**Note on the web UI's `.cbz` / `.xml` import**: the add-on's built-in Web UI
-(C-Bus Labels) imports labels only - it extracts network/application/group
-names from a Toolkit `.cbz` or XML export so they appear in MQTT Discovery
-friendly names. It does **not** load the actual C-Gate project; converting
-`.cbz` to a runnable C-Gate `.db` requires Toolkit. Use the `.db` workflow
-above to make managed C-Gate actually serve your project.
+**Note on the web UI's `.cbz` / `.xml` / `.db` import**: the add-on's built-in
+Web UI (C-Bus Labels) imports labels only - it extracts network/application/group
+names so they appear as MQTT Discovery friendly names. It accepts a Toolkit
+XML export, an older `.cbz` (zipped XML), and the newer C-Bus Toolkit 1.17.x
+`.cbz`/`.db` form (a SQLite project database) - the labels are read straight
+from the database. It does **not** load the actual C-Gate project; making
+managed C-Gate serve your project still uses the `.db` workflow above.
 
 ### MQTT Settings
 

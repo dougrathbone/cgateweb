@@ -41,16 +41,25 @@ class CbusProjectParser {
      * @returns {Promise<{labels: Object, networks: Array, stats: Object, source: string}>}
      */
     async parse(inputBuffer, filename = '', options = {}) {
-        let xmlString;
-
+        // C-Bus Toolkit 1.17.x exports a .cbz containing a SQLite project
+        // database (a single .db), not XML. Handle that, a bare .db, and the
+        // older XML-in-cbz / raw-XML forms.
+        let payload; // { kind: 'xml'|'sqlite', data }
         if (this._isCBZ(inputBuffer)) {
-            xmlString = this._extractCBZ(inputBuffer);
+            payload = this._extractCBZ(inputBuffer);
+        } else if (this._isSqlite(inputBuffer)) {
+            payload = { kind: 'sqlite', data: inputBuffer };
         } else {
-            xmlString = inputBuffer.toString('utf8');
+            payload = { kind: 'xml', data: inputBuffer.toString('utf8') };
         }
 
-        const parsed = await this._parseXML(xmlString);
-        const result = this._extractLabels(parsed, options);
+        let result;
+        if (payload.kind === 'sqlite') {
+            result = await this._extractSqliteLabels(payload.data, options);
+        } else {
+            const parsed = await this._parseXML(payload.data);
+            result = this._extractLabels(parsed, options);
+        }
         result.source = filename;
         return result;
     }
@@ -111,16 +120,106 @@ class CbusProjectParser {
                 }
             });
         }
-        if (!xmlEntry) {
-            throw new Error('CBZ archive does not contain an XML file');
+        if (xmlEntry) {
+            if (!_isSafeZipEntryName(xmlEntry.entryName)) {
+                throw new Error(`CBZ archive entry name rejected: ${xmlEntry.entryName}`);
+            }
+            this.logger.info(`Extracting ${xmlEntry.entryName} from CBZ`);
+            return { kind: 'xml', data: xmlEntry.getData().toString('utf8') };
         }
 
-        if (!_isSafeZipEntryName(xmlEntry.entryName)) {
-            throw new Error(`CBZ archive entry name rejected: ${xmlEntry.entryName}`);
+        // No XML — newer Toolkit (1.17.x) packs a SQLite project database.
+        const dbEntry = fileEntries.find(e => {
+            if (e.entryName.toLowerCase().endsWith('.db')) return true;
+            try {
+                return this._isSqlite(e.getData().slice(0, 16));
+            } catch {
+                return false;
+            }
+        });
+        if (dbEntry) {
+            if (!_isSafeZipEntryName(dbEntry.entryName)) {
+                throw new Error(`CBZ archive entry name rejected: ${dbEntry.entryName}`);
+            }
+            this.logger.info(`Extracting SQLite project database ${dbEntry.entryName} from CBZ`);
+            return { kind: 'sqlite', data: dbEntry.getData() };
         }
 
-        this.logger.info(`Extracting ${xmlEntry.entryName} from CBZ`);
-        return xmlEntry.getData().toString('utf8');
+        throw new Error('CBZ archive contains neither an XML export nor a SQLite project database (.db)');
+    }
+
+    _isSqlite(buffer) {
+        // SQLite files start with the 16-byte string "SQLite format 3\0".
+        return buffer.length >= 16 &&
+            buffer.slice(0, 15).toString('latin1') === 'SQLite format 3' && buffer[15] === 0;
+    }
+
+    // Lazy-load sql.js (a ~1.5MB WASM) only when a SQLite project DB is actually
+    // imported, so it never affects normal startup. Cached after first use.
+    _getSqlJs() {
+        if (!this._sqlJsPromise) {
+            const initSqlJs = require('sql.js');
+            this._sqlJsPromise = initSqlJs({ locateFile: (f) => require.resolve(`sql.js/dist/${f}`) });
+        }
+        return this._sqlJsPromise;
+    }
+
+    /**
+     * Extract group labels from a C-Bus Toolkit SQLite project database.
+     * Reconstructs the full network/app/group address by joining
+     * _group -> application -> network, each via tagged_entity (which carries
+     * the relative address and tag_name).
+     * @private
+     */
+    async _extractSqliteLabels(buffer, options = {}) {
+        const SQL = await this._getSqlJs();
+        const networkFilter = (options.network !== null && options.network !== undefined) ? String(options.network) : null;
+        let db;
+        try {
+            db = new SQL.Database(new Uint8Array(buffer));
+            const res = db.exec(`
+                SELECT n_te.address AS net, a_te.address AS app, g_te.address AS grp, g_te.tag_name AS label
+                FROM _group g
+                JOIN application a ON g.application_id = a.id
+                JOIN network n ON a.network_id = n.id
+                JOIN tagged_entity g_te ON g.tagged_entity_id = g_te.id
+                JOIN tagged_entity a_te ON a.tagged_entity_id = a_te.id
+                JOIN tagged_entity n_te ON n.tagged_entity_id = n_te.id
+                WHERE g_te.tag_name IS NOT NULL AND g_te.address IS NOT NULL
+            `);
+
+            const labels = {};
+            const networks = new Map();
+            let groupCount = 0;
+            let labelCount = 0;
+
+            if (res.length > 0) {
+                const cols = res[0].columns;
+                const ci = (name) => cols.indexOf(name);
+                for (const row of res[0].values) {
+                    const net = String(row[ci('net')]);
+                    const app = String(row[ci('app')]);
+                    const grp = String(row[ci('grp')]);
+                    const label = row[ci('label')];
+                    if (networkFilter && net !== networkFilter) continue;
+                    groupCount++;
+                    if (label !== null && label !== undefined && String(label).trim() !== '') {
+                        labels[`${net}/${app}/${grp}`] = String(label);
+                        labelCount++;
+                    }
+                    if (!networks.has(net)) networks.set(net, { address: net, name: null });
+                }
+            }
+
+            return {
+                labels,
+                networks: [...networks.values()],
+                stats: { groupCount, labelCount, networkCount: networks.size },
+                source: ''
+            };
+        } finally {
+            if (db) db.close();
+        }
     }
 
     _parseXML(xmlString) {
