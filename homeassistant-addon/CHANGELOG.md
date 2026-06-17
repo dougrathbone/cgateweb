@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.6] - 2026-06-17
+
+### Fixed
+
+- **Label import file picker now works in the Home Assistant Android app.** The import file input restricted selection to `.cbz`/`.xml`, which Android's picker greyed out (those extensions have no reliable MIME mapping on Android), so the file couldn't be selected. The picker now accepts the project file (incl. `.db`) on mobile; the server still validates the actual content.
+
 ## [1.14.5] - 2026-06-17
 
 ### Fixed
