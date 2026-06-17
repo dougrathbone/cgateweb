@@ -31,6 +31,9 @@
     "typescript": "^6.0.3",
     "yaml": "^2.9.0"
   },
+  "overrides": {
+    "js-yaml": "^4.2.0"
+  },
   "types": "./types/index.d.ts",
   "scripts": {
     "start": "node index.js",
