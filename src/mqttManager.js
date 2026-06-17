@@ -236,7 +236,7 @@ class MqttManager extends EventEmitter {
                 try {
                     return fs.readFileSync(filePath);
                 } catch (e) {
-                    throw new Error(`Failed to read MQTT TLS ${label} file "${filePath}": ${e.message}`);
+                    throw new Error(`Failed to read MQTT TLS ${label} file "${filePath}": ${e.message}`, { cause: e });
                 }
             };
             if (this.settings.mqttCaFile) {

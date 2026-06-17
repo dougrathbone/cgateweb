@@ -85,7 +85,7 @@ class LineProcessor {
             this.lineProcessor(line);
         } catch (error) {
             // Re-throw with additional context
-            throw new Error(`Error processing line "${line}": ${error.message}`);
+            throw new Error(`Error processing line "${line}": ${error.message}`, { cause: error });
         }
     }
     
