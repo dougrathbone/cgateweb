@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.7] - 2026-06-17
+
+### Fixed
+
+- **Clear error message for unsupported label-import files instead of a cryptic XML parse error.** Selecting a non-project file (e.g. a genuine `.cbr` Comic Book RAR, which the Android-friendly file picker can offer) previously handed binary bytes to the XML parser and produced a baffling "Non-whitespace before first tag" error. The importer now detects the format by content and rejects anything that isn't a `.cbz`, `.xml`, or `.db` with an actionable message telling you to export the project as one of those. A `.cbz` that was misnamed (e.g. gained a `.cbr` suffix in transfer) still imports, since detection is content-based, not extension-based.
+
 ## [1.14.6] - 2026-06-17
 
 ### Fixed
