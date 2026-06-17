@@ -59,7 +59,7 @@ class ConfigLoader {
             addonOptions = JSON.parse(optionsData);
             this.logger.debug('Loaded addon options from:', optionsPath);
         } catch (error) {
-            throw new Error(`Failed to parse addon options: ${error.message}`);
+            throw new Error(`Failed to parse addon options: ${error.message}`, { cause: error });
         }
 
         const config = this._convertAddonOptionsToSettings(addonOptions);
@@ -107,7 +107,8 @@ class ConfigLoader {
             if (!allowFallback) {
                 throw new Error(
                     `Failed to load standalone settings from ${settingsPath}: ${error.message}. ` +
-                    'Set ALLOW_DEFAULT_FALLBACK=true to continue with defaults.'
+                    'Set ALLOW_DEFAULT_FALLBACK=true to continue with defaults.',
+                    { cause: error }
                 );
             }
             this.logger.warn('ALLOW_DEFAULT_FALLBACK=true set; falling back to default configuration');
