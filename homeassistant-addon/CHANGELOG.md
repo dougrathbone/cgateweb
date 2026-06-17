@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.5] - 2026-06-17
+
+### Fixed
+
+- **CBZ import now works with C-Bus Toolkit 1.17.x.** Newer Toolkit exports a `.cbz` containing a **SQLite project database** (a `.db`), not XML — so the importer kept reporting "no XML file". The label importer now reads a SQLite project database directly (inside a `.cbz`, or as a bare `.db`), reconstructing the network/app/group names from the database. Older XML/`.cbz` exports continue to work unchanged.
+
 ## [1.14.4] - 2026-06-17
 
 ### Fixed
