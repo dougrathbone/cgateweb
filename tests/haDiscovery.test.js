@@ -1661,6 +1661,39 @@ describe('HaDiscovery', () => {
             expect(emptyPayloadCalls).toHaveLength(0);
         });
 
+        it('does not clear event-driven native aircon / CNI topics during a tree run (Karl: thermostats vanished)', () => {
+            // Regression: native aircon climate entities and CNI connectivity
+            // binary_sensors are published event-driven (not from TREEXML) but
+            // share the cgateweb_{net}_ unique-id prefix. A tree refresh must NOT
+            // treat them as stale and clear them — that made Karl's thermostats
+            // disappear on reboot whenever a tree run followed the broadcast.
+            mockSettings.cbus_aircon_app_id = '172';
+            mockSettings.cbus_aircon_control_enabled = false; // control OFF — must still survive
+
+            haDiscovery.ensureNativeAirconDiscovery('254', '172', '56');
+            haDiscovery.ensureNetworkConnectivityDiscovery('254');
+            const climateTopic = 'testhomeassistant/climate/cgateweb_254_172_56/config';
+            const cniTopic = 'testhomeassistant/binary_sensor/cgateweb_254_cni/config';
+            expect(haDiscovery._publishedTopics.has(climateTopic)).toBe(true);
+            expect(haDiscovery._publishedTopics.has(cniTopic)).toBe(true);
+            mockPublishFn.mockClear();
+
+            // A TreeXML discovery run for the same network (startup scan, a
+            // network-created event, an empty-tree retry, or a manual gettree).
+            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+
+            // Neither event-driven topic may be cleared with an empty payload.
+            const cleared = mockPublishFn.mock.calls.filter(
+                c => (c[0] === climateTopic || c[0] === cniTopic) && c[1] === ''
+            );
+            expect(cleared).toHaveLength(0);
+            expect(haDiscovery._publishedTopics.has(climateTopic)).toBe(true);
+            expect(haDiscovery._publishedTopics.has(cniTopic)).toBe(true);
+
+            // The legitimate tree-discovered lighting entity is still published.
+            expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
+        });
+
         it('should clear a discovery topic when the device is excluded on second run', () => {
             // First run: device 254/56/10 is included
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);

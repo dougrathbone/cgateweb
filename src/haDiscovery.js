@@ -110,6 +110,16 @@ class HaDiscovery {
         // Network IDs whose CNI/PCI connectivity binary_sensor config has been
         // published this session (event-driven, idempotent).
         this._cniDiscoverySeen = new Set();
+
+        // Discovery config topics that are published event-driven (native aircon
+        // climate entities and CNI connectivity binary_sensors), NOT from a
+        // TREEXML run. They share the `cgateweb_{network}_` unique-id prefix with
+        // tree-discovered entities, so the per-network stale-topic cleanup in
+        // _publishDiscoveryFromTree would otherwise wrongly clear them (they are
+        // never part of a tree run's _currentRunTopics) — making thermostats and
+        // connectivity sensors vanish whenever a tree refresh runs after they
+        // were announced. Tracked here so the cleanup can skip them.
+        this._eventDrivenDiscoveryTopics = new Set();
     }
 
     /**
@@ -659,9 +669,17 @@ class HaDiscovery {
 
         // Clear any previously published discovery topics for this network that were
         // not republished in this run (device excluded or type changed since last run).
+        // Event-driven topics (native aircon climate, CNI connectivity) share the
+        // network unique-id prefix but are not produced by a tree run, so they are
+        // skipped here — otherwise a tree refresh would wrongly clear thermostats
+        // and connectivity sensors that are still valid.
         const networkUniqueIdPrefix = `cgateweb_${networkId}_`;
+        const isStaleTreeTopic = (topic) =>
+            topic.includes(`/${networkUniqueIdPrefix}`) &&
+            !this._currentRunTopics.has(topic) &&
+            !this._eventDrivenDiscoveryTopics.has(topic);
         for (const topic of this._publishedTopics) {
-            if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
+            if (isStaleTreeTopic(topic)) {
                 this.logger.debug(`Clearing stale discovery topic: ${topic}`);
                 this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
             }
@@ -671,7 +689,7 @@ class HaDiscovery {
         // any stale topics that were just cleared. Snapshot the set first to avoid
         // deleting from a collection during iteration.
         for (const topic of [...this._publishedTopics]) {
-            if (topic.includes(`/${networkUniqueIdPrefix}`) && !this._currentRunTopics.has(topic)) {
+            if (isStaleTreeTopic(topic)) {
                 this._publishedTopics.delete(topic);
             }
         }
@@ -940,6 +958,7 @@ class HaDiscovery {
 
         this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         this._publishedTopics.add(discoveryTopic);
+        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
         this._cniDiscoverySeen.add(net);
         this.discoveryCount++;
         this.logger.info(`CNI connectivity binary_sensor published for network ${net}`);
@@ -962,6 +981,7 @@ class HaDiscovery {
             const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
             this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
             this._publishedTopics.delete(excludedTopic);
+            this._eventDrivenDiscoveryTopics.delete(excludedTopic);
             this._nativeAirconSeen.add(key); // don't re-check on every event
             return false;
         }
@@ -1041,6 +1061,7 @@ class HaDiscovery {
 
         this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
         this._publishedTopics.add(discoveryTopic);
+        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
         this.discoveryCount++;
         this.logger.info(`Native HVAC climate entity published: ${labelKey} (${finalLabel})`);
     }

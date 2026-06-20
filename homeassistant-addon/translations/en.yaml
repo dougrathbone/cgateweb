@@ -195,7 +195,7 @@ configuration:
   cbus_aircon_control_enabled:
     name: Air Conditioning Control
     description: >-
-      Allow Home Assistant to control native C-Bus thermostats (set mode and temperature). Off by default — it writes to live heating/cooling. Requires the Air Conditioning Application ID to be set.
+      Allow Home Assistant to control native C-Bus thermostats (set mode and temperature). Your thermostats still appear in Home Assistant as read-only climate entities without this — enabling it only adds the set mode/temperature commands, which write to live heating/cooling and add C-Bus traffic. Off by default. Requires the Air Conditioning Application ID to be set.
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:
