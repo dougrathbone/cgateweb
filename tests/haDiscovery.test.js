@@ -173,7 +173,9 @@ describe('HaDiscovery', () => {
             haDiscovery.treeNetwork = '254';
             haDiscovery.handleTreeStart('start');
             haDiscovery.handleTreeData('<Network><NetworkNumber>254</NetworkNumber>');
-            haDiscovery.handleTreeData('<Unit><UnitAddress>100</UnitAddress></Unit>');
+            haDiscovery.handleTreeData('<Unit><UnitAddress>100</UnitAddress>');
+            haDiscovery.handleTreeData('<Application><ApplicationAddress>56</ApplicationAddress>');
+            haDiscovery.handleTreeData('<Group><GroupAddress>10</GroupAddress></Group></Application></Unit>');
             haDiscovery.handleTreeData('</Network>');
 
             haDiscovery.handleTreeEnd('Tree end');
@@ -204,7 +206,12 @@ describe('HaDiscovery', () => {
             haDiscovery.handleTreeEnd('end');
 
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<Network><NetworkNumber>200</NetworkNumber></Network>');
+            haDiscovery.handleTreeData(
+                '<Network><NetworkNumber>200</NetworkNumber>' +
+                '<Unit><UnitAddress>1</UnitAddress>' +
+                '<Application><ApplicationAddress>56</ApplicationAddress>' +
+                '<Group><GroupAddress>5</GroupAddress></Group></Application></Unit></Network>'
+            );
             haDiscovery.handleTreeEnd('end');
 
             expect(mockPublishFn).toHaveBeenCalledWith(
@@ -699,12 +706,12 @@ describe('HaDiscovery', () => {
         });
 
         it('marks ok once the network has synced and the tree carries data', () => {
-            jest.spyOn(require('xml2js'), 'parseString')
-                .mockImplementation((xml, _opts, cb) => cb(null, { Network: { NetworkNumber: '254' } }));
+            // A synced tree carries at least one addressable device (a load unit
+            // in a non-management application), not just a network element.
             haDiscovery.trigger();
 
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData('<Network><NetworkNumber>254</NetworkNumber></Network>');
+            haDiscovery.handleTreeData(TREEXML_NET254);
             haDiscovery.handleTreeEnd('end');
 
             const states = mockPublishFn.mock.calls
@@ -713,6 +720,69 @@ describe('HaDiscovery', () => {
             expect(states[states.length - 1]).toBe('ok');
             // Retry state cleared on success.
             expect(haDiscovery._treeRequestState.has('254')).toBe(false);
+        });
+
+        // Regression for issue #17: mid-sync C-Gate returns a tree containing
+        // only the network interface/management unit (Application "255, 255",
+        // empty Groups) before the load units sync. findNetworkData locates the
+        // network, but it has no addressable devices. Accepting it published 0
+        // entities and marked discovery ok, so the real units that synced moments
+        // later never appeared.
+        const MGMT_ONLY_TREE =
+            '<Network><Unit><Type>PC_CNIED</Type><Address>4</Address>' +
+            '<PartName>NEWUNIT </PartName><Application>255, 255</Application>' +
+            '<Groups></Groups></Unit></Network>';
+
+        it('retries instead of marking ok when the tree has only management units (issue #17)', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData(MGMT_ONLY_TREE);
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            // Treated as still-syncing: retry scheduled, status never reached ok.
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states).not.toContain('ok');
+
+            // No tree topic published for the not-yet-synced network.
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'cbus/read/254///tree', expect.anything(), expect.anything()
+            );
+
+            // Backoff fires and re-requests the tree.
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('completes discovery once load units sync after a management-only tree (issue #17)', () => {
+            haDiscovery.trigger();
+
+            // First response: management-only — must retry.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(MGMT_ONLY_TREE);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+
+            // Retry response: load units have synced now — discovery completes.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+            expect(haDiscovery._treeRequestState.has('254')).toBe(false);
+            expect(haDiscovery.discoveryCount).toBeGreaterThan(0);
         });
     });
 

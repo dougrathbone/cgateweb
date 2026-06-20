@@ -2,7 +2,7 @@ const parseString = require('xml2js').parseString;
 const { createLogger } = require('./logger');
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
 const { classifyLightingGroup } = require('./deviceTypeClassifier');
-const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData } = require('./haDiscoveryTree');
 const { backoffDelay } = require('./backoff');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
@@ -551,10 +551,19 @@ class HaDiscovery {
                 // backoff rather than marking discovery ok with zero devices —
                 // otherwise no entities appear at startup until a manual gettree
                 // once the network has synced.
-                if (!findNetworkData(networkForTree, result)) {
+                //
+                // Mid-sync C-Gate also returns a tree containing ONLY the network
+                // interface/management unit (Application 255, no groups) before
+                // the load units sync. findNetworkData finds that network, but it
+                // carries no addressable devices — accepting it published 0
+                // entities and stopped retrying, so real devices that synced
+                // moments later never appeared (issue #17). networkHasDeviceData
+                // treats a management-only tree as "still syncing" too.
+                const networkData = findNetworkData(networkForTree, result);
+                if (!networkData || !networkHasDeviceData(networkData)) {
                     this.logger.info(
-                        `TreeXML for network ${networkForTree} contained no network data yet ` +
-                        `(network still syncing?); scheduling a retry.`
+                        `TreeXML for network ${networkForTree} contained no device data yet ` +
+                        `(only network-management units present — network still syncing?); scheduling a retry.`
                     );
                     this._handleTreeRequestFailure(networkForTree, 'empty tree - network not synced yet');
                     return;

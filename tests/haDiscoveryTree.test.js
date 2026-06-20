@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, unitHasDeviceData } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -245,5 +245,62 @@ describe('collectUnitGroups', () => {
         const groups = groupsByApp.get('56');
         expect(groups.has('null')).toBe(false);
         expect(groups.has('10')).toBe(true);
+    });
+});
+
+describe('unitHasDeviceData', () => {
+    it('returns false for the network management unit (flat: Application "255, 255", empty Groups)', () => {
+        // The PC_CNIED interface unit C-Gate reports mid-sync (issue #17).
+        expect(unitHasDeviceData({ Application: '255, 255', Groups: '' })).toBe(false);
+    });
+
+    it('returns true for a flat load unit in a real application', () => {
+        expect(unitHasDeviceData({ Application: '56, 255', Groups: '10,11' })).toBe(true);
+    });
+
+    it('returns true for a management-only flat unit that still carries groups', () => {
+        expect(unitHasDeviceData({ Application: '255', Groups: '200' })).toBe(true);
+    });
+
+    it('returns true for a structured unit in a real application', () => {
+        expect(unitHasDeviceData({
+            Application: { ApplicationAddress: '56', Group: { GroupAddress: '10' } }
+        })).toBe(true);
+    });
+
+    it('returns false for a structured management-only unit with no groups', () => {
+        expect(unitHasDeviceData({ Application: { ApplicationAddress: '255' } })).toBe(false);
+    });
+
+    it('returns false for a unit with no application or groups', () => {
+        expect(unitHasDeviceData({ UnitAddress: '100' })).toBe(false);
+    });
+
+    it('returns false for null/undefined', () => {
+        expect(unitHasDeviceData(null)).toBe(false);
+        expect(unitHasDeviceData(undefined)).toBe(false);
+    });
+});
+
+describe('networkHasDeviceData', () => {
+    it('returns false when the only unit is the network management interface (issue #17)', () => {
+        const network = { Unit: { Application: '255, 255', Groups: '' } };
+        expect(networkHasDeviceData(network)).toBe(false);
+    });
+
+    it('returns true once a load unit has synced alongside the management unit', () => {
+        const network = { Unit: [
+            { Application: '255, 255', Groups: '' },
+            { Application: '56, 255', Groups: '10' }
+        ] };
+        expect(networkHasDeviceData(network)).toBe(true);
+    });
+
+    it('returns false for a network element with no units', () => {
+        expect(networkHasDeviceData({ NetworkNumber: '254' })).toBe(false);
+    });
+
+    it('returns false for null', () => {
+        expect(networkHasDeviceData(null)).toBe(false);
     });
 });
