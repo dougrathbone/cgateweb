@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.8] - 2026-06-21
+
+### Fixed
+
+- **HA Discovery no longer completes with zero entities while the network is still syncing.** At startup C-Gate briefly returns a network tree containing only its interface/management unit (the CNI, on C-Bus application 255 with no groups) before the load units finish syncing. The empty-tree retry added in 1.14.4 only caught a completely empty tree, so this management-only tree was accepted as a (zero-device) success: discovery published 0 entities and stopped retrying, and the real devices that synced moments later never appeared until a manual `gettree`. A tree carrying only network-management units is now treated as "still syncing" and retried with backoff until the load units arrive. (#17)
+
 ## [1.14.7] - 2026-06-17
 
 ### Fixed
