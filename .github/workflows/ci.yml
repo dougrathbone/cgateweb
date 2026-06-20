@@ -176,8 +176,10 @@ jobs:
   integration:
     name: Integration test (C-Gate)
     runs-on: ubuntu-latest
-    # Only run on push to main branches — not on PRs — to avoid long waits during review.
-    if: github.event_name == 'push'
+    # Runs on both push and pull_request so it can gate PR merges via branch
+    # protection (required status check). It needs the unit tests to pass first
+    # (needs: test) so a PR with failing tests fails fast without paying the
+    # ~minutes-long C-Gate download.
     timeout-minutes: 20
     needs: test
 
