@@ -304,3 +304,5 @@ describe('networkHasDeviceData', () => {
         expect(networkHasDeviceData(null)).toBe(false);
     });
 });
+
+// CI gate verification: confirms branch-protection required checks report on PRs.
