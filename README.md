@@ -2,7 +2,7 @@ cgateweb
 ========
 
 [![Node.js CI](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml)
-[![Build and Deploy Home Assistant Addon](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml)
+[![Home Assistant Addon](https://img.shields.io/github/actions/workflow/status/dougrathbone/cgateweb/hacs-distribution.yml?label=Home%20Assistant%20Addon)](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml)
 
 MQTT bridge for Clipsal C-Bus lighting systems, written in Node.js. Available as a **Home Assistant Add-on** or as a standalone service.
 
