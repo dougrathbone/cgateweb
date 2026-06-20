@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.9] - 2026-06-21
+
+### Fixed
+
+- **Native HVAC thermostats and CNI connectivity sensors no longer vanish after a tree refresh.** Native Air Conditioning (172) climate entities and CNI connectivity binary_sensors are published event-driven (when a thermostat broadcast or interface-state event arrives), but they share the `cgateweb_{network}_` unique-id prefix with TREEXML-discovered entities. The per-network stale-topic cleanup that runs after each TreeXML discovery treated them as stale and cleared them, since they are never part of a tree run. On networks that re-scan the tree at startup (now more common with the 1.14.8 sync-retry), thermostats would disappear on reboot. Event-driven discovery topics are now tracked separately and excluded from the tree cleanup.
+
+### Changed
+
+- **Clarified the "Air Conditioning Control" setting description.** It now states that thermostats still appear as read-only climate entities without it; enabling it only adds set mode/temperature commands (which write to live heating/cooling and add C-Bus traffic). This setting is not required for thermostats to be visible in Home Assistant.
+
 ## [1.14.8] - 2026-06-21
 
 ### Fixed
