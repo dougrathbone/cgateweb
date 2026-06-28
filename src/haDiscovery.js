@@ -678,21 +678,18 @@ class HaDiscovery {
             topic.includes(`/${networkUniqueIdPrefix}`) &&
             !this._currentRunTopics.has(topic) &&
             !this._eventDrivenDiscoveryTopics.has(topic);
-        for (const topic of this._publishedTopics) {
+        // Clear each stale topic (empty retained payload) and drop it from the
+        // session-wide set in a single pass. Snapshot the set first to avoid
+        // deleting from a collection during iteration; _publish does not mutate it.
+        for (const topic of [...this._publishedTopics]) {
             if (isStaleTreeTopic(topic)) {
                 this.logger.debug(`Clearing stale discovery topic: ${topic}`);
                 this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
-            }
-        }
-
-        // Merge the current run's topics into the session-wide set and remove
-        // any stale topics that were just cleared. Snapshot the set first to avoid
-        // deleting from a collection during iteration.
-        for (const topic of [...this._publishedTopics]) {
-            if (isStaleTreeTopic(topic)) {
                 this._publishedTopics.delete(topic);
             }
         }
+
+        // Merge the current run's topics into the session-wide set.
         for (const topic of this._currentRunTopics) {
             this._publishedTopics.add(topic);
         }
