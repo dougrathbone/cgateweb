@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-06-28
+
+### Fixed
+
+- **HA Discovery now works on C-Gate 3.7.1.** The TreeXML request was sent with a bare network number (`TREEXML 254`), which C-Gate 3.3.2 tolerated but C-Gate 3.7.1 rejects with `401 Bad object or device ID`. Discovery therefore never received a device tree and no entities appeared. The request is now project-qualified (`TREEXML //<project>/254`), the same addressing every other C-Gate command already uses; this also works on 3.3.2, so it applies unconditionally. (#23)
+
 ## [1.15.0] - 2026-06-28
 
 ### Added
