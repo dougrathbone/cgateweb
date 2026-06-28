@@ -75,6 +75,7 @@ schema:
   cgate_install_source: "list(download|upload)?"
   cgate_download_url: "str?"
   cgate_download_sha256: "str?"
+  cgate_force_reinstall: "bool?"
 
   # ── MQTT (auto-detected from Mosquitto add-on) ──
   mqtt_host: "str?"

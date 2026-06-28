@@ -44,6 +44,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_install_source` | list | `download` | `download` fetches C-Gate from the official Clipsal URL. `upload` uses a zip file you place in `/share/cgate/`. |
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 checksum to verify downloaded/uploaded C-Gate zip integrity before install. |
+| `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
 
 #### Uploading C-Gate manually
 
@@ -52,6 +53,20 @@ If you choose `upload` as the install source:
 1. Download the C-Gate Linux package from the [Clipsal downloads page](https://updates.clipsal.com/ClipsalSoftwareDownload/mainsite/cis/technical/downloads/index.html)
 2. Place the `.zip` file in the `/share/cgate/` directory on your Home Assistant instance (accessible via the Samba, SSH, or File Editor add-ons)
 3. Restart the add-on -- it will detect and install from the zip file
+
+#### Upgrading C-Gate after it is already installed
+
+C-Gate is installed once onto the add-on's persistent `/data` volume and then
+left in place across restarts (only its config is refreshed each boot). To move
+to a different C-Gate version:
+
+- **Upload mode**: drop the newer `.zip` into `/share/cgate/` and restart. The
+  add-on notices the newer zip and reinstalls automatically.
+- **Either mode**: turn on `cgate_force_reinstall`, restart to reinstall from the
+  install source, then turn it back off.
+
+Both paths preserve your project databases (`Projects/`) and C-Gate config
+across the reinstall.
 
 #### Loading your C-Gate project in managed mode
 

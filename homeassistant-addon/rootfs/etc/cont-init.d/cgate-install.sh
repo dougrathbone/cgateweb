@@ -103,6 +103,29 @@ _cgateweb_apply_cgate_config() {
     _cgateweb_set_config_key "${config_file}" "event-port" "${event_port}"
 }
 
+# Whether the user explicitly asked to reinstall/upgrade C-Gate via the
+# cgate_force_reinstall toggle. Echoes 1 (yes) or 0 (no). Once C-Gate is on the
+# persistent /data volume the installer otherwise skips it forever, so this is
+# the explicit escape hatch for upgrading the bundled binary (issue #16 follow-up:
+# a user stuck on 3.3.2 could not move to 3.7.1).
+_cgateweb_force_reinstall_requested() {
+    local v
+    v=$(bashio::config 'cgate_force_reinstall')
+    if [[ "${v}" == "true" ]]; then printf '1'; else printf '0'; fi
+}
+
+# Upload-mode auto-upgrade: echo 1 when the newest *.zip in the share dir is
+# newer than the recorded install marker (or no marker exists yet), else 0.
+# Lets a user upgrade simply by dropping a newer C-Gate zip into /share/cgate,
+# mirroring the `-nt` newer-than check used by cgate-project-sync.sh.
+_cgateweb_upload_zip_is_newer() {
+    local share_dir="$1" marker="$2"
+    local zip
+    zip=$(find "${share_dir}" -maxdepth 1 -name '*.zip' -type f 2>/dev/null | head -1)
+    if [[ -z "${zip}" ]]; then printf '0'; return; fi
+    if [[ ! -e "${marker}" || "${zip}" -nt "${marker}" ]]; then printf '1'; else printf '0'; fi
+}
+
 # Allow tests to source this script for unit testing the helpers above without
 # running the install flow.
 if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
@@ -127,13 +150,32 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Install C-Gate only if it is not already present. The config block at the end
-# runs on EVERY boot regardless, so existing/upgrading installs still pick up
-# settings changes (e.g. the project.start fix in issue #16).
-if [[ -f "${CGATE_JAR}" ]]; then
-    bashio::log.info "C-Gate already installed at ${CGATE_DIR}; skipping install, refreshing config"
+# Decide whether to (re)install the C-Gate binary. Once installed on the
+# persistent /data volume it is normally kept as-is and only the config block at
+# the end refreshes every boot (so the issue #16 project.start fix still reaches
+# existing installs). Reinstall when the user toggles cgate_force_reinstall, or
+# — in upload mode — when a newer C-Gate zip is dropped into /share/cgate. These
+# are the upgrade path the original #16 fix lacked: it froze the binary version
+# on /data, leaving a user stuck on 3.3.2 unable to move to 3.7.1.
+NEED_INSTALL=0
+REINSTALL=0
+if [[ ! -f "${CGATE_JAR}" ]]; then
+    NEED_INSTALL=1
+    bashio::log.info "C-Gate not found, installing from source: ${INSTALL_SOURCE}"
+elif [[ "$(_cgateweb_force_reinstall_requested)" == "1" ]]; then
+    NEED_INSTALL=1
+    REINSTALL=1
+    bashio::log.warning "cgate_force_reinstall is set — reinstalling C-Gate from source: ${INSTALL_SOURCE}"
+    bashio::log.warning "Set cgate_force_reinstall back to false after the upgrade, or C-Gate reinstalls on every boot"
+elif [[ "${INSTALL_SOURCE}" == "upload" && "$(_cgateweb_upload_zip_is_newer "/share/cgate" "${CGATE_DIR}/.version")" == "1" ]]; then
+    NEED_INSTALL=1
+    REINSTALL=1
+    bashio::log.info "A newer C-Gate zip was found in /share/cgate — upgrading the installed C-Gate"
 else
-bashio::log.info "C-Gate not found, installing from source: ${INSTALL_SOURCE}"
+    bashio::log.info "C-Gate already installed at ${CGATE_DIR}; skipping install, refreshing config"
+fi
+
+if [[ "${NEED_INSTALL}" == "1" ]]; then
 
 mkdir -p "${CGATE_DIR}"
 
@@ -284,7 +326,26 @@ fi
 EXTRACTED_DIR=$(dirname "${EXTRACTED_JAR}")
 bashio::log.info "Found C-Gate installation in: ${EXTRACTED_DIR}"
 
+# On reinstall/upgrade, preserve the user's project DBs and C-Gate config across
+# the binary swap, then clear stale program files so old jars don't linger next
+# to the new ones. Extraction has already succeeded here, so the wipe window is
+# minimal. The preserved Projects/ and config/ are restored over any defaults
+# shipped in the fresh package.
+PRESERVE_DIR=""
+if [[ "${REINSTALL}" == "1" ]]; then
+    PRESERVE_DIR=$(mktemp -d "${WORK_DIR}/preserve.XXXXXX")
+    [[ -d "${CGATE_DIR}/Projects" ]] && mv "${CGATE_DIR}/Projects" "${PRESERVE_DIR}/"
+    [[ -d "${CGATE_DIR}/config" ]] && mv "${CGATE_DIR}/config" "${PRESERVE_DIR}/"
+    rm -rf "${CGATE_DIR:?}/"*
+fi
+
 cp -r "${EXTRACTED_DIR}"/* "${CGATE_DIR}/"
+
+if [[ -n "${PRESERVE_DIR}" ]]; then
+    [[ -d "${PRESERVE_DIR}/Projects" ]] && cp -rp "${PRESERVE_DIR}/Projects" "${CGATE_DIR}/"
+    [[ -d "${PRESERVE_DIR}/config" ]] && cp -rp "${PRESERVE_DIR}/config" "${CGATE_DIR}/"
+    bashio::log.info "Preserved existing project DBs and C-Gate config across the upgrade"
+fi
 
 # Restrict permissions on installed files
 chmod -R go-w "${CGATE_DIR}/" 2>/dev/null || true
@@ -297,7 +358,7 @@ else
     echo "unknown" > "${CGATE_DIR}/.version"
 fi
 
-fi  # end install-if-not-present
+fi  # end NEED_INSTALL
 
 # Configure access.txt to allow local connections
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"
