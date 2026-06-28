@@ -701,7 +701,22 @@ class HaDiscovery {
 
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
-        this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
+        if (this.discoveryCount === 0) {
+            // The tree was accepted as synced (real units were present, so this is
+            // not the issue #17 "still syncing" case) yet produced no entities.
+            // That happens when C-Gate returns units with no group addresses
+            // (empty <Groups>) and no labels file supplies them — there is simply
+            // nothing addressable to expose to HA. Warn with the cause and remedy
+            // rather than logging a quiet "0 entities" that looks like success.
+            this.logger.warn(
+                `HA Discovery for network ${networkId} published 0 entities (took ${duration}ms). ` +
+                `The C-Gate tree listed units but no group addresses (empty <Groups>), and no labels supplied any. ` +
+                `Import your C-Bus Toolkit project labels (C-Bus Labels in the web UI) so the group addresses are known, ` +
+                `or verify the network's groups are populated in C-Gate.`
+            );
+        } else {
+            this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
+        }
 
         // Clear snapshot so any later code that reaches for it without an
         // active discovery run fails loudly rather than reading stale data.

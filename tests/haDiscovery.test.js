@@ -248,6 +248,31 @@ describe('HaDiscovery', () => {
             });
         });
 
+        it('warns clearly when a synced tree has units but no group addresses (#16: 0 entities)', () => {
+            // djagerif's C-Gate returned a fully-synced tree of real units (app
+            // "56, 255") but every <Groups> was empty, so there are no group
+            // addresses to expose and no labels to supplement them. Discovery
+            // must not report this as a quiet success — it should warn with the
+            // cause and the remedy (provide labels) so it is diagnosable.
+            const warnSpy = jest.spyOn(haDiscovery.logger, 'warn');
+            const treeNoGroups = {
+                Network: {
+                    Unit: [
+                        { Type: 'DIMDN8', Application: '56, 255', Groups: '' },
+                        { Type: 'RELDN12', Application: '56, 255', Groups: '' }
+                    ]
+                }
+            };
+
+            haDiscovery._publishDiscoveryFromTree('254', treeNoGroups);
+
+            expect(haDiscovery.discoveryCount).toBe(0);
+            const warned = warnSpy.mock.calls.some(
+                c => /0 entities/i.test(c[0]) && /group address/i.test(c[0])
+            );
+            expect(warned).toBe(true);
+        });
+
         it('should publish correct configs for LIGHTING groups', () => {
             haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
