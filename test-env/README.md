@@ -64,6 +64,37 @@ node integration-test.js                 # build → assert → teardown
 node integration-test.js --no-teardown   # leave the stack up afterwards
 ```
 
+### C-Gate version matrix (CI)
+
+The `Integration test (C-Gate)` CI check fans out across C-Gate versions so
+version-specific regressions are caught (e.g. the 3.7.x `TREEXML` addressing
+bug, #23). It has three parts:
+
+- **Download legs** (`integration-download`): one matrix entry per
+  *openly-downloadable* version. Only V3.3.0-V3.3.2 are reachable without a
+  Schneider login, so the matrix currently runs 3.3.1 and 3.3.2. Each leg just
+  overrides `cgate_download_url` in the options before running the test.
+- **Upload leg** (`integration-upload`): exercises a version that is **not**
+  openly downloadable (3.3.3, 3.7.x). It is skipped unless the
+  `CGATE_UPLOAD_TEST_URL` repository variable is set. To enable it, host the
+  C-Gate zip where CI can fetch it (e.g. attach it as an asset on a GitHub
+  release of this repo, since the package cannot be redistributed in-tree) and
+  set the variable to that asset URL:
+  ```bash
+  gh release create cgate-test-artifacts --notes "C-Gate zips for CI" \
+    && gh release upload cgate-test-artifacts cgate-3.7.1_2287.zip
+  gh variable set CGATE_UPLOAD_TEST_URL \
+    --body "https://github.com/dougrathbone/cgateweb/releases/download/cgate-test-artifacts/cgate-3.7.1_2287.zip"
+  ```
+- **Aggregator** (`integration`): the single required status check. Green only
+  if every download leg passed and the upload leg passed or was skipped. Its
+  name is fixed, so adding/removing matrix versions never touches branch
+  protection.
+
+To run a specific version locally, edit `cgate_download_url` in
+`active-options.json` (download mode) or drop the zip in `volumes/share/cgate/`
+(upload mode).
+
 ### Test project fixture
 
 `volumes/share/cgate/tag/HOME.db` is a committed sample C-Gate project. On

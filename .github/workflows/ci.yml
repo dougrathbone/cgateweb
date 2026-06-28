@@ -173,15 +173,23 @@ jobs:
           node -e "require(\"/app/package.json\")"
         '
 
-  integration:
-    name: Integration test (C-Gate)
+  # Boot the full managed stack against each openly-downloadable C-Gate version
+  # so version-specific regressions (e.g. the 3.7.x TREEXML addressing bug, #23)
+  # are caught. Only 3.3.0-3.3.2 are downloadable without a Schneider login;
+  # newer versions (3.3.3, 3.7.x) are exercised by the upload leg below.
+  integration-download:
+    name: Integration download ${{ matrix.cgate.version }}
     runs-on: ubuntu-latest
-    # Runs on both push and pull_request so it can gate PR merges via branch
-    # protection (required status check). It needs the unit tests to pass first
-    # (needs: test) so a PR with failing tests fails fast without paying the
-    # ~minutes-long C-Gate download.
     timeout-minutes: 20
     needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        cgate:
+          - version: "3.3.1"
+            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
+          - version: "3.3.2"
+            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
 
     steps:
     - name: Checkout repository
@@ -199,9 +207,82 @@ jobs:
     - name: Install podman-compose
       run: pip3 install podman-compose
 
-    - name: Set up managed-download test options
-      run: cp test-env/options-managed-download.json test-env/active-options.json
+    - name: Set up managed-download options for C-Gate ${{ matrix.cgate.version }}
+      env:
+        CGATE_URL: ${{ matrix.cgate.url }}
+      run: |
+        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
 
-    - name: Run integration test (managed mode - downloads C-Gate)
+    - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
       run: node test-env/integration-test.js
       timeout-minutes: 15
+
+  # Exercises a C-Gate version that is NOT openly downloadable (3.3.3, 3.7.x) by
+  # fetching a self-hosted zip and installing it via upload mode. Activates only
+  # when the CGATE_UPLOAD_TEST_URL repository variable points at a hosted zip
+  # (e.g. a release asset on this repo); otherwise the job is skipped, which the
+  # aggregator below treats as a pass.
+  integration-upload:
+    name: Integration upload (hosted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    if: vars.CGATE_UPLOAD_TEST_URL != ''
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+      with:
+        node-version: 20.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+
+    - name: Fetch hosted C-Gate zip into the upload share volume
+      env:
+        CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
+      run: |
+        mkdir -p test-env/volumes/share/cgate
+        curl -fSL --max-time 600 --connect-timeout 30 -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
+
+    - name: Set up managed-upload test options
+      run: cp test-env/options-managed-upload.json test-env/active-options.json
+
+    - name: Run integration test (upload mode - hosted C-Gate)
+      run: node test-env/integration-test.js
+      timeout-minutes: 15
+
+  # Required status check. Stays green only if every download-mode leg passed and
+  # the upload leg passed or was skipped. Keeping this single, stable job name
+  # ("Integration test (C-Gate)") means branch protection needs no change when we
+  # add or remove matrix versions.
+  integration:
+    name: Integration test (C-Gate)
+    runs-on: ubuntu-latest
+    needs: [integration-download, integration-upload]
+    if: always()
+
+    steps:
+    - name: Verify all C-Gate version integration tests passed
+      env:
+        DOWNLOAD_RESULT: ${{ needs.integration-download.result }}
+        UPLOAD_RESULT: ${{ needs.integration-upload.result }}
+      run: |
+        echo "download-mode legs: $DOWNLOAD_RESULT"
+        echo "upload-mode leg:    $UPLOAD_RESULT (skipped is OK when no hosted artifact is configured)"
+        if [[ "$DOWNLOAD_RESULT" != "success" ]]; then
+          echo "::error::One or more download-mode C-Gate integration tests failed."
+          exit 1
+        fi
+        if [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
+          echo "::error::The upload-mode C-Gate integration test failed."
+          exit 1
+        fi
+        echo "All required C-Gate integration tests passed."
