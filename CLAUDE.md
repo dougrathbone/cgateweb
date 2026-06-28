@@ -106,6 +106,8 @@ Supports automatic discovery of C-Bus devices:
 
 The add-on configuration UI is translated into 17 languages via YAML files in `homeassistant-addon/translations/`. Each file contains translated `name` and `description` fields for all configuration options while keeping YAML keys and technical terms (C-Gate, C-Bus, MQTT, etc.) in English. Supported languages: en, de, es, fr, it, nl, pt, ru, zh, ja, ko, pl, sv, no, da, cs, uk. New translations should be added by copying `en.yaml` and translating the user-facing strings.
 
+**Adding or removing a config option means editing all 17 translation files, not just `en.yaml`.** The `validate:translations` CI gate (`tools/validate-translations.js`) enforces that every `translations/*.yaml` has the exact same option keys as `en.yaml`; adding a key to `en.yaml` alone fails the build (this happens in the "Validate add-on config & translations" job, which is easy to miss because `npm test` does not run it). Run `npm run validate:translations` and `npm run validate:addon-config` locally before pushing a config-option change. Keep technical terms (C-Gate, `/share/cgate`, zip, managed mode) in English in every language.
+
 ## Testing Standards
 
 - Uses Jest testing framework
