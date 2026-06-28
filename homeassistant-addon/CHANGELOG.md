@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.2] - 2026-06-28
+
+### Fixed
+
+- **Discovery now explains a zero-entity result instead of failing silently.** When C-Gate returns a fully-synced network tree whose units carry no group addresses (empty `<Groups>`) and no labels file supplies them, discovery has nothing addressable to expose and previously logged a quiet "Published 0 entities" that looked like success. It now logs a warning naming the cause and the remedy (import your C-Bus Toolkit project labels via the web UI so the group addresses are known). (#16)
+
 ## [1.15.1] - 2026-06-28
 
 ### Fixed
