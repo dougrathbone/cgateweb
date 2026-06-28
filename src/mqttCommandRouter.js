@@ -192,8 +192,10 @@ class MqttCommandRouter extends EventEmitter {
         // Emit event for HA discovery to track which network tree was requested
         this.emit('treeRequest', command.getNetwork());
         
-        // Queue C-Gate TREEXML command
-        const cgateCommand = `TREEXML ${command.getNetwork()}${NEWLINE}`;
+        // Queue C-Gate TREEXML command. Project-qualify the address
+        // (//PROJECT/NET) like every other command: C-Gate 3.7.1 rejects a bare
+        // network number with "401 Bad object or device ID" (#23).
+        const cgateCommand = `TREEXML //${this.cbusname}/${command.getNetwork()}${NEWLINE}`;
         this._queueCommand(cgateCommand);
     }
 

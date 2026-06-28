@@ -291,7 +291,11 @@ class HaDiscovery {
             this._handleTreeRequestFailure(normalizedNetwork, 'no response within timeout');
         });
 
-        this._sendCommand(`${CGATE_CMD_TREEXML} ${normalizedNetwork}${NEWLINE}`);
+        // Project-qualify the network address (//PROJECT/NET). C-Gate 3.7.1
+        // rejects a bare network number ("TREEXML 254" -> 401 Bad object or
+        // device ID); the qualified form is what every other cgateweb command
+        // already uses and works on 3.3.2 too (#23).
+        this._sendCommand(`${CGATE_CMD_TREEXML} //${this.settings.cbusname}/${normalizedNetwork}${NEWLINE}`);
     }
 
     _getOrCreateTreeState(networkId) {

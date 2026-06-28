@@ -105,7 +105,7 @@ describe('HA Discovery e2e (real processor + real haDiscovery)', () => {
         h.haDiscovery.trigger();
 
         // First TREEXML went out, sensor is "discovering"
-        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} 254${NEWLINE}`]);
+        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} //PROJECT/254${NEWLINE}`]);
         expect(statePublishes(h.publishes, '254')).toEqual([DISCOVERY_STATE_DISCOVERING]);
         expect(configPublishes(h.publishes, '254')).toHaveLength(1);
 
@@ -184,7 +184,7 @@ describe('HA Discovery e2e (real processor + real haDiscovery)', () => {
             'Network created type=cni address=192.168.0.100:10001'
         );
 
-        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} 254${NEWLINE}`]);
+        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} //PROJECT/254${NEWLINE}`]);
         expect(statePublishes(h.publishes, '254')).toEqual([DISCOVERY_STATE_DISCOVERING]);
     });
 
@@ -238,7 +238,7 @@ describe('HA Discovery e2e (real processor + real haDiscovery)', () => {
             '20260504-193110.569 742 //PROJECT/254 c2211b00-28c1-103f-94b5-db702a32859b Network created type=cni address=192.168.0.100:10001'
         );
 
-        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} 254${NEWLINE}`]);
+        expect(h.sentCommands).toEqual([`${CGATE_CMD_TREEXML} //PROJECT/254${NEWLINE}`]);
     });
 
     it('Network removed event clears entities and the diagnostic sensor', async () => {

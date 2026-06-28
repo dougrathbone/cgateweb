@@ -70,7 +70,7 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/0/0/gettree', '');
                 
                 expect(emitSpy).toHaveBeenCalledWith('treeRequest', '254');
-                expect(queueSpy).toHaveBeenCalledWith('TREEXML 254\n');
+                expect(queueSpy).toHaveBeenCalledWith('TREEXML //TestProject/254\n');
             });
         });
 

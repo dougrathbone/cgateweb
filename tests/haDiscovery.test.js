@@ -126,8 +126,8 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_networks = ['254', '200'];
             haDiscovery.trigger();
             
-            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
-            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 200${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/254${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/200${NEWLINE}`);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
 
@@ -136,8 +136,21 @@ describe('HaDiscovery', () => {
             mockSettings.getallnetapp = '254';
             haDiscovery.trigger();
             
-            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/254${NEWLINE}`);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+
+        it('project-qualifies the TREEXML address so newer C-Gate (3.7.1) accepts it (#23)', () => {
+            // C-Gate 3.7.1 rejects a bare network number ("TREEXML 254" -> 401 Bad
+            // object or device ID) and requires the project-qualified form
+            // //PROJECT/254, like every other command cgateweb sends. cbusname
+            // here is 'TESTPROJECT'.
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger();
+
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/254${NEWLINE}`);
+            const bareCalls = mockSendCommandFn.mock.calls.filter(c => c[0] === `${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(bareCalls).toHaveLength(0);
         });
 
         it('should warn if no networks are configured', () => {
@@ -1054,7 +1067,7 @@ describe('HaDiscovery', () => {
         it('triggers a TreeXML for a configured network when it becomes available', () => {
             mockSettings.ha_discovery_networks = ['254'];
             haDiscovery.handleNetworkCreated('254');
-            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 254${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/254${NEWLINE}`);
         });
 
         it('skips networks not in ha_discovery_networks when the list is configured', () => {
@@ -1066,7 +1079,7 @@ describe('HaDiscovery', () => {
         it('triggers for any network when ha_discovery_networks is empty', () => {
             mockSettings.ha_discovery_networks = [];
             haDiscovery.handleNetworkCreated('999');
-            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} 999${NEWLINE}`);
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/999${NEWLINE}`);
         });
 
         it('does nothing when discovery is disabled', () => {
