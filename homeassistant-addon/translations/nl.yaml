@@ -60,6 +60,10 @@ configuration:
     description: >-
       Optionele SHA256-checksum om de C-Gate download te verifiëren.
       Aanbevolen bij gebruik van een aangepaste download-URL.
+  cgate_force_reinstall:
+    name: C-Gate herinstallatie forceren
+    description: >-
+      Alleen gebruikt in managed-modus. Eenmaal geïnstalleerd blijft C-Gate normaal gesproken ongewijzigd. Schakel dit in om C-Gate bij de volgende start opnieuw te installeren/bij te werken vanaf de installatiebron (uw projectdatabases en configuratie blijven behouden); in upload-modus kunt u in plaats daarvan een nieuwere zip in /share/cgate plaatsen. Schakel dit na de upgrade weer uit.
 
   # ── MQTT (meestal automatisch gedetecteerd) ──
   mqtt_host:

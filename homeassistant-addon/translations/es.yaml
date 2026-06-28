@@ -60,6 +60,10 @@ configuration:
     description: >-
       Suma de verificación SHA256 opcional para verificar la descarga de
       C-Gate. Recomendado cuando se usa una URL de descarga personalizada.
+  cgate_force_reinstall:
+    name: Forzar reinstalación de C-Gate
+    description: >-
+      Solo se usa en modo gestionado. Una vez instalado, C-Gate normalmente se mantiene tal cual. Actívelo para reinstalar/actualizar C-Gate desde la fuente de instalación en el próximo inicio (sus bases de datos de proyecto y la configuración se conservan); en modo de carga puede colocar un zip más reciente en /share/cgate. Desactívelo después de la actualización.
 
   # ── MQTT (generalmente se detecta automáticamente) ──
   mqtt_host:

@@ -60,6 +60,10 @@ configuration:
     description: >-
       Checksum SHA256 opcional para verificar a transferência do C-Gate.
       Recomendado ao usar um URL de transferência personalizado.
+  cgate_force_reinstall:
+    name: Forçar reinstalação do C-Gate
+    description: >-
+      Usado apenas no modo gerido. Depois de instalado, o C-Gate normalmente é mantido como está. Ative isto para reinstalar/atualizar o C-Gate a partir da fonte de instalação no próximo arranque (as suas bases de dados de projeto e a configuração são preservadas); no modo de carregamento pode antes colocar um zip mais recente em /share/cgate. Desative isto após a atualização.
 
   # ── MQTT (geralmente detetado automaticamente) ──
   mqtt_host:

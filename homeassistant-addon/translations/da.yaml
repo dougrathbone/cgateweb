@@ -59,6 +59,10 @@ configuration:
     description: >-
       Valgfri SHA256-kontrolsum til at verificere C-Gate downloaden.
       Anbefales ved brug af en brugerdefineret download-URL.
+  cgate_force_reinstall:
+    name: Gennemtving geninstallation af C-Gate
+    description: >-
+      Bruges kun i administreret tilstand. Når C-Gate først er installeret, bevares det normalt, som det er. Slå dette til for at geninstallere/opgradere C-Gate fra installationskilden ved næste start (dine projektdatabaser og konfiguration bevares); i upload-tilstand kan du i stedet lægge en nyere zip i /share/cgate. Slå det fra igen efter opgraderingen.
 
   # ── MQTT (registreres normalt automatisk) ──
   mqtt_host:

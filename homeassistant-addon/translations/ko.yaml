@@ -57,6 +57,10 @@ configuration:
     description: >-
       C-Gate 다운로드를 검증하기 위한 선택적 SHA256 체크섬. 사용자 지정
       다운로드 URL을 사용할 때 권장됩니다.
+  cgate_force_reinstall:
+    name: C-Gate 강제 재설치
+    description: >-
+      관리 모드에서만 사용됩니다. C-Gate는 설치된 후 일반적으로 그대로 유지됩니다. 이 옵션을 켜면 다음 시작 시 설치 소스에서 C-Gate를 다시 설치/업그레이드합니다(프로젝트 데이터베이스와 구성은 유지됩니다). 업로드 모드에서는 대신 최신 zip을 /share/cgate에 넣을 수 있습니다. 업그레이드 후에는 다시 꺼 주세요.
 
   # ── MQTT (보통 자동 감지) ──
   mqtt_host:

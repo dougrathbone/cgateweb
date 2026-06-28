@@ -59,6 +59,10 @@ configuration:
     description: >-
       Volitelný kontrolní součet SHA256 pro ověření stažení C-Gate.
       Doporučeno při použití vlastní URL pro stažení.
+  cgate_force_reinstall:
+    name: Vynutit přeinstalaci C-Gate
+    description: >-
+      Používá se pouze ve spravovaném režimu. Po instalaci zůstává C-Gate obvykle beze změny. Tuto možnost zapněte, chcete-li při příštím spuštění přeinstalovat/aktualizovat C-Gate ze zdroje instalace (databáze projektu a konfigurace zůstanou zachovány); v režimu nahrávání můžete místo toho umístit novější zip do /share/cgate. Po aktualizaci ji opět vypněte.
 
   # ── MQTT (obvykle detekován automaticky) ──
   mqtt_host:

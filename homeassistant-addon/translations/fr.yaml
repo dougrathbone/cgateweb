@@ -63,6 +63,10 @@ configuration:
       Somme de contrôle SHA256 optionnelle pour vérifier le téléchargement
       de C-Gate. Recommandé lors de l'utilisation d'une URL de
       téléchargement personnalisée.
+  cgate_force_reinstall:
+    name: Forcer la réinstallation de C-Gate
+    description: >-
+      Utilisé uniquement en mode géré. Une fois installé, C-Gate est normalement conservé tel quel. Activez cette option pour réinstaller/mettre à jour C-Gate depuis la source d'installation au prochain démarrage (vos bases de données de projet et la configuration sont conservées) ; en mode upload, vous pouvez aussi déposer un zip plus récent dans /share/cgate. Désactivez-la après la mise à jour.
 
   # ── MQTT (généralement détecté automatiquement) ──
   mqtt_host:

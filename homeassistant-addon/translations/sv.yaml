@@ -58,6 +58,10 @@ configuration:
     description: >-
       Valfri SHA256-kontrollsumma för att verifiera C-Gate nedladdningen.
       Rekommenderas vid användning av en anpassad nedladdnings-URL.
+  cgate_force_reinstall:
+    name: Tvinga ominstallation av C-Gate
+    description: >-
+      Används endast i hanterat läge. När C-Gate väl är installerat behålls det normalt som det är. Aktivera detta för att installera om/uppgradera C-Gate från installationskällan vid nästa start (dina projektdatabaser och konfiguration bevaras); i uppladdningsläge kan du i stället lägga en nyare zip i /share/cgate. Stäng av detta efter uppgraderingen.
 
   # ── MQTT (upptäcks vanligtvis automatiskt) ──
   mqtt_host:
