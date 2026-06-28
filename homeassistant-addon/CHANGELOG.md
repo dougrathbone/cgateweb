@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-06-28
+
+### Added
+
+- **You can now upgrade the managed C-Gate version without losing your project.** Previously, once C-Gate was installed it stayed on the add-on's persistent storage forever — the installer only refreshed config and never replaced the binary, so there was no way to move off the bundled 3.3.2 (a user with a 3.7.1-format project DB ended up with an empty tree and no entities, because 3.3.2 cannot read it). Two upgrade paths are now available in managed mode: turn on the new **Force C-Gate Reinstall** (`cgate_force_reinstall`) option to reinstall from the configured source on the next start, or — in upload mode — simply drop a newer C-Gate `.zip` into `/share/cgate/` and it is detected and installed automatically. Your project databases (`Projects/`) and C-Gate config are preserved across the reinstall. (#16)
+
 ## [1.14.9] - 2026-06-21
 
 ### Fixed
