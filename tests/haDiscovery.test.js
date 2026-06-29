@@ -799,6 +799,62 @@ describe('HaDiscovery', () => {
             expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
 
+        // Regression for issue #16 (djagerif): a network that syncs progressively
+        // returns a tree whose load units advertise app 56 but whose <Groups> are
+        // still empty (state=new) before the group bindings arrive. Accepting that
+        // published 0 entities and stopped retrying, so the groups never appeared.
+        const APP56_NO_GROUPS_TREE =
+            '<Network><Unit><Type>DIMDN8</Type><Address>1</Address>' +
+            '<Application>56, 255</Application><Groups></Groups></Unit>' +
+            '<Unit><Type>RELDN12</Type><Address>11</Address>' +
+            '<Application>56, 255</Application><Groups></Groups></Unit></Network>';
+
+        it('retries instead of marking ok when units advertise app 56 but have no groups yet (issue #16)', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData(APP56_NO_GROUPS_TREE);
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states).not.toContain('ok');
+
+            // Backoff fires and re-requests the tree.
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('completes discovery once the group bindings sync after an app-56 no-groups tree (issue #16)', () => {
+            haDiscovery.trigger();
+
+            // First response: units present but groups not synced — must retry.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(APP56_NO_GROUPS_TREE);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+
+            // Retry response: groups have synced now — discovery completes.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+            expect(haDiscovery._treeRequestState.has('254')).toBe(false);
+            expect(haDiscovery.discoveryCount).toBeGreaterThan(0);
+        });
+
         it('completes discovery once load units sync after a management-only tree (issue #17)', () => {
             haDiscovery.trigger();
 

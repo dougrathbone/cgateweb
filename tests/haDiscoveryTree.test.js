@@ -258,14 +258,28 @@ describe('unitHasDeviceData', () => {
         expect(unitHasDeviceData({ Application: '56, 255', Groups: '10,11' })).toBe(true);
     });
 
-    it('returns true for a management-only flat unit that still carries groups', () => {
-        expect(unitHasDeviceData({ Application: '255', Groups: '200' })).toBe(true);
+    it('returns false for a flat unit that advertises a real app but has not synced its groups yet (#16)', () => {
+        // djagerif: at startup, units advertise app 56 but their <Groups> is
+        // still empty (state=new). Treating that as a synced device made
+        // discovery complete with 0 entities and stop retrying before the
+        // groups arrived. A real app with no groups is still syncing.
+        expect(unitHasDeviceData({ Application: '56, 255', Groups: '' })).toBe(false);
+    });
+
+    it('returns false for a management-only flat unit even when it carries groups', () => {
+        // Groups on the management application (255) are network variables, not
+        // addressable devices, so they never yield discoverable entities.
+        expect(unitHasDeviceData({ Application: '255', Groups: '200' })).toBe(false);
     });
 
     it('returns true for a structured unit in a real application', () => {
         expect(unitHasDeviceData({
             Application: { ApplicationAddress: '56', Group: { GroupAddress: '10' } }
         })).toBe(true);
+    });
+
+    it('returns false for a structured unit in a real app that carries no groups yet (#16)', () => {
+        expect(unitHasDeviceData({ Application: { ApplicationAddress: '56' } })).toBe(false);
     });
 
     it('returns false for a structured management-only unit with no groups', () => {
@@ -292,6 +306,24 @@ describe('networkHasDeviceData', () => {
         const network = { Unit: [
             { Application: '255, 255', Groups: '' },
             { Application: '56, 255', Groups: '10' }
+        ] };
+        expect(networkHasDeviceData(network)).toBe(true);
+    });
+
+    it('returns false when units advertise app 56 but none have synced their groups (#16)', () => {
+        // The progressive-sync window: real load units are present but their
+        // group bindings have not arrived yet. Must keep retrying, not complete.
+        const network = { Unit: [
+            { Application: '56, 255', Groups: '' },
+            { Application: '56, 255', Groups: '' }
+        ] };
+        expect(networkHasDeviceData(network)).toBe(false);
+    });
+
+    it('returns true as soon as any one unit has synced its groups (mixed)', () => {
+        const network = { Unit: [
+            { Application: '56, 255', Groups: '' },
+            { Application: '56, 255', Groups: '42' }
         ] };
         expect(networkHasDeviceData(network)).toBe(true);
     });

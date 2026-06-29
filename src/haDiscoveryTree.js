@@ -35,40 +35,44 @@ function findNetworkData(networkId, treeData) {
 // stops retrying, so real devices never appear (issue #17).
 const CBUS_NETWORK_MANAGEMENT_APP = '255';
 
-// True if a single Unit advertises any real (non-management) application or
-// carries group data. Handles both TREEXML shapes (structured Application
-// objects and the flat "56, 255" / Groups "10,11" form).
+// True if a single Unit carries at least one group address on a non-management
+// application. A unit that advertises a real application (e.g. 56) but has no
+// groups yet is NOT enough: at startup C-Gate reports load units in state=new
+// with empty <Groups> before their group bindings sync, and accepting that made
+// discovery complete with 0 entities and stop retrying before the groups
+// arrived (issue #16). Groups on the management application (255) are network
+// variables, not addressable devices, so they never count (subsumes issue #17).
+// Handles both TREEXML shapes (structured Application objects and the flat
+// "56, 255" / Groups "10,11" form).
 function unitHasDeviceData(unit) {
     if (!unit) return false;
 
     if (unit.Application && typeof unit.Application === 'object') {
         const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
         return apps.some(app => {
-            if (!app) return false;
+            if (!app || !app.Group) return false;
             const appId = app.ApplicationAddress !== null && app.ApplicationAddress !== undefined
                 ? String(app.ApplicationAddress)
                 : undefined;
-            if (appId && appId !== CBUS_NETWORK_MANAGEMENT_APP) return true;
-            // A management-app entry still counts if it actually carries groups.
-            return Boolean(app.Group);
+            return appId !== CBUS_NETWORK_MANAGEMENT_APP;
         });
     }
 
-    if (unit.Application !== null && unit.Application !== undefined) {
-        const appIds = String(unit.Application).split(',').map(s => s.trim()).filter(Boolean);
-        if (appIds.some(a => a !== CBUS_NETWORK_MANAGEMENT_APP)) return true;
-    }
-
+    const appIds = (unit.Application !== null && unit.Application !== undefined)
+        ? String(unit.Application).split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    const hasRealApp = appIds.some(a => a !== CBUS_NETWORK_MANAGEMENT_APP);
     const groupIds = (unit.Groups && typeof unit.Groups === 'string')
         ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
         : [];
-    return groupIds.length > 0;
+    return hasRealApp && groupIds.length > 0;
 }
 
 // True if the network has finished syncing enough to carry at least one
-// addressable device (a non-management application or any group). A tree with
-// only network-management units is treated as "still syncing" so discovery
-// keeps retrying rather than completing with zero entities (issue #17).
+// addressable device, i.e. some unit has group addresses on a non-management
+// application. A tree with only management units, or load units whose groups
+// have not synced yet, is treated as "still syncing" so discovery keeps
+// retrying rather than completing with zero entities (issues #16 and #17).
 function networkHasDeviceData(networkData) {
     if (!networkData) return false;
     let units = networkData.Unit || [];
