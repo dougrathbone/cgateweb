@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.3] - 2026-06-29
+
+### Fixed
+
+- **Light statuses now update in managed mode.** The managed-mode installer wrote `event-port=20025` into C-GateConfig.txt, which collides with C-Gate's `load-change-port` (also 20025) — the real-time status stream cgateweb reads on port 20025. C-Gate then served the wrong stream there, so status changes never reached Home Assistant and all entities stayed `Unknown`. The installer no longer sets `event-port` (C-Gate keeps its default 20024, leaving the status stream on 20025), and it strips any previously persisted `event-port=20025` so existing broken installs self-heal on the next start. (#21)
+- **Discovery waits for C-Bus groups to finish syncing.** On networks that sync progressively, C-Gate briefly returns load units that advertise an application (e.g. lighting) but have no group bindings yet. Discovery treated that as synced, published 0 entities, and stopped retrying before the groups arrived, so devices never appeared without a manual tree refresh. A unit now counts as a real device only when it carries group addresses on a non-management application; an all-empty tree is treated as still-syncing and retried until the groups appear. (#16)
+
 ## [1.15.2] - 2026-06-28
 
 ### Fixed
