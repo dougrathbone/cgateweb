@@ -77,7 +77,6 @@ _cgateweb_apply_cgate_config() {
     local config_file="$1"
     local project="$2"
     local command_port="$3"
-    local event_port="$4"
 
     # C-Gate generates C-GateConfig.txt on its first start, which happens AFTER
     # cont-init runs -- so on a fresh install there is no file to edit yet. Seed
@@ -91,16 +90,23 @@ _cgateweb_apply_cgate_config() {
     fi
 
     # Strip legacy invalid keys that older versions of this script appended.
-    # C-Gate doesn't recognize these and warns about them at startup.
+    # C-Gate doesn't recognize CommandInterface.port / EventInterface.port and
+    # warns about them at startup. We also strip event-port: older versions of
+    # this script forced event-port=20025, which collides with C-Gate's
+    # load-change-port (also 20025) — the real-time status stream cgateweb reads.
+    # Removing it lets C-Gate fall back to its default event-port (20024) so the
+    # status stream stays on 20025 and light statuses update (#21). This is what
+    # a working remote/default C-Gate install does.
     local tmp="${config_file}.tmp.$$"
-    sed '/^CommandInterface\.port=/d;/^EventInterface\.port=/d' "${config_file}" > "${tmp}" && mv "${tmp}" "${config_file}"
+    sed '/^CommandInterface\.port=/d;/^EventInterface\.port=/d;/^event-port=/d' "${config_file}" > "${tmp}" && mv "${tmp}" "${config_file}"
 
     # project.default names the project; project.start is what actually makes
     # C-Gate load+start it at boot (project.default alone does nothing).
+    # event-port is deliberately NOT set: leaving it at C-Gate's default (20024)
+    # keeps the load-change/status stream on 20025 for cgateweb (#21).
     _cgateweb_set_config_key "${config_file}" "project.default" "${project}"
     _cgateweb_set_config_key "${config_file}" "project.start" "${project}"
     _cgateweb_set_config_key "${config_file}" "command-port" "${command_port}"
-    _cgateweb_set_config_key "${config_file}" "event-port" "${event_port}"
 }
 
 # Whether the user explicitly asked to reinstall/upgrade C-Gate via the
@@ -379,13 +385,14 @@ fi
 # project.start fix reach existing installs, not just fresh ones.
 CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
-CGATE_EVENT_PORT=$(bashio::config 'cgate_event_port' '20025')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
 # Always apply: the helper seeds the file if C-Gate has not generated it yet
 # (fresh install), so project.start is in place before C-Gate's first start.
-_cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}" "${CGATE_EVENT_PORT}"
+# event-port is intentionally left at C-Gate's default (20024); cgateweb reads
+# the load-change/status stream on 20025 (#21).
+_cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}"
 bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
 bashio::log.info "Set command port to: ${CGATE_PORT}"
-bashio::log.info "Set event port to: ${CGATE_EVENT_PORT}"
+bashio::log.info "Left event-port at C-Gate default (status stream stays on 20025 for cgateweb)"
 
 bashio::log.info "C-Gate installation complete"

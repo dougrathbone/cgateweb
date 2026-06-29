@@ -60,7 +60,7 @@ function callHelper(helperName, configObject) {
 // Run _cgateweb_apply_cgate_config against a temp config file and return its
 // resulting contents. The config path and call args are passed via the
 // environment so they are never interpolated into the executed command string.
-function applyCgateConfig({ initialConfig, project, commandPort, eventPort }) {
+function applyCgateConfig({ initialConfig, project, commandPort }) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-install-'));
     const cfg = path.join(dir, 'C-GateConfig.txt');
     // initialConfig === null models a fresh install where C-Gate has not yet
@@ -72,14 +72,14 @@ function applyCgateConfig({ initialConfig, project, commandPort, eventPort }) {
         CGW_INSTALL_SCRIPT: SCRIPT,
         CGW_CFG_FILE: cfg,
         CGW_CFG_PROJECT: project,
-        CGW_CFG_CMD_PORT: String(commandPort),
-        CGW_CFG_EVENT_PORT: String(eventPort)
+        CGW_CFG_CMD_PORT: String(commandPort)
     };
+    // event-port is intentionally not passed: the helper no longer sets it (#21).
     const script = `
         set -u
         ${BASHIO_STUB}
         source "$CGW_INSTALL_SCRIPT"
-        _cgateweb_apply_cgate_config "$CGW_CFG_FILE" "$CGW_CFG_PROJECT" "$CGW_CFG_CMD_PORT" "$CGW_CFG_EVENT_PORT"
+        _cgateweb_apply_cgate_config "$CGW_CFG_FILE" "$CGW_CFG_PROJECT" "$CGW_CFG_CMD_PORT"
     `;
     execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
     const result = fs.readFileSync(cfg, 'utf8');
@@ -253,21 +253,28 @@ describe('cgate-install.sh helpers', () => {
             expect(out).toMatch(/^project\.default\.dir=Projects\/$/m);
         });
 
-        test('appends command-port and event-port when absent', () => {
+        test('appends command-port but does not write event-port (#21)', () => {
+            // Managed C-Gate must keep event-port at its default (20024) so the
+            // load-change/status stream stays on 20025 where cgateweb reads it.
+            // Writing event-port=20025 collided with the load-change-port and
+            // broke light status updates (#21).
             const out = applyCgateConfig({
                 initialConfig: BASE_CONFIG, project: 'HOME', commandPort: 21000, eventPort: 21001
             });
             expect(out).toMatch(/^command-port=21000$/m);
-            expect(out).toMatch(/^event-port=21001$/m);
+            expect(out).not.toMatch(/^event-port=/m);
         });
 
-        test('updates existing command-port / event-port in place', () => {
+        test('updates command-port in place and strips any event-port (#21 self-heal)', () => {
+            // A previously broken install persisted event-port=20025; applying
+            // config must remove it so C-Gate falls back to its default
+            // event-port (20024) and the status stream returns to 20025.
             const cfg = BASE_CONFIG + 'command-port=20023\nevent-port=20025\n';
             const out = applyCgateConfig({
                 initialConfig: cfg, project: 'HOME', commandPort: 30000, eventPort: 30001
             });
             expect(out).toMatch(/^command-port=30000$/m);
-            expect(out).toMatch(/^event-port=30001$/m);
+            expect(out).not.toMatch(/^event-port=/m);
             // No duplicate lines left behind.
             expect(out.match(/^command-port=/gm)).toHaveLength(1);
         });
@@ -293,7 +300,7 @@ describe('cgate-install.sh helpers', () => {
             expect(out).toMatch(/^project\.default=HOME$/m);
             expect(out).toMatch(/^project\.default\.dir=Projects\/$/m);
             expect(out).toMatch(/^command-port=20023$/m);
-            expect(out).toMatch(/^event-port=20025$/m);
+            expect(out).not.toMatch(/^event-port=/m);
         });
 
         test('is idempotent across repeated runs (no duplicate keys)', () => {
