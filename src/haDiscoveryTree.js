@@ -54,7 +54,10 @@ function unitHasDeviceData(unit) {
             const appId = app.ApplicationAddress !== null && app.ApplicationAddress !== undefined
                 ? String(app.ApplicationAddress)
                 : undefined;
-            return appId !== CBUS_NETWORK_MANAGEMENT_APP;
+            // Require a resolvable application id before counting it: a Group with
+            // no ApplicationAddress is incomplete data, and collectUnitGroups skips
+            // it (no appId to map groups to), so it must not mark the tree synced.
+            return Boolean(appId) && appId !== CBUS_NETWORK_MANAGEMENT_APP;
         });
     }
 

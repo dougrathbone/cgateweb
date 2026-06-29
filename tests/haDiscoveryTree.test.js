@@ -286,6 +286,21 @@ describe('unitHasDeviceData', () => {
         expect(unitHasDeviceData({ Application: { ApplicationAddress: '255' } })).toBe(false);
     });
 
+    it('returns false for a structured app that has groups but no ApplicationAddress', () => {
+        // Incomplete unit data: a Group present with no resolvable application id
+        // is not an addressable device, and collectUnitGroups skips it (no appId
+        // to map the groups to), so it must not mark the tree as synced either.
+        expect(unitHasDeviceData({
+            Application: { Group: { GroupAddress: '10' } }
+        })).toBe(false);
+        expect(unitHasDeviceData({
+            Application: { ApplicationAddress: null, Group: { GroupAddress: '10' } }
+        })).toBe(false);
+        expect(unitHasDeviceData({
+            Application: { ApplicationAddress: '', Group: { GroupAddress: '10' } }
+        })).toBe(false);
+    });
+
     it('returns false for a unit with no application or groups', () => {
         expect(unitHasDeviceData({ UnitAddress: '100' })).toBe(false);
     });
