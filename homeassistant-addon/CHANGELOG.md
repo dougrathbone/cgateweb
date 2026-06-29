@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.4] - 2026-06-29
+
+### Fixed
+
+- **Hardened the synced-tree check against incomplete unit data.** A structured TREEXML `Application` entry that carried a group but no application address was wrongly counted as a real device (the network-management comparison treated a missing id as non-management), so discovery could accept a tree as synced while producing no entities. The check now requires a resolvable application id, matching the group-collection logic. (#16 follow-up)
+
 ## [1.15.3] - 2026-06-29
 
 ### Fixed
