@@ -5,6 +5,28 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.5] - 2026-07-10
+
+### Added
+
+- **New auto-type discovery options are now configurable from the add-on UI.** `ha_discovery_auto_type`, `ha_discovery_auto_type_name_heuristics`, and `ha_discovery_auto_type_cover_keywords` can be set directly in the add-on configuration (previously only reachable via a standalone settings file).
+- **Multi-architecture images.** The add-on image is now built for `amd64`, `aarch64`, and `armv7`.
+- Reconnect and timeout intervals that were previously hard-coded (MQTT reconnect/connect timeouts, C-Gate max reconnect attempts, cover ramp update interval) are now overridable settings.
+
+### Fixed
+
+- **Temperature Broadcast (application 25) readings are now published.** Decoded temperature events were parsed but never reached MQTT; they are now published to their dedicated reading topic.
+- **Network auto-discovery now honours its documented default for standalone deployments.** A camelCase/snake_case mismatch (`autoDiscoverNetworks` vs `auto_discover_networks`) left auto-discovery silently disabled for `settings.js`-based installs; it now defaults to on, matching the add-on and the documentation.
+- **Home Assistant discovery no longer leaks internal label state** when a discovery pass throws partway through, preventing stale data on the next run.
+- **The web server reports a proper error** instead of a broken response when a static asset fails to stream.
+- Corrected the Home Assistant add-on installation instructions in the README.
+
+### Changed
+
+- Removed the unimplemented `setvalue` MQTT command from the accepted command set (it had no defined behaviour).
+- Hardened the release workflow so version-sync, add-on validation, static checks, and tests must pass before an image is published.
+- Internal refactoring and additional CI guards (schema/translation parity, type checking) with no change to runtime behaviour.
+
 ## [1.15.4] - 2026-06-29
 
 ### Fixed
