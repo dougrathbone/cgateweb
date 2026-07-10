@@ -96,6 +96,11 @@ describe('CgateWebBridge', () => {
             getallnetapp: null,
             getallonstart: false,
             getallperiod: null,
+            // Network auto-discovery defaults to true (documented behavior). These
+            // unit tests drive _handleAllConnected directly and assert the
+            // getall/HA-discovery path, so opt out to avoid the async tree-request
+            // handshake (mirrors bridgeInitializationService.test.js).
+            autoDiscoverNetworks: false,
             mqttusername: null,
             mqttpassword: null,
             cgateusername: null,
