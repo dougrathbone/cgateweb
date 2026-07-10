@@ -22,6 +22,7 @@ const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
 const { clampSetting } = require('./utils');
+const { parseRawCaptureTarget } = require('./rawEventCapture');
 
 /**
  * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
@@ -555,22 +556,13 @@ class CgateWebBridge {
      * run on every event line (including ones the standard parser can't decode).
      */
     _publishRawEventCapture(line) {
-        const apps = this.settings.cbusRawEventLogApps;
-        if (!apps || apps.length === 0) return;
+        const target = parseRawCaptureTarget(line, this.settings.cbusRawEventLogApps);
+        if (!target) return;
 
-        // Extract the first network/application/group token; application is field 2.
-        // Assumes the address is the first numeric triple on the line, which holds
-        // for every known C-Gate event/status shape (e.g. "lighting on 254/56/4",
-        // "//CLIPSAL/254/56/10", "300 //HOME/254/203/5: level=128").
-        const match = line.match(/(\d+)\/(\d+)\/(\d+)/);
-        if (!match) return;
-        const application = match[2];
-        if (!apps.some(a => String(a) === application)) return;
-
-        this.logger.info(`C-Gate raw capture [app ${application}]: ${line}`);
+        this.logger.info(`C-Gate raw capture [app ${target.application}]: ${line}`);
         try {
             this.mqttManager.publish(
-                `cbus/read/${match[1]}/${match[2]}/${match[3]}/raw`,
+                `cbus/read/${target.network}/${target.application}/${target.group}/raw`,
                 line,
                 { retain: false, qos: 0 }
             );

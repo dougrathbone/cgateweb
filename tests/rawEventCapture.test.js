@@ -1,4 +1,5 @@
 const CgateWebBridge = require('../src/cgateWebBridge');
+const { parseRawCaptureTarget } = require('../src/rawEventCapture');
 
 function buildBridge(apps) {
     const published = [];
@@ -46,5 +47,34 @@ describe('raw event capture', () => {
         const { bridge, published } = buildBridge(['172']);
         bridge._publishRawEventCapture('garbage line with no address');
         expect(published.length).toBe(0);
+    });
+});
+
+describe('parseRawCaptureTarget', () => {
+    it('returns the address triple for a configured app', () => {
+        expect(parseRawCaptureTarget('lighting on 254/172/4', ['172']))
+            .toEqual({ network: '254', application: '172', group: '4' });
+    });
+
+    it('matches app IDs regardless of string/number type', () => {
+        expect(parseRawCaptureTarget('temperature 254/172/3 86', [172]))
+            .toEqual({ network: '254', application: '172', group: '3' });
+    });
+
+    it('returns null when the app is not configured', () => {
+        expect(parseRawCaptureTarget('lighting on 254/56/4', ['172'])).toBeNull();
+    });
+
+    it('returns null for an empty or missing capture list', () => {
+        expect(parseRawCaptureTarget('lighting on 254/56/4', [])).toBeNull();
+        expect(parseRawCaptureTarget('lighting on 254/56/4', null)).toBeNull();
+    });
+
+    it('returns null when there is no address triple', () => {
+        expect(parseRawCaptureTarget('garbage line', ['172'])).toBeNull();
+    });
+
+    it('returns null for a non-string line', () => {
+        expect(parseRawCaptureTarget(undefined, ['172'])).toBeNull();
     });
 });
