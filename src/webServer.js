@@ -635,8 +635,7 @@ class WebServer {
             // SPA fallback: serve index.html for non-API, non-file routes
             const indexPath = path.join(STATIC_DIR, 'index.html');
             if (fs.existsSync(indexPath)) {
-                res.writeHead(200, { 'Content-Type': MIME_TYPES['.html'] });
-                fs.createReadStream(indexPath).pipe(res);
+                this._streamFile(indexPath, MIME_TYPES['.html'], res);
                 return;
             }
             res.writeHead(404);
@@ -646,8 +645,30 @@ class WebServer {
 
         const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        res.writeHead(200, { 'Content-Type': contentType });
-        fs.createReadStream(filePath).pipe(res);
+        this._streamFile(filePath, contentType, res);
+    }
+
+    _streamFile(filePath, contentType, res) {
+        const stream = fs.createReadStream(filePath);
+        // Handle read failures (file removed mid-request, permission error).
+        // Errors on open (ENOENT/EACCES) fire before 'open', so headers are not
+        // yet sent and we can return a 500. A mid-stream read error arrives
+        // after headers are sent, leaving no option but to destroy the response.
+        stream.on('error', (err) => {
+            this.logger.error(`Error streaming static file ${filePath}: ${err.message}`);
+            if (!res.headersSent) {
+                res.writeHead(500);
+                res.end('Internal Server Error');
+            } else {
+                res.destroy(err);
+            }
+        });
+        // Defer the success header until the file descriptor is open so an open
+        // failure can still produce a clean 500 rather than a truncated 200.
+        stream.on('open', () => {
+            res.writeHead(200, { 'Content-Type': contentType });
+            stream.pipe(res);
+        });
     }
 
     _sendJSON(res, statusCode, data) {

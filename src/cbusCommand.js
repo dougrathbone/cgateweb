@@ -121,8 +121,7 @@ class CBusCommand {
                 MQTT_CMD_TYPE_STOP,           // Stop cover movement
                 MQTT_CMD_TYPE_TRIGGER,        // Fire a C-Bus trigger group
                 MQTT_CMD_TYPE_HVAC_SETPOINT,  // HVAC temperature setpoint
-                MQTT_CMD_TYPE_HVAC_MODE,      // HVAC operating mode
-                'setvalue'
+                MQTT_CMD_TYPE_HVAC_MODE       // HVAC operating mode
             ];
             if (!validCommandTypes.includes(this._commandType)) {
                 this._logger.warn(`Invalid MQTT command type: ${this._commandType}`);
@@ -168,7 +167,6 @@ class CBusCommand {
                 break;
             case MQTT_CMD_TYPE_GETALL:
             case MQTT_CMD_TYPE_GETTREE:
-            case 'setvalue':
                 // These commands don't need payload parsing
                 break;
         }

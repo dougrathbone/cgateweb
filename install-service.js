@@ -15,11 +15,12 @@ const BASE_INSTALL_PATH = __dirname;
 function checkDependencies() {
     console.log('Checking dependencies...');
     
-    // Check Node.js version
+    // Check Node.js version. Keep the minimum aligned with package.json engines
+    // (^20.19.0 || ^22.13.0 || >=24).
     const nodeVersion = process.version;
     const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0]);
-    if (majorVersion < 18) {
-        console.error(`Node.js version ${nodeVersion} is too old. Minimum required: v18.0.0`);
+    if (majorVersion < 20) {
+        console.error(`Node.js version ${nodeVersion} is too old. Minimum required: v20.19.0`);
         process.exit(1);
     }
     console.log(`Node.js version: ${nodeVersion} ✓`);

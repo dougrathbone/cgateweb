@@ -210,9 +210,9 @@ describe('CBusCommand', () => {
     });
 
     it('should return null for levels if message is numeric but command type is not ramp/switch', () => {
-        const command = new CBusCommand('cbus/write/254/56/8/setvalue', Buffer.from('42'));
+        const command = new CBusCommand('cbus/write/254/56/8/getall', Buffer.from('42'));
         expect(command.isValid()).toBe(true);
-        expect(command.getCommandType()).toBe('setvalue');
+        expect(command.getCommandType()).toBe('getall');
         expect(command.getLevel()).toBeNull();
     });
 

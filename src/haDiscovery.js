@@ -625,6 +625,18 @@ class HaDiscovery {
             areas: this.areas
         };
 
+        // Wrap the synchronous discovery run so per-run state (label snapshot,
+        // current-run topic set) is always cleared even if a helper throws
+        // mid-run. Otherwise stale references could be read by later code.
+        try {
+            this._runDiscoveryFromTree(networkId, networkData, startTime);
+        } finally {
+            this._labelSnapshot = null;
+            this._currentRunTopics = null;
+        }
+    }
+
+    _runDiscoveryFromTree(networkId, networkData, startTime) {
         let units = networkData.Unit || [];
         if (!Array.isArray(units)) {
             units = [units];
@@ -697,7 +709,6 @@ class HaDiscovery {
         for (const topic of this._currentRunTopics) {
             this._publishedTopics.add(topic);
         }
-        this._currentRunTopics = null;
 
         const duration = Date.now() - startTime;
         const { custom, treexml, fallback } = this.labelStats;
@@ -717,10 +728,6 @@ class HaDiscovery {
         } else {
             this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
         }
-
-        // Clear snapshot so any later code that reaches for it without an
-        // active discovery run fails loudly rather than reading stale data.
-        this._labelSnapshot = null;
     }
 
     /**

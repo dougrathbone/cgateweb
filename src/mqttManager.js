@@ -211,8 +211,8 @@ class MqttManager extends EventEmitter {
 
     _buildConnectOptions() {
         const options = {
-            reconnectPeriod: 5000,
-            connectTimeout: 30000,
+            reconnectPeriod: this.settings.mqttReconnectPeriodMs || 5000,
+            connectTimeout: this.settings.mqttConnectTimeoutMs || 30000,
             will: {
                 topic: MQTT_TOPIC_STATUS,
                 payload: MQTT_PAYLOAD_STATUS_OFFLINE,

@@ -17,9 +17,14 @@
  * tracker.cancelRamp('254/203/5');
  */
 class CoverRampTracker {
-    constructor() {
+    /**
+     * @param {number} [updateIntervalMs=500] - How often to emit interpolated
+     *   position updates during a ramp.
+     */
+    constructor(updateIntervalMs = 500) {
         /** @type {Map<string, {handle: NodeJS.Timeout, startLevel: number, targetLevel: number, durationMs: number, startTime: number}>} */
         this._ramps = new Map();
+        this._updateIntervalMs = updateIntervalMs > 0 ? updateIntervalMs : 500;
     }
 
     /**
@@ -56,7 +61,7 @@ class CoverRampTracker {
             const progress = elapsed / durationMs;
             const currentLevel = Math.round(startLevel + (targetLevel - startLevel) * progress);
             onPosition(currentLevel);
-        }, 500);
+        }, this._updateIntervalMs);
 
         // Allow the Node.js process to exit even if this timer is still running
         if (handle.unref) {

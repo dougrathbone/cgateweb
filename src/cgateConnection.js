@@ -20,7 +20,7 @@ class CgateConnection extends EventEmitter {
         this.connected = false;
         this.reconnectAttempts = 0;
         this.reconnectTimeout = null;
-        this.maxReconnectAttempts = 10;
+        this.maxReconnectAttempts = settings.cgateMaxReconnectAttempts || 10;
         this.reconnectInitialDelay = settings.reconnectinitialdelay || 1000;
         this.reconnectMaxDelay = settings.reconnectmaxdelay || 60000;
         this.connectionTimeout = Math.max(1000, settings.connectionTimeout || 5000);

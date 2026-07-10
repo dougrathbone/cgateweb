@@ -75,7 +75,8 @@ class MqttCommandRouter extends EventEmitter {
         this.airconControlRegistry = options.airconControlRegistry || null;
 
         // Use shared tracker if provided, otherwise create a private one
-        this._coverRampTracker = options.coverRampTracker || new CoverRampTracker();
+        this._coverRampTracker = options.coverRampTracker
+            || new CoverRampTracker(this.settings.coverRampUpdateIntervalMs || 500);
 
         // Track pending relative level operations to prevent duplicate handlers per address
         this._pendingRelativeLevels = new Map();

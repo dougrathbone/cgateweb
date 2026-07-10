@@ -178,6 +178,25 @@ configuration:
     description: >-
       각 트리거 그룹에 대해 이벤트 및 버튼 엔티티 외에 Home Assistant
       장면 엔티티를 생성합니다. 기본값: 활성화.
+  ha_discovery_auto_type:
+    name: Auto-detect Device Types
+    description: >-
+      Automatically classify Lighting (56) groups whose label looks like a
+      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
+      instead of lights. Manual type overrides always take precedence.
+      Default: enabled.
+  ha_discovery_auto_type_name_heuristics:
+    name: Auto-detect Using Label Keywords
+    description: >-
+      When auto-detection is on, match cover keywords in the group label. Turn
+      off to disable keyword matching while keeping other auto-detection.
+      Default: enabled.
+  ha_discovery_auto_type_cover_keywords:
+    name: Cover Detection Keywords
+    description: >-
+      Case-insensitive keywords in a Lighting group label that mark it as a
+      cover (matching also catches plurals). Defaults: blind, shutter, shade,
+      awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: HVAC 애플리케이션 ID
     description: >-

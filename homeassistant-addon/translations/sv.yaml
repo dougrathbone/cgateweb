@@ -184,6 +184,25 @@ configuration:
     description: >-
       Skapa en Home Assistant scenentitet för varje utlösargrupp,
       utöver händelse- och knappentiteter. Standard: aktiverat.
+  ha_discovery_auto_type:
+    name: Auto-detect Device Types
+    description: >-
+      Automatically classify Lighting (56) groups whose label looks like a
+      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
+      instead of lights. Manual type overrides always take precedence.
+      Default: enabled.
+  ha_discovery_auto_type_name_heuristics:
+    name: Auto-detect Using Label Keywords
+    description: >-
+      When auto-detection is on, match cover keywords in the group label. Turn
+      off to disable keyword matching while keeping other auto-detection.
+      Default: enabled.
+  ha_discovery_auto_type_cover_keywords:
+    name: Cover Detection Keywords
+    description: >-
+      Case-insensitive keywords in a Lighting group label that mark it as a
+      cover (matching also catches plurals). Defaults: blind, shutter, shade,
+      awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: HVAC applikations-ID
     description: >-

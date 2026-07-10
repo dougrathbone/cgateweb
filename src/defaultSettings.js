@@ -29,6 +29,12 @@ const defaultSettings = {
     mqttRejectUnauthorized: true,
     reconnectinitialdelay: 1000,
     reconnectmaxdelay: 60000,
+    // Max reconnection attempts for a standalone (non-pooled) C-Gate connection
+    // before it gives up. Pool-managed connections are governed by the pool.
+    cgateMaxReconnectAttempts: 10,
+    // MQTT client reconnect/connect timing (passed to mqtt.js connect options).
+    mqttReconnectPeriodMs: 5000,
+    mqttConnectTimeoutMs: 30000,
     connectionPoolSize: 3,
     healthCheckInterval: 30000,
     keepAliveInterval: 60000,
@@ -39,12 +45,18 @@ const defaultSettings = {
     eventPublishDedupMaxEntries: 5000,
     topicCacheMaxEntries: 5000,
     eventPublishCoalesce: false,
-    auto_discover_networks: true,
+    // Runtime consumers read the camelCase `autoDiscoverNetworks`. The HA add-on
+    // exposes this as the snake_case `auto_discover_networks` option, which
+    // ConfigLoader maps to camelCase; standalone settings.js may use either form.
+    autoDiscoverNetworks: true,
     ha_discovery_enabled: false,
     ha_discovery_prefix: 'homeassistant',
     ha_discovery_networks: [],
     ha_discovery_cover_app_id: null,
     cover_ramp_duration_ms: 5000,
+    // How often (ms) the cover ramp tracker emits interpolated position updates
+    // during a ramp so Home Assistant shows smooth progress.
+    coverRampUpdateIntervalMs: 500,
     ha_discovery_cover_tilt_app_id: null,
     ha_discovery_switch_app_id: null,
     ha_discovery_relay_app_id: null,

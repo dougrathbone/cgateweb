@@ -58,6 +58,14 @@ options:
   getall_app_periods: []
   ha_discovery_networks:
     - 254
+  ha_discovery_auto_type_cover_keywords:
+    - blind
+    - shutter
+    - shade
+    - awning
+    - curtain
+    - roller
+    - garage door
   web_allowed_origins: []
 
 # ─── Schema ─────────────────────────────────────────────────────────
@@ -111,6 +119,9 @@ schema:
   ha_discovery_switch_app_id: "int(1,255)?"
   ha_discovery_trigger_app_id: "int(1,255)?"
   ha_discovery_scene_enabled: "bool?"
+  ha_discovery_auto_type: "bool?"
+  ha_discovery_auto_type_name_heuristics: "bool?"
+  ha_discovery_auto_type_cover_keywords: ["str"]
   ha_discovery_hvac_app_id: "int(1,255)?"
   cbus_aircon_app_id: "int(1,255)?"
   cbus_aircon_control_enabled: "bool?"

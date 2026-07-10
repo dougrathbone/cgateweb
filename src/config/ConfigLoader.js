@@ -269,6 +269,18 @@ class ConfigLoader {
             if (options.ha_hvac_temperature_unit) {
                 config.ha_hvac_temperature_unit = options.ha_hvac_temperature_unit;
             }
+
+            // Automatic device-type detection (covers on the Lighting app).
+            if (options.ha_discovery_auto_type !== undefined && options.ha_discovery_auto_type !== null) {
+                config.ha_discovery_auto_type = options.ha_discovery_auto_type === true;
+            }
+            if (options.ha_discovery_auto_type_name_heuristics !== undefined && options.ha_discovery_auto_type_name_heuristics !== null) {
+                config.ha_discovery_auto_type_name_heuristics = options.ha_discovery_auto_type_name_heuristics === true;
+            }
+            if (Array.isArray(options.ha_discovery_auto_type_cover_keywords) && options.ha_discovery_auto_type_cover_keywords.length > 0) {
+                config.ha_discovery_auto_type_cover_keywords = options.ha_discovery_auto_type_cover_keywords
+                    .filter((k) => typeof k === 'string' && k.trim() !== '');
+            }
         }
 
         if (options.ha_bridge_diagnostics_enabled !== undefined && options.ha_bridge_diagnostics_enabled !== null) {
@@ -363,13 +375,22 @@ class ConfigLoader {
 
         // Warn about unrecognized settings keys (likely typos)
         const knownKeys = new Set(Object.keys(defaultSettings));
-        // Also accept keys that are set internally or by ConfigLoader
-        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'cgate_mode', 'cgate_install_source']);
+        // Also accept keys that are set internally or by ConfigLoader, plus the
+        // legacy snake_case alias for network auto-discovery.
+        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'auto_discover_networks', 'cgate_mode', 'cgate_install_source']);
         for (const key of Object.keys(config)) {
             if (!knownKeys.has(key) && !internalKeys.has(key)) {
                 this.logger.warn(`Unknown setting "${key}" in settings.js — check for typos. This key will be ignored by defaults.`);
             }
         }
+
+        // Bridge the legacy snake_case `auto_discover_networks` to the camelCase
+        // key the runtime reads, so standalone configs using either form work.
+        if (config.auto_discover_networks !== undefined && config.autoDiscoverNetworks === undefined) {
+            config.autoDiscoverNetworks = config.auto_discover_networks === true
+                || config.auto_discover_networks === 'true';
+        }
+        delete config.auto_discover_networks;
 
         if (typeof config.getallonstart === 'string') {
             config.getallonstart = config.getallonstart.toLowerCase() === 'true';

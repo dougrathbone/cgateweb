@@ -6,7 +6,7 @@ Welcome! This guide will help you get started contributing to CGateWeb, a Node.j
 
 ### Prerequisites
 
-- **Node.js 14+**: This project uses modern JavaScript features
+- **Node.js 20.19+** (or 22.13+, or 24+): matches the `engines` field in `package.json`
 - **C-Gate Server**: Clipsal's C-Bus automation gateway software
 - **MQTT Broker**: Like Mosquitto or built into Home Assistant
 - **Git**: For version control and contributing

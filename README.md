@@ -18,20 +18,20 @@ Connects to C-Gate over TCP, publishes C-Bus events to an MQTT broker, and suppo
 
 ### Install:
 
-**Option 1: Home Assistant Addon (Recommended for HA users)**
+**Option 1: Home Assistant Add-on (Recommended for HA users)**
 
-1. **Add HACS Repository:**
-   - In Home Assistant, go to HACS → Integrations
-   - Click the 3-dot menu → Custom repositories
+The add-on is distributed through the Home Assistant **Supervisor Add-on Store**, not HACS.
+
+1. **Add the Add-on Repository:**
+   - In Home Assistant, go to Settings → Add-ons → Add-on Store
+   - Click the 3-dot menu (top right) → Repositories
    - Add repository: `https://github.com/dougrathbone/cgateweb-homeassistant`
-   - Category: Add-on
 
-2. **Install Addon:**
-   - Search for "cgateweb" in HACS
-   - Install the addon
-   - Go to Settings → Add-ons → cgateweb
+2. **Install the Add-on:**
+   - Refresh the Add-on Store and find "cgateweb" under the newly added repository
+   - Click it and select Install
    - Configure your C-Gate and MQTT settings in the Configuration tab
-   - Start the addon
+   - Start the add-on
 
 **Option 2: Standalone Installation**
 
@@ -201,3 +201,7 @@ This project uses Jest for unit testing.
 
 This project is actively developed against Home Assistant, but should work with any MQTT-compatible system.
 It assumes the default cgate ports
+
+### License
+
+Released under the [MIT License](LICENSE.txt). Originally created by Steven Lazidis; currently maintained by Doug Rathbone.
