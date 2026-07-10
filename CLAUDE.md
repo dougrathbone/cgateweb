@@ -54,8 +54,12 @@ When modifying `homeassistant-addon/config.yaml`, follow these rules to prevent 
 
 ### Core Components
 
-- **index.js**: Main application entry point containing connection management, settings loading, C-Gate communication, MQTT handling, and Home Assistant discovery
-- **settings.js**: Configuration file containing C-Gate server details, MQTT broker settings, and Home Assistant discovery options
+- **index.js**: Thin bootstrap entry point. Loads/validates settings and starts `CgateWebBridge`; the actual logic lives in the `src/` modules below.
+- **src/cgateWebBridge.js**: Central coordinator wiring together connections, MQTT, the command router, event publisher, device state, and HA discovery.
+- **src/** modules: Focused units for each concern, e.g. `mqttManager.js`, `mqttCommandRouter.js`, `cgateConnection.js`/`commandConnectionPool.js`, `eventPublisher.js`, `deviceStateManager.js`, `haDiscovery.js`, `cbusEvent.js`/`cbusCommand.js` (parsers), and `applicationDecoders/` (e.g. Temperature Broadcast).
+- **src/defaultSettings.js**: Canonical default settings; runtime keys are camelCase.
+- **src/config/ConfigLoader.js**: Loads standalone `settings.js` or the Home Assistant add-on options and normalizes them (e.g. bridges the add-on's snake_case `auto_discover_networks` to the runtime `autoDiscoverNetworks`).
+- **settings.js**: Standalone configuration file containing C-Gate server details, MQTT broker settings, and Home Assistant discovery options
 - **install-service.js**: Systemd service installer for Linux deployment
 
 ### Key Architecture Patterns

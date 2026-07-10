@@ -258,21 +258,22 @@ describe('DeviceStateManager', () => {
             expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
         });
 
-        it('should timeout and clean up operation', (done) => {
+        it('should timeout and clean up operation', () => {
+            jest.useFakeTimers();
             const callback = jest.fn();
             const address = '254/56/4';
-            const timeout = 100; // Short timeout for test
+            const timeout = 100;
 
             stateManager.setupRelativeLevelOperation(address, callback, timeout);
 
-            setTimeout(() => {
-                expect(callback).not.toHaveBeenCalled();
-                expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
-                expect(mockLogger.warn).toHaveBeenCalledWith(
-                    expect.stringContaining('Timeout waiting for level response from 254/56/4')
-                );
-                done();
-            }, timeout + 50);
+            jest.advanceTimersByTime(timeout + 50);
+
+            expect(callback).not.toHaveBeenCalled();
+            expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
+            expect(mockLogger.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Timeout waiting for level response from 254/56/4')
+            );
+            jest.useRealTimers();
         });
 
         it('should handle multiple operations for different addresses', () => {

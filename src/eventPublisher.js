@@ -82,6 +82,18 @@ class EventPublisher {
         const rawLevel = event.getLevel();
         const actionIsOn = action === CGATE_CMD_ON.toLowerCase();
 
+        // Specialised application decoders (e.g. Temperature Broadcast, app 25)
+        // attach a structured reading to the event. Publish it to the dedicated
+        // reading topic and skip the lighting/state path entirely.
+        const reading = event.getReading && event.getReading();
+        if (reading) {
+            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                this.logger.debug(`C-Bus Reading ${source}: ${network}/${application}/${group} ${reading.kind}`);
+            }
+            this.publishReading(network, application, group, reading);
+            return;
+        }
+
         const topics = this._getTopicsForAddress(network, application, group);
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
         const isTrigger = application === this.settings.ha_discovery_trigger_app_id;

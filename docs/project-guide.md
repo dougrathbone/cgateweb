@@ -41,7 +41,7 @@
     * `cbus/write/<network>/<application>/<group>/ramp`:
         * Accepts a percentage (e.g., `50`) to ramp to that level.
         * Accepts percentage and time (e.g., `50,4s`, `100,2m`) for timed ramps.
-        * Accepts `INCREASE` or `DECREASE` to ramp level up/down by a predefined step (5% noted).
+        * Accepts `INCREASE` or `DECREASE` to ramp level up/down by a predefined step (~10%, i.e. C-Bus level 26 of 255).
         * Accepts `ON` or `OFF` as synonyms for 100% / 0% ramp (or immediate switch?).
     * `cbus/write/<network>/<application>//getall`: Triggers a query to C-Gate to get the current status of all groups; results are published on the respective `cbus/read/...` topics.
     * `cbus/write/<network>///gettree`: Triggers a query to C-Gate for the network tree; the result is published on `cbus/read/<network>///tree`.

@@ -210,37 +210,27 @@ describe('processLines utility function', () => {
         processedLines = [];
     });
 
-    it('should process complete lines', (done) => {
-        // Since processLines uses streams, we need to handle async behavior
-        setTimeout(() => {
-            const remaining = processLines('line1\nline2\n', (line) => processedLines.push(line));
-            expect(processedLines).toEqual(['line1', 'line2']);
-            expect(remaining).toBe('');
-            done();
-        }, 10);
+    it('should process complete lines', () => {
+        const remaining = processLines('line1\nline2\n', (line) => processedLines.push(line));
+        expect(processedLines).toEqual(['line1', 'line2']);
+        expect(remaining).toBe('');
     });
 
-    it('should handle Buffer input', (done) => {
-        setTimeout(() => {
-            const buffer = Buffer.from('line1\nline2\n');
-            const remaining = processLines(buffer, (line) => processedLines.push(line));
-            expect(processedLines).toEqual(['line1', 'line2']);
-            expect(remaining).toBe('');
-            done();
-        }, 10);
+    it('should handle Buffer input', () => {
+        const buffer = Buffer.from('line1\nline2\n');
+        const remaining = processLines(buffer, (line) => processedLines.push(line));
+        expect(processedLines).toEqual(['line1', 'line2']);
+        expect(remaining).toBe('');
     });
 
-    it('should respect custom options', (done) => {
-        setTimeout(() => {
-            const remaining = processLines(
-                '  line1  \n  line2  \n',
-                (line) => processedLines.push(line),
-                { trimLines: false }
-            );
-            expect(processedLines).toEqual(['  line1  ', '  line2  ']);
-            expect(remaining).toBe('');
-            done();
-        }, 10);
+    it('should respect custom options', () => {
+        const remaining = processLines(
+            '  line1  \n  line2  \n',
+            (line) => processedLines.push(line),
+            { trimLines: false }
+        );
+        expect(processedLines).toEqual(['  line1  ', '  line2  ']);
+        expect(remaining).toBe('');
     });
 
     it('should return remaining partial buffer for incomplete input', () => {

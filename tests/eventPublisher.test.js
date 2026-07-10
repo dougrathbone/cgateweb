@@ -55,6 +55,29 @@ describe('EventPublisher', () => {
             expect(mockPublishFn).not.toHaveBeenCalled();
         });
 
+        it('should publish current_temperature for a Temperature Broadcast (app 25) event', () => {
+            // App 25 has a specialised decoder that attaches a structured reading
+            // (byte / 4 = °C). publishEvent must route it to current_temperature
+            // and skip the lighting state/level path.
+            const event = new CBusEvent('lighting ramp 254/25/3 86');
+            expect(event.isValid()).toBe(true);
+            expect(event.getReading()).toEqual({ kind: 'temperature', group: '3', celsius: 21.5, unit: 'C' });
+
+            eventPublisher.publishEvent(event, '(Test)');
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/25/3/current_temperature',
+                '21.5',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'cbus/read/254/25/3/state',
+                expect.anything(),
+                expect.anything()
+            );
+        });
+
         it('should publish lighting device ON event with state and level', () => {
             const eventData = 'lighting on 254/56/16';
             const event = new CBusEvent(eventData);
