@@ -1,5 +1,6 @@
 const fs = require('fs');
 const net = require('net');
+const path = require('path');
 const CgateManager = require('../../src/config/CgateManager');
 
 jest.mock('fs');
@@ -93,9 +94,13 @@ describe('CgateManager', () => {
         });
 
         test('should detect installed C-Gate in managed mode', () => {
+            // Build the expected paths with path.join so the comparison matches
+            // the source's separators on any OS (backslashes on Windows).
+            const jarPath = path.join('/data/cgate', 'cgate.jar');
+            const accessPath = path.join('/data/cgate', 'config', 'access.txt');
             fs.existsSync.mockImplementation((p) => {
-                if (p === '/data/cgate/cgate.jar') return true;
-                if (p === '/data/cgate/config/access.txt') return true;
+                if (p === jarPath) return true;
+                if (p === accessPath) return true;
                 return false;
             });
 

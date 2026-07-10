@@ -2,6 +2,11 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { posixBashAvailable } = require('./helpers/posixBash');
+
+// These tests source the Linux rootfs shell script via bash; only run where a
+// POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
+const describeBash = posixBashAvailable() ? describe : describe.skip;
 
 const SCRIPT = path.join(
     __dirname,
@@ -107,7 +112,7 @@ function runHelperWithArgs(helperName, args = [], configObject = {}) {
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
 
-describe('cgate-install.sh helpers', () => {
+describeBash('cgate-install.sh helpers', () => {
     describe('_cgateweb_resolve_download_url', () => {
         test('falls back to default URL when cgate_download_url is unset', () => {
             const url = callHelper('_cgateweb_resolve_download_url', {});

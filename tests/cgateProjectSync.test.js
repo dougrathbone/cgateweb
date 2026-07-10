@@ -2,6 +2,11 @@ const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { posixBashAvailable } = require('./helpers/posixBash');
+
+// These tests source the Linux rootfs shell script via bash; only run where a
+// POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
+const describeBash = posixBashAvailable() ? describe : describe.skip;
 
 const SCRIPT = path.join(
     __dirname,
@@ -71,7 +76,7 @@ function runSync({ shareTag, dataCgate, configObject = {} }) {
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
 
-describe('cgate-project-sync.sh', () => {
+describeBash('cgate-project-sync.sh', () => {
     let dirs;
 
     beforeEach(() => {

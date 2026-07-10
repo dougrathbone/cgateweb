@@ -7,7 +7,9 @@ const { runCommand, checkRoot } = require('./src/systemUtils');
 
 const SERVICE_NAME = 'cgateweb.service';
 const TARGET_SYSTEMD_DIR = '/etc/systemd/system';
-const TARGET_SERVICE_FILE = path.join(TARGET_SYSTEMD_DIR, SERVICE_NAME);
+// systemd paths are always POSIX; use path.posix so the constant is correct
+// even when this file is required on a non-POSIX dev host (e.g. Windows tests).
+const TARGET_SERVICE_FILE = path.posix.join(TARGET_SYSTEMD_DIR, SERVICE_NAME);
 
 
 function uninstallService() {
