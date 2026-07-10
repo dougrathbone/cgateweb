@@ -1,9 +1,10 @@
-const { EventEmitter } = require('events');
 const MqttCommandRouter = require('../src/mqttCommandRouter');
+const DeviceStateManager = require('../src/deviceStateManager');
 
 describe('MqttCommandRouter', () => {
     let router;
     let mockQueue;
+    let deviceStateManager;
     let mockInternalEmitter;
     let queueSpy;
 
@@ -11,16 +12,25 @@ describe('MqttCommandRouter', () => {
         mockQueue = {
             add: jest.fn()
         };
-        mockInternalEmitter = new EventEmitter();
-        
+        // Relative-level operations are owned by DeviceStateManager; the router
+        // delegates to it. Share its event emitter so level responses reach the
+        // registered handlers (matches the wiring in CgateWebBridge).
+        deviceStateManager = new DeviceStateManager({ settings: {} });
+        mockInternalEmitter = deviceStateManager.getEventEmitter();
+
         router = new MqttCommandRouter({
             cbusname: 'TestProject',
             ha_discovery_enabled: true,
             internalEventEmitter: mockInternalEmitter,
+            deviceStateManager,
             cgateCommandQueue: mockQueue
         });
 
         queueSpy = jest.spyOn(mockQueue, 'add');
+    });
+
+    afterEach(() => {
+        deviceStateManager.shutdown();
     });
 
     afterEach(() => {

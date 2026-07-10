@@ -78,9 +78,6 @@ class MqttCommandRouter extends EventEmitter {
         this._coverRampTracker = options.coverRampTracker
             || new CoverRampTracker(this.settings.coverRampUpdateIntervalMs || 500);
 
-        // Track pending relative level operations to prevent duplicate handlers per address
-        this._pendingRelativeLevels = new Map();
-
         this.logger = createLogger({
             component: 'MqttCommandRouter',
             level: 'info'
@@ -315,62 +312,34 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleRelativeLevel(cbusPath, levelAddress, step, limit, actionName) {
-        // Cancel any existing pending operation for this address to prevent duplicate handlers
-        this._cancelPendingRelativeLevel(levelAddress);
+        if (!this.deviceStateManager) {
+            this.logger.warn(`Cannot process ${actionName} for ${levelAddress}: no device state manager available`);
+            return;
+        }
 
-        const cleanup = () => {
-            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-            this._pendingRelativeLevels.delete(levelAddress);
-            clearTimeout(timeoutHandle);
-        };
-
-        const levelHandler = (address, currentLevel) => {
-            if (address === levelAddress) {
-                cleanup();
-                const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
-                this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
-
-                const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`;
-                this._queueCommand(cgateCommand);
-            }
-        };
+        // Supersede any in-flight operation for this address so the latest
+        // command wins, then delegate listener/timeout management to the
+        // DeviceStateManager (single owner of relative-level operations).
+        this.deviceStateManager.cancelRelativeLevelOperation(levelAddress);
 
         const timeoutMs = this.settings.relativeLevelTimeoutMs || 5000;
-        const timeoutHandle = setTimeout(() => {
-            cleanup();
-            this.logger.warn(`Timeout waiting for level response from ${levelAddress} during ${actionName}`);
-        }, timeoutMs).unref();
+        this.deviceStateManager.setupRelativeLevelOperation(levelAddress, (currentLevel) => {
+            const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
+            this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
+            this._queueCommand(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);
+        }, timeoutMs);
 
-        this._pendingRelativeLevels.set(levelAddress, { handler: levelHandler, timeoutHandle });
-        this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-
-        // Query current level first
+        // Query current level first; the response drives the callback above.
         const queryCommand = `${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`;
         this._queueCommand(queryCommand);
-    }
-
-    /**
-     * Cancels a pending relative level operation for the given address.
-     * Removes the event listener and clears the timeout.
-     * @param {string} levelAddress - Address to cancel
-     * @private
-     */
-    _cancelPendingRelativeLevel(levelAddress) {
-        const pending = this._pendingRelativeLevels.get(levelAddress);
-        if (pending) {
-            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, pending.handler);
-            clearTimeout(pending.timeoutHandle);
-            this._pendingRelativeLevels.delete(levelAddress);
-            this.logger.debug(`Superseded pending relative level operation for ${levelAddress}`);
-        }
     }
 
     /**
      * Cleans up pending relative level operations (timers and listeners).
      */
     shutdown() {
-        for (const [address] of this._pendingRelativeLevels) {
-            this._cancelPendingRelativeLevel(address);
+        if (this.deviceStateManager) {
+            this.deviceStateManager.clearAllOperations();
         }
     }
 
