@@ -35,7 +35,6 @@
   "overrides": {
     "js-yaml": "^4.2.0"
   },
-  "types": "./types/index.d.ts",
   "scripts": {
     "start": "node index.js",
     "test": "jest",
@@ -60,6 +59,8 @@
     "perf:run": "npm run perf:raw && npm run perf:dedup && npm run perf:compare",
     "validate:addon-config": "node tools/validate-addon-config.js",
     "validate:translations": "node tools/validate-translations.js",
+    "validate:schema-i18n": "node tools/validate-schema-i18n.js",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js",
     "lint:fix": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --fix",
     "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\"",

@@ -55,6 +55,10 @@ jobs:
       run: npm run validate:addon-config
     - name: Validate translation key parity
       run: npm run validate:translations
+    - name: Validate schema <-> translation parity
+      run: npm run validate:schema-i18n
+    - name: Typecheck (tsc --noEmit)
+      run: npm run typecheck
 
   static-checks:
     name: Lint workflows, shell scripts & Dockerfiles
@@ -129,11 +133,23 @@ jobs:
         retention-days: 7
 
   addon-image:
-    name: Build add-on image (amd64)
+    name: Build add-on image (${{ matrix.arch }})
     runs-on: ubuntu-latest
+    # Build the real add-on image for every architecture the add-on ships to,
+    # so arch-specific breakage (base image tags, native modules under
+    # emulation) is caught in CI rather than on users' devices. Non-amd64
+    # builds run under QEMU binfmt emulation.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, aarch64, armv7]
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+    - name: Set up QEMU (multi-arch emulation)
+      if: matrix.arch != 'amd64'
+      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
 
     - name: Assemble add-on build context
       # The production homeassistant-addon/Dockerfile expects package.json,
@@ -151,20 +167,21 @@ jobs:
     - name: Build image
       run: |
         docker build \
-          --build-arg BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.19 \
-          --build-arg BUILD_ARCH=amd64 \
+          --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.19 \
+          --build-arg BUILD_ARCH=${{ matrix.arch }} \
           --build-arg BUILD_VERSION=ci \
           --build-arg BUILD_DATE=ci \
           --build-arg BUILD_REF="${GITHUB_SHA}" \
-          -t cgateweb-addon:ci \
+          -t cgateweb-addon:ci-${{ matrix.arch }} \
           ctx
 
     - name: Smoke-check image contents
       # Override the s6/bashio entrypoint (which needs the HA Supervisor) and
       # assert the image is structurally sound: Node present, app files and
       # production dependencies installed, and the entrypoint script in place.
+      # For non-amd64 the container runs under QEMU emulation.
       run: |
-        docker run --rm --entrypoint /bin/bash cgateweb-addon:ci -c '
+        docker run --rm --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
           set -e
           command -v node
           test -f /run.sh

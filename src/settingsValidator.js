@@ -1,4 +1,5 @@
 const { createLogger } = require('./logger');
+const { isPortInRange, isValidMqttAddress } = require('./config/validationRules');
 
 /**
  * Centralized settings validation utility for cgateweb
@@ -77,8 +78,7 @@ class SettingsValidator {
 
         // Check MQTT format (should be host:port or mqtt://host:port)
         if (typeof settings.mqtt === 'string') {
-            const mqttPattern = /^(mqtt:\/\/)?[\w.-]+:\d+$/;
-            if (!mqttPattern.test(settings.mqtt)) {
+            if (!isValidMqttAddress(settings.mqtt)) {
                 errors.push('MQTT broker address should be in format "host:port" or "mqtt://host:port"');
             }
         }
@@ -93,7 +93,7 @@ class SettingsValidator {
         
         for (const portSetting of ports) {
             const port = settings[portSetting];
-            if (typeof port === 'number' && (port < 1 || port > 65535)) {
+            if (typeof port === 'number' && !isPortInRange(port)) {
                 errors.push(`${portSetting} must be between 1 and 65535`);
             }
         }

@@ -3,6 +3,7 @@ const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 const { defaultSettings } = require('../defaultSettings');
 const { DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
+const { isPortInRange } = require('./validationRules');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -564,11 +565,11 @@ class ConfigLoader {
             errors.push('C-Gate project name (cbusname) must not contain spaces, slashes, or quotes');
         }
 
-        if (configToValidate.cbuscommandport && (typeof configToValidate.cbuscommandport === 'number') && (configToValidate.cbuscommandport < 1 || configToValidate.cbuscommandport > 65535)) {
+        if (configToValidate.cbuscommandport && (typeof configToValidate.cbuscommandport === 'number') && !isPortInRange(configToValidate.cbuscommandport)) {
             errors.push('C-Gate command port must be between 1 and 65535');
         }
 
-        if (configToValidate.cbuseventport && (typeof configToValidate.cbuseventport === 'number') && (configToValidate.cbuseventport < 1 || configToValidate.cbuseventport > 65535)) {
+        if (configToValidate.cbuseventport && (typeof configToValidate.cbuseventport === 'number') && !isPortInRange(configToValidate.cbuseventport)) {
             errors.push('C-Gate event port must be between 1 and 65535');
         }
 
