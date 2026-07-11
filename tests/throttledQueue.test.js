@@ -269,6 +269,15 @@ describe('ThrottledQueue', () => {
     });
 
     describe('priority and processing gate', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            jest.clearAllTimers();
+        });
+
+        afterEach(() => {
+            jest.useFakeTimers();
+        });
+
         it('should process higher-priority items before lower-priority ones', () => {
             const processed = [];
             const queue = new ThrottledQueue(
