@@ -180,8 +180,22 @@ describe('MqttManager', () => {
             expect(mockClient.publish).toHaveBeenCalledWith(topic, payload, options);
         });
 
-        it('should warn when not connected', () => {
+        it('should debug (not warn) when publishing before first MQTT connect', () => {
             mqttManager.connected = false;
+            mqttManager._hasConnectedOnce = false;
+            const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+            const debugSpy = jest.spyOn(mqttManager.logger, 'debug');
+
+            mqttManager.publish('test/topic', 'message', { retain: true });
+
+            expect(mockClient.publish).not.toHaveBeenCalled();
+            expect(warnSpy).not.toHaveBeenCalled();
+            expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT not connected'));
+        });
+
+        it('should warn when not connected after a prior successful connect', () => {
+            mqttManager.connected = false;
+            mqttManager._hasConnectedOnce = true;
             const loggerSpy = jest.spyOn(mqttManager.logger, 'warn');
 
             mqttManager.publish('test/topic', 'message');
@@ -190,8 +204,9 @@ describe('MqttManager', () => {
             expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT not connected'));
         });
 
-        it('should warn only once when publishing repeatedly while disconnected', () => {
+        it('should warn only once when publishing repeatedly while disconnected after first connect', () => {
             mqttManager.connected = false;
+            mqttManager._hasConnectedOnce = true;
             const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
 
             for (let i = 0; i < 50; i++) {
@@ -201,6 +216,18 @@ describe('MqttManager', () => {
             expect(mockClient.publish).not.toHaveBeenCalled();
             expect(warnSpy).toHaveBeenCalledTimes(1);
             expect(mqttManager._droppedPublishCount).toBe(50);
+        });
+
+        it('should set _hasConnectedOnce on connect so later disconnects warn', () => {
+            expect(mqttManager._hasConnectedOnce).toBe(false);
+            mockClient.connected = true;
+            mqttManager.client.emit('connect');
+            expect(mqttManager._hasConnectedOnce).toBe(true);
+
+            mqttManager.connected = false;
+            const warnSpy = jest.spyOn(mqttManager.logger, 'warn');
+            mqttManager.publish('test/topic', 'after disconnect', { retain: true });
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT not connected'));
         });
 
         it('should log roll-up summary on reconnect after disconnected drops', () => {

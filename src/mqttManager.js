@@ -46,6 +46,10 @@ class MqttManager extends EventEmitter {
         this._lastStatusPayload = null;
         this._droppedPublishCount = 0;
         this._droppedPublishWarned = false;
+        // Sticky for process lifetime: first-boot publishes before MQTT connects
+        // are expected (diagnostics during start()); only warn after we have
+        // successfully connected at least once (true mid-session disconnect).
+        this._hasConnectedOnce = false;
 
         // Pre-connect / disconnect publish queue. Retained-state publishes
         // attempted while the broker is unreachable are queued here and
@@ -138,7 +142,12 @@ class MqttManager extends EventEmitter {
                 this._enqueueRetainedPublish(topic, payload, options);
             }
             if (!this._droppedPublishWarned) {
-                this.logger.warn('MQTT not connected; queueing retained publishes for replay on reconnect (further drops suppressed)');
+                const msg = 'MQTT not connected; queueing retained publishes for replay on reconnect (further drops suppressed)';
+                if (this._hasConnectedOnce) {
+                    this.logger.warn(msg);
+                } else {
+                    this.logger.debug(msg);
+                }
                 this._droppedPublishWarned = true;
             }
             return false;
@@ -260,6 +269,7 @@ class MqttManager extends EventEmitter {
     _handleConnect() {
         this._connecting = false;
         this.connected = true;
+        this._hasConnectedOnce = true;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
 
         if (this._pendingPublishEvicted > 0) {
