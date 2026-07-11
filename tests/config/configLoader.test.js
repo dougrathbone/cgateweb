@@ -612,6 +612,37 @@ describe('ConfigLoader', () => {
             expect(() => configLoader.validate(configWithInvalidPort)).toThrow('C-Gate event port must be between 1 and 65535');
         });
 
+        test('should reject unsafe cbusname values', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cbusname: 'HOME/254'
+            };
+            expect(() => configLoader.validate(config)).toThrow(/cbusname/);
+        });
+
+        test('should reject LOGIN credentials that could inject commands', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cbusname: 'HOME',
+                cgateusername: 'admin',
+                cgatepassword: 'x\nSHUTDOWN\n'
+            };
+            expect(() => configLoader.validate(config)).toThrow(/cgatepassword/);
+        });
+
+        test('should accept clean cbusname and credentials', () => {
+            const config = {
+                cbusip: '127.0.0.1',
+                mqtt: '127.0.0.1:1883',
+                cbusname: '5COGAN',
+                cgateusername: 'admin',
+                cgatepassword: 's3cret!'
+            };
+            expect(() => configLoader.validate(config)).not.toThrow();
+        });
+
         test('should pass validation for valid configuration', () => {
             const validConfig = {
                 cbusip: '127.0.0.1',

@@ -248,6 +248,34 @@ describe('CgateConnection', () => {
                 // This test verifies the connection setup logic
                 expect(eventConnection.connected).toBe(true);
             });
+
+            it('should send LOGIN for command connections with safe credentials', () => {
+                const cmd = new CgateConnection('command', 'localhost', 20023, {
+                    ...settings,
+                    cgateusername: 'admin',
+                    cgatepassword: 's3cret!'
+                });
+                cmd.connect();
+                mockSocket.emit('connect');
+
+                expect(mockSocket.write).toHaveBeenCalledWith(expect.stringContaining('EVENT ON'));
+                expect(mockSocket.write).toHaveBeenCalledWith('LOGIN admin s3cret!\n');
+            });
+
+            it('should refuse LOGIN when password contains newlines', () => {
+                const cmd = new CgateConnection('command', 'localhost', 20023, {
+                    ...settings,
+                    cgateusername: 'admin',
+                    cgatepassword: 'x\nSHUTDOWN\n'
+                });
+                const errorSpy = jest.spyOn(cmd.logger, 'error');
+                cmd.connect();
+                mockSocket.emit('connect');
+
+                expect(mockSocket.write).toHaveBeenCalledWith(expect.stringContaining('EVENT ON'));
+                expect(mockSocket.write).not.toHaveBeenCalledWith(expect.stringContaining('LOGIN'));
+                expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Refusing to send LOGIN'));
+            });
         });
 
         describe('timeout event', () => {

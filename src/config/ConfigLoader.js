@@ -3,7 +3,7 @@ const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 const { defaultSettings } = require('../defaultSettings');
 const { DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
-const { isPortInRange } = require('./validationRules');
+const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./validationRules');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -561,8 +561,20 @@ class ConfigLoader {
 
         if (!configToValidate.cbusname) {
             warnings.push('C-Gate project name (cbusname) not specified, using default');
-        } else if (/[/\\\s"']/.test(configToValidate.cbusname)) {
-            errors.push('C-Gate project name (cbusname) must not contain spaces, slashes, or quotes');
+        } else if (!isValidCgateProjectName(configToValidate.cbusname)) {
+            errors.push('C-Gate project name (cbusname) must be 1-32 characters of letters, digits, or underscore');
+        }
+
+        const hasCgateUser = configToValidate.cgateusername
+            && typeof configToValidate.cgateusername === 'string'
+            && configToValidate.cgateusername.trim() !== '';
+        if (hasCgateUser) {
+            if (!isValidCgateUsername(configToValidate.cgateusername.trim())) {
+                errors.push('C-Gate username (cgateusername) must be 1-32 characters of letters, digits, or underscore');
+            }
+            if (!isValidCgatePassword(configToValidate.cgatepassword)) {
+                errors.push('C-Gate password (cgatepassword) must be 1-64 printable ASCII characters with no spaces or control characters');
+            }
         }
 
         if (configToValidate.cbuscommandport && (typeof configToValidate.cbuscommandport === 'number') && !isPortInRange(configToValidate.cbuscommandport)) {

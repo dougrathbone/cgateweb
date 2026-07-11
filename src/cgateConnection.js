@@ -7,6 +7,7 @@ const {
     CGATE_CMD_LOGIN, 
     NEWLINE 
 } = require('./constants');
+const { isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
 
 class CgateConnection extends EventEmitter {
     constructor(type, host, port, settings = {}) {
@@ -260,9 +261,17 @@ class CgateConnection extends EventEmitter {
                 const user = this.settings.cgateusername;
                 const pass = this.settings.cgatepassword;
                 if (user && typeof user === 'string' && user.trim() !== '' && typeof pass === 'string') {
-                    const loginCmd = `${CGATE_CMD_LOGIN} ${user.trim()} ${pass}${NEWLINE}`;
-                    this.logger.info(`Sending LOGIN command for user '${user.trim()}'...`);
-                    this.socket.write(loginCmd);
+                    const trimmedUser = user.trim();
+                    if (!isValidCgateUsername(trimmedUser) || !isValidCgatePassword(pass)) {
+                        this.logger.error(
+                            'Refusing to send LOGIN: username/password contain unsafe characters '
+                            + '(spaces, newlines, or non-printable). Fix cgateusername/cgatepassword in settings.'
+                        );
+                    } else {
+                        const loginCmd = `${CGATE_CMD_LOGIN} ${trimmedUser} ${pass}${NEWLINE}`;
+                        this.logger.info(`Sending LOGIN command for user '${trimmedUser}'...`);
+                        this.socket.write(loginCmd);
+                    }
                 }
             } else {
                 this.logger.warn(`Command socket not available to send initial commands (EVENT ON / LOGIN).`);

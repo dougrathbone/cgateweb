@@ -1,5 +1,5 @@
 const { createLogger } = require('./logger');
-const { isPortInRange, isValidMqttAddress } = require('./config/validationRules');
+const { isPortInRange, isValidMqttAddress, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
 
 /**
  * Centralized settings validation utility for cgateweb
@@ -47,6 +47,7 @@ class SettingsValidator {
         // Additional specific validations
         this._validateMqttSetting(settings, errors);
         this._validatePortSettings(settings, errors);
+        this._validateCgateIdentifiers(settings, errors);
         this._validateHomeAssistantSettings(settings, errors);
         this._validateRawEventCaptureSettings(settings, errors);
         this._validateAirconSettings(settings, errors);
@@ -101,6 +102,30 @@ class SettingsValidator {
         // Check for port conflicts
         if (settings.cbuscommandport === settings.cbuseventport) {
             errors.push('C-Gate command port and event port cannot be the same');
+        }
+    }
+
+    /**
+     * Validate C-Gate project name and optional LOGIN credentials.
+     * Rejects values that could inject extra commands on the newline-delimited socket.
+     * @private
+     */
+    _validateCgateIdentifiers(settings, errors) {
+        if (typeof settings.cbusname === 'string' && settings.cbusname
+            && !isValidCgateProjectName(settings.cbusname)) {
+            errors.push('cbusname must be 1-32 characters of letters, digits, or underscore');
+        }
+
+        const hasUser = settings.cgateusername
+            && typeof settings.cgateusername === 'string'
+            && settings.cgateusername.trim() !== '';
+        if (hasUser) {
+            if (!isValidCgateUsername(settings.cgateusername.trim())) {
+                errors.push('cgateusername must be 1-32 characters of letters, digits, or underscore');
+            }
+            if (!isValidCgatePassword(settings.cgatepassword)) {
+                errors.push('cgatepassword must be 1-64 printable ASCII characters with no spaces or control characters');
+            }
         }
     }
 
