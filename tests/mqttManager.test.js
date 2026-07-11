@@ -91,6 +91,22 @@ describe('MqttManager', () => {
             expect(mqtt.connect).toHaveBeenCalledWith('mqtts://secure.example.com:8883', expect.any(Object));
         });
 
+        it('should warn when mqttRejectUnauthorized is false', () => {
+            const insecure = new MqttManager({
+                mqtt: 'mqtts://secure.example.com:8883',
+                mqttRejectUnauthorized: false
+            });
+            const warnSpy = jest.spyOn(insecure.logger, 'warn');
+
+            insecure.connect();
+
+            expect(mqtt.connect).toHaveBeenCalledWith(
+                'mqtts://secure.example.com:8883',
+                expect.objectContaining({ rejectUnauthorized: false })
+            );
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('man-in-the-middle'));
+        });
+
         it('should disconnect existing client before creating new one', () => {
             mqttManager.client = mockClient;
             const loggerSpy = jest.spyOn(mqttManager.logger, 'info');

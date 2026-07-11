@@ -274,6 +274,8 @@ elif [[ "${INSTALL_SOURCE}" == "upload" ]]; then
             exit 1
         fi
         bashio::log.info "Checksum verification passed"
+    else
+        bashio::log.warning "No cgate_download_sha256 configured; integrity verification skipped for uploaded C-Gate zip"
     fi
 
     _cgateweb_verify_zip_safe "${ZIP_FILE}" || exit 1

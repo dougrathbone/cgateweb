@@ -110,6 +110,10 @@ Requesting an update on start or periodic updates can be set in the settings fil
 
  - cbus/write/#1///tree - result gets published as JSON on cbus/read/#1///tree
 
+### MQTT broker ACL
+
+When using broker ACLs, the bridge user must **subscribe** to `cbus/write/#` and **publish** to `cbus/read/#`, `cbus/bridge/#`, `hello/cgateweb`, and (if HA Discovery is enabled) `{ha_discovery_prefix}/#`. See `homeassistant-addon/DOCS.md` for a Mosquitto example.
+
 ### Home Assistant MQTT Discovery
 
 `cgateweb` supports automatic discovery of C-Bus devices in Home Assistant using the MQTT Discovery protocol.

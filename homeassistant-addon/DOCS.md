@@ -43,7 +43,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 |--------|------|---------|-------------|
 | `cgate_install_source` | list | `download` | `download` fetches C-Gate from the official Clipsal URL. `upload` uses a zip file you place in `/share/cgate/`. |
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
-| `cgate_download_sha256` | string | (empty) | Optional SHA256 checksum to verify downloaded/uploaded C-Gate zip integrity before install. |
+| `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Strongly recommended for custom `cgate_download_url` or untrusted upload paths; if unset, install proceeds with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
 
 #### Uploading C-Gate manually
@@ -123,7 +123,7 @@ These settings are only needed when connecting to an external MQTT broker that r
 |--------|------|---------|-------------|
 | `mqtt_use_tls` | boolean | `false` | Connect using TLS (mqtts://). Enable for brokers that require encrypted connections, typically on port 8883. |
 | `mqtt_ca_file` | string | (empty) | Path to a CA certificate file for verifying the broker's certificate. Required for self-signed broker certificates. Store certs in `/ssl/` on Home Assistant (e.g., `/ssl/ca.crt`). |
-| `mqtt_reject_unauthorized` | boolean | `true` | Reject connections if the broker certificate cannot be verified. Disable only when using a self-signed certificate without a CA file. |
+| `mqtt_reject_unauthorized` | boolean | `true` | Reject connections if the broker certificate cannot be verified. Keep enabled whenever possible; disabling exposes a MITM risk — prefer `mqtt_ca_file` with a trusted CA instead. |
 
 #### Example: external broker with self-signed certificate
 
@@ -136,6 +136,8 @@ mqtt_reject_unauthorized: true
 ```
 
 #### Example: external broker with TLS, no certificate verification
+
+> **Caution:** Disabling certificate verification (`mqtt_reject_unauthorized: false`) leaves the connection open to man-in-the-middle attacks. Prefer providing `mqtt_ca_file` instead.
 
 ```yaml
 mqtt_host: "mqtt.example.com"
@@ -321,6 +323,27 @@ The add-on publishes and subscribes to MQTT topics in the following format:
 - `homeassistant/climate/cgateweb_{network}_{app}_{group}/config` - HVAC climate discovery
 - `homeassistant/sensor/cgateweb_bridge_*/config` - Bridge diagnostics discovery
 - `homeassistant/binary_sensor/cgateweb_bridge_*/config` - Bridge connectivity discovery
+
+### MQTT broker ACL (optional)
+
+If your broker uses ACLs, grant the cgateweb user at least:
+
+| Access | Topics |
+|--------|--------|
+| **Subscribe** | `cbus/write/#` |
+| **Publish** | `cbus/read/#`, `cbus/bridge/#`, `hello/cgateweb` |
+| **Publish** (HA Discovery) | `{ha_discovery_prefix}/#` (default `homeassistant/#`) |
+
+Example Mosquitto ACL:
+
+```
+user cgateweb
+topic readwrite cbus/#
+topic write hello/cgateweb
+topic write homeassistant/#
+```
+
+Tighten further if you prefer separate read/write rules. Home Assistant and other clients need complementary access to the same state/command topics.
 
 ### Bridge Diagnostics Topics (Published by add-on)
 - `cbus/read/bridge/diagnostics/ready/state`

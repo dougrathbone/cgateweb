@@ -262,6 +262,10 @@ class MqttManager extends EventEmitter {
 
         if (this.settings.mqttRejectUnauthorized === false) {
             options.rejectUnauthorized = false;
+            this.logger.warn(
+                'MQTT TLS certificate verification is disabled (mqttRejectUnauthorized=false). ' +
+                'Connections are vulnerable to man-in-the-middle attacks. Prefer mqttCaFile with a trusted CA, or keep verification enabled.'
+            );
         }
 
         return options;
