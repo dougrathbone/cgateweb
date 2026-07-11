@@ -5,6 +5,24 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.6] - 2026-07-11
+
+### Fixed
+
+- **Web mutation auth no longer trusts a spoofed `X-Ingress-Path` on the direct port.** Ingress requests must match the configured ingress path and include `X-Hass-Source: core.ingress`. Host port 8080 is no longer mapped by default (ingress still works); set `web_api_key` if you re-expose the port.
+- **PUT `/api/labels` now strips prototype-polluting keys** the same way PATCH already did.
+- **Network auto-discovery skips the project-level `tree` probe** when `getall_networks` / `ha_discovery_networks` are already configured, avoiding the recurring C-Gate 402 on typical HA installs. Residual 402 responses log at debug.
+- **Startup no longer WARNs about MQTT publish queueing before the first connect.** Mid-session disconnects still warn. Retained publishes continue to queue and replay.
+- **MQTT authentication failure no longer restart-loops the Home Assistant add-on.** Standalone still exits fatally; add-on mode stays alive, throttles the banner, and retries.
+- **Unsafe C-Gate project names and LOGIN credentials are rejected** so newlines/spaces cannot inject extra commands on the C-Gate socket.
+- **Failed C-Gate command sends publish a warning** on `hello/cgateweb/warnings` instead of failing silently.
+- **Stale TreeXML parse callbacks are ignored** after a newer request for the same network, and overlapping TREEXML requests are deduped across session and parse windows.
+
+### Changed
+
+- Concurrent SSE event-stream connections are capped (default 32) to limit DoS on an exposed web port.
+- Distribution releases now require multi-arch add-on image builds and C-Gate integration tests (plus schema/i18n validation and typecheck) before publishing.
+
 ## [1.15.5] - 2026-07-10
 
 ### Added
