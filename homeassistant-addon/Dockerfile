@@ -1,19 +1,19 @@
 ARG BUILD_FROM
 
 # ----------------------------------------------------------------------------
-# Builder stage: only purpose is to run `npm ci`. npm + its deps are ~50-80MB
-# on Alpine and are never needed at runtime, so we isolate them here and
-# carry only node_modules forward.
+# Builder stage: install production node_modules on the *build host* arch.
+# Production deps (mqtt, xml2js, adm-zip, sql.js) are pure JS/WASM, so the
+# tree is portable across Alpine arches. Running `npm ci` under QEMU for
+# aarch64/armv7 has caused intermittent SIGILL crashes in CI.
 # ----------------------------------------------------------------------------
-FROM $BUILD_FROM AS builder
-
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG BUILDPLATFORM
+FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.19 AS builder
 
 RUN apk add --no-cache nodejs npm
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # ----------------------------------------------------------------------------

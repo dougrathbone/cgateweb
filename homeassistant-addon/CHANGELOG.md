@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.8] - 2026-07-11
+
+### Fixed
+
+- **aarch64 add-on image builds no longer crash during `npm ci` under QEMU.** Production deps are installed on the build-host arch (pure JS/WASM) via BuildKit `BUILDPLATFORM`, then copied into the target image.
+- ESLint unused-variable warning in webServer tests that blocked the distribution test job (and therefore skipped C-Gate integration).
+
+### Changed
+
+- CI/distribution add-on image builds use Docker Buildx with explicit target platforms.
+
 ## [1.15.7] - 2026-07-11
 
 ### Fixed

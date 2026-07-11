@@ -164,14 +164,29 @@ jobs:
         cp -r src public ctx/
         cp index.js package.json package-lock.json ctx/
 
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+
     - name: Build image
+      # BuildKit + BUILDPLATFORM lets the npm install stage run on the host
+      # arch (pure JS deps), avoiding QEMU SIGILL during npm ci on aarch64.
+      env:
+        DOCKER_BUILDKIT: 1
       run: |
-        docker build \
+        case "${{ matrix.arch }}" in
+          amd64) platform=linux/amd64 ;;
+          aarch64) platform=linux/arm64 ;;
+          armv7) platform=linux/arm/v7 ;;
+          *) echo "Unknown arch ${{ matrix.arch }}"; exit 1 ;;
+        esac
+        docker buildx build \
+          --platform "$platform" \
           --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.19 \
           --build-arg BUILD_ARCH=${{ matrix.arch }} \
           --build-arg BUILD_VERSION=ci \
           --build-arg BUILD_DATE=ci \
           --build-arg BUILD_REF="${GITHUB_SHA}" \
+          --load \
           -t cgateweb-addon:ci-${{ matrix.arch }} \
           ctx
 
@@ -181,7 +196,12 @@ jobs:
       # production dependencies installed, and the entrypoint script in place.
       # For non-amd64 the container runs under QEMU emulation.
       run: |
-        docker run --rm --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
+        case "${{ matrix.arch }}" in
+          amd64) platform=linux/amd64 ;;
+          aarch64) platform=linux/arm64 ;;
+          armv7) platform=linux/arm/v7 ;;
+        esac
+        docker run --rm --platform "$platform" --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
           set -e
           command -v node
           test -f /run.sh

@@ -552,8 +552,8 @@ describe('WebServer', () => {
                         'X-Hass-Source': 'core.ingress'
                     }
                 }, (response) => {
-                    let data = '';
-                    response.on('data', (c) => { data += c; });
+                    // Drain the body so the socket can close cleanly.
+                    response.on('data', () => {});
                     response.on('end', () => resolve({ status: response.statusCode }));
                 }).on('error', reject);
             });
