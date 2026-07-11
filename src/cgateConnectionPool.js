@@ -56,6 +56,9 @@ class CgateConnectionPool extends EventEmitter {
         this.keepAliveInterval = Math.max(10000, settings.keepAliveInterval !== undefined ? settings.keepAliveInterval : 60000);
         this.connectionTimeout = Math.max(1000, settings.connectionTimeout !== undefined ? settings.connectionTimeout : 5000);
         this.maxRetries = Math.max(1, settings.maxRetries !== undefined ? settings.maxRetries : 3);
+        // Reuse the same reconnect backoff knobs as the standalone event connection.
+        this.reconnectInitialDelay = Math.max(100, settings.reconnectinitialdelay !== undefined ? settings.reconnectinitialdelay : 1000);
+        this.reconnectMaxDelay = Math.max(this.reconnectInitialDelay, settings.reconnectmaxdelay !== undefined ? settings.reconnectmaxdelay : 60000);
         
         // Pool state
         this.connections = [];
@@ -349,9 +352,12 @@ class CgateConnectionPool extends EventEmitter {
         
         this.retryCounts[index] = (this.retryCounts[index] || 0) + 1;
 
-        // Exponential backoff capped at 60s -- never permanently give up
+        // Exponential backoff -- never permanently give up
         const retryCount = this.retryCounts[index];
-        const delay = backoffDelay(retryCount - 1, { initialMs: 1000, maxMs: 60000 });
+        const delay = backoffDelay(retryCount - 1, {
+            initialMs: this.reconnectInitialDelay,
+            maxMs: this.reconnectMaxDelay
+        });
         
         if (retryCount <= this.maxRetries) {
             this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`);

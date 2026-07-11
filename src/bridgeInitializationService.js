@@ -75,8 +75,9 @@ class BridgeInitializationService {
      */
     async handleAllConnected() {
         const now = Date.now();
-        if (now - this._lastInitTime < 10000) {
-            this._log('ALL CONNECTED (duplicate within 10s, skipping re-initialization)');
+        const initDebounceMs = Math.max(0, Number(this.settings.initDebounceMs) || 10000);
+        if (now - this._lastInitTime < initDebounceMs) {
+            this._log(`ALL CONNECTED (duplicate within ${Math.round(initDebounceMs / 1000)}s, skipping re-initialization)`);
             return null;
         }
         this._lastInitTime = now;

@@ -94,6 +94,16 @@ const defaultSettings = {
     web_mutation_rate_limit_per_minute: 120,
     // Cap concurrent SSE clients on /api/events/stream (DoS guard on exposed ports).
     web_max_sse_connections: 32,
+    // SSE comment keepalive interval (ms) so proxies don't idle-close the stream.
+    webSseKeepaliveMs: 15000,
+    // In-memory ring buffer size for the web UI event log / SSE replay.
+    eventLogMaxEntries: 200,
+    // Debounce window (ms) for bridge re-initialization when all connections
+    // flap reconnect within a short period (avoids duplicate getall/discovery).
+    initDebounceMs: 10000,
+    // Bound on retained MQTT publishes queued while the broker is unreachable.
+    // Newest-wins per topic; oldest entries are evicted when full.
+    mqttPendingPublishMaxEntries: 1000,
     // How often (ms) to poll each C-Bus network's CNI/PCI interface state so a
     // dropout between C-Gate and the C-Bus network surfaces on the status page.
     // Set to 0 to disable. Default 30s.

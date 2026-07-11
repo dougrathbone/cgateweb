@@ -611,7 +611,7 @@ class WebServer {
         }
 
         // Keepalive comment every 15 seconds to prevent proxy timeouts
-        const keepaliveMs = this._sseKeepaliveMs || 15000;
+        const keepaliveMs = this._sseKeepaliveMs;
         const keepaliveInterval = setInterval(() => {
             res.write(': keepalive\n\n');
         }, keepaliveMs);

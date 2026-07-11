@@ -249,6 +249,24 @@ describe('CgateConnectionPool', () => {
             spy.mockRestore();
         });
 
+        it('should honour reconnectinitialdelay / reconnectmaxdelay settings', () => {
+            const customPool = new CgateConnectionPool('command', 'localhost', 20023, {
+                connectionPoolSize: 1,
+                reconnectinitialdelay: 500,
+                reconnectmaxdelay: 2000
+            });
+            customPool.isStarted = true;
+            customPool.retryCounts[0] = 10;
+            const conn = { poolIndex: 0 };
+            customPool.connections[0] = conn;
+
+            const spy = jest.spyOn(global, 'setTimeout');
+            customPool._scheduleReconnection(conn, 0);
+
+            expect(spy).toHaveBeenLastCalledWith(expect.any(Function), 2000);
+            spy.mockRestore();
+        });
+
         it('should reset retry counts when pool is stopped', async () => {
             pool.isStarted = true;
             pool.retryCounts[0] = 5;
