@@ -109,7 +109,9 @@ class HAIntegration {
         const ingressEntry = process.env.INGRESS_ENTRY;
 
         if (ingressUrl || ingressEntry) {
-            this.logger.info(`Ingress support enabled - URL: ${ingressUrl}, Entry: ${ingressEntry}`);
+            // Do not log INGRESS_URL / INGRESS_ENTRY — both embed the HA ingress
+            // session token in the path and would leak into Supervisor logs.
+            this.logger.info('Ingress support enabled');
             
             return {
                 ingressUrl,

@@ -161,7 +161,7 @@ class WebServer {
                 return;
             }
 
-            if (this._isMutatingApiRoute(urlPath, req.method) && !this._isAuthorizedMutation(req)) {
+            if (this._requiresApiAuth(urlPath, req.method) && !this._isAuthorizedApi(req)) {
                 return this._sendJSON(res, 401, { error: 'Unauthorized' });
             }
 
@@ -689,6 +689,29 @@ class WebServer {
     _isMutatingApiRoute(urlPath, method) {
         if (!['PUT', 'PATCH', 'POST', 'DELETE'].includes(method)) return false;
         return urlPath === '/api/labels' || urlPath === '/api/labels/import';
+    }
+
+    /**
+     * Sensitive API routes that expose labels, device state, or live events.
+     * Health probes stay public so Supervisor/Docker can check liveness without
+     * credentials. Static UI assets also stay public; the UI's API calls are gated.
+     */
+    _isSensitiveReadRoute(urlPath, method) {
+        if (method !== 'GET') return false;
+        return urlPath === '/api/labels'
+            || urlPath === '/api/labels/export.xml'
+            || urlPath === '/api/status'
+            || urlPath === '/api/dashboard'
+            || urlPath === '/api/areas'
+            || urlPath === '/api/events/stream';
+    }
+
+    _requiresApiAuth(urlPath, method) {
+        return this._isMutatingApiRoute(urlPath, method) || this._isSensitiveReadRoute(urlPath, method);
+    }
+
+    _isAuthorizedApi(req) {
+        return this._isAuthorizedMutation(req);
     }
 
     _isAuthorizedMutation(req) {

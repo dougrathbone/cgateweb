@@ -310,7 +310,7 @@ describe('index.js', () => {
         });
 
         expect(logSpy).toHaveBeenCalledWith(
-            '[INFO] Ingress configured: /api/hassio_ingress/abc123'
+            '[INFO] Ingress configured'
         );
     });
 

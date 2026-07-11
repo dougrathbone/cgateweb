@@ -340,9 +340,10 @@ describe('WebServer', () => {
         });
 
         it('should strip ingress base path from API requests', async () => {
+            const BASE = '/api/hassio_ingress/abc123';
             ingressServer = new WebServer({
                 port: 0,
-                basePath: '/api/hassio_ingress/abc123',
+                basePath: BASE,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -353,8 +354,12 @@ describe('WebServer', () => {
                 const req = http.request({
                     hostname: '127.0.0.1',
                     port: ingressPort,
-                    path: '/api/hassio_ingress/abc123/api/labels',
-                    method: 'GET'
+                    path: `${BASE}/api/labels`,
+                    method: 'GET',
+                    headers: {
+                        'X-Ingress-Path': BASE,
+                        'X-Hass-Source': 'core.ingress'
+                    }
                 }, (res) => {
                     let data = '';
                     res.on('data', (chunk) => { data += chunk; });
@@ -498,6 +503,63 @@ describe('WebServer', () => {
 
         // Unit-level coverage of the authorization logic (no live server needed).
         const mkReq = (headers = {}) => ({ headers });
+
+        it('rejects sensitive GET routes without auth on a direct port', async () => {
+            const locked = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({ test: true })
+            });
+            await locked.start();
+            const lockedPort = locked._server.address().port;
+
+            const get = (urlPath) => new Promise((resolve, reject) => {
+                http.get({ hostname: '127.0.0.1', port: lockedPort, path: urlPath }, (res) => {
+                    let data = '';
+                    res.on('data', (c) => { data += c; });
+                    res.on('end', () => resolve({ status: res.statusCode, body: data }));
+                }).on('error', reject);
+            });
+
+            expect((await get('/api/labels')).status).toBe(401);
+            expect((await get('/api/status')).status).toBe(401);
+            expect((await get('/api/dashboard')).status).toBe(401);
+            expect((await get('/api/events/stream')).status).toBe(401);
+            // Health probes stay public for Supervisor/Docker.
+            expect((await get('/healthz')).status).toBe(200);
+
+            await locked.close();
+        });
+
+        it('allows sensitive GET routes via HA ingress headers without an API key', async () => {
+            const BASE = '/api/hassio_ingress/abc123';
+            const ingress = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                getStatus: () => ({ test: true })
+            });
+            await ingress.start();
+            const ingressPort = ingress._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                http.get({
+                    hostname: '127.0.0.1',
+                    port: ingressPort,
+                    path: `${BASE}/api/labels`,
+                    headers: {
+                        'X-Ingress-Path': BASE,
+                        'X-Hass-Source': 'core.ingress'
+                    }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (c) => { data += c; });
+                    response.on('end', () => resolve({ status: response.statusCode }));
+                }).on('error', reject);
+            });
+            expect(res.status).toBe(200);
+            await ingress.close();
+        });
 
         it('does not let a spoofed X-Ingress-Path bypass auth on a standalone deployment', () => {
             // No api key, no ingress basePath, no unauthenticated override.
@@ -1897,6 +1959,7 @@ describe('WebServer', () => {
             const dashServer = new WebServer({
                 port: 0,
                 labelLoader,
+                allowUnauthenticatedMutations: true,
                 deviceStateManager: mockDeviceStateManager,
                 getStatus: () => ({
                     version: '1.5.3',

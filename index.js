@@ -22,7 +22,7 @@ try {
     if (haConfig.isAddon) {
         console.log(`[INFO] Home Assistant optimizations: ${haConfig.optimizationsApplied.join(', ')}`);
         if (haConfig.ingressConfig) {
-            console.log(`[INFO] Ingress configured: ${haConfig.ingressConfig.ingressUrl}`);
+            console.log('[INFO] Ingress configured');
         }
     }
     
