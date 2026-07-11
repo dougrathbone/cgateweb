@@ -56,6 +56,8 @@ jobs:
     - run: npm ci
     - run: npm run validate:addon-config
     - run: npm run validate:translations
+    - run: npm run validate:schema-i18n
+    - run: npm run typecheck
 
   static-checks:
     name: Lint workflows, shell scripts & Dockerfiles
@@ -101,8 +103,130 @@ jobs:
     - run: npm run lint -- --max-warnings=0
     - run: npm test -- --coverage
 
+  addon-image:
+    name: Build add-on image (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, aarch64, armv7]
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+    - name: Set up QEMU (multi-arch emulation)
+      if: matrix.arch != 'amd64'
+      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
+    - name: Assemble add-on build context
+      run: |
+        mkdir -p ctx
+        cp -r homeassistant-addon/rootfs ctx/
+        cp homeassistant-addon/run.sh ctx/
+        cp homeassistant-addon/Dockerfile ctx/
+        cp -r src public ctx/
+        cp index.js package.json package-lock.json ctx/
+    - name: Build image
+      run: |
+        docker build \
+          --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.19 \
+          --build-arg BUILD_ARCH=${{ matrix.arch }} \
+          --build-arg BUILD_VERSION=ci \
+          --build-arg BUILD_DATE=ci \
+          --build-arg BUILD_REF="${GITHUB_SHA}" \
+          -t cgateweb-addon:ci-${{ matrix.arch }} \
+          ctx
+    - name: Smoke-check image contents
+      run: |
+        docker run --rm --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
+          set -e
+          command -v node
+          test -f /run.sh
+          test -f /app/index.js
+          test -d /app/node_modules
+          node -e "require(\"/app/package.json\")"
+        '
+
+  integration-download:
+    name: Integration download ${{ matrix.cgate.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        cgate:
+          - version: "3.3.1"
+            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
+          - version: "3.3.2"
+            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    - run: npm ci
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+    - name: Set up managed-download options for C-Gate ${{ matrix.cgate.version }}
+      env:
+        CGATE_URL: ${{ matrix.cgate.url }}
+      run: |
+        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
+    - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
+      run: node test-env/integration-test.js
+      timeout-minutes: 15
+
+  integration-upload:
+    name: Integration upload (hosted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: test
+    if: vars.CGATE_UPLOAD_TEST_URL != ''
+    steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+      with:
+        node-version: 20.x
+        cache: 'npm'
+    - run: npm ci
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+    - name: Fetch hosted C-Gate zip into the upload share volume
+      env:
+        CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
+      run: |
+        mkdir -p test-env/volumes/share/cgate
+        curl -fSL --max-time 600 --connect-timeout 30 -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
+    - name: Set up managed-upload test options
+      run: cp test-env/options-managed-upload.json test-env/active-options.json
+    - name: Run integration test (upload mode - hosted C-Gate)
+      run: node test-env/integration-test.js
+      timeout-minutes: 15
+
+  integration:
+    name: Integration test (C-Gate)
+    runs-on: ubuntu-latest
+    needs: [integration-download, integration-upload]
+    if: always()
+    steps:
+    - name: Verify all C-Gate version integration tests passed
+      env:
+        DOWNLOAD_RESULT: ${{ needs.integration-download.result }}
+        UPLOAD_RESULT: ${{ needs.integration-upload.result }}
+      run: |
+        echo "download-mode legs: $DOWNLOAD_RESULT"
+        echo "upload-mode leg:    $UPLOAD_RESULT (skipped is OK when no hosted artifact is configured)"
+        if [[ "$DOWNLOAD_RESULT" != "success" ]]; then
+          echo "::error::One or more download-mode C-Gate integration tests failed."
+          exit 1
+        fi
+        if [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
+          echo "::error::The upload-mode C-Gate integration test failed."
+          exit 1
+        fi
+        echo "All required C-Gate integration tests passed."
+
   build-and-deploy:
-    needs: [version-sync, validate-addon, static-checks, test]
+    needs: [version-sync, validate-addon, static-checks, test, addon-image, integration]
     runs-on: ubuntu-latest
 
     steps:
