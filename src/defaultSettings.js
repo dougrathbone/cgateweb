@@ -92,6 +92,8 @@ const defaultSettings = {
     web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120,
+    // Cap concurrent SSE clients on /api/events/stream (DoS guard on exposed ports).
+    web_max_sse_connections: 32,
     // How often (ms) to poll each C-Bus network's CNI/PCI interface state so a
     // dropout between C-Gate and the C-Bus network surfaces on the status page.
     // Set to 0 to disable. Default 30s.

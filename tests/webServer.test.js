@@ -231,6 +231,23 @@ describe('WebServer', () => {
         });
     });
 
+    describe('PUT /api/labels pollution guard', () => {
+        it('strips prototype-polluting keys from labels and nested maps', async () => {
+            const res = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '__proto__': { polluted: true }, '254/56/10': 'Kitchen' },
+                type_overrides: { constructor: 'x', '254/56/10': 'light' },
+                entity_ids: { prototype: 'y', '254/56/10': 'light.kitchen' },
+                areas: { '__proto__': 'z', '254/56/10': 'Kitchen' }
+            }));
+
+            expect(res.status).toBe(200);
+            expect(res.body.labels['254/56/10']).toBe('Kitchen');
+            const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+            expect(hasOwn(res.body.labels, '__proto__')).toBe(false);
+            expect(({}).polluted).toBeUndefined();
+        });
+    });
+
     describe('GET /api/status', () => {
         it('should return status info', async () => {
             const res = await request('GET', '/api/status');
@@ -488,9 +505,19 @@ describe('WebServer', () => {
             expect(standalone._isAuthorizedMutation(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(false);
         });
 
-        it('trusts X-Ingress-Path only when actually started in ingress mode (basePath set)', () => {
+        it('trusts matching X-Ingress-Path only with X-Hass-Source from HA Core', () => {
             const ingress = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), basePath: '/api/hassio_ingress/abc' });
-            expect(ingress._isAuthorizedMutation(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(true);
+            expect(ingress._isAuthorizedMutation(mkReq({
+                'x-ingress-path': '/api/hassio_ingress/abc',
+                'x-hass-source': 'core.ingress'
+            }))).toBe(true);
+            expect(ingress._isAuthorizedMutation(mkReq({
+                'x-ingress-path': '/api/hassio_ingress/abc'
+            }))).toBe(false);
+            expect(ingress._isAuthorizedMutation(mkReq({
+                'x-ingress-path': 'x',
+                'x-hass-source': 'core.ingress'
+            }))).toBe(false);
             expect(ingress._isAuthorizedMutation(mkReq({}))).toBe(false);
         });
 
@@ -642,8 +669,42 @@ describe('WebServer', () => {
             await ingressServer.start();
             ingressPort = ingressServer._server.address().port;
 
-            const res = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE });
+            const res = await patchThroughIngress(ingressPort, {
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
             expect(res.status).toBe(200);
+        });
+
+        it('rejects a spoofed non-matching X-Ingress-Path even in ingress mode', async () => {
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await patchThroughIngress(ingressPort, {
+                'X-Ingress-Path': 'x',
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(res.status).toBe(401);
+        });
+
+        it('rejects matching X-Ingress-Path without X-Hass-Source', async () => {
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const res = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE });
+            expect(res.status).toBe(401);
         });
 
         it('still rejects a non-ingress unauthenticated mutation when no API key is set', async () => {
@@ -679,7 +740,11 @@ describe('WebServer', () => {
                     port: ingressPort,
                     path: '/api/labels',
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'X-Ingress-Path': '/spoofed' }
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Ingress-Path': '/spoofed',
+                        'X-Hass-Source': 'core.ingress'
+                    }
                 }, (response) => {
                     let data = '';
                     response.on('data', (chunk) => { data += chunk; });
@@ -706,10 +771,17 @@ describe('WebServer', () => {
             await ingressServer.start();
             ingressPort = ingressServer._server.address().port;
 
-            const res = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE });
+            const res = await patchThroughIngress(ingressPort, {
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
             expect(res.status).toBe(401);
 
-            const ok = await patchThroughIngress(ingressPort, { 'X-Ingress-Path': BASE, 'X-API-Key': 'secret-key' });
+            const ok = await patchThroughIngress(ingressPort, {
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress',
+                'X-API-Key': 'secret-key'
+            });
             expect(ok.status).toBe(200);
         });
     });
@@ -1508,6 +1580,51 @@ describe('WebServer', () => {
             expect(res.statusCode).toBe(200);
             expect(res.headers['content-type']).toBe('text/event-stream');
             destroy();
+        });
+
+        it('rejects new SSE clients when maxSseConnections is reached', async () => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            const capped = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream,
+                maxSseConnections: 1
+            });
+            await capped.start();
+            const cappedPort = capped._server.address().port;
+
+            const first = await openSSE(cappedPort);
+            expect(first.res.statusCode).toBe(200);
+
+            const second = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: cappedPort,
+                    path: '/api/events/stream',
+                    method: 'GET',
+                    headers: { Accept: 'text/event-stream' }
+                }, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => { data += chunk; });
+                    res.on('end', () => resolve({ status: res.statusCode, body: data }));
+                });
+                req.on('error', reject);
+                req.end();
+            });
+            expect(second.status).toBe(503);
+
+            first.destroy();
+            await new Promise((r) => setTimeout(r, 20));
+            const third = await openSSE(cappedPort);
+            expect(third.res.statusCode).toBe(200);
+            third.destroy();
+            await capped.close();
         });
 
         it('sends data: prefixed JSON lines for recent events on connect', async () => {

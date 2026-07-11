@@ -261,6 +261,7 @@ class CgateWebBridge {
             activeDeviceWindowMs: this.settings.web_active_device_window_ms,
             haAreasCacheTtlMs: this.settings.web_ha_areas_cache_ttl_ms,
             haApiTimeoutMs: this.settings.web_ha_api_timeout_ms,
+            maxSseConnections: this.settings.web_max_sse_connections,
             triggerAppId: this.settings.ha_discovery_trigger_app_id || null,
             getStatus: () => this._getBridgeStatus(),
             deviceStateManager: this.deviceStateManager,
