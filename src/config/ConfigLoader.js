@@ -4,6 +4,7 @@ const EnvironmentDetector = require('./EnvironmentDetector');
 const { defaultSettings } = require('../defaultSettings');
 const { DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./validationRules');
+const { applyAddonOptionMap } = require('./addonOptionMap');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -155,20 +156,9 @@ class ConfigLoader {
         // MQTT settings
         config.mqtt = `${options.mqtt_host || 'core-mosquitto'}:${options.mqtt_port || 1883}`;
 
-        if (options.mqtt_username) {
-            config.mqttusername = options.mqtt_username;
-        }
-        if (options.mqtt_password) {
-            config.mqttpassword = options.mqtt_password;
-        }
+        applyAddonOptionMap(config, options);
 
-        // MQTT TLS settings
-        if (options.mqtt_use_tls) {
-            config.mqttUseTls = true;
-        }
-        if (options.mqtt_ca_file) {
-            config.mqttCaFile = options.mqtt_ca_file;
-        }
+        // mqtt_reject_unauthorized only maps when explicitly false (default stays true)
         if (options.mqtt_reject_unauthorized === false) {
             config.mqttRejectUnauthorized = false;
         }
@@ -186,14 +176,6 @@ class ConfigLoader {
         if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
             config.getallnetapp = `${options.getall_networks[0]}/56`;
             config.getall_networks = options.getall_networks;
-        }
-
-        if (options.getall_on_start) {
-            config.getallonstart = true;
-        }
-
-        if (options.getall_period) {
-            config.getallperiod = options.getall_period;
         }
 
         if (Array.isArray(options.getall_app_periods) && options.getall_app_periods.length > 0) {
@@ -214,10 +196,6 @@ class ConfigLoader {
             config.getall_app_periods = periods;
         }
 
-        if (options.retain_reads) {
-            config.retainreads = true;
-        }
-
         config.messageinterval = options.message_interval || 200;
 
         const validLevels = ['error', 'warn', 'info', 'debug', 'trace'];
@@ -234,95 +212,23 @@ class ConfigLoader {
             } else if (options.getall_networks && Array.isArray(options.getall_networks) && options.getall_networks.length > 0) {
                 config.ha_discovery_networks = [...options.getall_networks];
             }
-            
-            if (options.ha_discovery_cover_app_id) {
-                config.ha_discovery_cover_app_id = String(options.ha_discovery_cover_app_id);
-            }
 
-            if (options.ha_discovery_cover_tilt_app_id) {
-                config.ha_discovery_cover_tilt_app_id = String(options.ha_discovery_cover_tilt_app_id);
-            }
-            
-            if (options.ha_discovery_switch_app_id) {
-                config.ha_discovery_switch_app_id = String(options.ha_discovery_switch_app_id);
-            }
-
-            if (options.ha_discovery_trigger_app_id) {
-                config.ha_discovery_trigger_app_id = String(options.ha_discovery_trigger_app_id);
-            }
+            applyAddonOptionMap(config, options, { haDiscovery: true });
 
             if (options.ha_discovery_scene_enabled !== undefined && options.ha_discovery_scene_enabled !== null) {
                 config.ha_discovery_scene_enabled = options.ha_discovery_scene_enabled !== false;
             }
 
-            if (options.ha_discovery_hvac_app_id) {
-                config.ha_discovery_hvac_app_id = String(options.ha_discovery_hvac_app_id);
-            }
-
-            if (options.cbus_aircon_app_id) {
-                config.cbus_aircon_app_id = String(options.cbus_aircon_app_id);
-            }
-
-            if (options.cbus_aircon_control_enabled !== undefined && options.cbus_aircon_control_enabled !== null) {
-                config.cbus_aircon_control_enabled = options.cbus_aircon_control_enabled === true;
-            }
-
-            if (options.ha_hvac_temperature_unit) {
-                config.ha_hvac_temperature_unit = options.ha_hvac_temperature_unit;
-            }
-
-            // Automatic device-type detection (covers on the Lighting app).
-            if (options.ha_discovery_auto_type !== undefined && options.ha_discovery_auto_type !== null) {
-                config.ha_discovery_auto_type = options.ha_discovery_auto_type === true;
-            }
-            if (options.ha_discovery_auto_type_name_heuristics !== undefined && options.ha_discovery_auto_type_name_heuristics !== null) {
-                config.ha_discovery_auto_type_name_heuristics = options.ha_discovery_auto_type_name_heuristics === true;
-            }
             if (Array.isArray(options.ha_discovery_auto_type_cover_keywords) && options.ha_discovery_auto_type_cover_keywords.length > 0) {
                 config.ha_discovery_auto_type_cover_keywords = options.ha_discovery_auto_type_cover_keywords
                     .filter((k) => typeof k === 'string' && k.trim() !== '');
             }
         }
 
-        if (options.ha_bridge_diagnostics_enabled !== undefined && options.ha_bridge_diagnostics_enabled !== null) {
-            config.ha_bridge_diagnostics_enabled = options.ha_bridge_diagnostics_enabled === true;
-        }
-
-        if (options.ha_bridge_diagnostics_interval_sec !== undefined && options.ha_bridge_diagnostics_interval_sec !== null) {
-            config.ha_bridge_diagnostics_interval_sec = options.ha_bridge_diagnostics_interval_sec;
-        }
-
-        if (options.stale_device_detection_enabled !== undefined && options.stale_device_detection_enabled !== null) {
-            config.stale_device_detection_enabled = options.stale_device_detection_enabled === true;
-        }
-
-        if (options.stale_device_threshold_hours !== undefined && options.stale_device_threshold_hours !== null) {
-            config.stale_device_threshold_hours = options.stale_device_threshold_hours;
-        }
-
-        if (options.stale_device_check_interval_sec !== undefined && options.stale_device_check_interval_sec !== null) {
-            config.stale_device_check_interval_sec = options.stale_device_check_interval_sec;
-        }
-
-        if (options.cni_offline_notification !== undefined && options.cni_offline_notification !== null) {
-            config.cni_offline_notification = options.cni_offline_notification === true;
-        }
-
-        // Connection pool settings (advanced)
-        if (options.connection_pool_size !== undefined) {
-            config.connectionPoolSize = options.connection_pool_size;
-        }
-        if (options.connection_health_check_interval_sec !== undefined) {
-            config.healthCheckInterval = options.connection_health_check_interval_sec * 1000;
-        }
+        // keep_alive sets both command-pool and event-connection intervals
         if (options.connection_keep_alive_interval_sec !== undefined) {
             config.keepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
             config.eventConnectionKeepAliveInterval = options.connection_keep_alive_interval_sec * 1000;
-        }
-
-        // Cover ramp interpolation duration
-        if (options.cover_ramp_duration_sec !== undefined && options.cover_ramp_duration_sec !== null) {
-            config.cover_ramp_duration_ms = options.cover_ramp_duration_sec * 1000;
         }
 
         // Fresh installs must default to a writable path so the first Import
@@ -345,23 +251,11 @@ class ConfigLoader {
             }
         }
 
-        if (options.web_port) {
-            config.web_port = options.web_port;
-        }
         // In addon mode the HA ingress proxy connects from outside the container's
         // loopback interface, so the web server must bind to all interfaces.
         config.web_bind_host = '0.0.0.0';
-        if (options.web_api_key) {
-            config.web_api_key = options.web_api_key;
-        }
-        if (options.web_allow_unauthenticated_mutations !== undefined && options.web_allow_unauthenticated_mutations !== null) {
-            config.web_allow_unauthenticated_mutations = options.web_allow_unauthenticated_mutations === true;
-        }
         if (Array.isArray(options.web_allowed_origins)) {
             config.web_allowed_origins = options.web_allowed_origins.filter((origin) => typeof origin === 'string' && origin.trim() !== '');
-        }
-        if (options.web_mutation_rate_limit_per_minute !== undefined && options.web_mutation_rate_limit_per_minute !== null) {
-            config.web_mutation_rate_limit_per_minute = options.web_mutation_rate_limit_per_minute;
         }
 
         return config;
