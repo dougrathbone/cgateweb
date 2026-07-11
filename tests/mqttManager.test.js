@@ -509,7 +509,7 @@ describe('MqttManager', () => {
                             hasUsername: true
                         }),
                         'MQTT authentication',
-                        true // fatal
+                        true // fatal in standalone
                     );
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT AUTHENTICATION FAILED'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('broker rejected them'));
@@ -542,8 +542,9 @@ describe('MqttManager', () => {
                 }
             });
 
-            it('should show addon-specific guidance when in addon environment', () => {
+            it('should stay alive with non-fatal auth failure in addon environment', () => {
                 mqttManager.settings = { mqtt: 'core-mosquitto:1883' };
+                const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
                 const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
                 const originalExit = process.exit;
                 const originalEnv = process.env.SUPERVISOR_TOKEN;
@@ -561,7 +562,15 @@ describe('MqttManager', () => {
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT AUTHENTICATION FAILED'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Settings > Add-ons'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('mqtt_username'));
-                    expect(process.exit).toHaveBeenCalledWith(1);
+                    expect(errorHandlerSpy).toHaveBeenCalledWith(
+                        authError,
+                        expect.objectContaining({ addonMode: true }),
+                        'MQTT authentication',
+                        false
+                    );
+                    expect(process.exit).not.toHaveBeenCalled();
+                    expect(mqttManager.connected).toBe(false);
+                    expect(mqttManager.client).toBe(mockClient);
                 } finally {
                     process.exit = originalExit;
                     if (originalEnv === undefined) {
@@ -569,6 +578,69 @@ describe('MqttManager', () => {
                     } else {
                         process.env.SUPERVISOR_TOKEN = originalEnv;
                     }
+                }
+            });
+
+            it('should treat settings._environment.type addon as non-fatal auth', () => {
+                mqttManager.settings = {
+                    mqtt: 'core-mosquitto:1883',
+                    mqttusername: 'homeassistant',
+                    _environment: { type: 'addon' }
+                };
+                const errorHandlerSpy = jest.spyOn(mqttManager.errorHandler, 'handle');
+                const originalExit = process.exit;
+                process.exit = jest.fn();
+                mqttManager.on('error', () => {});
+
+                try {
+                    const authError = new Error('Connection refused: Not authorized');
+                    authError.code = 5;
+                    mockClient.emit('error', authError);
+
+                    expect(errorHandlerSpy).toHaveBeenCalledWith(
+                        authError,
+                        expect.objectContaining({ addonMode: true }),
+                        'MQTT authentication',
+                        false
+                    );
+                    expect(process.exit).not.toHaveBeenCalled();
+                } finally {
+                    process.exit = originalExit;
+                }
+            });
+
+            it('should throttle auth failure banner until reconnect succeeds', () => {
+                mqttManager.settings = {
+                    mqtt: 'core-mosquitto:1883',
+                    _environment: { type: 'addon' }
+                };
+                const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
+                const originalExit = process.exit;
+                process.exit = jest.fn();
+                mqttManager.on('error', () => {});
+
+                try {
+                    const authError = new Error('Connection refused: Not authorized');
+                    authError.code = 5;
+                    mockClient.emit('error', authError);
+                    mockClient.emit('error', authError);
+
+                    const bannerCalls = loggerSpy.mock.calls.filter(c =>
+                        typeof c[0] === 'string' && c[0].includes('MQTT AUTHENTICATION FAILED')
+                    );
+                    expect(bannerCalls).toHaveLength(1);
+
+                    mockClient.connected = true;
+                    mqttManager.client.emit('connect');
+                    expect(mqttManager._authFailureLogged).toBe(false);
+
+                    mockClient.emit('error', authError);
+                    const bannerCallsAfter = loggerSpy.mock.calls.filter(c =>
+                        typeof c[0] === 'string' && c[0].includes('MQTT AUTHENTICATION FAILED')
+                    );
+                    expect(bannerCallsAfter).toHaveLength(2);
+                } finally {
+                    process.exit = originalExit;
                 }
             });
 
