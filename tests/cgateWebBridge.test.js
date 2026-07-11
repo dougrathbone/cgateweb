@@ -1005,6 +1005,63 @@ describe('CgateWebBridge', () => {
             });
         });
 
+        describe('command queue gating', () => {
+            it('_canProcessCommandQueue is false when the pool has no healthy connections', () => {
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 0,
+                    writableConnections: 0
+                }));
+                expect(bridge._canProcessCommandQueue()).toBe(false);
+            });
+
+            it('_canProcessCommandQueue is true when the pool is healthy', () => {
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 3,
+                    writableConnections: 3
+                }));
+                expect(bridge._canProcessCommandQueue()).toBe(true);
+            });
+
+            it('_getAdaptiveQueueIntervalMs shrinks with more writable connections', () => {
+                bridge.settings.messageinterval = 200;
+                bridge.settings.commandMinIntervalMs = 10;
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 4,
+                    writableConnections: 4
+                }));
+                Object.defineProperty(bridge.cgateCommandQueue, 'length', { get: () => 0, configurable: true });
+                expect(bridge._getAdaptiveQueueIntervalMs()).toBe(50); // 200 / 4
+            });
+
+            it('publishes a warning when the command queue drops items', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+                // Rebuild queues with a tiny max so onDrop fires immediately.
+                bridge.settings.maxQueueSize = 1;
+                bridge._buildQueues();
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 0,
+                    writableConnections: 0
+                }));
+                // First add starts processing but canProcess blocks; items pile up.
+                bridge.cgateCommandQueue.add('cmd1');
+                bridge.cgateCommandQueue.add('cmd2');
+                bridge.cgateCommandQueue.add('cmd3');
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'hello/cgateweb/warnings',
+                    expect.stringContaining('C-Gate command queue full'),
+                    { retain: false }
+                );
+            });
+        });
+
         describe('EventPublisher direct publish', () => {
             it('should publish directly to MQTT manager without throttle queue', () => {
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');

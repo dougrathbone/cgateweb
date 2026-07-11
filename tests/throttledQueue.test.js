@@ -267,4 +267,104 @@ describe('ThrottledQueue', () => {
             jest.useRealTimers();
         });
     });
+
+    describe('priority and processing gate', () => {
+        it('should process higher-priority items before lower-priority ones', () => {
+            const processed = [];
+            const queue = new ThrottledQueue(
+                (item) => { processed.push(item); },
+                100,
+                'Priority',
+                {}
+            );
+
+            queue.add('low-1', { priority: 'bulk' });
+            queue.add('high', { priority: 'critical' });
+            queue.add('low-2', { priority: 'bulk' });
+
+            // First add processes immediately (bulk), then critical before remaining bulk
+            expect(processed[0]).toBe('low-1');
+            jest.advanceTimersByTime(100);
+            expect(processed[1]).toBe('high');
+            jest.advanceTimersByTime(100);
+            expect(processed[2]).toBe('low-2');
+
+            queue.clear();
+        });
+
+        it('should not process while canProcessFn returns false, then resume', () => {
+            const processed = [];
+            let allow = false;
+            const queue = new ThrottledQueue(
+                (item) => { processed.push(item); },
+                100,
+                'Gated',
+                {
+                    canProcessFn: () => allow,
+                    retryWhenBlockedMs: 50
+                }
+            );
+
+            queue.add('a');
+            expect(processed).toEqual([]);
+            expect(queue.length).toBe(1);
+
+            allow = true;
+            jest.advanceTimersByTime(50);
+            expect(processed).toEqual(['a']);
+
+            queue.clear();
+        });
+
+        it('should invoke onDrop when maxSize is exceeded', () => {
+            const drops = [];
+            const queue = new ThrottledQueue(
+                () => {},
+                1000,
+                'Drop',
+                {
+                    maxSize: 1,
+                    canProcessFn: () => false,
+                    onDrop: (droppedCount, priority, maxSize) => {
+                        drops.push({ droppedCount, priority, maxSize });
+                    }
+                }
+            );
+
+            queue.add('first');
+            queue.add('second');
+
+            expect(drops).toEqual([{ droppedCount: 1, priority: 'normal', maxSize: 1 }]);
+            expect(queue.length).toBe(1);
+            expect(queue.droppedCount).toBe(1);
+
+            queue.clear();
+        });
+
+        it('should prefer dropping bulk over critical when full', () => {
+            const queue = new ThrottledQueue(
+                () => {},
+                1000,
+                'DropOrder',
+                {
+                    maxSize: 2,
+                    canProcessFn: () => false
+                }
+            );
+
+            queue.add('crit', { priority: 'critical' });
+            queue.add('bulk', { priority: 'bulk' });
+            queue.add('extra', { priority: 'normal' }); // drops bulk first
+
+            expect(queue.droppedCount).toBe(1);
+            expect(queue.getStats().byPriority).toEqual({
+                critical: 1,
+                interactive: 0,
+                normal: 1,
+                bulk: 0
+            });
+
+            queue.clear();
+        });
+    });
 }); 
