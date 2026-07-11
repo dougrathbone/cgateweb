@@ -5,6 +5,25 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.7] - 2026-07-11
+
+### Fixed
+
+- **armv7 add-on images build again.** Alpine 3.19 has no OpenJDK 17 package on armv7; the Dockerfile now falls back to OpenJDK 8 on arches that lack OpenJDK 17 so distribution can publish (unblocking the failed 1.15.6 ship).
+- **Sensitive web reads and SSE require the same auth as mutations** (`/api/labels`, status, dashboard, areas, export, event stream). `/healthz` and `/readyz` stay public. Ingress URL is no longer logged at startup.
+- Uploaded C-Gate zips without `cgate_download_sha256` now log the same integrity-skip warning as the download path.
+
+### Changed
+
+- Distribution publish runs only from `v*` tags (not arbitrary `workflow_dispatch` refs) and uses workflow concurrency to avoid overlapping deploys.
+- Pool reconnect backoff honours `reconnectinitialdelay` / `reconnectmaxdelay`. New tunables: `initDebounceMs`, `webSseKeepaliveMs`, `eventLogMaxEntries`, `mqttPendingPublishMaxEntries`.
+- Runtime warns when `mqttRejectUnauthorized` is false (MITM risk). Operator docs cover MQTT broker ACL requirements.
+- Internal: HaDiscovery tree/publishers split into modules; addon option mapping is table-driven. No intentional behaviour change from those refactors.
+
+### Tests
+
+- ThrottledQueue priority/gating/onDrop coverage and bridge command-queue pool gating tests.
+
 ## [1.15.6] - 2026-07-11
 
 ### Fixed
