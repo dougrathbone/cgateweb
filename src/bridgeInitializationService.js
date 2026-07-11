@@ -92,9 +92,16 @@ class BridgeInitializationService {
         // still observe all work completing as before.
         this._updateReadiness('all-connected');
 
-        // Auto-discover networks from C-Gate if enabled and no explicit config overrides it
-        if (this.settings.autoDiscoverNetworks) {
+        // Auto-discover networks from C-Gate when enabled AND discovery results
+        // would actually be consumed (configured getall/HA network lists empty).
+        // Typical HA installs already set getall_networks / ha_discovery_networks
+        // to [254]; probing `tree //PROJECT` there often returns 402 and is wasted.
+        if (this.settings.autoDiscoverNetworks && this._needsNetworkDiscovery()) {
             await this._discoverNetworks();
+        } else if (this.settings.autoDiscoverNetworks) {
+            this.logger.debug(
+                'Network auto-discovery skipped: getall_networks/ha_discovery_networks already configured'
+            );
         }
 
         const getallNetworks = this._resolveGetallNetworks();
@@ -267,6 +274,19 @@ class BridgeInitializationService {
      * Applies the discovered network IDs to the bridge.
      * Falls back silently if the command fails or returns no networks.
      */
+    /**
+     * True when auto-discovery results would be consumed by getall and/or HA
+     * discovery (i.e. those configured network lists are empty).
+     */
+    _needsNetworkDiscovery() {
+        const s = this.settings;
+        const hasGetall = Array.isArray(s.getall_networks) && s.getall_networks.length > 0;
+        const hasHa = Array.isArray(s.ha_discovery_networks) && s.ha_discovery_networks.length > 0;
+        const getallNeedsDiscovery = !hasGetall;
+        const haNeedsDiscovery = !!s.ha_discovery_enabled && !hasHa;
+        return getallNeedsDiscovery || haNeedsDiscovery;
+    }
+
     async _discoverNetworks() {
         const cbusname = this.settings.cbusname;
         const command = `tree //${cbusname}${NEWLINE}`;
@@ -326,7 +346,7 @@ class BridgeInitializationService {
                     collectedLines.push(statusData);
                     return false;
                 } else if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
-                    this.logger.info(`Network auto-discovery: C-Gate ${responseCode} ${statusData}; using configured networks`);
+                    this.logger.debug(`Network auto-discovery: C-Gate ${responseCode} ${statusData}; using configured networks`);
                     finish();
                     return true;
                 }

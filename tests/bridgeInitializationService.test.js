@@ -348,6 +348,25 @@ describe('BridgeInitializationService', () => {
             await promise;
         });
 
+        it('logs 402 responses at debug level', async () => {
+            const { bridge } = makeBridge({ cbusname: 'CLIPSAL' });
+            const svc = makeService(bridge);
+            const debugSpy = jest.spyOn(svc.logger, 'debug');
+            const infoSpy = jest.spyOn(svc.logger, 'info');
+
+            const promise = svc._discoverNetworks();
+            const handler = bridge.commandResponseProcessor.networkDiscoveryHandler;
+            expect(handler('402', 'Operation not supported by: //CLIPSAL')).toBe(true);
+
+            expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('C-Gate 402'));
+            expect(infoSpy.mock.calls.filter(c =>
+                typeof c[0] === 'string' && c[0].includes('C-Gate 402')
+            )).toHaveLength(0);
+
+            jest.advanceTimersByTime(6000);
+            await promise;
+        });
+
         it('handler returns false on 200 so default routing still runs', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
             const svc = makeService(bridge);
@@ -577,9 +596,41 @@ describe('BridgeInitializationService', () => {
             expect(bridge.haDiscovery.trigger).toHaveBeenCalledWith([254, 1]);
         });
 
-        it('calls _discoverNetworks when autoDiscoverNetworks is true', async () => {
+        it('calls _discoverNetworks when autoDiscoverNetworks is true and networks are unconfigured', async () => {
             const { bridge } = makeBridge({
                 autoDiscoverNetworks: true,
+                cbusname: 'HOME',
+                ha_discovery_enabled: true
+                // no getall_networks / ha_discovery_networks
+            });
+            const svc = makeService(bridge);
+            const discoverSpy = jest.spyOn(svc, '_discoverNetworks').mockResolvedValue(undefined);
+            await svc.handleAllConnected();
+            expect(discoverSpy).toHaveBeenCalled();
+        });
+
+        it('skips _discoverNetworks when getall and HA networks are already configured', async () => {
+            const { bridge } = makeBridge({
+                autoDiscoverNetworks: true,
+                getall_networks: [254],
+                ha_discovery_networks: [254],
+                ha_discovery_enabled: true,
+                cbusname: 'HOME'
+            });
+            const svc = makeService(bridge);
+            const discoverSpy = jest.spyOn(svc, '_discoverNetworks').mockResolvedValue(undefined);
+            const debugSpy = jest.spyOn(svc.logger, 'debug');
+            await svc.handleAllConnected();
+            expect(discoverSpy).not.toHaveBeenCalled();
+            expect(debugSpy).toHaveBeenCalledWith(expect.stringContaining('Network auto-discovery skipped'));
+        });
+
+        it('still probes when getall is set but HA discovery networks are empty', async () => {
+            const { bridge } = makeBridge({
+                autoDiscoverNetworks: true,
+                getall_networks: [254],
+                ha_discovery_networks: [],
+                ha_discovery_enabled: true,
                 cbusname: 'HOME'
             });
             const svc = makeService(bridge);
