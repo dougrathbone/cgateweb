@@ -252,7 +252,20 @@ jobs:
     # Only publish to the distribution repo from semver tags. workflow_dispatch
     # still runs the quality gates above for manual verification, but must not
     # push timestamp versions onto distribution main.
-    if: startsWith(github.ref, 'refs/tags/v')
+    #
+    # always() is required: integration-upload is often skipped (no hosted
+    # artifact var), and a plain `if:` without always() causes this job to be
+    # skipped whenever any upstream job was skipped — even when integration
+    # itself succeeded via its own always() gate.
+    if: >-
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.version-sync.result == 'success' &&
+      needs.validate-addon.result == 'success' &&
+      needs.static-checks.result == 'success' &&
+      needs.test.result == 'success' &&
+      needs.addon-image.result == 'success' &&
+      needs.integration.result == 'success'
     needs: [version-sync, validate-addon, static-checks, test, addon-image, integration]
     runs-on: ubuntu-latest
 

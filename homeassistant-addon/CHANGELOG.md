@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.9] - 2026-07-11
+
+### Fixed
+
+- **Distribution publish no longer skips when the optional C-Gate upload integration job is skipped.** The deploy job now uses `always()` plus explicit success checks on required gates (GitHub Actions otherwise skips deploy whenever any upstream job was skipped).
+
 ## [1.15.8] - 2026-07-11
 
 ### Fixed
