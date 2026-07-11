@@ -25,13 +25,22 @@ FROM $BUILD_FROM
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# OpenJDK 17 is not packaged for every Alpine arch (notably armv7/armhf on
+# 3.19). Prefer 17 where available; fall back to OpenJDK 8 so managed-mode
+# C-Gate still has a JRE on 32-bit ARM. Remote-mode users only need nodejs.
+ARG BUILD_ARCH
 RUN \
     apk add --no-cache \
         nodejs \
-        openjdk17-jre-headless \
         curl \
         unzip \
-        netcat-openbsd
+        netcat-openbsd && \
+    if apk add --no-cache openjdk17-jre-headless; then \
+        echo "Installed openjdk17-jre-headless (arch=${BUILD_ARCH:-unknown})"; \
+    else \
+        echo "openjdk17 unavailable; installing openjdk8-jre-base (arch=${BUILD_ARCH:-unknown})"; \
+        apk add --no-cache openjdk8-jre-base; \
+    fi
 
 WORKDIR /app
 
