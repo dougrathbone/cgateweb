@@ -14,6 +14,12 @@ env:
 permissions:
   contents: read
 
+# Do not cancel in-progress deploys — overlapping tag pushes should queue,
+# not abort a half-finished distribution publish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   version-sync:
     name: Verify version sync (tag / package.json / config.yaml)
@@ -226,6 +232,10 @@ jobs:
         echo "All required C-Gate integration tests passed."
 
   build-and-deploy:
+    # Only publish to the distribution repo from semver tags. workflow_dispatch
+    # still runs the quality gates above for manual verification, but must not
+    # push timestamp versions onto distribution main.
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: [version-sync, validate-addon, static-checks, test, addon-image, integration]
     runs-on: ubuntu-latest
 
@@ -242,7 +252,8 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           VERSION=${VERSION#v}
         else
-          VERSION=$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA:0:7}
+          echo "::error::build-and-deploy is tag-only; refusing non-tag ref ${GITHUB_REF}"
+          exit 1
         fi
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
         echo "Version: $VERSION"

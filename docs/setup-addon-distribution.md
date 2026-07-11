@@ -82,10 +82,12 @@ The workflow will automatically:
 
 ## Manual Testing
 
-To test the workflow without creating a tag:
+To run the quality gates (unit tests, multi-arch image builds, integration)
+without publishing to the distribution repo:
 
-1. Go to Actions → "Build and Deploy HACS Distribution"
+1. Go to Actions → "Build and Deploy Home Assistant Addon"
 2. Click "Run workflow"
 3. Select the branch and click "Run workflow"
 
-This will create a development build with a timestamp-based version.
+`workflow_dispatch` runs validation and tests only. Publishing to
+`cgateweb-homeassistant` requires pushing a semver tag (`v*`).
