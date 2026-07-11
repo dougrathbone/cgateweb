@@ -578,6 +578,13 @@ class CgateWebBridge {
             await this.commandConnectionPool.execute(command);
         } catch (error) {
             this.logger.error('Failed to send C-Gate command:', { command, error });
+            const trimmed = String(command || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+            const detail = error && error.message ? error.message : String(error);
+            this.mqttManager.publish(
+                'hello/cgateweb/warnings',
+                `C-Gate command send failed: ${trimmed} (${detail})`,
+                { retain: false }
+            );
         }
     }
 

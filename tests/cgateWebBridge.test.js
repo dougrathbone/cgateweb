@@ -985,6 +985,24 @@ describe('CgateWebBridge', () => {
                 expect(executeSpy).toHaveBeenCalledWith('TEST COMMAND\n');
                 executeSpy.mockRestore();
             });
+
+            it('should publish a warning when pool execute fails', async () => {
+                jest.spyOn(bridge.commandConnectionPool, 'execute').mockRejectedValue(
+                    new Error('No healthy connections available in pool')
+                );
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+                const errorSpy = jest.spyOn(bridge.logger, 'error');
+
+                await bridge._sendCgateCommand('RAMP //HOME/254/56/1 0\n');
+
+                expect(errorSpy).toHaveBeenCalled();
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'hello/cgateweb/warnings',
+                    expect.stringContaining('C-Gate command send failed'),
+                    { retain: false }
+                );
+                expect(publishSpy.mock.calls[0][1]).toContain('No healthy connections');
+            });
         });
 
         describe('EventPublisher direct publish', () => {

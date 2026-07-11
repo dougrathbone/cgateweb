@@ -743,6 +743,59 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.pendingTreeNetworks).toEqual([]);
         });
 
+        it('does not send a duplicate TREEXML while an active session is streaming', () => {
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.handleTreeStart('start');
+            expect(haDiscovery.activeTreeSession.network).toBe('254');
+
+            haDiscovery.queueTreeRequest('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+
+        it('does not send a duplicate TREEXML while parseString is in flight', () => {
+            let deferredCb;
+            jest.spyOn(haDiscovery, '_parseTreeXml').mockImplementation((_xml, cb) => {
+                deferredCb = cb;
+            });
+
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._parsingNetworks.has('254')).toBe(true);
+
+            haDiscovery.queueTreeRequest('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            deferredCb(null, MOCK_TREEXML_RESULT_NET254);
+            expect(haDiscovery._parsingNetworks.has('254')).toBe(false);
+        });
+
+        it('ignores a stale parse callback after a newer TREEXML epoch', () => {
+            const callbacks = [];
+            jest.spyOn(haDiscovery, '_parseTreeXml').mockImplementation((_xml, cb) => {
+                callbacks.push(cb);
+            });
+            const failSpy = jest.spyOn(haDiscovery, '_handleTreeRequestFailure');
+
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('end');
+            expect(callbacks).toHaveLength(1);
+
+            // Force a newer epoch while the first parse is still deferred
+            // (bypass in-flight skip by clearing parsing set — simulates a
+            // future force-refresh path that bumps epoch).
+            haDiscovery._parsingNetworks.delete('254');
+            haDiscovery.queueTreeRequest('254');
+            expect(haDiscovery._treeParseEpoch.get('254')).toBe(2);
+
+            // Stale empty-tree parse must not schedule retry / corrupt state.
+            callbacks[0](null, {});
+            expect(failSpy).not.toHaveBeenCalled();
+        });
+
         it('marks ok once the network has synced and the tree carries data', () => {
             // A synced tree carries at least one addressable device (a load unit
             // in a non-management application), not just a network element.

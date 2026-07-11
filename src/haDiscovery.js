@@ -88,6 +88,12 @@ class HaDiscovery {
         // recovers automatically without restarting the bridge.
         // networkId -> { attempts, watchdogHandle, retryHandle }
         this._treeRequestState = new Map();
+        // Per-network parse generation. Bumped when a TREEXML is sent so a
+        // stale parseString callback from an earlier tree cannot corrupt
+        // retry/discovery state after a newer request has started.
+        this._treeParseEpoch = new Map();
+        // Networks whose TreeXML is currently in parseString (session already cleared).
+        this._parsingNetworks = new Set();
         this._maxTreeRetryAttempts = (settings && settings.haDiscoveryMaxTreeRetryAttempts) || 8;
         this._treeRetryInitialDelayMs = (settings && settings.haDiscoveryTreeRetryInitialDelayMs) || 2000;
         this._treeRetryMaxDelayMs = (settings && settings.haDiscoveryTreeRetryMaxDelayMs) || 60000;
@@ -228,6 +234,8 @@ class HaDiscovery {
 
         // Cancel any in-flight or pending discovery for this network.
         this._clearTreeState(networkKey);
+        this._treeParseEpoch.delete(networkKey);
+        this._parsingNetworks.delete(networkKey);
         const pendingIdx = this.pendingTreeNetworks.indexOf(networkKey);
         if (pendingIdx >= 0) this.pendingTreeNetworks.splice(pendingIdx, 1);
 
@@ -270,18 +278,21 @@ class HaDiscovery {
 
         this._setDiscoveryStatus(normalizedNetwork, DISCOVERY_STATE_DISCOVERING);
 
-        // If a TREEXML for this network is already in flight, don't send another.
-        // C-Gate would return a second tree for the single tracked pending entry
-        // and the extra response would be misattributed to an "unknown" network
-        // (handleTreeStart falls back to 'unknown' when the queue is empty). The
-        // in-flight request -- with its watchdog and retry -- delivers the refresh.
-        if (this.pendingTreeNetworks.includes(normalizedNetwork)) {
+        // If a TREEXML for this network is already in flight (queued, streaming,
+        // or parsing), don't send another. Overlapping trees for the same
+        // network race the async parse callback and can corrupt retry state.
+        if (this.pendingTreeNetworks.includes(normalizedNetwork)
+            || (this.activeTreeSession && this.activeTreeSession.network === normalizedNetwork)
+            || this._parsingNetworks.has(normalizedNetwork)) {
             this.logger.debug(`TreeXML for network ${normalizedNetwork} already in flight; skipping duplicate request`);
             return;
         }
 
         this.logger.info(`Requesting TreeXML for network ${normalizedNetwork}...`);
         this.pendingTreeNetworks.push(normalizedNetwork);
+
+        const nextEpoch = (this._treeParseEpoch.get(normalizedNetwork) || 0) + 1;
+        this._treeParseEpoch.set(normalizedNetwork, nextEpoch);
 
         this._clearTimer(state, 'watchdogHandle');
         state.watchdogHandle = this._setTimer(this._treeRequestTimeoutMs, () => {
@@ -534,66 +545,89 @@ class HaDiscovery {
         // Log before parsing
         this.logger.info(`Starting XML parsing for network ${networkForTree}...`);
         const startTime = Date.now();
+        const parseEpoch = this._treeParseEpoch.get(networkForTree) || 0;
+        this._parsingNetworks.add(networkForTree);
 
-        parseString(treeXmlData, { explicitArray: false }, (err, result) => {
-            const duration = Date.now() - startTime;
-            if (err) {
-                this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms): ${err.message || err}`, {
-                    xmlLength: treeXmlData.length,
-                    xmlPreview: treeXmlData.slice(0, 200),
-                    line: err.line,
-                    column: err.column
-                });
-                // Surface the parse failure to the retry mechanism so a malformed
-                // response from C-Gate (truncated, mid-restart, encoding glitch)
-                // doesn't leave discovery silently stuck. Same backoff budget as
-                // 401-on-tree applies; we'll PAUSE after the retry limit.
-                this._handleTreeRequestFailure(networkForTree, `parse error: ${err.message || err}`);
-            } else {
-                this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
-
-                // A network that exists in C-Gate but hasn't finished syncing
-                // its units yet returns an empty <Network></Network> (the
-                // network's State is still "new"). findNetworkData can't locate
-                // the network in that tree. Treat it as transient and retry with
-                // backoff rather than marking discovery ok with zero devices —
-                // otherwise no entities appear at startup until a manual gettree
-                // once the network has synced.
-                //
-                // Mid-sync C-Gate also returns a tree containing ONLY the network
-                // interface/management unit (Application 255, no groups) before
-                // the load units sync. findNetworkData finds that network, but it
-                // carries no addressable devices — accepting it published 0
-                // entities and stopped retrying, so real devices that synced
-                // moments later never appeared (issue #17). networkHasDeviceData
-                // treats a management-only tree as "still syncing" too.
-                const networkData = findNetworkData(networkForTree, result);
-                if (!networkData || !networkHasDeviceData(networkData)) {
-                    this.logger.info(
-                        `TreeXML for network ${networkForTree} contained no device data yet ` +
-                        `(only network-management units present — network still syncing?); scheduling a retry.`
-                    );
-                    this._handleTreeRequestFailure(networkForTree, 'empty tree - network not synced yet');
+        this._parseTreeXml(treeXmlData, (err, result) => {
+            try {
+                if ((this._treeParseEpoch.get(networkForTree) || 0) !== parseEpoch) {
+                    this.logger.debug(`Ignoring stale TreeXML parse for network ${networkForTree}`);
                     return;
                 }
 
-                // Real tree data landed: this attempt succeeded, so clear the
-                // retry/backoff state for the network before publishing.
-                this._clearTreeState(networkForTree);
+                const duration = Date.now() - startTime;
+                if (err) {
+                    this.logger.error(`Error parsing TreeXML for network ${networkForTree} (took ${duration}ms): ${err.message || err}`, {
+                        xmlLength: treeXmlData.length,
+                        xmlPreview: treeXmlData.slice(0, 200),
+                        line: err.line,
+                        column: err.column
+                    });
+                    // Surface the parse failure to the retry mechanism so a malformed
+                    // response from C-Gate (truncated, mid-restart, encoding glitch)
+                    // doesn't leave discovery silently stuck. Same backoff budget as
+                    // 401-on-tree applies; we'll PAUSE after the retry limit.
+                    this._handleTreeRequestFailure(networkForTree, `parse error: ${err.message || err}`);
+                } else {
+                    this.logger.info(`Parsed TreeXML for network ${networkForTree} (took ${duration}ms)`);
 
-                // Publish standard tree topic
-                this._publish(
-                    `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
-                    JSON.stringify(result),
-                    MQTT_RETAINED_STATE_OPTIONS
-                );
+                    // A network that exists in C-Gate but hasn't finished syncing
+                    // its units yet returns an empty <Network></Network> (the
+                    // network's State is still "new"). findNetworkData can't locate
+                    // the network in that tree. Treat it as transient and retry with
+                    // backoff rather than marking discovery ok with zero devices —
+                    // otherwise no entities appear at startup until a manual gettree
+                    // once the network has synced.
+                    //
+                    // Mid-sync C-Gate also returns a tree containing ONLY the network
+                    // interface/management unit (Application 255, no groups) before
+                    // the load units sync. findNetworkData finds that network, but it
+                    // carries no addressable devices — accepting it published 0
+                    // entities and stopped retrying, so real devices that synced
+                    // moments later never appeared (issue #17). networkHasDeviceData
+                    // treats a management-only tree as "still syncing" too.
+                    const networkData = findNetworkData(networkForTree, result);
+                    if (!networkData || !networkHasDeviceData(networkData)) {
+                        this.logger.info(
+                            `TreeXML for network ${networkForTree} contained no device data yet ` +
+                            `(only network-management units present — network still syncing?); scheduling a retry.`
+                        );
+                        this._handleTreeRequestFailure(networkForTree, 'empty tree - network not synced yet');
+                        return;
+                    }
 
-                // Generate HA Discovery messages
-                this._publishDiscoveryFromTree(networkForTree, result);
+                    // Real tree data landed: this attempt succeeded, so clear the
+                    // retry/backoff state for the network before publishing.
+                    this._clearTreeState(networkForTree);
 
-                this._setDiscoveryStatus(networkForTree, DISCOVERY_STATE_OK);
+                    // Publish standard tree topic
+                    this._publish(
+                        `${MQTT_TOPIC_PREFIX_READ}/${networkForTree}///tree`,
+                        JSON.stringify(result),
+                        MQTT_RETAINED_STATE_OPTIONS
+                    );
+
+                    // Generate HA Discovery messages
+                    this._publishDiscoveryFromTree(networkForTree, result);
+
+                    this._setDiscoveryStatus(networkForTree, DISCOVERY_STATE_OK);
+                }
+            } finally {
+                this._parsingNetworks.delete(networkForTree);
             }
         });
+    }
+
+    /**
+     * Parse TreeXML via xml2js. Extracted so tests can defer the callback and
+     * exercise stale-parse / in-flight dedupe without fighting the module-level
+     * parseString binding.
+     * @param {string} treeXmlData
+     * @param {Function} callback
+     * @private
+     */
+    _parseTreeXml(treeXmlData, callback) {
+        parseString(treeXmlData, { explicitArray: false }, callback);
     }
 
     _publishDiscoveryFromTree(networkId, treeData) {
