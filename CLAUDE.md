@@ -95,7 +95,7 @@ The application uses optimized connection architecture:
 
 - **Read topics**: `cbus/read/{network}/{app}/{group}/state|level`
 - **Write topics**: `cbus/write/{network}/{app}/{group}/switch|ramp`
-- **Control topics**: `cbus/write/{network}/{app}//getall`, `cbus/write/{network}///tree`
+- **Control topics**: `cbus/write/{network}/{app}//getall`, `cbus/write/{network}///gettree`
 - **Status topic**: `hello/cgateweb` (Online/Offline with LWT)
 
 ### Home Assistant Discovery

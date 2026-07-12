@@ -108,7 +108,7 @@ Requesting an update on start or periodic updates can be set in the settings fil
 
 ### This requests the network tree:
 
- - cbus/write/#1///tree - result gets published as JSON on cbus/read/#1///tree
+ - cbus/write/#1///gettree - result gets published as JSON on cbus/read/#1///tree
 
 ### MQTT broker ACL
 

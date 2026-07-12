@@ -743,6 +743,24 @@ describe('HaDiscovery', () => {
             expect(haDiscovery.pendingTreeNetworks).toEqual([]);
         });
 
+        it('drops an unattributable tree response instead of publishing "unknown" entities (issue #25)', () => {
+            // Simulate a stray/duplicate tree response: no pending request and no
+            // prior treeNetwork, so handleTreeStart falls back to 'unknown'.
+            expect(haDiscovery.pendingTreeNetworks).toEqual([]);
+            haDiscovery.handleTreeStart('start');
+            expect(haDiscovery.activeTreeSession.network).toBe('unknown');
+
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            // Nothing for the bogus 'unknown' network should be published:
+            // neither the tree topic nor any HA Discovery config.
+            const unknownPublishes = mockPublishFn.mock.calls.filter(
+                c => typeof c[0] === 'string' && c[0].includes('unknown')
+            );
+            expect(unknownPublishes).toEqual([]);
+        });
+
         it('does not send a duplicate TREEXML while an active session is streaming', () => {
             haDiscovery.queueTreeRequest('254');
             haDiscovery.handleTreeStart('start');

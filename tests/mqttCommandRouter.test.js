@@ -80,7 +80,18 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/0/0/gettree', '');
                 
                 expect(emitSpy).toHaveBeenCalledWith('treeRequest', '254');
-                expect(queueSpy).toHaveBeenCalledWith('TREEXML //TestProject/254\n');
+            });
+
+            it('does not directly queue TREEXML (avoids a duplicate untracked tree that lands as an "unknown" network, issue #25)', () => {
+                // A manual gettree must go through the treeRequest -> queueTreeRequest
+                // path only. If the router ALSO queued the TREEXML directly, C-Gate
+                // would return two tree responses: the first attributed to the
+                // network, the second (with an empty pending queue) falling back to
+                // the "unknown" network and publishing duplicate entities.
+                router.routeMessage('cbus/write/254/0/0/gettree', '');
+
+                const treexmlCalls = queueSpy.mock.calls.filter(c => String(c[0]).includes('TREEXML'));
+                expect(treexmlCalls).toHaveLength(0);
             });
         });
 

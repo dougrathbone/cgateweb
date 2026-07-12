@@ -186,15 +186,17 @@ class MqttCommandRouter extends EventEmitter {
      */
     _handleGetTree(command) {
         this.logger.debug(`Requesting device tree for network ${command.getNetwork()}`);
-        
-        // Emit event for HA discovery to track which network tree was requested
+
+        // Emit event only; the bridge routes this to HaDiscovery.queueTreeRequest,
+        // which sends the (project-qualified) TREEXML AND records the network in
+        // pendingTreeNetworks so the response is attributed correctly.
+        //
+        // The router must NOT also queue the TREEXML itself: that produced two
+        // TREEXML commands per manual gettree, so C-Gate returned two tree
+        // responses. The first was attributed to the network; the second arrived
+        // with an empty pending queue and fell back to the "unknown" network,
+        // publishing duplicate cgateweb_unknown_* entities (issue #25).
         this.emit('treeRequest', command.getNetwork());
-        
-        // Queue C-Gate TREEXML command. Project-qualify the address
-        // (//PROJECT/NET) like every other command: C-Gate 3.7.1 rejects a bare
-        // network number with "401 Bad object or device ID" (#23).
-        const cgateCommand = `TREEXML //${this.cbusname}/${command.getNetwork()}${NEWLINE}`;
-        this._queueCommand(cgateCommand);
     }
 
     /**

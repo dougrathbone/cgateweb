@@ -294,6 +294,22 @@ class _HaDiscoveryTreeSession {
              return;
         }
 
+        // Defensive: a tree response we could not attribute to a real network
+        // (pending queue empty and no prior treeNetwork) falls back to the
+        // literal 'unknown' network in handleTreeStart. Publishing discovery for
+        // it would create bogus cgateweb_unknown_* entities whose state topics
+        // (cbus/read/unknown/...) never receive data. This should not happen now
+        // that a gettree issues exactly one tracked TREEXML, but guard against
+        // any stray/duplicate tree response rather than polluting HA (issue #25).
+        if (networkForTree === 'unknown') {
+            this.logger.warn(
+                `Received a TreeXML response that could not be attributed to a requested network; ` +
+                `dropping it instead of publishing 'unknown' entities. ` +
+                `This usually means an unexpected/duplicate TREEXML response arrived.`
+            );
+            return;
+        }
+
         // Log before parsing
         this.logger.info(`Starting XML parsing for network ${networkForTree}...`);
         const startTime = Date.now();
