@@ -149,7 +149,7 @@ jobs:
 
     - name: Set up QEMU (multi-arch emulation)
       if: matrix.arch != 'amd64'
-      uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392  # v3.6.0
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
 
     - name: Assemble add-on build context
       # The production homeassistant-addon/Dockerfile expects package.json,
@@ -165,7 +165,7 @@ jobs:
         cp index.js package.json package-lock.json ctx/
 
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
 
     - name: Build image
       # BuildKit + BUILDPLATFORM lets the npm install stage run on the host
