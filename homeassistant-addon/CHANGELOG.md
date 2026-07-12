@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.10] - 2026-07-12
+
+### Fixed
+
+- **Manual `gettree` no longer creates duplicate `unknown` entities (#25).** A `cbus/write/<net>///gettree` was sending TREEXML twice — once directly from the command router and once via the tracked HA Discovery path — so C-Gate returned two tree responses. The second was misattributed to an `unknown` network, duplicating every entity (e.g. `cgateweb_unknown_56_115` alongside `cgateweb_254_56_115`). The router now issues exactly one tracked TREEXML, and any unattributable tree response is dropped instead of published.
+- Docs typo: the tree control topic is `cbus/write/<net>///gettree`, not `tree` (README, CLAUDE.md).
+
 ## [1.15.9] - 2026-07-11
 
 ### Fixed
