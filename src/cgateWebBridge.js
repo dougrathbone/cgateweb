@@ -21,7 +21,7 @@ const BridgeReadiness = require('./bridgeReadiness');
 const { discoverIngressEntry } = require('./ingressDiscovery');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
-const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
+const { MQTT_RETAINED_STATE_OPTIONS, CGATE_EVENT_NETWORK_SYNC_REGEX } = require('./constants');
 const { clampSetting } = require('./utils');
 const { parseRawCaptureTarget } = require('./rawEventCapture');
 
@@ -566,6 +566,20 @@ class CgateWebBridge {
             return;
         }
 
+        // C-Gate "Network sync ok" status event (code 762, visible at event
+        // level 6+): the network finished synchronising, so its tree is now
+        // fully populated. Forward to HA Discovery to re-fetch groups that
+        // were still empty (unsynced) at startup (issue #25). Not a CBusEvent,
+        // so return before the standard parse (avoids a spurious warning).
+        const syncedNetworkId = this._parseNetworkSyncComplete(line);
+        if (syncedNetworkId) {
+            this.logger.info(`C-Gate event: network ${syncedNetworkId} sync complete`);
+            if (this.haDiscovery) {
+                this.haDiscovery.handleNetworkSyncComplete(syncedNetworkId);
+            }
+            return;
+        }
+
         this._publishRawEventCapture(line);
 
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
@@ -595,6 +609,17 @@ class CgateWebBridge {
     }
 
 
+
+    /**
+     * Parses a C-Gate "Network sync ok" status event (event code 762) from an
+     * event-port line, e.g. "20260718-123456.789 762 //PROJECT/254 Network
+     * sync ok". Returns the network id string, or null when the line is not a
+     * sync-complete event.
+     */
+    _parseNetworkSyncComplete(line) {
+        const match = line.match(CGATE_EVENT_NETWORK_SYNC_REGEX);
+        return match ? match[1] : null;
+    }
 
     /**
      * If the event's application is listed in settings.cbusRawEventLogApps, log

@@ -760,6 +760,47 @@ describe('CgateWebBridge', () => {
                 expect(rawCaptureSpy).toHaveBeenCalledWith(line);
                 rawCaptureSpy.mockRestore();
             });
+
+            it('routes a network sync-complete (762) event line to HA Discovery', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
+
+                expect(bridge.haDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+
+                publishEventSpy.mockRestore();
+                warnSpy.mockRestore();
+            });
+
+            it('accepts a 762 line without a timestamp prefix', () => {
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge._processEventLine('762 //TestProject/254 Network sync ok');
+
+                expect(bridge.haDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+            });
+
+            it('tolerates a 762 line when HA Discovery is not initialized', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                bridge.haDiscovery = null;
+
+                expect(() => bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok')).not.toThrow();
+                expect(publishEventSpy).not.toHaveBeenCalled();
+
+                publishEventSpy.mockRestore();
+            });
+
+            it('does not treat other 7xx status events as sync-complete', () => {
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge._processEventLine('20260718-123456.789 740 //TestProject/254 Opened cbus network');
+
+                expect(bridge.haDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
+            });
         });
 
         describe('EventPublisher integration', () => {

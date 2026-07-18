@@ -83,6 +83,51 @@ function networkHasDeviceData(networkData) {
     return units.some(unitHasDeviceData);
 }
 
+// True if a single Unit advertises a non-management application but carries NO
+// group addresses at all. During startup sync C-Gate reports load units with
+// empty <Groups> before their group bindings arrive; such a unit will gain
+// groups once the sync completes (issue #25). Units on the management
+// application only (255, 255) legitimately have no groups and are excluded, as
+// are units with no application data at all (nothing to judge). Handles both
+// TREEXML shapes (structured Application objects and the flat "56, 255" /
+// Groups "10,11" form).
+function unitHasUnsyncedGroups(unit) {
+    if (!unit) return false;
+
+    if (unit.Application && typeof unit.Application === 'object') {
+        const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
+        const isRealApp = (app) => {
+            if (!app || app.ApplicationAddress === null || app.ApplicationAddress === undefined) return false;
+            return String(app.ApplicationAddress) !== CBUS_NETWORK_MANAGEMENT_APP;
+        };
+        if (!apps.some(isRealApp)) return false;
+        // Unsynced: no real application carries any group entries yet. Groups
+        // on the management application (network variables) don't count.
+        return !apps.some(app => isRealApp(app) && app.Group);
+    }
+
+    const appIds = (unit.Application !== null && unit.Application !== undefined)
+        ? String(unit.Application).split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    const hasRealApp = appIds.some(a => a !== CBUS_NETWORK_MANAGEMENT_APP);
+    if (!hasRealApp) return false;
+    const groupIds = (unit.Groups && typeof unit.Groups === 'string')
+        ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    return groupIds.length === 0;
+}
+
+// True if any unit in the network looks like it has not finished syncing its
+// group bindings yet. A tree can pass networkHasDeviceData (some units already
+// have groups) while other units are still empty — accepting it as final would
+// leave those groups undiscovered until a manual gettree (issue #25).
+function networkHasUnsyncedUnits(networkData) {
+    if (!networkData) return false;
+    let units = networkData.Unit || [];
+    if (!Array.isArray(units)) units = [units];
+    return units.some(unitHasUnsyncedGroups);
+}
+
 function collectUnitGroups(unit, groupsByApp, targetApps) {
     if (!unit.Application) return;
 
@@ -127,5 +172,7 @@ module.exports = {
     findNetworkData,
     collectUnitGroups,
     networkHasDeviceData,
-    unitHasDeviceData
+    networkHasUnsyncedUnits,
+    unitHasDeviceData,
+    unitHasUnsyncedGroups
 };

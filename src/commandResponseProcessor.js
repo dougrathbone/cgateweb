@@ -5,7 +5,8 @@ const {
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_DATA,
     CGATE_RESPONSE_TREE_END,
-    CGATE_RESPONSE_SYSTEM_EVENT
+    CGATE_RESPONSE_SYSTEM_EVENT,
+    CGATE_RESPONSE_NETWORK_SYNC_OK
 } = require('./constants');
 
 // Strips C-Gate's leading async-event timestamp ("20260504-193110.569 ").
@@ -181,6 +182,9 @@ class CommandResponseProcessor {
             case CGATE_RESPONSE_SYSTEM_EVENT:
                 this._processSystemEvent(statusData);
                 break;
+            case CGATE_RESPONSE_NETWORK_SYNC_OK:
+                this._processNetworkSyncComplete(statusData);
+                break;
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
@@ -226,6 +230,27 @@ class CommandResponseProcessor {
         } else {
             this._haDiscovery.handleNetworkRemoved(networkId);
         }
+    }
+
+    /**
+     * Processes async "Network sync ok" events (response code 762). C-Gate
+     * emits one when a network finishes synchronising with the C-Bus
+     * interface; the tree is only fully populated after that point, so HA
+     * Discovery re-fetches it to pick up groups that were still empty
+     * (unsynced) at startup (issue #25).
+     *
+     * Example payload: "//PROJECT/254 Network sync ok"
+     */
+    _processNetworkSyncComplete(statusData) {
+        const data = statusData || '';
+        const pathMatch = data.match(CGATE_NETWORK_PATH);
+        if (!pathMatch) {
+            this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${data}`);
+            return;
+        }
+        if (!this._haDiscovery) return;
+
+        this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
     }
 
     /**

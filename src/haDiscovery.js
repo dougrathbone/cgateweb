@@ -53,6 +53,16 @@ class HaDiscovery {
         this._treeRetryMaxDelayMs = (settings && settings.haDiscoveryTreeRetryMaxDelayMs) || 60000;
         this._treeRequestTimeoutMs = (settings && settings.haDiscoveryTreeRequestTimeoutMs) || 8000;
 
+        // Re-fetch budget for trees that were accepted (they carry device
+        // data) but still contain units with empty <Groups> because C-Gate
+        // hasn't finished syncing group bindings (issue #25). Bounded so
+        // networks with legitimately group-less units stop re-fetching.
+        // networkId -> { attempts, handle }
+        this._treeResyncState = new Map();
+        this._maxTreeResyncAttempts = (settings && settings.haDiscoveryMaxTreeResyncAttempts) || 3;
+        this._treeResyncInitialDelayMs = (settings && settings.haDiscoveryTreeResyncInitialDelayMs) || 30000;
+        this._treeResyncMaxDelayMs = (settings && settings.haDiscoveryTreeResyncMaxDelayMs) || 120000;
+
         // Tracks per-network HA Discovery health. The status field is used to
         // de-dup repeated state publishes; configPublished gates the (one-shot)
         // HA Discovery config payload so we don't republish it on every
@@ -176,6 +186,30 @@ class HaDiscovery {
     }
 
     /**
+     * Counterpart to handleNetworkCreated for C-Gate's "Network sync ok" event
+     * (code 762): the network has finished synchronising with the C-Bus
+     * interface, so the tree is now fully populated. Re-fetch it so groups
+     * that were still empty (unsynced) at startup are discovered without a
+     * manual gettree (issue #25). Gated by the same scope rules as
+     * handleNetworkCreated; queueTreeRequest de-duplicates against any
+     * in-flight tree and cancels a pending retry.
+     */
+    handleNetworkSyncComplete(networkId) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+        const configured = this.settings.ha_discovery_networks || [];
+        if (configured.length > 0 && !configured.map(String).includes(networkKey)) {
+            this.logger.debug(`Network ${networkKey} sync complete but not in ha_discovery_networks; skipping refresh`);
+            return;
+        }
+        this.logger.info(`Network ${networkKey} reported sync complete (C-Gate event 762); refreshing HA Discovery`);
+        // The completed sync supersedes any pending empty-Groups re-fetch;
+        // the fresh TREEXML re-evaluates completeness from a clean budget.
+        this._clearTreeResyncState(networkKey);
+        this.queueTreeRequest(networkKey);
+    }
+
+    /**
      * Counterpart to handleNetworkCreated: when C-Gate signals that a network
      * has been removed/deleted, clear all retained HA Discovery config topics
      * for that network so the entities don't linger in HA forever. Empty
@@ -188,6 +222,7 @@ class HaDiscovery {
 
         // Cancel any in-flight or pending discovery for this network.
         this._clearTreeState(networkKey);
+        this._clearTreeResyncState(networkKey);
         this._treeParseEpoch.delete(networkKey);
         this._parsingNetworks.delete(networkKey);
         const pendingIdx = this.pendingTreeNetworks.indexOf(networkKey);

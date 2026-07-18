@@ -127,6 +127,14 @@ const defaultSettings = {
     haDiscoveryTreeRetryInitialDelayMs: 2000,
     haDiscoveryTreeRetryMaxDelayMs: 60000,
     haDiscoveryTreeRequestTimeoutMs: 8000,
+    // HA Discovery empty-Groups re-fetch tuning (issue #25). A TREEXML can be
+    // accepted (real devices present) while other units still have empty
+    // <Groups> because C-Gate hasn't finished syncing group bindings. These
+    // control how often/long the tree is re-fetched to pick up the late
+    // groups when no C-Gate 762 sync-complete event arrives.
+    haDiscoveryMaxTreeResyncAttempts: 3,
+    haDiscoveryTreeResyncInitialDelayMs: 30000,
+    haDiscoveryTreeResyncMaxDelayMs: 120000,
     // Maximum size (bytes) for POST/PUT/PATCH request bodies on the web UI's
     // label-editing API. Default 10MB covers typical .cbz uploads.
     webMaxBodySizeBytes: 10 * 1024 * 1024,

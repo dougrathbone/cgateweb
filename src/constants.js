@@ -27,6 +27,7 @@ const CGATE_RESPONSE_TREE_START = '343';     // Start of TREEXML response
 const CGATE_RESPONSE_TREE_END = '344';       // End of TREEXML response
 const CGATE_RESPONSE_TREE_DATA = '347';      // TREEXML data line
 const CGATE_RESPONSE_SYSTEM_EVENT = '742';   // Async object/network event (e.g. "Network created")
+const CGATE_RESPONSE_NETWORK_SYNC_OK = '762'; // Async "Network sync ok" event — network finished synchronising
 
 // === MQTT System ===
 const MQTT_TOPIC_PREFIX_CBUS = 'cbus';
@@ -139,6 +140,10 @@ const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:(?:\/\/\w+\/)?(\d+\/\d+\/\d+))(?:\s+(\d
 // Empty segments stay allowed for getall/gettree forms (e.g. cbus/write/254///gettree);
 // CBusCommand range-checks the numeric values (network 0-254, app/group 0-255).
 const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\d{0,3})\/(\d{0,3})\/(\d{0,3})\/(\w+)/;
+// Event-port line announcing a network finished syncing ("762 //PROJECT/254
+// Network sync ok"). The leading C-Gate timestamp is optional so the pattern
+// also matches lines already stripped of it. Captures the network id.
+const CGATE_EVENT_NETWORK_SYNC_REGEX = /^(?:\d{8}-\d{6}(?:\.\d+)?\s+)?762\s+\/\/[^/]+\/(\d+)\b/;
 
 // Export all constants - maintain compatibility with destructuring imports
 module.exports = {
@@ -169,6 +174,7 @@ module.exports = {
     CGATE_RESPONSE_TREE_END,
     CGATE_RESPONSE_TREE_DATA,
     CGATE_RESPONSE_SYSTEM_EVENT,
+    CGATE_RESPONSE_NETWORK_SYNC_OK,
     
     // MQTT System
     MQTT_TOPIC_PREFIX_CBUS,
@@ -247,5 +253,6 @@ module.exports = {
     // System
     NEWLINE,
     EVENT_REGEX,
-    COMMAND_TOPIC_REGEX
+    COMMAND_TOPIC_REGEX,
+    CGATE_EVENT_NETWORK_SYNC_REGEX
 };
