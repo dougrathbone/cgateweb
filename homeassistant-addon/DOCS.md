@@ -26,6 +26,12 @@ The add-on supports two modes:
 |--------|------|---------|-------------|
 | `cgate_mode` | list | `remote` | `remote` connects to an external C-Gate server. `managed` runs C-Gate locally inside the add-on. |
 
+> **Using a USB PC Interface (5500PC/5500PCU)?** The setup that works today is
+> **remote mode**: run C-Gate on any Windows or Linux machine with the USB
+> dongle attached, then point this add-on at it (`cgate_mode: remote`,
+> `cgate_host` = that machine's IP). Managed mode additionally has opt-in
+> alpha serial passthrough — see "Alpha: USB-serial PCI support" below.
+
 ### C-Gate Connection Settings
 
 | Option | Type | Default | Description |
@@ -45,6 +51,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Strongly recommended for custom `cgate_download_url` or untrusted upload paths; if unset, install proceeds with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
+| `cgate_serial_device` | string | (empty) | **ALPHA — opt-in.** Device path of a USB PC Interface attached to the HA host (e.g. `/dev/ttyUSB0`). Hidden optional field; leave empty unless you are testing the alpha. See "Alpha: USB-serial PCI support" below. |
 
 #### Uploading C-Gate manually
 
@@ -103,6 +110,56 @@ XML export, an older `.cbz` (zipped XML), and the newer C-Bus Toolkit 1.17.x
 `.cbz`/`.db` form (a SQLite project database) - the labels are read straight
 from the database. It does **not** load the actual C-Gate project; making
 managed C-Gate serve your project still uses the `.db` workflow above.
+
+#### Alpha: USB-serial PCI support
+
+> **Status: ALPHA — opt-in, off by default, and largely untested.** Please
+> report success or failure on
+> [GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28).
+
+Managed mode can pass a USB PC Interface (5500PC/5500PCU) attached to your
+Home Assistant host through to the C-Gate instance running inside the add-on.
+The add-on declares `uart: true`, so the Supervisor maps the host's serial
+devices into the container automatically — no manual device mapping is needed.
+
+**Requirements**
+
+- `cgate_mode: managed` (in remote mode C-Gate runs elsewhere, so a local
+  serial device is never used)
+- A USB PC Interface plugged into the Home Assistant host
+- A C-Bus Toolkit project that defines a **serial PC Interface** for the
+  network — the network↔interface binding lives in the project `.db`, not in
+  any C-Gate config file, so this add-on cannot set it up for you
+
+**Enabling**
+
+1. Find the device path in Home Assistant: **Settings → System → Hardware →
+   ⋮ (top right) → All hardware**. Look for `/dev/ttyUSB*` or `/dev/ttyACM*`
+   entries, and prefer the stable `/dev/serial/by-id/...` path when one exists
+   (it survives replugging the dongle into a different USB port).
+2. In the add-on's **Configuration** tab, click **Show unused optional
+   configuration options** and add:
+   ```yaml
+   cgate_serial_device: /dev/ttyUSB0
+   ```
+3. Restart the add-on. Startup validates the path and fails fast with a
+   readable error if it is not a `/dev/` path or the device does not exist.
+
+**Known limitations**
+
+- **Projects saved on Windows reference `COMx` ports.** If your Toolkit
+  project was built on Windows, its PC Interface entry points at a COM port
+  that does not exist on Linux. Re-point the interface at the Linux device
+  path in C-Bus Toolkit, then copy the `.db` over as described in "Loading
+  your C-Gate project in managed mode" above.
+- **Untested on ARM** (aarch64/armhf/armv7) and only lightly tested on
+  amd64 — which is why this ships as an opt-in alpha.
+- Whether a given dongle/USB chipset works depends on C-Gate's bundled serial
+  support; not every combination may function.
+
+If the alpha does not work for your setup, the remote-mode arrangement
+described under "C-Gate Mode" above (C-Gate on any machine with the dongle)
+remains the stable path for USB PC Interfaces.
 
 ### MQTT Settings
 

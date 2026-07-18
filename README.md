@@ -8,6 +8,8 @@ MQTT bridge for Clipsal C-Bus lighting systems, written in Node.js. Available as
 
 Connects to C-Gate over TCP, publishes C-Bus events to an MQTT broker, and supports Home Assistant MQTT Discovery for automatic device configuration. Control your C-Bus lights, covers, switches, and sensors from Home Assistant or any MQTT-compatible platform.
 
+**USB-serial PC Interface (5500PC/5500PCU)?** Run C-Gate yourself on any Windows/Linux machine with the dongle attached and connect in remote mode — or try the Home Assistant add-on's alpha managed-mode serial passthrough. See [DOCS.md](homeassistant-addon/DOCS.md#alpha-usb-serial-pci-support).
+
 ### Home Assistant Add-on Repositories
 
 - **Source repository (this repo):** https://github.com/dougrathbone/cgateweb
