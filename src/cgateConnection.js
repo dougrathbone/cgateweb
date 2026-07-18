@@ -1,3 +1,4 @@
+// @ts-check
 const net = require('net');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
@@ -10,6 +11,21 @@ const {
 const { isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
 
 class CgateConnection extends EventEmitter {
+    /**
+     * Creates a new CgateConnection instance.
+     * @param {string} type - Connection type ('command' or 'event')
+     * @param {string} host - C-Gate server host
+     * @param {number} port - C-Gate server port
+     * @param {Object} settings - Connection configuration settings
+     * @param {number} [settings.cgateMaxReconnectAttempts] - Max reconnect attempts before backoff-only mode (default: 10)
+     * @param {number} [settings.reconnectinitialdelay] - Initial reconnect backoff delay in ms (default: 1000)
+     * @param {number} [settings.reconnectmaxdelay] - Maximum reconnect backoff delay in ms (default: 60000)
+     * @param {number} [settings.connectionTimeout] - Connection establishment timeout in ms (default: 5000)
+     * @param {number} [settings.eventConnectionKeepAliveInterval] - Event connection keep-alive interval in ms (default: 60000)
+     * @param {number} [settings.keepAliveInterval] - Fallback keep-alive interval in ms (default: 60000)
+     * @param {string} [settings.cgateusername] - C-Gate login username (sent on command connections)
+     * @param {string} [settings.cgatepassword] - C-Gate login password (sent on command connections)
+     */
     constructor(type, host, port, settings = {}) {
         super();
         this.type = type; // 'command' or 'event'

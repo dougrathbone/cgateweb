@@ -28,6 +28,7 @@ class EventPublisher {
      * @param {Object}   [options.labelLoader] - Optional LabelLoader for type override awareness
      * @param {Object}   [options.logger] - Optional logger instance
      * @param {Object}   [options.coverRampTracker] - Optional CoverRampTracker to cancel on real events
+     * @param {Function} [options.onEventLog] - Optional callback receiving event-log entries for live streaming (SSE)
      */
     constructor(options) {
         this.settings = options.settings;

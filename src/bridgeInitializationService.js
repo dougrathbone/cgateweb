@@ -32,6 +32,7 @@ class BridgeInitializationService {
      * @param {Object} deps.mqttManager - MQTT manager ({ publish })
      * @param {Object} deps.labelLoader - label loader for HA Discovery labels
      * @param {Object} [deps.logger] - logger; defaults to a component logger
+     * @param {Function} [deps.log] - bridge log function for messages that historically went through bridge.log; defaults to logger.info
      * @param {Function} deps.getCommandResponseProcessor - () => commandResponseProcessor (live)
      * @param {Function} deps.getDiscoveredNetworks - () => current discovered networks (live)
      * @param {Function} deps.getHaDiscovery - () => current haDiscovery instance (live)
