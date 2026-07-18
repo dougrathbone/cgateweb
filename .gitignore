@@ -14,3 +14,4 @@ toolkit-certs/
 # Curated/baseline perf snapshots (baseline.json, after.json, dedup.json) are
 # still tracked intentionally.
 perf/raw.json
+.worktrees/
