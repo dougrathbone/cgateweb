@@ -32,7 +32,7 @@ class WebServer {
      * @param {Object} options
      * @param {number} options.port - Port to listen on (default 8080)
  * @param {string} [options.bindHost] - Host interface to bind to (default 127.0.0.1)
-     * @param {string} [options.basePath] - Base path prefix for ingress (e.g., '/api/hassio_ingress/abc')
+     * @param {string} [options.basePath] - Base path prefix for ingress (e.g., '/api/hassio_ingress/abc'); in add-on mode discovered from the Supervisor API and applied later via setBasePath()
      * @param {import('./labelLoader')} options.labelLoader - Label loader instance
      * @param {Function} [options.getStatus] - Function returning bridge status info
  * @param {string|null} [options.apiKey] - API key required for mutating endpoints
@@ -123,6 +123,20 @@ class WebServer {
                 resolve();
             }
         });
+    }
+
+    /**
+     * Update the ingress base path after the server has started. Used in add-on
+     * mode, where the path is discovered asynchronously from the Supervisor API
+     * (GitHub #33). The path embeds the HA ingress session token, so it is
+     * never logged.
+     * @param {string} basePath
+     */
+    setBasePath(basePath) {
+        this.basePath = (basePath || '').replace(/\/+$/, '');
+        if (this.basePath) {
+            this.logger.info('HA ingress path applied; requests authenticated by Home Assistant ingress are now trusted.');
+        }
     }
 
     async _handleRequest(req, res) {
@@ -759,9 +773,10 @@ class WebServer {
 
     _isIngressRequest(req) {
         // Only trust ingress markers when the server was started in ingress mode
-        // (INGRESS_ENTRY -> basePath). Require an exact path match plus HA Core's
-        // X-Hass-Source so a casual spoofed X-Ingress-Path on the direct :8080
-        // port cannot authorize mutations.
+        // (basePath set — from INGRESS_ENTRY, or discovered from the Supervisor
+        // API and applied via setBasePath). Require an exact path match plus HA
+        // Core's X-Hass-Source so a casual spoofed X-Ingress-Path on the direct
+        // :8080 port cannot authorize mutations.
         if (!this.basePath) return false;
         const ingressPath = req.headers['x-ingress-path'];
         if (typeof ingressPath !== 'string' || ingressPath.length === 0) return false;

@@ -992,7 +992,14 @@ input, select, textarea {
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options
     });
-    return res.json();
+    const data = await res.json().catch(function() { return null; });
+    // A non-2xx (e.g. 401 Unauthorized) must surface as an error — previously
+    // the parsed error body looked like a normal response and a failed PUT
+    // reported a successful save (GitHub #33).
+    if (!res.ok) {
+      throw new Error((data && data.error) || ('Request failed (HTTP ' + res.status + ')'));
+    }
+    return data;
   }
 
   function isDirty() {
@@ -1761,8 +1768,7 @@ input, select, textarea {
   // --- Download backup ---
   document.getElementById('downloadBackupBtn').addEventListener('click', async function() {
     try {
-      var res = await fetch(API_BASE + '/api/labels');
-      var data = await res.json();
+      var data = await api('/api/labels');
       var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       var url = URL.createObjectURL(blob);
       var a = document.createElement('a');

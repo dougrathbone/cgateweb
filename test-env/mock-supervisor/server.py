@@ -45,6 +45,11 @@ class SupervisorHandler(BaseHTTPRequestHandler):
                     "state": "started",
                     "hostname": "addon_cgateweb",
                     "options": load_options(),
+                    # What a real Supervisor returns for an ingress-enabled
+                    # addon; cgateweb learns its web base path from this
+                    # (GitHub #33).
+                    "ingress_entry": "/api/hassio_ingress/mock_ingress_token",
+                    "ingress_url": "/api/hassio_ingress/mock_ingress_token/",
                 },
                 "result": "ok",
             })

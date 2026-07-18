@@ -848,6 +848,116 @@ describe('WebServer', () => {
         });
     });
 
+    describe('Ingress base path applied after startup (GitHub #33)', () => {
+        // Reproduces the add-on lifecycle: the web server starts before the
+        // Supervisor API lookup completes, so basePath is initially empty and
+        // every gated route 401s; once discovery returns the ingress entry it
+        // is applied via setBasePath() and ingress-authenticated requests pass.
+        // Note: the Supervisor ingress proxy strips the entry prefix before
+        // forwarding, so real ingress traffic arrives at unprefixed paths with
+        // X-Ingress-Path carrying the entry.
+        let lateServer;
+        let latePort;
+        const BASE = '/api/hassio_ingress/discovered456';
+
+        afterEach(async () => {
+            if (lateServer) await lateServer.close();
+            lateServer = null;
+        });
+
+        const startLateServer = async () => {
+            lateServer = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({})
+            });
+            await lateServer.start();
+            latePort = lateServer._server.address().port;
+        };
+
+        const putViaIngress = (headers = {}) => new Promise((resolve, reject) => {
+            const req = http.request({
+                hostname: '127.0.0.1',
+                port: latePort,
+                path: '/api/labels',
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...headers }
+            }, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+            });
+            req.on('error', reject);
+            req.write(JSON.stringify({ labels: { '254/56/10': 'Saved via ingress' } }));
+            req.end();
+        });
+
+        const getViaIngress = (route, headers = {}) => new Promise((resolve, reject) => {
+            const req = http.request({
+                hostname: '127.0.0.1',
+                port: latePort,
+                path: route,
+                method: 'GET',
+                headers: { ...headers }
+            }, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => resolve({ status: res.statusCode, body: JSON.parse(data) }));
+            });
+            req.on('error', reject);
+            req.end();
+        });
+
+        it('denies ingress-looking requests until the base path is known, then allows them once applied', async () => {
+            await startLateServer();
+
+            // Discovery not yet complete: even a well-formed ingress request 401s.
+            const early = await putViaIngress({
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(early.status).toBe(401);
+
+            lateServer.setBasePath(BASE);
+
+            const after = await putViaIngress({
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(after.status).toBe(200);
+            expect(after.body.labels['254/56/10']).toBe('Saved via ingress');
+
+            // Sensitive reads (e.g. the Status tab) work through ingress too.
+            const status = await getViaIngress('/api/status', {
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(status.status).toBe(200);
+        });
+
+        it('still rejects a spoofed X-Ingress-Path that does not match the discovered base path', async () => {
+            await startLateServer();
+            lateServer.setBasePath(BASE);
+
+            const spoofed = await putViaIngress({
+                'X-Ingress-Path': '/api/hassio_ingress/someone-else',
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(spoofed.status).toBe(401);
+        });
+
+        it('normalizes a trailing slash on the applied base path', async () => {
+            await startLateServer();
+            lateServer.setBasePath(`${BASE}/`);
+
+            const res = await putViaIngress({
+                'X-Ingress-Path': BASE,
+                'X-Hass-Source': 'core.ingress'
+            });
+            expect(res.status).toBe(200);
+        });
+    });
+
     describe('Mutation rate limiting', () => {
         let limitedServer;
         let limitedPort;

@@ -125,6 +125,35 @@ function probeCgate(commands, port = 20023) {
 }
 
 /**
+ * Run curl inside the addon container against the addon's own web server.
+ * The web port is not published to the host (on a real install ingress is the
+ * only way in), so requests must originate inside the container.
+ * Returns { ok, status, body, error }.
+ */
+function curlInAddon(urlPath, { method = 'GET', headers = {}, body = null } = {}) {
+    const ps = spawnSync('podman', ['ps', '--format', '{{.Names}}', '--filter', 'name=addon'], {
+        encoding: 'utf8',
+    });
+    const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+    if (!container) return { ok: false, status: 0, body: '', error: 'addon container not found' };
+
+    const args = ['exec', '-i', container, 'curl', '-s', '-w', '\n%{http_code}', '-X', method];
+    for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
+    if (body !== null) args.push('-H', 'Content-Type: application/json', '-d', body);
+    args.push(`http://127.0.0.1:8080${urlPath}`);
+
+    const res = spawnSync('podman', args, { encoding: 'utf8' });
+    const out = (res.stdout || '').replace(/\s+$/, '');
+    const splitAt = out.lastIndexOf('\n');
+    return {
+        ok: res.status === 0,
+        status: parseInt(out.slice(splitAt + 1), 10),
+        body: splitAt === -1 ? '' : out.slice(0, splitAt),
+        error: res.stderr || '',
+    };
+}
+
+/**
  * Poll C-Gate until the named project reports state=started, or timeout.
  * project.start auto-loads the project *after* C-Gate begins accepting
  * connections: on a fresh database C-Gate first runs an XML→SQL transform
@@ -453,6 +482,57 @@ async function runTests() {
         pass('command_queue_depth (soft pass — no live C-Bus)');
         passed++;
     }
+
+    // ------------------------------------------------------------------
+    // 5b. Ingress web API  (issue #33 regression guard)
+    // ------------------------------------------------------------------
+    // On a real add-on install nothing injects INGRESS_ENTRY, so the bridge
+    // learns its HA ingress entry path from the Supervisor API at startup
+    // (here: the mock supervisor). With no web_api_key configured, a label
+    // save carrying the Supervisor-injected ingress headers must succeed,
+    // while the same request without them must 401.
+    section('Ingress web API (issue #33)');
+
+    const INGRESS_ENTRY = '/api/hassio_ingress/mock_ingress_token'; // served by mock-supervisor
+    const ingressHeaders = { 'X-Ingress-Path': INGRESS_ENTRY, 'X-Hass-Source': 'core.ingress' };
+
+    // Discovery runs async at bridge start; allow a short grace window for the
+    // base path to be applied.
+    let saveRes = { status: 0, body: '', error: '' };
+    {
+        const deadline = Date.now() + 30000;
+        do {
+            saveRes = curlInAddon('/api/labels', {
+                method: 'PUT',
+                headers: ingressHeaders,
+                body: JSON.stringify({ labels: { '254/56/250': 'Ingress E2E Test' } })
+            });
+            if (saveRes.status === 200) break;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } while (Date.now() < deadline);
+    }
+    assert(
+        `label save via ingress headers without web_api_key succeeds (HTTP ${saveRes.status})`,
+        saveRes.status === 200 && saveRes.body.includes('Ingress E2E Test'),
+        saveRes.error || saveRes.body.slice(0, 120)
+    );
+
+    const unauthRes = curlInAddon('/api/labels', {
+        method: 'PUT',
+        body: JSON.stringify({ labels: { '254/56/250': 'Nope' } })
+    });
+    assert(
+        'same label save without ingress headers is rejected (401)',
+        unauthRes.status === 401,
+        `got HTTP ${unauthRes.status}`
+    );
+
+    const statusRes = curlInAddon('/api/status', { headers: ingressHeaders });
+    assert(
+        `status read via ingress headers succeeds (HTTP ${statusRes.status})`,
+        statusRes.status === 200,
+        `got HTTP ${statusRes.status}`
+    );
 
     // ------------------------------------------------------------------
     // 6. HA MQTT Discovery validation

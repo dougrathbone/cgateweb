@@ -416,7 +416,7 @@ Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) 
 
 This add-on runs with `host_network: false`.
 
-- Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (the Supervisor injects an `X-Ingress-Path` header), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`.
+- Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (the Supervisor injects an `X-Ingress-Path` header), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`. At startup the add-on discovers its ingress entry path from the Supervisor API (`/addons/self/info`) and trusts requests carrying it; if that lookup fails, ingress API access stays denied (401) and a warning is logged — set `web_api_key` as a fallback.
 - Port `8080/tcp` is exposed by the add-on for direct access if needed.
 - Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
 
