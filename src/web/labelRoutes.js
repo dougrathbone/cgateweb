@@ -1,7 +1,7 @@
 const CbusProjectParser = require('../cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('../constants');
 const { sendJSON, sanitizePlainObject, isUnsafeObjectKey } = require('./httpHelpers');
-const { readRequestBody, readRequestBodyRaw, parseMultipart } = require('./bodyReader');
+const { readRequestBody, parseMultipart } = require('./bodyReader');
 
 const CBUS_APP_NAMES = {
     56: 'Lighting',
@@ -150,7 +150,7 @@ class LabelRoutes {
             fileBuffer = result.buffer;
             filename = result.filename;
         } else {
-            const body = await readRequestBodyRaw(req, this.maxBodySizeBytes);
+            const body = await readRequestBody(req, this.maxBodySizeBytes, { raw: true });
             if (!body || body.length === 0) {
                 return sendJSON(res, 400, { error: 'No file data received' });
             }

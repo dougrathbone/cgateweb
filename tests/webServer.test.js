@@ -7,7 +7,7 @@ const LabelLoader = require('../src/labelLoader');
 const CbusProjectParser = require('../src/cbusProjectParser');
 const RateLimiter = require('../src/web/rateLimiter');
 const StaticFileServer = require('../src/web/staticFiles');
-const { readRequestBody, readRequestBodyRaw } = require('../src/web/bodyReader');
+const { readRequestBody } = require('../src/web/bodyReader');
 
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
@@ -1364,7 +1364,7 @@ describe('WebServer', () => {
             const mockReq = new EventEmitter();
             mockReq.destroy = jest.fn();
 
-            const resultPromise = readRequestBodyRaw(mockReq);
+            const resultPromise = readRequestBody(mockReq, 10 * 1024 * 1024, { raw: true });
             mockReq.emit('data', Buffer.alloc(11 * 1024 * 1024));
 
             const result = await resultPromise;

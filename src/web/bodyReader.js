@@ -1,13 +1,15 @@
 const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
- * Read a request body as a UTF-8 string, enforcing the size cap.
- * Resolves null when the body exceeds the cap or the request errors.
+ * Read a request body, enforcing the size cap. Resolves null when the body
+ * exceeds the cap or the request errors.
  * @param {http.IncomingMessage} req
  * @param {number} [maxBodySizeBytes=DEFAULT_MAX_BODY_SIZE]
- * @returns {Promise<string|null>}
+ * @param {Object} [options]
+ * @param {boolean} [options.raw=false] - Resolve a Buffer instead of a UTF-8 string
+ * @returns {Promise<string|Buffer|null>}
  */
-function readRequestBody(req, maxBodySizeBytes = DEFAULT_MAX_BODY_SIZE) {
+function readRequestBody(req, maxBodySizeBytes = DEFAULT_MAX_BODY_SIZE, { raw = false } = {}) {
     return new Promise((resolve) => {
         let resolved = false;
         const done = (val) => { if (!resolved) { resolved = true; resolve(val); } };
@@ -22,34 +24,10 @@ function readRequestBody(req, maxBodySizeBytes = DEFAULT_MAX_BODY_SIZE) {
             }
             chunks.push(chunk);
         });
-        req.on('end', () => done(Buffer.concat(chunks).toString('utf8')));
-        req.on('error', () => done(null));
-    });
-}
-
-/**
- * Read a request body as a raw Buffer, enforcing the size cap.
- * Resolves null when the body exceeds the cap or the request errors.
- * @param {http.IncomingMessage} req
- * @param {number} [maxBodySizeBytes=DEFAULT_MAX_BODY_SIZE]
- * @returns {Promise<Buffer|null>}
- */
-function readRequestBodyRaw(req, maxBodySizeBytes = DEFAULT_MAX_BODY_SIZE) {
-    return new Promise((resolve) => {
-        let resolved = false;
-        const done = (val) => { if (!resolved) { resolved = true; resolve(val); } };
-        const chunks = [];
-        let size = 0;
-        req.on('data', (chunk) => {
-            size += chunk.length;
-            if (size > maxBodySizeBytes) {
-                req.destroy();
-                done(null);
-                return;
-            }
-            chunks.push(chunk);
+        req.on('end', () => {
+            const body = Buffer.concat(chunks);
+            done(raw ? body : body.toString('utf8'));
         });
-        req.on('end', () => done(Buffer.concat(chunks)));
         req.on('error', () => done(null));
     });
 }
@@ -67,7 +45,7 @@ async function parseMultipart(req, contentType, maxBodySizeBytes = DEFAULT_MAX_B
     if (!boundaryMatch) return null;
 
     const boundary = boundaryMatch[1];
-    const rawBody = await readRequestBodyRaw(req, maxBodySizeBytes);
+    const rawBody = await readRequestBody(req, maxBodySizeBytes, { raw: true });
     if (!rawBody) return null;
 
     const boundaryBuffer = Buffer.from(`--${boundary}`);
@@ -111,6 +89,5 @@ async function parseMultipart(req, contentType, maxBodySizeBytes = DEFAULT_MAX_B
 module.exports = {
     DEFAULT_MAX_BODY_SIZE,
     readRequestBody,
-    readRequestBodyRaw,
     parseMultipart
 };
