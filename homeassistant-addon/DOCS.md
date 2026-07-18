@@ -49,7 +49,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 |--------|------|---------|-------------|
 | `cgate_install_source` | list | `download` | `download` fetches C-Gate from the official Clipsal URL. `upload` uses a zip file you place in `/share/cgate/`. |
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
-| `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Strongly recommended for custom `cgate_download_url` or untrusted upload paths; if unset, install proceeds with a log warning and no integrity check. |
+| `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Downloads from the built-in default URL are verified against a checksum pinned in the install script; setting this overrides that pin (the escape hatch if Clipsal re-releases the zip). Required for a custom `cgate_download_url`; uploads without it proceed with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
 | `cgate_serial_device` | string | (empty) | **ALPHA — opt-in.** Device path of a USB PC Interface attached to the HA host (e.g. `/dev/ttyUSB0`). Hidden optional field; leave empty unless you are testing the alpha. See "Alpha: USB-serial PCI support" below. |
 

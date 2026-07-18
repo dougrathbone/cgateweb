@@ -10,6 +10,11 @@
 set -uo pipefail
 
 CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
+# Pinned sha256 of the zip the default URL serves (C-Gate 3.3.2 Linux package,
+# containing cgate-3.3.2_1855.zip). Downloads from the default URL are verified
+# against this; a user-set cgate_download_sha256 overrides it — the escape
+# hatch if Schneider re-releases the zip and this pin goes stale.
+CGATEWEB_DEFAULT_DOWNLOAD_SHA256="b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c"
 
 # bashio::config returns the literal string "null" for unset optional fields,
 # even when an empty default is passed (upstream bashio's `${2:-null}` rewrites
@@ -23,19 +28,31 @@ _cgateweb_resolve_download_url() {
     printf '%s' "${url}"
 }
 
+# Resolve the effective checksum. A user-set cgate_download_sha256 always wins;
+# otherwise a download from the built-in default URL falls back to the pinned
+# CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Anything else (custom URL, no user
+# checksum) resolves to empty and is rejected by
+# _cgateweb_custom_url_without_sha256 before anything is downloaded. The
+# optional argument is the resolved download URL; callers without URL context
+# (upload mode) omit it and get the user setting only.
 _cgateweb_resolve_download_sha256() {
+    local url="${1:-}"
     local sha
     sha=$(bashio::config 'cgate_download_sha256')
     if [[ "${sha}" == "null" ]]; then
         sha=""
+    fi
+    if [[ -z "${sha}" && "${url}" == "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" ]]; then
+        sha="${CGATEWEB_DEFAULT_DOWNLOAD_SHA256}"
     fi
     printf '%s' "${sha}"
 }
 
 # A custom download URL must be pinned to a checksum: without one the install
 # would run whatever bytes the URL happens to serve. The built-in default URL
-# is exempt (it keeps the warn-only behaviour at verification time). Echoes 1
-# when a sha256 is required but missing, else 0.
+# is exempt because it is verified against the pinned
+# CGATEWEB_DEFAULT_DOWNLOAD_SHA256 instead. Echoes 1 when a sha256 is required
+# but missing, else 0.
 _cgateweb_custom_url_without_sha256() {
     local url="$1" sha="$2"
     if [[ "${url}" != "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" && -z "${sha}" ]]; then printf '1'; else printf '0'; fi
@@ -262,6 +279,10 @@ mkdir -p "${CGATE_DIR}"
 
 if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     DOWNLOAD_URL=$(_cgateweb_resolve_download_url)
+    # Re-resolve the checksum now that the URL is known: with no user-set
+    # cgate_download_sha256, a download from the built-in default URL falls
+    # back to the pinned CGATEWEB_DEFAULT_DOWNLOAD_SHA256.
+    DOWNLOAD_SHA256=$(_cgateweb_resolve_download_sha256 "${DOWNLOAD_URL}")
 
     bashio::log.info "Downloading C-Gate from: ${DOWNLOAD_URL}"
 
@@ -277,8 +298,9 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     esac
 
     # Refuse a custom download URL with no pinned checksum before downloading
-    # anything. Downloads from the built-in default URL keep the warn-only
-    # behaviour at the verification step below.
+    # anything. Downloads from the built-in default URL reach the verification
+    # step below with the pinned default checksum already resolved, so every
+    # download is verified and fails hard on mismatch.
     if [[ "$(_cgateweb_custom_url_without_sha256 "${DOWNLOAD_URL}" "${DOWNLOAD_SHA256}")" == "1" ]]; then
         bashio::log.error "cgate_download_sha256 is required when cgate_download_url is set to a custom URL"
         bashio::log.error "Compute the zip's checksum ('sha256sum cgate.zip' or 'shasum -a 256 cgate.zip') and set cgate_download_sha256,"

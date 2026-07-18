@@ -19,6 +19,10 @@ const SCRIPT = path.join(
 );
 
 const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2';
+// sha256 of the zip the default URL serves, pinned in cgate-install.sh as
+// CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
+// script's constant fails the unit tests.
+const DEFAULT_DOWNLOAD_SHA256 = 'b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c';
 
 // Real bashio's bashio::config returns the literal string "null" when a key
 // is unset, even when the caller passes an empty string as the default
@@ -172,7 +176,9 @@ describeBash('cgate-install.sh helpers', () => {
     });
 
     describe('_cgateweb_resolve_download_sha256', () => {
-        test('returns empty string when cgate_download_sha256 is unset', () => {
+        test('returns empty string when cgate_download_sha256 is unset and no URL context is given', () => {
+            // Upload mode calls the helper without a URL: the user setting
+            // only, never the pinned default-download checksum.
             const sha = callHelper('_cgateweb_resolve_download_sha256', {});
             expect(sha).toBe('');
         });
@@ -184,11 +190,35 @@ describeBash('cgate-install.sh helpers', () => {
             });
             expect(sha).toBe(expected);
         });
+
+        test('falls back to the pinned checksum for the built-in default URL', () => {
+            const sha = runHelperWithArgs('_cgateweb_resolve_download_sha256', [DEFAULT_DOWNLOAD_URL]);
+            expect(sha).toBe(DEFAULT_DOWNLOAD_SHA256);
+        });
+
+        test('user-configured checksum wins over the pin for the default URL', () => {
+            // The explicit setting is the escape hatch if Clipsal re-releases
+            // the zip and the pinned checksum goes stale.
+            const expected = 'b'.repeat(64);
+            const sha = runHelperWithArgs('_cgateweb_resolve_download_sha256', [DEFAULT_DOWNLOAD_URL], {
+                cgate_download_sha256: expected
+            });
+            expect(sha).toBe(expected);
+        });
+
+        test('returns empty string for a custom URL with no configured checksum', () => {
+            // Resolving to empty here is what makes
+            // _cgateweb_custom_url_without_sha256 reject the install before
+            // anything is downloaded.
+            const sha = runHelperWithArgs('_cgateweb_resolve_download_sha256', ['https://example.com/cgate.zip']);
+            expect(sha).toBe('');
+        });
     });
 
     describe('_cgateweb_custom_url_without_sha256', () => {
         // A custom download URL is only installed when pinned to a checksum;
-        // the built-in default URL keeps warn-only behaviour.
+        // the built-in default URL is covered by the script's pinned checksum
+        // instead, so it needs nothing from the user.
         test('returns 1 for a custom URL with no sha256', () => {
             const out = runHelperWithArgs('_cgateweb_custom_url_without_sha256', ['https://example.com/cgate.zip', '']);
             expect(out).toBe('1');
