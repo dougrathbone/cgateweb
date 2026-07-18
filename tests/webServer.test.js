@@ -5,6 +5,9 @@ const os = require('os');
 const WebServer = require('../src/webServer');
 const LabelLoader = require('../src/labelLoader');
 const CbusProjectParser = require('../src/cbusProjectParser');
+const RateLimiter = require('../src/web/rateLimiter');
+const StaticFileServer = require('../src/web/staticFiles');
+const { readRequestBody } = require('../src/web/bodyReader');
 
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
@@ -564,32 +567,32 @@ describe('WebServer', () => {
         it('does not let a spoofed X-Ingress-Path bypass auth on a standalone deployment', () => {
             // No api key, no ingress basePath, no unauthenticated override.
             const standalone = new WebServer({ port: 0, labelLoader, getStatus: () => ({}) });
-            expect(standalone._isAuthorizedMutation(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(false);
+            expect(standalone._apiAuth.isAuthorized(mkReq({ 'x-ingress-path': '/api/hassio_ingress/abc' }))).toBe(false);
         });
 
         it('trusts matching X-Ingress-Path only with X-Hass-Source from HA Core', () => {
             const ingress = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), basePath: '/api/hassio_ingress/abc' });
-            expect(ingress._isAuthorizedMutation(mkReq({
+            expect(ingress._apiAuth.isAuthorized(mkReq({
                 'x-ingress-path': '/api/hassio_ingress/abc',
                 'x-hass-source': 'core.ingress'
             }))).toBe(true);
-            expect(ingress._isAuthorizedMutation(mkReq({
+            expect(ingress._apiAuth.isAuthorized(mkReq({
                 'x-ingress-path': '/api/hassio_ingress/abc'
             }))).toBe(false);
-            expect(ingress._isAuthorizedMutation(mkReq({
+            expect(ingress._apiAuth.isAuthorized(mkReq({
                 'x-ingress-path': 'x',
                 'x-hass-source': 'core.ingress'
             }))).toBe(false);
-            expect(ingress._isAuthorizedMutation(mkReq({}))).toBe(false);
+            expect(ingress._apiAuth.isAuthorized(mkReq({}))).toBe(false);
         });
 
         it('accepts the API key via Bearer or X-API-Key and rejects wrong/short keys', () => {
             const s = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), apiKey: 'secret-key' });
-            expect(s._isAuthorizedMutation(mkReq({ authorization: 'Bearer secret-key' }))).toBe(true);
-            expect(s._isAuthorizedMutation(mkReq({ 'x-api-key': 'secret-key' }))).toBe(true);
-            expect(s._isAuthorizedMutation(mkReq({ authorization: 'Bearer nope' }))).toBe(false);
-            expect(s._isAuthorizedMutation(mkReq({ 'x-api-key': 'short' }))).toBe(false); // length-mismatch path
-            expect(s._isAuthorizedMutation(mkReq({}))).toBe(false);
+            expect(s._apiAuth.isAuthorized(mkReq({ authorization: 'Bearer secret-key' }))).toBe(true);
+            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'secret-key' }))).toBe(true);
+            expect(s._apiAuth.isAuthorized(mkReq({ authorization: 'Bearer nope' }))).toBe(false);
+            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'short' }))).toBe(false); // length-mismatch path
+            expect(s._apiAuth.isAuthorized(mkReq({}))).toBe(false);
         });
 
         it('should honor maxBodySizeBytes override for body-size enforcement', () => {
@@ -1042,25 +1045,20 @@ describe('WebServer', () => {
         });
 
         it('removes dormant source entries after the rate limit window passes', () => {
-            const directServer = new WebServer({
-                labelLoader,
-                maxMutationRequestsPerWindow: 5,
-                getStatus: () => ({})
-            });
-            directServer.rateLimitWindowMs = 1000;
+            const limiter = new RateLimiter({ windowMs: 1000, maxRequests: 5 });
 
             const ipA = { headers: {}, socket: { remoteAddress: '192.168.1.10' } };
             const ipB = { headers: {}, socket: { remoteAddress: '192.168.1.11' } };
 
             const nowSpy = jest.spyOn(Date, 'now');
             nowSpy.mockReturnValue(1000);
-            expect(directServer._isRateLimited(ipA)).toBe(false);
-            expect(directServer._mutationRequestLog.has('192.168.1.10')).toBe(true);
+            expect(limiter.isLimited(ipA)).toBe(false);
+            expect(limiter._requestLog.has('192.168.1.10')).toBe(true);
 
             nowSpy.mockReturnValue(2501);
-            expect(directServer._isRateLimited(ipB)).toBe(false);
-            expect(directServer._mutationRequestLog.has('192.168.1.10')).toBe(false);
-            expect(directServer._mutationRequestLog.has('192.168.1.11')).toBe(true);
+            expect(limiter.isLimited(ipB)).toBe(false);
+            expect(limiter._requestLog.has('192.168.1.10')).toBe(false);
+            expect(limiter._requestLog.has('192.168.1.11')).toBe(true);
         });
     });
 
@@ -1090,10 +1088,10 @@ describe('WebServer', () => {
 
         it('returns 404 when SPA fallback index.html does not exist', () => {
             const fakeRes = { writeHead: jest.fn(), end: jest.fn(), setHeader: jest.fn(), pipe: jest.fn() };
-            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
 
             const existsSpy = jest.spyOn(fs, 'existsSync').mockReturnValue(false);
-            directServer._serveStatic('/no-such-file.json', fakeRes);
+            staticFiles.serve('/no-such-file.json', fakeRes);
             existsSpy.mockRestore();
 
             expect(fakeRes.writeHead).toHaveBeenCalledWith(404);
@@ -1346,14 +1344,13 @@ describe('WebServer', () => {
         });
     });
 
-    describe('_readBody size limit', () => {
+    describe('request body size limit', () => {
         it('resolves null and destroys the request when body exceeds 10MB', async () => {
-            const directServer = new WebServer({ labelLoader, allowUnauthenticatedMutations: true, getStatus: () => ({}) });
             const EventEmitter = require('events');
             const mockReq = new EventEmitter();
             mockReq.destroy = jest.fn();
 
-            const resultPromise = directServer._readBody(mockReq);
+            const resultPromise = readRequestBody(mockReq);
             const bigChunk = Buffer.alloc(11 * 1024 * 1024);
             mockReq.emit('data', bigChunk);
 
@@ -1362,13 +1359,12 @@ describe('WebServer', () => {
             expect(mockReq.destroy).toHaveBeenCalled();
         });
 
-        it('resolves null for _readBodyRaw when body exceeds 10MB', async () => {
-            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+        it('resolves null for raw body when body exceeds 10MB', async () => {
             const EventEmitter = require('events');
             const mockReq = new EventEmitter();
             mockReq.destroy = jest.fn();
 
-            const resultPromise = directServer._readBodyRaw(mockReq);
+            const resultPromise = readRequestBody(mockReq, 10 * 1024 * 1024, { raw: true });
             mockReq.emit('data', Buffer.alloc(11 * 1024 * 1024));
 
             const result = await resultPromise;
@@ -1392,7 +1388,7 @@ describe('WebServer', () => {
 
     describe('Request error handler (catch block)', () => {
         it('returns 500 when _handleRequest throws unexpectedly', async () => {
-            jest.spyOn(server, '_handleGetStatus').mockImplementationOnce(() => { throw new Error('boom'); });
+            jest.spyOn(server._statusRoutes, 'handleGetStatus').mockImplementationOnce(() => { throw new Error('boom'); });
             const res = await request('GET', '/api/status');
             expect(res.status).toBe(500);
             expect(res.body.error).toBe('Internal server error');
@@ -1420,14 +1416,14 @@ describe('WebServer', () => {
         });
     });
 
-    describe('_pruneMutationRequestLog partial prune', () => {
+    describe('RateLimiter partial prune', () => {
         it('updates the log entry when some timestamps are stale but others are fresh', () => {
-            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            const limiter = new RateLimiter({ windowMs: 60000, maxRequests: 5 });
             // Seed the log with a mix of old and new timestamps
-            directServer._mutationRequestLog.set('10.0.0.1', [100, 200, 5000]);
-            directServer._pruneMutationRequestLog(1000); // window starts at 1000
+            limiter._requestLog.set('10.0.0.1', [100, 200, 5000]);
+            limiter._prune(1000); // window starts at 1000
             // 100 and 200 are evicted; 5000 remains
-            expect(directServer._mutationRequestLog.get('10.0.0.1')).toEqual([5000]);
+            expect(limiter._requestLog.get('10.0.0.1')).toEqual([5000]);
         });
     });
 
@@ -1557,13 +1553,13 @@ describe('WebServer', () => {
 
     describe('Path traversal guard', () => {
         it('sends 403 when resolved filePath escapes static dir', () => {
-            const directServer = new WebServer({ labelLoader, getStatus: () => ({}) });
+            const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
             const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
 
             // Inject a path that path.join resolves to a location outside STATIC_DIR
             const origJoin = path.join;
             jest.spyOn(path, 'join').mockImplementationOnce(() => '/etc/passwd');
-            directServer._serveStatic('/anything', fakeRes);
+            staticFiles.serve('/anything', fakeRes);
             path.join = origJoin;
 
             expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
