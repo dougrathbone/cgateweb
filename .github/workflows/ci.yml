@@ -228,7 +228,8 @@ jobs:
           - version: "3.3.1"
             url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
             sha256: "193e70a0e85fb00259190e284cabbf2576b269dfec9579064b0c5ad9188a8c1f"
-          # 3.3.2 is the install script's built-in default URL; sha256 not required.
+          # 3.3.2 is the install script's built-in default URL; the empty
+          # sha256 exercises the script's built-in pinned checksum.
           - version: "3.3.2"
             url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
             sha256: ""
@@ -254,7 +255,7 @@ jobs:
         CGATE_URL: ${{ matrix.cgate.url }}
         CGATE_SHA256: ${{ matrix.cgate.sha256 }}
       run: |
-        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;o.cgate_download_sha256=process.env.CGATE_SHA256;fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
+        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;o.cgate_download_sha256=process.env.CGATE_SHA256||'';fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
 
     - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
       run: node test-env/integration-test.js
