@@ -20,7 +20,7 @@ cgateweb has **two unrelated HVAC paths**. Confusing them wastes time.
 | Source | Real C-Bus AC app `aircon …` event verbs | A lighting-style app where a PAC/touchscreen mirrors HVAC onto lighting groups |
 | Temp encoding | `°C = raw / 256` (decoded from `zone_temperature`) | level 0–255 mapped to a temperature via template |
 | Keyed by | **source unit** (the thermostat unit addr, e.g. 201/202) | **group** address |
-| HA climate entity | **auto-created, read-only** (event-driven, keyed by source unit) | auto-created by `_createHvacDiscovery` (group-keyed) |
+| HA climate entity | **auto-created** (event-driven, keyed by source unit); read-only unless `cbus_aircon_control_enabled` | auto-created by `_createHvacDiscovery` (group-keyed) |
 | Code | `airconDecoder.js` + `haDiscovery.ensureNativeAirconDiscovery` | `src/haDiscovery.js` `_createHvacDiscovery` |
 
 **History / why two paths:** the native path publishes to
@@ -28,8 +28,8 @@ cgateweb has **two unrelated HVAC paths**. Confusing them wastes time.
 entity keyed by **group** for the via-lighting pattern — so enabling
 `ha_discovery_hvac_app_id=172` never produced a working entity for native thermostats.
 This is now solved by a dedicated **event-driven** discovery for the native path
-(`ensureNativeAirconDiscovery`, see §7.1) that keys entities by source unit. The entity
-is currently **read-only**; write control is pending (§7.2).
+(`ensureNativeAirconDiscovery`, see §7.1) that keys entities by source unit. Write
+control shipped in 1.14.0 as an opt-in (`cbus_aircon_control_enabled`, see §7.2).
 
 ---
 
@@ -174,8 +174,9 @@ C-Gate event line
                   → MQTT cbus/read/{net}/172/{sourceUnit}/…
 ```
 - Writes (HA → C-Bus): `src/mqttCommandRouter.js` handles `setpoint` /
-  `hvacmode` write commands (`MQTT_CMD_TYPE_HVAC_*`). ⚠️ The native-172 *write command
-  format* to C-Gate is **not yet verified against hardware** — see §7.
+  `hvacmode` write commands (`MQTT_CMD_TYPE_HVAC_*`). On the native 172 app they build
+  `AIRCON SET_ZONE_HVAC_MODE` / `AIRCON SET_WARD_*` commands via
+  `src/airconControlRegistry.js`, gated on `cbus_aircon_control_enabled` (§7.2).
 - Discovery (via-lighting only): `src/haDiscovery.js` `_createHvacDiscovery` (line 812).
 - Tests: `tests/applicationDecoders/airconDecoder.test.js` (decoder, with real-capture
   fixtures), `tests/cgateWebBridge.test.js` ("Aircon (172) event routing"),
@@ -185,29 +186,34 @@ C-Gate event line
 
 ## 7. Known gaps / future work
 
-1. **Native HVAC auto-discovery — DONE (read-only), shipped 1.12.0.**
+1. **Native HVAC auto-discovery — DONE, shipped 1.12.0.**
    `haDiscovery.ensureNativeAirconDiscovery` publishes one HA `climate` entity per
    thermostat the first time its source unit is seen in the aircon stream (event-driven,
    keyed by `sourceUnit`), wired to the §4 state topics incl. `action`, with the verified
    mode list. Triggered from `cgateWebBridge._handleAirconLine`; gated on
-   `ha_discovery_enabled` + `cbus_aircon_app_id`. **Read-only** — command topics are
-   intentionally omitted until §7.2 is resolved.
-2. **Write/control command format — UNRESOLVED (blocker for the write half).** The existing
-   handlers `_handleHvacSetpoint` / `_handleHvacMode` (`src/mqttCommandRouter.js:539/575`)
-   emit a lighting **`RAMP`** command (`level = temp × 2`). That is the *via-lighting*
-   format and is **not** valid for native app 172 — sending it to a real 172 thermostat
-   will not control it. The correct native control command is unknown. **Resolve before
-   shipping writes:** capture the C-Gate **Tx** line while controlling a thermostat from
-   PICED/Toolkit (PICED logs Tx as well as Rx), to learn the exact command (likely a
-   symmetric `aircon set_zone_hvac_mode …` / setpoint command on the command port, but
-   confirm). Writing to a live HVAC warrants getting this right rather than guessing.
+   `ha_discovery_enabled` + `cbus_aircon_app_id`. Read-only by default — command topics
+   are added when `cbus_aircon_control_enabled` is on (§7.2).
+2. **Write/control command format — DONE, shipped 1.14.0.** The native command turned out
+   to be a symmetric `AIRCON` command on the command port (syntax verified against the
+   C-Gate v3.3.2 `HELP`): `AIRCON SET_ZONE_HVAC_MODE //<project>/<net>/172 <ward>
+   <zone-list> <mode> <rawlevel> 0 0 1 <type> <level> 0` for mode/setpoint, and
+   `AIRCON SET_WARD_ON|OFF //<project>/<net>/172 <ward>` for on/off. Writes can't be
+   keyed by source unit the way reads are, so `src/airconControlRegistry.js` learns each
+   thermostat's ward/zones/type from its own broadcasts and echoes them back — a command
+   for unit 202 controls 202, not the 201 it shares a ward with. Setpoints go out as
+   `level = °C × 256` (rawlevel=0); Fan Only uses the `0x7F00` "no level" sentinel.
+   `_handleHvacSetpoint` / `_handleHvacMode` (`src/mqttCommandRouter.js`) branch on the
+   target app: the native 172 app takes these AIRCON commands, anything else keeps the
+   via-lighting RAMP/ON/OFF behaviour. Control is opt-in via `cbus_aircon_control_enabled`
+   (off by default) because it writes to live heating/cooling.
 3. **Fan speed (Auto vs 1).** ❓ Not captured — in the 2026-06-11 log the fan-speed change
    did not surface as a distinct field/verb (`f5` stayed `3` across on-modes). Needs a
    targeted capture or the protocol spec before a `fan_mode` can be decoded.
 4. **`cool`/`error` bits** of `zone_hvac_plant_status` are inferred by position (the plant
    never cooled or errored in the capture). Confirm with a capture that does.
-5. **`auto` vs `heat_cool`.** PICED labels code 3 "Heat/Cool (Auto)"; we publish `auto`.
-   Revisit when the climate entity is built (HA `heat_cool` is the dual-setpoint mode).
+5. **`auto` vs `heat_cool` — DECIDED (1.12.0).** PICED labels code 3 "Heat/Cool (Auto)";
+   we publish `auto`. The shipped climate entity uses a single setpoint, so HA's
+   dual-setpoint `heat_cool` does not apply and `auto` stays.
 
 ---
 

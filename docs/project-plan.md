@@ -35,8 +35,8 @@ This document tracks the progress of improvements and refactoring for the cgatew
 
 *   [x] **Dependency Review:** (2024-07-31)
     *   [x] Evaluate if `xml2js` dependency can be removed by parsing the text-based `TREE` command instead of `TREEXML`. (Decision: Kept `xml2js` as `TREEXML` is designed for application parsing and `TREE` output is complex/unreliable to parse programmatically).
-*   [ ] **Feature Expansion:** Implement additional C-Gate commands/applications beyond lighting.
+*   [ ] **Feature Expansion:** Implement additional C-Gate commands/applications beyond lighting. (In progress — 2026-06: native Air Conditioning (172) decode/control, trigger, cover, relay and PIR applications shipped.)
 *   [ ] **Operational:**
-    *   [ ] Add Dockerfile.
+    *   [x] Add Dockerfile. (2025-09 — `homeassistant-addon/Dockerfile`; multi-arch image built in CI and shipped via the distribution workflow.)
 
 ---
