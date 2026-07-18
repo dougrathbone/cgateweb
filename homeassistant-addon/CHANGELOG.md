@@ -5,6 +5,19 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.11] - 2026-07-18
+
+### Fixed
+
+- **Label save/import failing with "Unauthorized" from the ingress side panel (#33).** The add-on relied on an `INGRESS_ENTRY` environment variable that the Supervisor never sets (it only injects `SUPERVISOR_TOKEN`), so with no `web_api_key` configured every label save, import, and the status tab failed authorization through ingress. The bridge now discovers its ingress path from the Supervisor API at startup, so side-panel saves authorize as intended — and the label UI surfaces a failed save instead of silently dropping it.
+- **Groups missing on initial sync are now discovered automatically (#25).** When C-Gate is still syncing with the C-Bus network at startup, TREEXML returns units with empty group lists and those groups previously stayed missing until a manual `gettree`. The bridge now re-fetches the tree when C-Gate reports network sync complete (event 762) and, since 762 is only emitted at event level 6, also schedules a bounded re-fetch (30s→60s→120s) whenever an accepted tree still contains unsynced units.
+- **Malformed address segments in command topics are rejected.** Network/application/group segments must be 1-3 digits; values like `254abc` were previously accepted and silently truncated.
+
+### Changed
+
+- **Custom managed-mode C-Gate downloads now require a checksum.** A custom `cgate_download_url` without `cgate_download_sha256` fails the install with a clear error instead of only warning. If you use a custom URL, set its sha256 before upgrading.
+- Internal: web server split into `src/web/` modules, `@ts-check` enabled on the connection pool and command router, and local `npm run lint` now enforces zero warnings like CI.
+
 ## [1.15.10] - 2026-07-12
 
 ### Fixed
