@@ -68,6 +68,11 @@ configuration:
     description: >-
       Utilisé uniquement en mode géré. Une fois installé, C-Gate est normalement conservé tel quel. Activez cette option pour réinstaller/mettre à jour C-Gate depuis la source d'installation au prochain démarrage (vos bases de données de projet et la configuration sont conservées) ; en mode upload, vous pouvez aussi déposer un zip plus récent dans /share/cgate. Désactivez-la après la mise à jour.
 
+  cgate_serial_device:
+    name: Périphérique PCI série (alpha)
+    description: >-
+      ALPHA: prise en charge expérimentale des interfaces PC USB-série (5500PC/5500PCU). Chemin du périphérique série, par ex. /dev/ttyUSB0 (à trouver dans Paramètres > Système > Matériel > Tout le matériel ; préférez les chemins /dev/serial/by-id/). Nécessite le mode géré et un projet C-Bus Toolkit configuré pour une interface PC série. Signalez les problèmes sur GitHub (issue #28).
+
   # ── MQTT (généralement détecté automatiquement) ──
   mqtt_host:
     name: Hôte du broker MQTT

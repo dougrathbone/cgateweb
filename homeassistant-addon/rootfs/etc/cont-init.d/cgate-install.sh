@@ -141,6 +141,63 @@ _cgateweb_upload_zip_is_newer() {
     if [[ ! -e "${marker}" || "${zip}" -nt "${marker}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# ─── ALPHA: USB-serial PCI passthrough (issue #28) ─────────────────────────
+# Validate the opt-in cgate_serial_device option. The option is deliberately
+# absent from `options` in config.yaml, so it is unset for every existing user
+# and this helper is a silent no-op unless explicitly configured. When it IS
+# set we fail hard on a clearly wrong path: better to stop the add-on at
+# cont-init with a readable error than let C-Gate boot and silently never
+# open the port. Returns 1 when the configured path is invalid.
+_cgateweb_check_serial_device() {
+    local device
+    device=$(bashio::config 'cgate_serial_device' '')
+    # bashio::config yields the literal string "null" for unset optional fields
+    # (see the note above _cgateweb_resolve_download_url); treat it as unset.
+    if [[ -z "${device}" || "${device}" == "null" ]]; then
+        bashio::log.debug "cgate_serial_device not set — USB-serial PCI passthrough disabled"
+        return 0
+    fi
+
+    bashio::log.warning "==================================================================="
+    bashio::log.warning " ALPHA FEATURE ACTIVE: USB-serial PC Interface (5500PC/5500PCU)"
+    bashio::log.warning " cgate_serial_device = ${device}"
+    bashio::log.warning " This support is experimental and largely untested. Please report"
+    bashio::log.warning " success or failure on GitHub issue #28:"
+    bashio::log.warning "   https://github.com/dougrathbone/cgateweb/issues/28"
+    bashio::log.warning "==================================================================="
+
+    if [[ "${device}" != /dev/* ]]; then
+        bashio::log.error "cgate_serial_device must be a device path starting with /dev/ (got: ${device})"
+        bashio::log.error "Example: /dev/ttyUSB0 — or better, a stable /dev/serial/by-id/ path"
+        return 1
+    fi
+
+    if [[ ! -e "${device}" ]]; then
+        bashio::log.error "Serial device not found: ${device}"
+        bashio::log.error "Find the real path in Home Assistant: Settings > System > Hardware > ⋮ (top right) > All hardware"
+        bashio::log.error "Look for /dev/ttyUSB* or /dev/ttyACM*; prefer the stable /dev/serial/by-id/ path"
+        return 1
+    fi
+
+    if [[ ! -c "${device}" ]]; then
+        bashio::log.warning "${device} exists but is not a character device — C-Gate may fail to open it"
+    fi
+
+    # A local serial device is only meaningful when C-Gate runs inside this
+    # add-on. In remote mode C-Gate runs on another machine, so warn (not
+    # fail) that the option has no effect there.
+    local mode
+    mode=$(bashio::config 'cgate_mode' 'remote')
+    if [[ "${mode}" != "managed" ]]; then
+        bashio::log.warning "cgate_mode is '${mode}': C-Gate runs outside this add-on, so a local serial device is never used"
+        bashio::log.warning "cgate_serial_device only takes effect in managed mode — continuing anyway"
+    fi
+
+    bashio::log.info "USB-serial PCI: your C-Bus Toolkit project (.db) must define a serial PC Interface for the network"
+    bashio::log.info "Projects saved on Windows may reference a COMx port — re-point the interface at the Linux device path in Toolkit"
+    return 0
+}
+
 # Allow tests to source this script for unit testing the helpers above without
 # running the install flow.
 if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
@@ -148,6 +205,15 @@ if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
 fi
 
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+
+# ALPHA serial PCI check (issue #28): validate cgate_serial_device in BOTH
+# modes, before the remote-mode early exit below, so a configured value is
+# always surfaced (in remote mode a local serial device is meaningless, but
+# the user should still hear about it). No-op when the option is unset; a
+# bad path fails here, up front, instead of after a lengthy C-Gate install.
+if ! _cgateweb_check_serial_device; then
+    exit 1
+fi
 
 if [[ "${CGATE_MODE}" != "managed" ]]; then
     bashio::log.info "C-Gate mode is '${CGATE_MODE}', skipping C-Gate installation"

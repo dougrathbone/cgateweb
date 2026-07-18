@@ -62,6 +62,11 @@ configuration:
     description: >-
       관리 모드에서만 사용됩니다. C-Gate는 설치된 후 일반적으로 그대로 유지됩니다. 이 옵션을 켜면 다음 시작 시 설치 소스에서 C-Gate를 다시 설치/업그레이드합니다(프로젝트 데이터베이스와 구성은 유지됩니다). 업로드 모드에서는 대신 최신 zip을 /share/cgate에 넣을 수 있습니다. 업그레이드 후에는 다시 꺼 주세요.
 
+  cgate_serial_device:
+    name: 시리얼 PCI 장치(알파)
+    description: >-
+      ALPHA: USB 시리얼 PC 인터페이스(5500PC/5500PCU)에 대한 실험적 지원입니다. 시리얼 장치 경로(예: /dev/ttyUSB0 — 설정 > 시스템 > 하드웨어 > 모든 하드웨어에서 확인할 수 있으며 /dev/serial/by-id/ 경로를 권장합니다). 관리 모드와 시리얼 PC 인터페이스로 구성된 C-Bus Toolkit 프로젝트가 필요합니다. 문제는 GitHub에 보고해 주세요(이슈 #28).
+
   # ── MQTT (보통 자동 감지) ──
   mqtt_host:
     name: MQTT 브로커 호스트

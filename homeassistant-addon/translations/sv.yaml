@@ -63,6 +63,11 @@ configuration:
     description: >-
       Används endast i hanterat läge. När C-Gate väl är installerat behålls det normalt som det är. Aktivera detta för att installera om/uppgradera C-Gate från installationskällan vid nästa start (dina projektdatabaser och konfiguration bevaras); i uppladdningsläge kan du i stället lägga en nyare zip i /share/cgate. Stäng av detta efter uppgraderingen.
 
+  cgate_serial_device:
+    name: Seriell PCI-enhet (alfa)
+    description: >-
+      ALPHA: experimentellt stöd för USB-seriella PC-gränssnitt (5500PC/5500PCU). Sökväg till den seriella enheten, t.ex. /dev/ttyUSB0 (hittas under Inställningar > System > Hårdvara > All hårdvara; föredra sökvägar under /dev/serial/by-id/). Kräver hanterat läge och ett C-Bus Toolkit-projekt konfigurerat för ett seriellt PC-gränssnitt. Rapportera problem på GitHub (ärende #28).
+
   # ── MQTT (upptäcks vanligtvis automatiskt) ──
   mqtt_host:
     name: MQTT Broker värd

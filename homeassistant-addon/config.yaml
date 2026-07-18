@@ -27,6 +27,10 @@ ports_description:
 
 homeassistant_api: true
 
+# Map host UART/serial devices into the container so the opt-in alpha
+# USB-serial PCI passthrough (cgate_serial_device, issue #28) can work.
+uart: true
+
 services:
   - mqtt:want
 
@@ -84,6 +88,9 @@ schema:
   cgate_download_url: "str?"
   cgate_download_sha256: "str?"
   cgate_force_reinstall: "bool?"
+  # ALPHA (issue #28): opt-in USB-serial PCI passthrough. Deliberately absent
+  # from options above so upgrades never write it into existing configs.
+  cgate_serial_device: "str?"
 
   # ── MQTT (auto-detected from Mosquitto add-on) ──
   mqtt_host: "str?"

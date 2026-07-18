@@ -65,6 +65,11 @@ configuration:
     description: >-
       Alleen gebruikt in managed-modus. Eenmaal geïnstalleerd blijft C-Gate normaal gesproken ongewijzigd. Schakel dit in om C-Gate bij de volgende start opnieuw te installeren/bij te werken vanaf de installatiebron (uw projectdatabases en configuratie blijven behouden); in upload-modus kunt u in plaats daarvan een nieuwere zip in /share/cgate plaatsen. Schakel dit na de upgrade weer uit.
 
+  cgate_serial_device:
+    name: Serieel PCI-apparaat (alfa)
+    description: >-
+      ALPHA: experimentele ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU). Pad naar het seriële apparaat, bijv. /dev/ttyUSB0 (te vinden via Instellingen > Systeem > Hardware > Alle hardware; gebruik bij voorkeur paden onder /dev/serial/by-id/). Vereist de managed-modus en een C-Bus Toolkit-project dat is geconfigureerd voor een seriële pc-interface. Meld problemen op GitHub (issue #28).
+
   # ── MQTT (meestal automatisch gedetecteerd) ──
   mqtt_host:
     name: MQTT Broker Host

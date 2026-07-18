@@ -58,6 +58,11 @@ configuration:
     description: >-
       仅在托管模式下使用。C-Gate 安装后通常保持不变。启用此选项可在下次启动时从安装源重新安装/升级 C-Gate（您的项目数据库和配置会被保留）；在上传模式下，您也可以将较新的 zip 放入 /share/cgate。升级完成后请将其关闭。
 
+  cgate_serial_device:
+    name: 串口 PCI 设备（Alpha）
+    description: >-
+      ALPHA: USB 串口 PC 接口（5500PC/5500PCU）的实验性支持。串口设备路径，例如 /dev/ttyUSB0（可在“设置 > 系统 > 硬件 > 所有硬件”中查找；建议使用 /dev/serial/by-id/ 路径）。需要托管模式，并且 C-Bus Toolkit 项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
+
   # ── MQTT（通常自动检测）──
   mqtt_host:
     name: MQTT 代理主机

@@ -112,6 +112,50 @@ function runHelperWithArgs(helperName, args = [], configObject = {}) {
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
 
+// The serial-check tests assert on log output (the ALPHA banner is part of
+// the contract), so this variant of the stub prints log lines with a level
+// prefix instead of swallowing them. bashio::config mirrors BASHIO_STUB,
+// including the "null"-for-unset quirk.
+const BASHIO_STUB_WITH_LOGS = `
+    bashio::log.info()    { printf 'INFO: %s\\n' "$*"; }
+    bashio::log.warning() { printf 'WARNING: %s\\n' "$*"; }
+    bashio::log.error()   { printf 'ERROR: %s\\n' "$*"; }
+    bashio::log.debug()   { printf 'DEBUG: %s\\n' "$*"; }
+    bashio::log.trace()   { :; }
+    bashio::config() {
+        local key="$1"
+        local default_value="\${2:-null}"
+        local var_name="CGW_TEST_\${key}"
+        if declare -p "$var_name" &>/dev/null; then
+            printf '%s' "\${!var_name}"
+        else
+            printf '%s' "$default_value"
+        fi
+    }
+`;
+
+// Run _cgateweb_check_serial_device with the given config and capture both
+// the exit status and everything it logged. execFileSync throws on non-zero
+// exit, so status/output are recovered from the thrown error.
+function checkSerialDevice(configObject) {
+    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1', CGW_INSTALL_SCRIPT: SCRIPT };
+    for (const [k, v] of Object.entries(configObject || {})) {
+        env[`CGW_TEST_${k}`] = v;
+    }
+    const script = `
+        set -u
+        ${BASHIO_STUB_WITH_LOGS}
+        source "$CGW_INSTALL_SCRIPT"
+        _cgateweb_check_serial_device
+    `;
+    try {
+        const output = execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+        return { status: 0, output };
+    } catch (err) {
+        return { status: err.status, output: `${err.stdout || ''}${err.stderr || ''}` };
+    }
+}
+
 describeBash('cgate-install.sh helpers', () => {
     describe('_cgateweb_resolve_download_url', () => {
         test('falls back to default URL when cgate_download_url is unset', () => {
@@ -336,6 +380,62 @@ describeBash('cgate-install.sh helpers', () => {
             });
             expect(twice.match(/^project\.start=/gm)).toHaveLength(1);
             expect(twice.match(/^project\.default=/gm)).toHaveLength(1);
+        });
+    });
+
+    describe('_cgateweb_check_serial_device (alpha USB-serial PCI, #28)', () => {
+        // The helper signals failure with `return 1`; sourced and invoked as
+        // the last command of the bash process, that return code becomes the
+        // process exit code, which checkSerialDevice captures.
+        test('is a silent no-op when cgate_serial_device is unset', () => {
+            const r = checkSerialDevice({});
+            expect(r.status).toBe(0);
+            expect(r.output).not.toMatch(/ALPHA/);
+        });
+
+        test('is a silent no-op when cgate_serial_device is empty', () => {
+            const r = checkSerialDevice({ cgate_serial_device: '' });
+            expect(r.status).toBe(0);
+            expect(r.output).not.toMatch(/ALPHA/);
+        });
+
+        test('fails when the value does not start with /dev/', () => {
+            const r = checkSerialDevice({ cgate_serial_device: 'ttyUSB0', cgate_mode: 'managed' });
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/must be a device path starting with \/dev\//);
+        });
+
+        test('fails when the /dev/ path does not exist', () => {
+            const r = checkSerialDevice({
+                cgate_serial_device: '/dev/cgw-no-such-serial-device', cgate_mode: 'managed'
+            });
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/Serial device not found/);
+        });
+
+        test('succeeds and logs the ALPHA banner for an existing device', () => {
+            // /dev/null: exists, is a character device, and starts with /dev/
+            // on every POSIX host these bash tests run on. (A regular temp
+            // file cannot stand in here: it lives outside /dev/ and would
+            // trip the prefix check tested above.)
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/ALPHA FEATURE ACTIVE/);
+        });
+
+        test('warns but does not fail when the path is not a character device', () => {
+            // /dev/. resolves to the /dev directory on every POSIX host: it
+            // exists and matches the /dev/ prefix but is not a character
+            // device — the exotic-setup branch must be warn-only.
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/.', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/not a character device/);
+        });
+
+        test('warns but does not fail in remote mode (local device is meaningless)', () => {
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'remote' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/only takes effect in managed mode/);
         });
     });
 });

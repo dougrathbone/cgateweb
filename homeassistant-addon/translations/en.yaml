@@ -65,6 +65,15 @@ configuration:
       can instead just drop a newer zip into /share/cgate and it upgrades
       automatically. Turn this back off after the upgrade.
 
+  cgate_serial_device:
+    name: Serial PCI Device (Alpha)
+    description: >-
+      ALPHA: experimental USB-serial PC Interface (5500PC/5500PCU) support.
+      Path to the serial device, e.g. /dev/ttyUSB0 — find it under Settings >
+      System > Hardware > All hardware and prefer /dev/serial/by-id/ paths.
+      Requires managed mode and a C-Bus Toolkit project configured for a serial
+      PC Interface. Report issues on GitHub (issue #28).
+
   # ── MQTT (usually auto-detected) ──
   mqtt_host:
     name: MQTT Broker Host

@@ -62,6 +62,11 @@ configuration:
     description: >-
       Używane tylko w trybie zarządzanym. Po zainstalowaniu C-Gate zwykle pozostaje bez zmian. Włącz tę opcję, aby przy następnym uruchomieniu ponownie zainstalować/zaktualizować C-Gate ze źródła instalacji (bazy danych projektu i konfiguracja zostają zachowane); w trybie przesyłania możesz zamiast tego umieścić nowszy zip w /share/cgate. Wyłącz ją po aktualizacji.
 
+  cgate_serial_device:
+    name: Urządzenie PCI szeregowe (alfa)
+    description: >-
+      ALPHA: eksperymentalna obsługa interfejsów PC USB-szeregowych (5500PC/5500PCU). Ścieżka do urządzenia szeregowego, np. /dev/ttyUSB0 (znajdziesz ją w Ustawienia > System > Sprzęt > Cały sprzęt; preferuj ścieżki /dev/serial/by-id/). Wymaga trybu zarządzanego i projektu C-Bus Toolkit skonfigurowanego dla szeregowego interfejsu PC. Problemy zgłaszaj na GitHubie (zgłoszenie #28).
+
   # ── MQTT (zazwyczaj wykrywany automatycznie) ──
   mqtt_host:
     name: Host brokera MQTT
