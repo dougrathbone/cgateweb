@@ -1,3 +1,4 @@
+// @ts-check
 const mqtt = require('mqtt');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
@@ -34,6 +35,15 @@ class MqttManager extends EventEmitter {
      * @param {string} settings.mqtt - MQTT broker URL (e.g., 'mqtt://localhost:1883')
      * @param {string} [settings.mqttusername] - MQTT username for authentication
      * @param {string} [settings.mqttpassword] - MQTT password for authentication
+     * @param {number} [settings.mqttPendingPublishMaxEntries] - Max queued retained publishes while disconnected (default: 1000)
+     * @param {boolean} [settings.mqttUseTls] - Use mqtts:// when the broker URL lacks a protocol
+     * @param {number} [settings.mqttReconnectPeriodMs] - MQTT reconnect interval in ms (default: 5000)
+     * @param {number} [settings.mqttConnectTimeoutMs] - MQTT connect timeout in ms (default: 30000)
+     * @param {string} [settings.mqttCaFile] - Path to CA certificate file for TLS
+     * @param {string} [settings.mqttCertFile] - Path to client certificate file for TLS
+     * @param {string} [settings.mqttKeyFile] - Path to client private key file for TLS
+     * @param {boolean} [settings.mqttRejectUnauthorized] - Set false to disable TLS certificate verification
+     * @param {{ type?: string }} [settings._environment] - Runtime environment descriptor (internal)
      */
     constructor(settings) {
         super();
@@ -132,7 +142,7 @@ class MqttManager extends EventEmitter {
      * @param {string} topic - The MQTT topic to publish to
      * @param {string} payload - The message payload to publish
      * @param {Object} [options={}] - MQTT publish options (qos, retain, etc.)
-     * @param {number} [options.qos=0] - Quality of Service level (0, 1, or 2)
+     * @param {0|1|2} [options.qos=0] - Quality of Service level (0, 1, or 2)
      * @param {boolean} [options.retain=false] - Whether to retain the message
      * @returns {boolean} True if publish succeeded, false otherwise
      */
@@ -220,6 +230,7 @@ class MqttManager extends EventEmitter {
     }
 
     _buildConnectOptions() {
+        /** @type {import('mqtt').IClientOptions} */
         const options = {
             reconnectPeriod: this.settings.mqttReconnectPeriodMs || 5000,
             connectTimeout: this.settings.mqttConnectTimeoutMs || 30000,

@@ -1,3 +1,4 @@
+// @ts-check
 function findNetworkData(networkId, treeData) {
     if (!treeData) return null;
     const idStr = String(networkId);
