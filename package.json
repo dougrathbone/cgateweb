@@ -68,9 +68,9 @@
   },
   "jest": {
     "testPathIgnorePatterns": [
-      "/node_modules/",
-      "/.claude/",
-      "/.worktrees/"
+      "<rootDir>/node_modules/",
+      "<rootDir>/.claude/",
+      "<rootDir>/.worktrees/"
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
