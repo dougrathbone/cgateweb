@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.12] - 2026-07-18
+
+### Added
+
+- **Alpha USB-serial PC Interface passthrough for managed mode (#28).** A new opt-in, hidden `cgate_serial_device` option passes a USB PCI (5500PC/5500PCU) attached to the Home Assistant host through to the C-Gate instance running inside the add-on (`uart: true` lets the Supervisor map host serial devices into the container). Off by default and deliberately absent from `options`, so upgrades change nothing for existing users. Startup validates the configured path and fails fast with a readable error. Experimental: known limitations (Windows-saved COMx port names in the Toolkit project, untested on ARM) are documented in DOCS.md — report results on issue #28.
+- Documented that USB PC Interfaces also work today via remote mode (self-hosted C-Gate on any machine with the dongle attached).
+
 ## [1.15.11] - 2026-07-18
 
 ### Fixed
