@@ -134,7 +134,11 @@ const NEWLINE = '\n';
 
 // === Parsing Patterns ===
 const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:(?:\/\/\w+\/)?(\d+\/\d+\/\d+))(?:\s+(\d+))?/;
-const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\w*)\/(\w*)\/(\w*)\/(\w+)/;
+// Address segments are digits-only (max 3) so malformed values like "254abc"
+// are rejected at parse time instead of being silently truncated by parseInt.
+// Empty segments stay allowed for getall/gettree forms (e.g. cbus/write/254///gettree);
+// CBusCommand range-checks the numeric values (network 0-254, app/group 0-255).
+const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\d{0,3})\/(\d{0,3})\/(\d{0,3})\/(\w+)/;
 
 // Export all constants - maintain compatibility with destructuring imports
 module.exports = {

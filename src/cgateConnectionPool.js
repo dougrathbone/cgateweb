@@ -1,3 +1,4 @@
+// @ts-check
 const { EventEmitter } = require('events');
 const CgateConnection = require('./cgateConnection');
 const { createLogger } = require('./logger');
@@ -32,11 +33,13 @@ class CgateConnectionPool extends EventEmitter {
      * @param {string} host - C-Gate server host
      * @param {number} port - C-Gate server port  
      * @param {Object} settings - Pool configuration settings
-     * @param {number} settings.connectionPoolSize - Number of connections in pool (default: 3)
-     * @param {number} settings.healthCheckInterval - Health check frequency in ms (default: 30000)
-     * @param {number} settings.keepAliveInterval - Keep-alive ping frequency in ms (default: 60000)
-     * @param {number} settings.connectionTimeout - Connection establishment timeout in ms (default: 5000)
-     * @param {number} settings.maxRetries - Maximum connection retry attempts (default: 3)
+     * @param {number} [settings.connectionPoolSize] - Number of connections in pool (default: 3)
+     * @param {number} [settings.healthCheckInterval] - Health check frequency in ms (default: 30000)
+     * @param {number} [settings.keepAliveInterval] - Keep-alive ping frequency in ms (default: 60000)
+     * @param {number} [settings.connectionTimeout] - Connection establishment timeout in ms (default: 5000)
+     * @param {number} [settings.maxRetries] - Maximum connection retry attempts (default: 3)
+     * @param {number} [settings.reconnectinitialdelay] - Initial reconnect backoff delay in ms (default: 1000)
+     * @param {number} [settings.reconnectmaxdelay] - Maximum reconnect backoff delay in ms (default: 60000)
      */
     constructor(type, host, port, settings = {}) {
         super();
@@ -156,7 +159,7 @@ class CgateConnectionPool extends EventEmitter {
                     conn.once('close', resolve);
                     conn.disconnect();
                     // Force close after timeout
-                    setTimeout(() => resolve(), 1000);
+                    setTimeout(() => resolve(undefined), 1000);
                 });
             }
             return Promise.resolve();
