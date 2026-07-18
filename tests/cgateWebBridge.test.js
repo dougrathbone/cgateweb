@@ -162,6 +162,10 @@ describe('CgateWebBridge', () => {
                 bridge.haBridgeDiagnostics?.stop?.();
                 bridge.eventConnection?.disconnect?.();
                 await bridge.commandConnectionPool?.stop?.();
+                // Close the web server that bridge.start() launches
+                // fire-and-forget; a listening HTTP server otherwise keeps
+                // the jest worker alive after the run.
+                await bridge.webServer?.close?.();
             } catch {
                 // Ignore cleanup errors
             }
