@@ -103,7 +103,7 @@ class WebServer {
     }
 
     start() {
-        return new Promise((resolve, reject) => {
+        this._startPromise = new Promise((resolve, reject) => {
             this._server = http.createServer((req, res) => this._handleRequest(req, res));
 
             this._server.on('error', (err) => {
@@ -118,19 +118,28 @@ class WebServer {
                 resolve();
             });
         });
+        return this._startPromise;
     }
 
     close() {
-        return new Promise((resolve) => {
-            if (this._server) {
-                this._server.close(() => {
-                    this.logger.info('Web server stopped');
+        // Wait for any in-flight start() to finish binding first: calling
+        // server.close() while listen() is still pending errors with
+        // ERR_SERVER_NOT_RUNNING and the server would keep listening.
+        const started = this._startPromise || Promise.resolve();
+        return started
+            .catch(() => {
+                // A failed start leaves nothing to close.
+            })
+            .then(() => new Promise((resolve) => {
+                if (this._server) {
+                    this._server.close(() => {
+                        this.logger.info('Web server stopped');
+                        resolve();
+                    });
+                } else {
                     resolve();
-                });
-            } else {
-                resolve();
-            }
-        });
+                }
+            }));
     }
 
     /**
