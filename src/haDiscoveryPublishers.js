@@ -1,3 +1,4 @@
+// @ts-check
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
 const { classifyLightingGroup } = require('./deviceTypeClassifier');
 const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
@@ -39,6 +40,60 @@ const {
 } = require('./constants');
 
 class _HaDiscoveryPublishers {
+    // Host-provided instance state. This class is never instantiated: its
+    // prototype methods are copied onto HaDiscovery (see the Object.assign in
+    // haDiscovery.js), which supplies every member declared below. The field
+    // declarations exist purely so @ts-check can resolve them; they never run.
+
+    /** @type {ReturnType<typeof import('./logger').createLogger>} */
+    logger;
+
+    /** @type {Object} */
+    settings;
+
+    /** @type {(topic: string, payload: string, options: Object) => void} */
+    _publish;
+
+    /** @type {number} */
+    discoveryCount;
+
+    /** @type {{ custom: number, treexml: number, fallback: number }} */
+    labelStats;
+
+    /** @type {Map<string, string>} */
+    labelMap;
+
+    /** @type {Map<string, string>} */
+    entityIds;
+
+    /** @type {Set<string>} */
+    exclude;
+
+    /** @type {Map<string, string>} */
+    areas;
+
+    /** @type {Set<string>} */
+    _publishedTopics;
+
+    /** @type {Set<string>} */
+    _eventDrivenDiscoveryTopics;
+
+    /** @type {Set<string>} */
+    _cniDiscoverySeen;
+
+    /** @type {Set<string>} */
+    _nativeAirconSeen;
+
+    /** @type {Set<string>} */
+    _currentRunTopics;
+
+    /**
+     * Per-run label data snapshot installed by _publishDiscoveryFromTree for
+     * the duration of a synchronous discovery run (null outside a run).
+     * @type {{ labelMap: Map<string, string>, typeOverrides: Map<string, string>, entityIds: Map<string, string>, exclude: Set<string>, areas: Map<string, string> } | null}
+     */
+    _labelSnapshot;
+
     _processLightingGroups(networkId, appId, groups) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
         for (const group of groupArray) {
@@ -200,21 +255,6 @@ class _HaDiscoveryPublishers {
     }
 
     /**
-     * Event-driven discovery for native C-Bus Air Conditioning (172) thermostats.
-     * Called whenever an aircon reading with a source unit is decoded; publishes
-     * the thermostat's HA climate entity the first time that unit is seen.
-     *
-     * Distinct from {@link _createHvacDiscovery} (the HVAC-via-lighting pattern):
-     * here entities are keyed by **source unit** to match the native decoder's
-     * topics (cbus/read/{net}/172/{sourceUnit}/…), and there is no TREEXML group
-     * to enumerate from — thermostats announce themselves on the bus.
-     *
-     * @param {string} network
-     * @param {string|number} appId      - aircon app id (e.g. 172)
-     * @param {string|number} sourceUnit - thermostat unit address (e.g. 201)
-     * @returns {boolean} true if a new climate entity was published this call
-     */
-    /**
      * Publish a Home Assistant binary_sensor (device_class=connectivity) for a
      * C-Bus network's CNI/PCI link, once per network. ON = the interface is
      * connected, OFF = the CNI/PCI link to the C-Bus network is down. Fed by the
@@ -256,6 +296,21 @@ class _HaDiscoveryPublishers {
         return true;
     }
 
+    /**
+     * Event-driven discovery for native C-Bus Air Conditioning (172) thermostats.
+     * Called whenever an aircon reading with a source unit is decoded; publishes
+     * the thermostat's HA climate entity the first time that unit is seen.
+     *
+     * Distinct from {@link _createHvacDiscovery} (the HVAC-via-lighting pattern):
+     * here entities are keyed by **source unit** to match the native decoder's
+     * topics (cbus/read/{net}/172/{sourceUnit}/…), and there is no TREEXML group
+     * to enumerate from — thermostats announce themselves on the bus.
+     *
+     * @param {string} network
+     * @param {string|number} appId      - aircon app id (e.g. 172)
+     * @param {string|number} sourceUnit - thermostat unit address (e.g. 201)
+     * @returns {boolean} true if a new climate entity was published this call
+     */
     ensureNativeAirconDiscovery(network, appId, sourceUnit) {
         if (!this.settings.ha_discovery_enabled) return false;
         if (appId === null || appId === undefined || sourceUnit === null || sourceUnit === undefined) return false;
