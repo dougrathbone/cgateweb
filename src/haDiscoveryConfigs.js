@@ -1,3 +1,4 @@
+// @ts-check
 const {
     HA_COMPONENT_COVER,
     HA_COMPONENT_SWITCH,
