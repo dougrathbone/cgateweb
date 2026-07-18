@@ -1,3 +1,4 @@
+// @ts-check
 const parseString = require('xml2js').parseString;
 const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
 const { buildOriginBlock } = require('./haDiscoveryPayloads');
@@ -20,6 +21,69 @@ const {
 } = require('./constants');
 
 class _HaDiscoveryTreeSession {
+    // Host-provided instance state. This class is never instantiated: its
+    // prototype methods are copied onto HaDiscovery (see the Object.assign in
+    // haDiscovery.js), which supplies every member declared below. The field
+    // declarations exist purely so @ts-check can resolve them; they never run.
+
+    /** @type {ReturnType<typeof import('./logger').createLogger>} */
+    logger;
+
+    /** @type {Object} */
+    settings;
+
+    /** @type {(topic: string, payload: string, options: Object) => void} */
+    _publish;
+
+    /** @type {(command: string) => void} */
+    _sendCommand;
+
+    /**
+     * Publish the HA Discovery messages for a parsed tree (implemented in
+     * haDiscovery.js).
+     * @type {(networkId: string, treeData: *) => void}
+     */
+    _publishDiscoveryFromTree;
+
+    /** @type {string[]} */
+    pendingTreeNetworks;
+
+    /** @type {Map<string, { attempts: number, watchdogHandle: NodeJS.Timeout | null, retryHandle: NodeJS.Timeout | null }>} */
+    _treeRequestState;
+
+    /** @type {Map<string, { attempts: number, handle: NodeJS.Timeout | null }>} */
+    _treeResyncState;
+
+    /** @type {Map<string, number>} */
+    _treeParseEpoch;
+
+    /** @type {Set<string>} */
+    _parsingNetworks;
+
+    /** @type {Map<string, { status: string | null, configPublished: boolean }>} */
+    _networkDiscoveryEntities;
+
+    /** @type {number} */
+    _maxTreeRetryAttempts;
+
+    /** @type {number} */
+    _treeRetryInitialDelayMs;
+
+    /** @type {number} */
+    _treeRetryMaxDelayMs;
+
+    /** @type {number} */
+    _treeRequestTimeoutMs;
+
+    /** @type {number} */
+    _maxTreeResyncAttempts;
+
+    /** @type {number} */
+    _treeResyncInitialDelayMs;
+
+    /** @type {number} */
+    _treeResyncMaxDelayMs;
+
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
         const state = this._getOrCreateTreeState(normalizedNetwork);
@@ -28,7 +92,7 @@ class _HaDiscoveryTreeSession {
         // attempts counter so backoff continues if this attempt also fails.
         this._clearTimer(state, 'retryHandle');
 
-        this._setDiscoveryStatus(normalizedNetwork, DISCOVERY_STATE_DISCOVERING);
+        this._setDiscoveryStatus(normalizedNetwork, /** @type {'discovering'} */ (DISCOVERY_STATE_DISCOVERING));
 
         // If a TREEXML for this network is already in flight (queued, streaming,
         // or parsing), don't send another. Overlapping trees for the same
@@ -131,7 +195,7 @@ class _HaDiscoveryTreeSession {
                 `Verify the network is configured and reachable in C-Gate, then restart the bridge or publish to cbus/write/${networkId}///gettree to retry.`
             );
             this._clearTreeState(networkId);
-            this._setDiscoveryStatus(networkId, DISCOVERY_STATE_PAUSED);
+            this._setDiscoveryStatus(networkId, /** @type {'paused'} */ (DISCOVERY_STATE_PAUSED));
             return;
         }
 
@@ -446,7 +510,7 @@ class _HaDiscoveryTreeSession {
                     // Generate HA Discovery messages
                     this._publishDiscoveryFromTree(networkForTree, result);
 
-                    this._setDiscoveryStatus(networkForTree, DISCOVERY_STATE_OK);
+                    this._setDiscoveryStatus(networkForTree, /** @type {'ok'} */ (DISCOVERY_STATE_OK));
 
                     // A tree can carry real device data while OTHER units still
                     // have empty <Groups> because C-Gate has not finished

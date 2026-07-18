@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
 const {
@@ -7,6 +8,18 @@ const {
     HA_DISCOVERY_SUFFIX
 } = require('./constants');
 
+/**
+ * Methods mixed into HaDiscovery.prototype from haDiscoveryTreeSession.js and
+ * haDiscoveryPublishers.js at module load (see the Object.assign calls at the
+ * bottom of this file). Declared here so calls into the mixin modules
+ * type-check; the implementations live in those modules.
+ * @typedef {Object} HaDiscoveryMixinMethods
+ * @property {(networkId: string|number) => void} queueTreeRequest
+ * @property {(networkId: string) => void} _clearTreeState
+ * @property {(networkId: string) => void} _clearTreeResyncState
+ * @property {(networkId: string|number, appId: string|number, groups: Array<Object>) => void} _processLightingGroups
+ * @property {(networkId: string|number, appAddress: string|number, groups: Array<Object>) => void} _processEnableControlGroups
+ */
 class HaDiscovery {
     /**
      * @param {Object} settings - Configuration settings
@@ -126,6 +139,7 @@ class HaDiscovery {
         }
     }
 
+    /** @this {HaDiscovery & HaDiscoveryMixinMethods} */
     trigger(discoveredNetworks = null) {
         if (!this.settings.ha_discovery_enabled) {
             return;
@@ -172,6 +186,7 @@ class HaDiscovery {
      * Idempotent against the v1.8.1 retry: `queueTreeRequest` cancels any
      * pending retry and de-duplicates the pending queue, so a Network created
      * event mid-backoff just short-circuits the wait.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     handleNetworkCreated(networkId) {
         if (!this.settings.ha_discovery_enabled) return;
@@ -193,6 +208,7 @@ class HaDiscovery {
      * manual gettree (issue #25). Gated by the same scope rules as
      * handleNetworkCreated; queueTreeRequest de-duplicates against any
      * in-flight tree and cancels a pending retry.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     handleNetworkSyncComplete(networkId) {
         if (!this.settings.ha_discovery_enabled) return;
@@ -215,6 +231,7 @@ class HaDiscovery {
      * for that network so the entities don't linger in HA forever. Empty
      * retained payloads tell HA Discovery to delete the entity. Also cancels
      * any in-flight TREEXML request and clears internal state for the network.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     handleNetworkRemoved(networkId) {
         if (!this.settings.ha_discovery_enabled) return;
@@ -257,6 +274,7 @@ class HaDiscovery {
         );
     }
 
+    /** @this {HaDiscovery & HaDiscoveryMixinMethods} */
     _publishDiscoveryFromTree(networkId, treeData) {
         this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
         const startTime = Date.now();
@@ -291,6 +309,7 @@ class HaDiscovery {
         }
     }
 
+    /** @this {HaDiscovery & HaDiscoveryMixinMethods} */
     _runDiscoveryFromTree(networkId, networkData, startTime) {
         let units = networkData.Unit || [];
         if (!Array.isArray(units)) {
@@ -389,6 +408,7 @@ class HaDiscovery {
      * Create discovery entities for labeled groups not already found in TREEXML.
      * The flat TREEXML format may omit groups not assigned to specific units,
      * but they are still valid and controllable on the C-Bus network.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     _supplementFromLabels(networkId, lightingAppId, groupsByApp) {
         const { labelMap, exclude } = this._labelSnapshot;
