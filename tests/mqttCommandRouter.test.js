@@ -70,6 +70,19 @@ describe('MqttCommandRouter', () => {
             
             expect(processSpy).not.toHaveBeenCalled();
         });
+
+        it('should ignore commands with malformed address segments', () => {
+            const processSpy = jest.spyOn(router, '_processCommand');
+
+            router.routeMessage('cbus/write/254abc/56/1/switch', 'ON');
+            router.routeMessage('cbus/write/254/56x/1/switch', 'ON');
+            router.routeMessage('cbus/write/254/56/1x/switch', 'ON');
+            router.routeMessage('cbus/write/25 4/56/1/switch', 'ON');
+            router.routeMessage('cbus/write/254/1000/1/switch', 'ON');
+
+            expect(processSpy).not.toHaveBeenCalled();
+            expect(queueSpy).not.toHaveBeenCalled();
+        });
     });
 
     describe('Command Handlers', () => {

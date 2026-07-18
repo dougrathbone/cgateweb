@@ -500,6 +500,67 @@ describe('CBusCommand', () => {
         });
     });
 
+    // === Address Segment Format Validation ===
+
+    describe('address segment format validation', () => {
+        it('should reject a network segment with trailing letters', () => {
+            // parseInt('254abc') === 254, so range checks alone would accept this
+            // and interpolate the raw "254abc" into the C-Gate command.
+            const command = new CBusCommand('cbus/write/254abc/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject an application segment with trailing letters', () => {
+            const command = new CBusCommand('cbus/write/254/56abc/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject a group segment with trailing letters', () => {
+            const command = new CBusCommand('cbus/write/254/56/1abc/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject a segment with an embedded space', () => {
+            const command = new CBusCommand('cbus/write/25 4/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject a negative segment', () => {
+            const command = new CBusCommand('cbus/write/254/-56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject an oversized (4 digit) segment', () => {
+            const command = new CBusCommand('cbus/write/254/1000/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject a zero-padded 4 digit segment that parseInt would accept', () => {
+            // parseInt('0254') === 254 passes the range check, but the raw string
+            // is not a valid C-Bus address segment.
+            const command = new CBusCommand('cbus/write/0254/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should reject a non-numeric segment', () => {
+            const command = new CBusCommand('cbus/write/abc/56/1/switch', 'ON');
+            expect(command.isValid()).toBe(false);
+        });
+
+        it('should still accept documented empty-segment getall/gettree forms', () => {
+            expect(new CBusCommand('cbus/write/254/56//getall', '').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254///gettree', '').isValid()).toBe(true);
+        });
+
+        it('should still accept ordinary numeric segments', () => {
+            const command = new CBusCommand('cbus/write/254/56/7/switch', 'ON');
+            expect(command.isValid()).toBe(true);
+            expect(command.getNetwork()).toBe('254');
+            expect(command.getApplication()).toBe('56');
+            expect(command.getGroup()).toBe('7');
+        });
+    });
+
     // === Command Type Validation ===
 
     describe('command type validation', () => {
