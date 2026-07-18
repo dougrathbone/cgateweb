@@ -142,6 +142,25 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
+    describe('_cgateweb_custom_url_without_sha256', () => {
+        // A custom download URL is only installed when pinned to a checksum;
+        // the built-in default URL keeps warn-only behaviour.
+        test('returns 1 for a custom URL with no sha256', () => {
+            const out = runHelperWithArgs('_cgateweb_custom_url_without_sha256', ['https://example.com/cgate.zip', '']);
+            expect(out).toBe('1');
+        });
+
+        test('returns 0 for a custom URL with a sha256 set', () => {
+            const out = runHelperWithArgs('_cgateweb_custom_url_without_sha256', ['https://example.com/cgate.zip', 'a'.repeat(64)]);
+            expect(out).toBe('0');
+        });
+
+        test('returns 0 for the built-in default URL with no sha256', () => {
+            const out = runHelperWithArgs('_cgateweb_custom_url_without_sha256', [DEFAULT_DOWNLOAD_URL, '']);
+            expect(out).toBe('0');
+        });
+    });
+
     describe('_cgateweb_force_reinstall_requested', () => {
         test('returns 0 when cgate_force_reinstall is unset (default off)', () => {
             const out = callHelper('_cgateweb_force_reinstall_requested', {});

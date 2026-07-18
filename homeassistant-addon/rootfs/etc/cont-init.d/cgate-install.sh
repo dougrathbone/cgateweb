@@ -32,6 +32,15 @@ _cgateweb_resolve_download_sha256() {
     printf '%s' "${sha}"
 }
 
+# A custom download URL must be pinned to a checksum: without one the install
+# would run whatever bytes the URL happens to serve. The built-in default URL
+# is exempt (it keeps the warn-only behaviour at verification time). Echoes 1
+# when a sha256 is required but missing, else 0.
+_cgateweb_custom_url_without_sha256() {
+    local url="$1" sha="$2"
+    if [[ "${url}" != "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" && -z "${sha}" ]]; then printf '1'; else printf '0'; fi
+}
+
 # Inspect a zip's central directory and reject any entry name that contains
 # path-traversal (..) or starts with an absolute path. Modern unzip ignores
 # these by default, but explicit pre-extract validation is defence-in-depth
@@ -200,6 +209,16 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
             exit 1
             ;;
     esac
+
+    # Refuse a custom download URL with no pinned checksum before downloading
+    # anything. Downloads from the built-in default URL keep the warn-only
+    # behaviour at the verification step below.
+    if [[ "$(_cgateweb_custom_url_without_sha256 "${DOWNLOAD_URL}" "${DOWNLOAD_SHA256}")" == "1" ]]; then
+        bashio::log.error "cgate_download_sha256 is required when cgate_download_url is set to a custom URL"
+        bashio::log.error "Compute the zip's checksum ('sha256sum cgate.zip' or 'shasum -a 256 cgate.zip') and set cgate_download_sha256,"
+        bashio::log.error "or clear cgate_download_url to use the built-in default download"
+        exit 1
+    fi
 
     TEMP_ZIP="${WORK_DIR}/cgate-download.zip"
     HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
