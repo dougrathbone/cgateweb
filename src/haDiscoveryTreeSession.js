@@ -1,5 +1,5 @@
 const parseString = require('xml2js').parseString;
-const { findNetworkData, networkHasDeviceData } = require('./haDiscoveryTree');
+const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
 const { buildOriginBlock } = require('./haDiscoveryPayloads');
 const { backoffDelay } = require('./backoff');
 const {
@@ -155,12 +155,75 @@ class _HaDiscoveryTreeSession {
     }
 
     /**
+     * Schedules one more TREEXML for a network whose accepted tree still
+     * contains units with empty <Groups> (C-Gate has not finished syncing
+     * group bindings — issue #25). Unlike the failure retry this does not
+     * affect discovery status (the partial tree was already published); it is
+     * bounded so networks with legitimately group-less units stop re-fetching
+     * after a few attempts.
+     */
+    _scheduleTreeResync(networkId) {
+        const resync = this._getOrCreateTreeResyncState(networkId);
+        resync.attempts += 1;
+
+        if (resync.attempts > this._maxTreeResyncAttempts) {
+            this.logger.info(
+                `HA Discovery: tree for network ${networkId} still has units without group addresses ` +
+                `after ${this._maxTreeResyncAttempts} extra fetch(es); assuming those units have no groups. ` +
+                `If groups appear later, publish to cbus/write/${networkId}///gettree to refresh.`
+            );
+            this._clearTreeResyncState(networkId);
+            return;
+        }
+
+        const delay = backoffDelay(resync.attempts - 1, {
+            initialMs: this._treeResyncInitialDelayMs,
+            maxMs: this._treeResyncMaxDelayMs,
+            jitter: false
+        });
+
+        this.logger.info(
+            `HA Discovery: tree for network ${networkId} has units with no group addresses yet ` +
+            `(C-Gate still syncing?); re-fetching in ${Math.round(delay / 1000)}s ` +
+            `(attempt ${resync.attempts}/${this._maxTreeResyncAttempts}).`
+        );
+
+        this._clearTimer(resync, 'handle');
+        resync.handle = this._setTimer(delay, () => {
+            resync.handle = null;
+            this.queueTreeRequest(networkId);
+        });
+    }
+
+    _getOrCreateTreeResyncState(networkId) {
+        let resync = this._treeResyncState.get(networkId);
+        if (!resync) {
+            resync = { attempts: 0, handle: null };
+            this._treeResyncState.set(networkId, resync);
+        }
+        return resync;
+    }
+
+    _clearTreeResyncTimer(networkId) {
+        const resync = this._treeResyncState.get(networkId);
+        if (resync) this._clearTimer(resync, 'handle');
+    }
+
+    _clearTreeResyncState(networkId) {
+        this._clearTreeResyncTimer(networkId);
+        this._treeResyncState.delete(networkId);
+    }
+
+    /**
      * Cancels all retry timers and watchdogs and clears per-network state.
      * Call on bridge shutdown.
      */
     stop() {
         for (const networkId of [...this._treeRequestState.keys()]) {
             this._clearTreeState(networkId);
+        }
+        for (const networkId of [...this._treeResyncState.keys()]) {
+            this._clearTreeResyncState(networkId);
         }
         this._networkDiscoveryEntities.clear();
     }
@@ -245,6 +308,11 @@ class _HaDiscoveryTreeSession {
             this._clearTimer(startState, 'watchdogHandle');
             this._clearTimer(startState, 'retryHandle');
         }
+
+        // A tree is arriving for this network, so a pending empty-Groups
+        // re-fetch (issue #25) is superseded — handleTreeEnd re-evaluates
+        // completeness on the tree that is actually received.
+        this._clearTreeResyncTimer(networkKey);
 
         this.activeTreeSession = {
             network: networkKey,
@@ -379,6 +447,19 @@ class _HaDiscoveryTreeSession {
                     this._publishDiscoveryFromTree(networkForTree, result);
 
                     this._setDiscoveryStatus(networkForTree, DISCOVERY_STATE_OK);
+
+                    // A tree can carry real device data while OTHER units still
+                    // have empty <Groups> because C-Gate has not finished
+                    // syncing their group bindings (issue #25). Those groups
+                    // would stay undiscovered until a manual gettree, so
+                    // schedule a bounded re-fetch; a C-Gate 762 sync-complete
+                    // event (handleNetworkSyncComplete) re-fetches immediately
+                    // and a fully-populated tree clears the state.
+                    if (networkHasUnsyncedUnits(networkData)) {
+                        this._scheduleTreeResync(networkForTree);
+                    } else {
+                        this._clearTreeResyncState(networkForTree);
+                    }
                 }
             } finally {
                 this._parsingNetworks.delete(networkForTree);

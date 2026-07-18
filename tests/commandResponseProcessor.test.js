@@ -24,7 +24,8 @@ describe('CommandResponseProcessor', () => {
             handleTreeData: jest.fn(),
             handleTreeEnd: jest.fn(),
             handleNetworkCreated: jest.fn(),
-            handleNetworkRemoved: jest.fn()
+            handleNetworkRemoved: jest.fn(),
+            handleNetworkSyncComplete: jest.fn()
         };
 
         mockOnObjectStatus = jest.fn();
@@ -281,6 +282,33 @@ describe('CommandResponseProcessor', () => {
                 '20260505-101122.000 742 //12LESLIE/254 abc-uuid Network removed'
             );
             expect(mockHaDiscovery.handleNetworkRemoved).toHaveBeenCalledWith('254');
+        });
+
+        it('should forward 762 Network sync ok events to handleNetworkSyncComplete', () => {
+            processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
+        it('end-to-end: timestamped 762 line on processLine forwards to handleNetworkSyncComplete', () => {
+            processor.processLine('20260718-123456.789 762 //MIDSTRM/254 Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
+        it('should ignore 762 events without a parseable network id', () => {
+            processor._processCommandResponse('762', 'Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
+        });
+
+        it('should not throw on 762 when haDiscovery is not yet initialized', () => {
+            processor.haDiscovery = null;
+            expect(() => {
+                processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
+            }).not.toThrow();
+        });
+
+        it('should leave other 7xx events untouched', () => {
+            processor._processCommandResponse('740', '//PROJECT/254 Opened cbus network');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
         });
 
         it('should route 4xx error responses', () => {

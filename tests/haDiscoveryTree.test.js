@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, unitHasDeviceData } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -349,5 +349,83 @@ describe('networkHasDeviceData', () => {
 
     it('returns false for null', () => {
         expect(networkHasDeviceData(null)).toBe(false);
+    });
+});
+
+describe('unitHasUnsyncedGroups', () => {
+    it('returns true for a flat unit in a real app with empty Groups (#25)', () => {
+        expect(unitHasUnsyncedGroups({ Application: '56, 255', Groups: '' })).toBe(true);
+    });
+
+    it('returns true for a flat unit in a real app with no Groups key', () => {
+        expect(unitHasUnsyncedGroups({ Application: '56, 255' })).toBe(true);
+    });
+
+    it('returns false for a flat unit that has synced its groups', () => {
+        expect(unitHasUnsyncedGroups({ Application: '56, 255', Groups: '10,11' })).toBe(false);
+    });
+
+    it('returns false for a management-only unit (app 255 legitimately has no groups)', () => {
+        expect(unitHasUnsyncedGroups({ Application: '255, 255', Groups: '' })).toBe(false);
+    });
+
+    it('returns false for a unit with no application data', () => {
+        expect(unitHasUnsyncedGroups({ UnitAddress: '100' })).toBe(false);
+    });
+
+    it('returns true for a structured unit whose real app carries no Group entries', () => {
+        expect(unitHasUnsyncedGroups({
+            Application: { ApplicationAddress: '56' }
+        })).toBe(true);
+        expect(unitHasUnsyncedGroups({
+            Application: [
+                { ApplicationAddress: '56' },
+                { ApplicationAddress: '255', Group: { GroupAddress: '1' } }
+            ]
+        })).toBe(true);
+    });
+
+    it('returns false for a structured unit whose real app carries a Group', () => {
+        expect(unitHasUnsyncedGroups({
+            Application: { ApplicationAddress: '56', Group: { GroupAddress: '10' } }
+        })).toBe(false);
+    });
+
+    it('returns false for a structured management-only unit', () => {
+        expect(unitHasUnsyncedGroups({ Application: { ApplicationAddress: '255' } })).toBe(false);
+    });
+
+    it('returns false for null/undefined', () => {
+        expect(unitHasUnsyncedGroups(null)).toBe(false);
+        expect(unitHasUnsyncedGroups(undefined)).toBe(false);
+    });
+});
+
+describe('networkHasUnsyncedUnits', () => {
+    it('returns true when any unit is still missing its group bindings (#25)', () => {
+        const network = { Unit: [
+            { Application: '56, 255', Groups: '31,32' },
+            { Application: '56, 255', Groups: '' }
+        ] };
+        expect(networkHasUnsyncedUnits(network)).toBe(true);
+    });
+
+    it('returns false once every unit with a real app has groups', () => {
+        const network = { Unit: [
+            { Application: '56, 255', Groups: '31,32' },
+            { Application: '56, 255', Groups: '115' },
+            { Application: '255, 255', Groups: '' }
+        ] };
+        expect(networkHasUnsyncedUnits(network)).toBe(false);
+    });
+
+    it('returns false for a management-only network (nothing to wait for)', () => {
+        const network = { Unit: { Application: '255, 255', Groups: '' } };
+        expect(networkHasUnsyncedUnits(network)).toBe(false);
+    });
+
+    it('returns false for a network element with no units and for null', () => {
+        expect(networkHasUnsyncedUnits({ NetworkNumber: '254' })).toBe(false);
+        expect(networkHasUnsyncedUnits(null)).toBe(false);
     });
 });

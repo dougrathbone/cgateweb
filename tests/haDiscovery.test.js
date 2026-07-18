@@ -49,6 +49,24 @@ const TREEXML_NET254 =
     '<Group><GroupAddress>10</GroupAddress><Label>Kitchen Light</Label></Group>' +
     '</Application></Unit></Network>';
 
+// Flat-format trees mirroring the issue #25 sample: unit 13 has finished
+// syncing its group bindings while unit 14 still reports empty <Groups>
+// because the C-Gate network sync has not completed. The full tree is what
+// C-Gate returns for the same network once the sync has finished.
+const PARTIAL_GROUPS_TREE_NET254 =
+    '<Network><NetworkNumber>254</NetworkNumber>' +
+    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
+    '<Application>56, 255</Application><Groups>31,32</Groups></Unit>' +
+    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
+    '<Application>56, 255</Application><Groups></Groups></Unit></Network>';
+
+const FULL_GROUPS_TREE_NET254 =
+    '<Network><NetworkNumber>254</NetworkNumber>' +
+    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
+    '<Application>56, 255</Application><Groups>31,32</Groups></Unit>' +
+    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
+    '<Application>56, 255</Application><Groups>115</Groups></Unit></Network>';
+
 describe('HaDiscovery', () => {
     let haDiscovery;
     let mockSettings;
@@ -112,6 +130,24 @@ describe('HaDiscovery', () => {
             expect(d._treeRetryInitialDelayMs).toBe(500);
             expect(d._treeRetryMaxDelayMs).toBe(10000);
             expect(d._treeRequestTimeoutMs).toBe(4000);
+        });
+
+        it('should default tree resync tuning when settings omit the keys', () => {
+            const d = new HaDiscovery({}, mockPublishFn, mockSendCommandFn);
+            expect(d._maxTreeResyncAttempts).toBe(3);
+            expect(d._treeResyncInitialDelayMs).toBe(30000);
+            expect(d._treeResyncMaxDelayMs).toBe(120000);
+        });
+
+        it('should honor settings overrides for tree resync tuning', () => {
+            const d = new HaDiscovery({
+                haDiscoveryMaxTreeResyncAttempts: 5,
+                haDiscoveryTreeResyncInitialDelayMs: 10000,
+                haDiscoveryTreeResyncMaxDelayMs: 60000
+            }, mockPublishFn, mockSendCommandFn);
+            expect(d._maxTreeResyncAttempts).toBe(5);
+            expect(d._treeResyncInitialDelayMs).toBe(10000);
+            expect(d._treeResyncMaxDelayMs).toBe(60000);
         });
     });
 
@@ -1253,6 +1289,244 @@ describe('HaDiscovery', () => {
             // Advance past the original retry's 2s backoff. No extra send.
             jest.advanceTimersByTime(2500);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('handleNetworkSyncComplete (C-Gate event 762)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('triggers a TreeXML refresh for a configured network when its sync completes', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkSyncComplete('254');
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/254${NEWLINE}`);
+        });
+
+        it('skips networks not in ha_discovery_networks when the list is configured', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkSyncComplete('999');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('triggers for any network when ha_discovery_networks is empty', () => {
+            mockSettings.ha_discovery_networks = [];
+            haDiscovery.handleNetworkSyncComplete('999');
+            expect(mockSendCommandFn).toHaveBeenCalledWith(`${CGATE_CMD_TREEXML} //TESTPROJECT/999${NEWLINE}`);
+        });
+
+        it('does nothing when discovery is disabled', () => {
+            mockSettings.ha_discovery_enabled = false;
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkSyncComplete('254');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('sends only one TREEXML when repeated 762 events arrive while one is in flight', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.handleNetworkSyncComplete('254');
+            haDiscovery.handleNetworkSyncComplete('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+        });
+
+        it('discovers groups that were still syncing at startup once the 762 arrives (issue #25)', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // The initial tree is only partially synced: unit 13's groups are
+            // present, unit 14's <Groups> are still empty.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            const lightConfigsBefore = new Set(mockPublishFn.mock.calls.filter(c => c[0].includes('/light/')).map(c => c[0])).size;
+            expect(lightConfigsBefore).toBe(2);
+
+            // C-Gate finishes the network sync and emits 762: the tree is
+            // re-fetched immediately, superseding the scheduled re-fetch.
+            haDiscovery.handleNetworkSyncComplete('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+            expect(haDiscovery._treeResyncState.has('254')).toBe(false);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(FULL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            const lightConfigsAfter = new Set(mockPublishFn.mock.calls.filter(c => c[0].includes('/light/')).map(c => c[0])).size;
+            expect(lightConfigsAfter).toBe(3);
+
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+
+            // A fully populated tree schedules nothing further.
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('re-triggers discovery for a network paused after exhausting the empty-tree retry budget', () => {
+            mockSettings.ha_discovery_networks = ['254'];
+            haDiscovery.trigger();
+            const errMsg = 'Bad object or device ID: Network not found';
+            for (let i = 1; i <= 8; i++) {
+                haDiscovery.handleCommandError('401', errMsg);
+                jest.runOnlyPendingTimers();
+            }
+            haDiscovery.handleCommandError('401', errMsg);
+
+            let states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('paused');
+
+            // The network finally finishes syncing and C-Gate emits 762:
+            // discovery recovers without a restart or manual gettree.
+            mockSendCommandFn.mockClear();
+            haDiscovery.handleNetworkSyncComplete('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+        });
+    });
+
+    describe('TreeXML empty-Groups resync (issue #25)', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        // Distinct light discovery-config topics (a second tree run republishes
+        // the same topics, so count topics, not publish calls).
+        const lightConfigCount = () => new Set(mockPublishFn.mock.calls
+            .filter(c => c[0].includes('/light/')).map(c => c[0])).size;
+
+        it('accepts a partially synced tree but schedules a re-fetch for the unsynced units', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            // The tree carries real device data, so discovery completes for
+            // the synced groups...
+            const states = mockPublishFn.mock.calls
+                .filter(c => c[0] === 'cbus/read/254///discovery_status')
+                .map(c => c[1]);
+            expect(states[states.length - 1]).toBe('ok');
+            expect(lightConfigCount()).toBe(2);
+
+            // ...but unit 14's groups are still missing, so exactly one
+            // re-fetch is scheduled (the timeout fallback when no 762 arrives).
+            expect(haDiscovery._treeResyncState.get('254').attempts).toBe(1);
+            jest.advanceTimersByTime(haDiscovery._treeResyncInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('discovers the late groups when the fallback re-fetch returns a fully synced tree', () => {
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(lightConfigCount()).toBe(2);
+
+            // The scheduled re-fetch fires; by then the network has synced.
+            jest.advanceTimersByTime(haDiscovery._treeResyncInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(FULL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            expect(lightConfigCount()).toBe(3);
+            expect(haDiscovery._treeResyncState.has('254')).toBe(false);
+
+            // No further fetches are scheduled for a complete tree.
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not schedule a re-fetch when the accepted tree is fully synced', () => {
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(FULL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            expect(haDiscovery._treeResyncState.has('254')).toBe(false);
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+        });
+
+        it('bounds the re-fetch budget when units legitimately have no groups', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // Respond to every fetch with another partial tree (a unit that
+            // genuinely has no groups). Each partial tree schedules exactly
+            // one re-fetch; respond before the 8s response watchdog can fire.
+            let expectedDelay = haDiscovery._treeResyncInitialDelayMs;
+            for (let i = 1; i <= haDiscovery._maxTreeResyncAttempts; i++) {
+                haDiscovery.handleTreeStart('start');
+                haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+                haDiscovery.handleTreeEnd('end');
+                expect(haDiscovery._treeResyncState.get('254').attempts).toBe(i);
+
+                jest.advanceTimersByTime(expectedDelay);
+                expect(mockSendCommandFn).toHaveBeenCalledTimes(1 + i);
+                expectedDelay = Math.min(expectedDelay * 2, haDiscovery._treeResyncMaxDelayMs);
+            }
+
+            // The next partial tree exhausts the budget instead of scheduling again.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeResyncState.has('254')).toBe(false);
+
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1 + haDiscovery._maxTreeResyncAttempts);
+        });
+
+        it('cancels a pending re-fetch when a tree for the network starts arriving', () => {
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeResyncState.get('254').attempts).toBe(1);
+
+            // A manual gettree starts a new tree before the re-fetch fires;
+            // the pending re-fetch must be superseded by it.
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.handleTreeStart('start');
+            expect(haDiscovery._treeResyncState.get('254').handle).toBeNull();
+
+            haDiscovery.handleTreeData(FULL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
     });
 
