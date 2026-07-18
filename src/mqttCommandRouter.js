@@ -1,3 +1,4 @@
+// @ts-check
 const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
@@ -60,6 +61,7 @@ class MqttCommandRouter extends EventEmitter {
      * @param {Object}       [options.mqttClient] - MQTT client for publishing interpolated positions
      * @param {Object}       [options.settings] - Application settings (cover_ramp_duration_ms etc.)
      * @param {Object}       [options.coverRampTracker] - Shared CoverRampTracker instance (optional)
+     * @param {Object}       [options.airconControlRegistry] - AirconControlRegistry holding learned thermostat state (optional)
      */
     constructor(options) {
         super();
@@ -374,7 +376,8 @@ class MqttCommandRouter extends EventEmitter {
             this.logger.debug(`Setting cover position: ${network}/${application}/${group} to level ${level}`);
 
             // Start interpolated position updates so HA shows smooth movement
-            this._startCoverRamp(network, application, group, level, null);
+            // Position payloads always produce a numeric level (or null, excluded above).
+            this._startCoverRamp(network, application, group, /** @type {number} */ (level), null);
         } else {
             this.logger.warn(`Invalid position value for topic ${topic}`);
         }
@@ -656,6 +659,12 @@ class MqttCommandRouter extends EventEmitter {
      * Publish the expected HVAC state to the read topics immediately after a
      * write, so Home Assistant's card reflects the change without waiting for
      * the thermostat's broadcast. The real broadcast confirms it shortly after.
+     * @param {string} network - C-Bus network address
+     * @param {string} application - C-Bus application address
+     * @param {string} unit - Aircon unit (group) address
+     * @param {Object} [state] - State fields to publish
+     * @param {string} [state.mode] - HVAC mode to publish
+     * @param {number} [state.setpointC] - Target temperature in °C to publish
      * @private
      */
     _publishOptimisticHvacState(network, application, unit, { mode, setpointC } = {}) {
