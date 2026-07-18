@@ -22,6 +22,14 @@ class WebServer {
  * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (empty disables cross-origin access)
  * @param {number} [options.maxMutationRequestsPerWindow=120] - Maximum mutating requests per minute per client
  * @param {string|null} [options.triggerAppId] - C-Bus app ID configured as trigger groups (e.g. '202')
+ * @param {Object} [options.deviceStateManager] - DeviceStateManager instance for device status endpoints
+ * @param {Object} [options.eventStream] - Event stream interface ({ subscribe, unsubscribe, getRecent }) for the SSE endpoint
+ * @param {number} [options.maxBodySizeBytes] - Maximum request body size in bytes
+ * @param {number} [options.activeDeviceWindowMs] - Window in ms for considering a device active
+ * @param {number} [options.haAreasCacheTtlMs] - Home Assistant areas cache TTL in ms
+ * @param {number} [options.haApiTimeoutMs] - Home Assistant API request timeout in ms
+ * @param {number} [options.maxSseConnections] - Maximum concurrent SSE connections
+ * @param {number} [options._sseKeepaliveMs] - SSE keep-alive interval in ms (internal)
      */
     constructor(options = {}) {
         this.port = (options.port !== null && options.port !== undefined) ? options.port : 8080;

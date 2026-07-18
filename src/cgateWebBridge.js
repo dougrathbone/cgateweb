@@ -1,3 +1,4 @@
+// @ts-check
 const CgateConnection = require('./cgateConnection');
 const CgateConnectionPool = require('./cgateConnectionPool');
 const MqttManager = require('./mqttManager');
@@ -396,7 +397,7 @@ class CgateWebBridge {
      * - C-Gate command port (for sending commands to C-Bus devices)
      * - C-Gate event port (for receiving C-Bus device events)
      * 
-     * @returns {CgateWebBridge} Returns this instance for method chaining
+     * @returns {Promise<CgateWebBridge>} Returns this instance for method chaining
      */
     async start() {
         this.logger.info('Starting cgateweb bridge');
@@ -532,6 +533,8 @@ class CgateWebBridge {
             try {
                 this.commandResponseProcessor.processLine(line);
             } catch (e) {
+                // @ts-expect-error -- third argument (the offending line) is silently
+                // dropped by error(); suspected pre-existing bug, left unchanged.
                 this.error(`Error processing command data line:`, e, `Line: ${line}`);
             }
         });
@@ -604,6 +607,8 @@ class CgateWebBridge {
                 this.warn(`Could not parse event line: ${line}`);
             }
         } catch (e) {
+            // @ts-expect-error -- third argument (the offending line) is silently
+            // dropped by error(); suspected pre-existing bug, left unchanged.
             this.error(`Error processing event data line:`, e, `Line: ${line}`);
         }
     }
