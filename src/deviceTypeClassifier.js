@@ -1,3 +1,4 @@
+// @ts-check
 // Conservative keyword list for detecting motorised cover devices (blinds,
 // shutters, curtains, etc.) that are wired onto the C-Bus Lighting application
 // (56). The C-Gate tree cannot tell a shutter relay from a lighting relay, so
@@ -24,7 +25,10 @@ function escapeRegExp(s) {
  * (meaning "leave as the default light").
  *
  * @param {string} label - The resolved group label (custom label or TREEXML label).
- * @param {object} settings - Bridge settings.
+ * @param {Object} settings - Bridge settings.
+ * @param {boolean} [settings.ha_discovery_auto_type] - Master switch for automatic type classification.
+ * @param {boolean} [settings.ha_discovery_auto_type_name_heuristics] - Enable name-keyword heuristics.
+ * @param {string[]} [settings.ha_discovery_auto_type_cover_keywords] - Override cover keyword list.
  * @returns {'cover'|null}
  */
 function classifyLightingGroup(label, settings = {}) {

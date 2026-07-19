@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Clamp a settings value to a minimum, falling back to a default when the
  * configured value is missing, NaN, or zero. Encodes the canonical pattern

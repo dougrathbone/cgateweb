@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Default settings for the cgateweb bridge.
  * These can be overridden by user settings in settings.js

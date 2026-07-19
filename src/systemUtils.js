@@ -1,3 +1,4 @@
+// @ts-check
 const { execSync } = require('child_process');
 
 /**

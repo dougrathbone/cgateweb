@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Tracks active cover ramp operations and publishes interpolated position
  * estimates during the ramp duration.

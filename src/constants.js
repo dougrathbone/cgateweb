@@ -1,3 +1,4 @@
+// @ts-check
 const packageJson = require('../package.json');
 
 // === C-Bus System ===

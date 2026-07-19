@@ -1,3 +1,4 @@
+// @ts-check
 class Logger {
     constructor(options = {}) {
         this.component = options.component || 'cgateweb';
