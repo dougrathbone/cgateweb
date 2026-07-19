@@ -67,6 +67,16 @@ const FULL_GROUPS_TREE_NET254 =
     '<Unit><Type>RELAY2</Type><Address>14</Address>' +
     '<Application>56, 255</Application><Groups>115</Groups></Unit></Network>';
 
+// Same partial-sync shape as PARTIAL_GROUPS_TREE_NET254 (unit 14 still has no
+// groups) with caller-chosen bindings on unit 13, so each variant has a
+// different group signature than the previous fetch.
+const partialGroupsTreeNet254 = (unit13Groups) =>
+    '<Network><NetworkNumber>254</NetworkNumber>' +
+    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
+    `<Application>56, 255</Application><Groups>${unit13Groups}</Groups></Unit>` +
+    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
+    '<Application>56, 255</Application><Groups></Groups></Unit></Network>';
+
 describe('HaDiscovery', () => {
     let haDiscovery;
     let mockSettings;
@@ -1479,17 +1489,19 @@ describe('HaDiscovery', () => {
             expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
         });
 
-        it('bounds the re-fetch budget when units legitimately have no groups', () => {
+        it('bounds the re-fetch budget when every re-fetch still has unsynced units', () => {
             haDiscovery.trigger();
             expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
 
-            // Respond to every fetch with another partial tree (a unit that
-            // genuinely has no groups). Each partial tree schedules exactly
-            // one re-fetch; respond before the 8s response watchdog can fire.
+            // Respond to every fetch with a tree that changed since the last
+            // one (unit 13 carries different groups each time) but still has
+            // an unsynced unit 14. A changed tree keeps the backoff going;
+            // each response schedules exactly one re-fetch. Respond before
+            // the 8s response watchdog can fire.
             let expectedDelay = haDiscovery._treeResyncInitialDelayMs;
             for (let i = 1; i <= haDiscovery._maxTreeResyncAttempts; i++) {
                 haDiscovery.handleTreeStart('start');
-                haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+                haDiscovery.handleTreeData(partialGroupsTreeNet254(`31,${40 + i}`));
                 haDiscovery.handleTreeEnd('end');
                 expect(haDiscovery._treeResyncState.get('254').attempts).toBe(i);
 
@@ -1498,14 +1510,71 @@ describe('HaDiscovery', () => {
                 expectedDelay = Math.min(expectedDelay * 2, haDiscovery._treeResyncMaxDelayMs);
             }
 
-            // The next partial tree exhausts the budget instead of scheduling again.
+            // The next changed-but-still-unsynced tree exhausts the budget
+            // instead of scheduling again.
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeData(partialGroupsTreeNet254('31,99'));
             haDiscovery.handleTreeEnd('end');
             expect(haDiscovery._treeResyncState.has('254')).toBe(false);
 
             jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(1 + haDiscovery._maxTreeResyncAttempts);
+        });
+
+        it('stops the re-fetch cycle early when the re-fetch returns an identical tree', () => {
+            const infoSpy = jest.spyOn(haDiscovery.logger, 'info');
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeResyncState.get('254').attempts).toBe(1);
+
+            // The scheduled re-fetch fires...
+            jest.advanceTimersByTime(haDiscovery._treeResyncInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+
+            // ...but returns exactly the same group data: unit 14 is
+            // genuinely unassigned, not still syncing, so the cycle stops
+            // instead of running out attempts 2 and 3 (issue #25).
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+
+            expect(haDiscovery._treeResyncState.has('254')).toBe(false);
+            expect(infoSpy).toHaveBeenCalledWith(
+                expect.stringContaining('tree for network 254 unchanged since last fetch')
+            );
+
+            jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('continues the backoff when the re-fetch brings new groups but units remain unsynced', () => {
+            haDiscovery.trigger();
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(PARTIAL_GROUPS_TREE_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(haDiscovery._treeResyncState.get('254').attempts).toBe(1);
+
+            jest.advanceTimersByTime(haDiscovery._treeResyncInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+
+            // The re-fetch made progress (unit 13 gained group 40) but unit 14
+            // is still empty: the cycle continues with the next backoff step
+            // and tracks the new tree's signature.
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(partialGroupsTreeNet254('31,32,40'));
+            haDiscovery.handleTreeEnd('end');
+
+            const resync = haDiscovery._treeResyncState.get('254');
+            expect(resync.attempts).toBe(2);
+            expect(resync.signature).toBe('13:31,32,40|14:');
+
+            jest.advanceTimersByTime(haDiscovery._treeResyncInitialDelayMs * 2);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(3);
         });
 
         it('cancels a pending re-fetch when a tree for the network starts arriving', () => {

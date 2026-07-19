@@ -23,6 +23,13 @@ if [[ "${CGATE_MODE}" == "managed" ]]; then
         sleep 2
     done
     bashio::log.info "C-Gate is ready"
+
+    # ALPHA (issue #28): when the opt-in cgate_serial_device is configured,
+    # dump what C-Gate sees (PORT LIST / IFLIST) into the log. Backgrounded:
+    # the nc query can block up to its -w timeout and diagnostics must not
+    # delay bridge startup. The script exits 0 on every failure path;
+    # '|| true' is belt and braces.
+    cgateweb-serial-diagnostics || true &
 fi
 
 LOG_LEVEL=$(bashio::config 'log_level' 'info')

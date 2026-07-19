@@ -10,7 +10,11 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED,
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
+    MQTT_TOPIC_SUFFIX_HVAC_ERROR,
+    MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -234,7 +238,10 @@ class EventPublisher {
      *   temperature → cbus/read/{net}/{app}/{group}/current_temperature
      *   mode        → cbus/read/{net}/{app}/{group}/mode  (if mode non-null)
      *               → cbus/read/{net}/{app}/{group}/setpoint (if setpoint non-null)
+     *               → cbus/read/{net}/{app}/{group}/fan_mode + fan_speed (if aux level decoded)
      *   state       → cbus/read/{net}/{app}/{group}/state  ('ON'|'OFF')
+     *   action      → cbus/read/{net}/{app}/{group}/action
+     *               → cbus/read/{net}/{app}/{group}/error + error_description (if error code decoded)
      */
     publishReading(network, application, group, reading) {
         if (!reading) return;
@@ -262,6 +269,23 @@ class EventPublisher {
                     this.mqttOptions
                 );
             }
+            // Fan speed/mode from the Aux Level (spec §25.6.11). Fan speed is the
+            // raw 0-63 setting (0 = default speed) — HA climate has no numeric
+            // fan-speed concept, so it stays an MQTT-only topic.
+            if (reading.fanMode !== null && reading.fanMode !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`,
+                    reading.fanMode,
+                    this.mqttOptions
+                );
+            }
+            if (reading.fanSpeed !== null && reading.fanSpeed !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED}`,
+                    String(reading.fanSpeed),
+                    this.mqttOptions
+                );
+            }
         } else if (reading.kind === 'state') {
             this._publishIfNeeded(
                 `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
@@ -275,6 +299,19 @@ class EventPublisher {
                 reading.action,
                 this.mqttOptions
             );
+            // Plant error state (spec §25.6.5): numeric code + human description.
+            if (reading.errorCode !== null && reading.errorCode !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_ERROR}`,
+                    String(reading.errorCode),
+                    this.mqttOptions
+                );
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION}`,
+                    reading.errorDescription,
+                    this.mqttOptions
+                );
+            }
         }
     }
 

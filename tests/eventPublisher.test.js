@@ -1084,6 +1084,96 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish fan_mode and fan_speed for a mode reading with an aux level', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'mode',
+                mode: 'cool',
+                setpoint: 15,
+                fanSpeed: 3,
+                fanMode: 'automatic'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(4);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/fan_mode',
+                'automatic',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/fan_speed',
+                '3',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish fan_speed 0 (default speed) but no fan topics when aux fields are null', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'mode',
+                mode: 'off',
+                setpoint: null,
+                fanSpeed: 0,
+                fanMode: 'automatic'
+            });
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/fan_speed',
+                '0',
+                mockMqttOptions
+            );
+
+            mockPublishFn.mockClear();
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'mode',
+                mode: 'cool',
+                setpoint: 15,
+                fanSpeed: null,
+                fanMode: null
+            });
+            expect(mockPublishFn).toHaveBeenCalledTimes(2); // mode + setpoint only
+            expect(mockPublishFn.mock.calls.some(c => c[0].includes('/fan_'))).toBe(false);
+        });
+
+        it('should publish action plus error and error_description for an action reading with an error code', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'action',
+                action: 'heating',
+                errorCode: 4,
+                errorDescription: 'Temperature sensor failure'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/action',
+                'heating',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/error',
+                '4',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/error_description',
+                'Temperature sensor failure',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish only the action topic when errorCode is null', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'action',
+                action: 'idle',
+                errorCode: null,
+                errorDescription: null
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/action',
+                'idle',
+                mockMqttOptions
+            );
+        });
+
         it('should publish OFF for a state reading with on=false', () => {
             eventPublisher.publishReading('254', '172', '201', {
                 kind: 'state',

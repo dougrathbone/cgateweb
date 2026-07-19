@@ -43,8 +43,11 @@ const MQTT_TOPIC_SUFFIX_TREE = 'tree';
 const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP = 'current_temperature'; // Current temperature reading
 const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target temperature setpoint
 const MQTT_TOPIC_SUFFIX_HVAC_MODE = 'mode';                        // HVAC operating mode
-const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan speed/mode
+const MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE = 'fan_mode';               // Fan mode (automatic/continuous, Aux Level bit 6)
+const MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED = 'fan_speed';             // Raw fan speed setting (0-63, Aux Level bits 0-5)
 const MQTT_TOPIC_SUFFIX_HVAC_ACTION = 'action';                   // Current running action (heating/cooling/fan/idle)
+const MQTT_TOPIC_SUFFIX_HVAC_ERROR = 'error';                     // HVAC plant error code (0 = no error, spec §25.6.5)
+const MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION = 'error_description'; // Human-readable HVAC plant error
 // Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
 // HA's climate card and our write clamp both use this so users can't request a
 // value the thermostat will silently reject.
@@ -191,7 +194,10 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED,
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
+    MQTT_TOPIC_SUFFIX_HVAC_ERROR,
+    MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,

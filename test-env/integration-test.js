@@ -37,7 +37,7 @@ const mqtt = require('../node_modules/mqtt');
 const TEST_ENV_DIR   = path.resolve(__dirname);
 const CGATE_JAR      = path.join(TEST_ENV_DIR, 'volumes/data/cgate/cgate.jar');
 const MQTT_URL       = 'mqtt://localhost:1883';
-const READY_TIMEOUT  = 3 * 60 * 1000;   // 3 min — covers first-time C-Gate download
+const READY_TIMEOUT  = Number(process.env.CGATEWEB_E2E_READY_TIMEOUT_MS) || 3 * 60 * 1000;   // 3 min — covers first-time C-Gate download
 const STABLE_WINDOW  = 10 * 1000;        // 10 s stability check after ready
 
 const args           = new Set(process.argv.slice(2));
@@ -88,6 +88,28 @@ function composeDown() {
         cwd: TEST_ENV_DIR,
         stdio: 'inherit',
     });
+}
+
+/**
+ * Print the tail of each compose container's logs. Called when the run fails
+ * so CI output shows what the addon actually did (C-Gate install, bridge
+ * startup) — a bare readiness timeout otherwise leaves nothing to diagnose.
+ * Uses `ps -a` because a failed cont-init can leave the addon container
+ * stopped before we get here.
+ */
+function dumpContainerLogs() {
+    const services = [['addon', 300], ['supervisor', 100], ['mqtt', 100]];
+    for (const [svc, tail] of services) {
+        const ps = spawnSync('podman', ['ps', '-a', '--format', '{{.Names}}', '--filter', `name=${svc}`], {
+            encoding: 'utf8',
+        });
+        const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+        if (!container) continue;
+        log(`\n${BOLD}── container logs: ${container} (last ${tail} lines) ──${RESET}`);
+        const res = spawnSync('podman', ['logs', '--tail', String(tail), container], { encoding: 'utf8' });
+        const out = `${res.stdout || ''}${res.stderr || ''}`.trimEnd();
+        log(out || '(no output)');
+    }
 }
 
 /**
@@ -774,9 +796,25 @@ async function main() {
     }
 
     let result;
+    let runError = null;
     try {
         result = await runTests();
+    } catch (err) {
+        runError = err;
+        throw err;
     } finally {
+        // On any failure (thrown, e.g. readiness timeout, or counted assertion
+        // failures) dump container logs BEFORE tearing the stack down — the CI
+        // log is otherwise the only record and it lacked them (1.15.14 deploy).
+        const hadFailures = runError !== null || (result && result.failed > 0);
+        if (hadFailures) {
+            section('Container logs (failure diagnostics)');
+            try {
+                dumpContainerLogs();
+            } catch {
+                info('could not collect container logs');
+            }
+        }
         if (stackStartedByUs && !OPT_NO_TEAR) {
             section('Teardown');
             composeDown();

@@ -65,7 +65,7 @@ configuration:
   cgate_serial_device:
     name: 시리얼 PCI 장치(알파)
     description: >-
-      ALPHA: USB 시리얼 PC 인터페이스(5500PC/5500PCU)에 대한 실험적 지원입니다. 시리얼 장치 경로(예: /dev/ttyUSB0 — 설정 > 시스템 > 하드웨어 > 모든 하드웨어에서 확인할 수 있으며 /dev/serial/by-id/ 경로를 권장합니다). 관리 모드와 시리얼 PC 인터페이스로 구성된 C-Bus Toolkit 프로젝트가 필요합니다. 문제는 GitHub에 보고해 주세요(이슈 #28).
+      ALPHA: USB 시리얼 PC 인터페이스(5500PC/5500PCU)에 대한 실험적 지원입니다. 드롭다운에서 감지된 시리얼 장치를 선택하세요(/dev/serial/by-id/ 경로 권장). 사용자 지정 경로를 입력하려면 구성 편집기를 YAML 모드로 전환하세요. 관리 모드와 시리얼 PC 인터페이스로 구성된 C-Bus Toolkit 프로젝트가 필요합니다. 문제는 GitHub에 보고해 주세요(이슈 #28).
 
   # ── MQTT (보통 자동 감지) ──
   mqtt_host:

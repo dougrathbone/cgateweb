@@ -66,7 +66,7 @@ configuration:
   cgate_serial_device:
     name: Seriell PCI-enhet (alfa)
     description: >-
-      ALPHA: experimentellt stöd för USB-seriella PC-gränssnitt (5500PC/5500PCU). Sökväg till den seriella enheten, t.ex. /dev/ttyUSB0 (hittas under Inställningar > System > Hårdvara > All hårdvara; föredra sökvägar under /dev/serial/by-id/). Kräver hanterat läge och ett C-Bus Toolkit-projekt konfigurerat för ett seriellt PC-gränssnitt. Rapportera problem på GitHub (ärende #28).
+      ALPHA: experimentellt stöd för USB-seriella PC-gränssnitt (5500PC/5500PCU). Välj en upptäckt seriell enhet i rullgardinsmenyn; föredra sökvägar under /dev/serial/by-id/. För att ange en anpassad sökväg, växla konfigurationsredigeraren till YAML-läge. Kräver hanterat läge och ett C-Bus Toolkit-projekt konfigurerat för ett seriellt PC-gränssnitt. Rapportera problem på GitHub (ärende #28).
 
   # ── MQTT (upptäcks vanligtvis automatiskt) ──
   mqtt_host:

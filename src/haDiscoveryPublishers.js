@@ -13,6 +13,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
@@ -374,6 +375,13 @@ class _HaDiscoveryPublishers {
             temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
             mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
             action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
+            // Fan mode from the Aux Level (spec §25.6.11 bit 6). Read-only state:
+            // the control path does not write the Aux Level, so no
+            // fan_mode_command_topic. HA accepts an arbitrary fan_modes list; the
+            // C-Bus values are automatic/continuous. (Raw 0-63 fan speed has no HA
+            // climate equivalent — it stays on the fan_speed MQTT topic.)
+            fan_mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`,
+            fan_modes: ['automatic', 'continuous'],
 
             // Command topics — only when control is opt-in enabled.
             ...(controlEnabled && {

@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.15.12"
+version: "1.15.15"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -88,9 +88,11 @@ schema:
   cgate_download_url: "str?"
   cgate_download_sha256: "str?"
   cgate_force_reinstall: "bool?"
-  # ALPHA (issue #28): opt-in USB-serial PCI passthrough. Deliberately absent
-  # from options above so upgrades never write it into existing configs.
-  cgate_serial_device: "str?"
+  # ALPHA (issue #28): opt-in USB-serial PCI passthrough. The device schema
+  # type makes the Supervisor render a dropdown of detected serial devices.
+  # Deliberately absent from options above so upgrades never write it into
+  # existing configs.
+  cgate_serial_device: "device(subsystem=tty)?"
 
   # ── MQTT (auto-detected from Mosquitto add-on) ──
   mqtt_host: "str?"

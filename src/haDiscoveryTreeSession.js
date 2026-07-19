@@ -1,6 +1,6 @@
 // @ts-check
 const parseString = require('xml2js').parseString;
-const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
+const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits, treeGroupSignature } = require('./haDiscoveryTree');
 const { buildOriginBlock } = require('./haDiscoveryPayloads');
 const { backoffDelay } = require('./backoff');
 const {
@@ -51,7 +51,7 @@ class _HaDiscoveryTreeSession {
     /** @type {Map<string, { attempts: number, watchdogHandle: NodeJS.Timeout | null, retryHandle: NodeJS.Timeout | null }>} */
     _treeRequestState;
 
-    /** @type {Map<string, { attempts: number, handle: NodeJS.Timeout | null }>} */
+    /** @type {Map<string, { attempts: number, handle: NodeJS.Timeout | null, signature: string | null }>} */
     _treeResyncState;
 
     /** @type {Map<string, number>} */
@@ -225,8 +225,12 @@ class _HaDiscoveryTreeSession {
      * affect discovery status (the partial tree was already published); it is
      * bounded so networks with legitimately group-less units stop re-fetching
      * after a few attempts.
+     * @param {string} networkId
+     * @param {string} signature - treeGroupSignature of the tree that
+     * triggered this attempt; stored so the next tree can be compared against
+     * it (an identical tree means no progress and stops the cycle early).
      */
-    _scheduleTreeResync(networkId) {
+    _scheduleTreeResync(networkId, signature) {
         const resync = this._getOrCreateTreeResyncState(networkId);
         resync.attempts += 1;
 
@@ -239,6 +243,8 @@ class _HaDiscoveryTreeSession {
             this._clearTreeResyncState(networkId);
             return;
         }
+
+        resync.signature = signature;
 
         const delay = backoffDelay(resync.attempts - 1, {
             initialMs: this._treeResyncInitialDelayMs,
@@ -262,7 +268,7 @@ class _HaDiscoveryTreeSession {
     _getOrCreateTreeResyncState(networkId) {
         let resync = this._treeResyncState.get(networkId);
         if (!resync) {
-            resync = { attempts: 0, handle: null };
+            resync = { attempts: 0, handle: null, signature: null };
             this._treeResyncState.set(networkId, resync);
         }
         return resync;
@@ -520,7 +526,24 @@ class _HaDiscoveryTreeSession {
                     // event (handleNetworkSyncComplete) re-fetches immediately
                     // and a fully-populated tree clears the state.
                     if (networkHasUnsyncedUnits(networkData)) {
-                        this._scheduleTreeResync(networkForTree);
+                        // Progress check: if this tree's group data is
+                        // identical to the tree that scheduled the pending
+                        // re-fetch, nothing is still syncing — the group-less
+                        // units are genuinely unassigned. Stop the cycle early
+                        // instead of running out the remaining attempts on
+                        // trees that change nothing (issue #25 field report).
+                        const signature = treeGroupSignature(networkData);
+                        const resync = this._treeResyncState.get(networkForTree);
+                        if (resync && resync.signature !== null && resync.signature === signature) {
+                            this.logger.info(
+                                `HA Discovery: tree for network ${networkForTree} unchanged since last fetch; ` +
+                                `treating units without groups as unassigned. ` +
+                                `If groups appear later, publish to cbus/write/${networkForTree}///gettree to refresh.`
+                            );
+                            this._clearTreeResyncState(networkForTree);
+                        } else {
+                            this._scheduleTreeResync(networkForTree, signature);
+                        }
                     } else {
                         this._clearTreeResyncState(networkForTree);
                     }

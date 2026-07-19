@@ -5,15 +5,18 @@ const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
  *
  * Decodes the following verbs from the C-Gate event stream:
  *   - zone_temperature      → { kind:'temperature', …, celsius, unit:'C' }
- *   - set_zone_hvac_mode    → { kind:'mode', …, mode, modeRaw, setpoint }
+ *   - set_zone_hvac_mode    → { kind:'mode', …, mode, modeRaw, setpoint, fanSpeed, fanMode }
  *   - set_ward_on           → { kind:'state', …, on:true }
  *   - set_ward_off          → { kind:'state', …, on:false }
- *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy, action }
+ *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy,
+ *                               error, expansion, errorCode, errorDescription, action }
  *
  * Temperature encoding: °C = rawTemp / 256
  * Setpoint encoding:    °C = rawSetpoint / 256 (null when rawSetpoint === 0)
  *
- * Verified from real PICED captures (two thermostats, sourceunit 201/202).
+ * Field layouts verified against the official protocol spec
+ * ("Air Conditioning Application", CBUS-APP/25 issue 1.12 — docs/Air Conditioning
+ * Application.md) and real PICED captures (two thermostats, sourceunit 201/202).
  * Other verbs return null.
  */
 
@@ -27,6 +30,39 @@ const appId = DEFAULT_CBUS_APP_AIRCON;
  * Unknown codes → null (caller should warn).
  */
 const HVAC_MODE_BY_CODE = { 0: 'off', 1: 'heat', 2: 'cool', 3: 'auto', 4: 'fan_only' };
+
+/**
+ * HVAC error code → description (spec §25.6.5). Codes $0C–$7F are reserved and
+ * $80–$FF are developer-specific; both ranges get a generated description.
+ */
+const HVAC_ERROR_DESCRIPTION_BY_CODE = {
+    0x00: 'No error',
+    0x01: 'Heater total failure',
+    0x02: 'Cooler total failure',
+    0x03: 'Fan total failure',
+    0x04: 'Temperature sensor failure',
+    0x05: 'Heater temporary problem',
+    0x06: 'Cooler temporary problem',
+    0x07: 'Fan temporary problem',
+    0x08: 'Heater service required',
+    0x09: 'Cooler service required',
+    0x0A: 'Fan service required',
+    0x0B: 'Filter replacement required'
+};
+
+/**
+ * Describe an HVAC error code per spec §25.6.5.
+ *
+ * @param {number} code - HVAC Error Code (0–255).
+ * @returns {string}
+ */
+function describeHvacError(code) {
+    if (Object.prototype.hasOwnProperty.call(HVAC_ERROR_DESCRIPTION_BY_CODE, code)) {
+        return HVAC_ERROR_DESCRIPTION_BY_CODE[code];
+    }
+    const hex = `0x${code.toString(16).toUpperCase().padStart(2, '0')}`;
+    return code >= 0x80 ? `Developer-specific (${hex})` : `Reserved (${hex})`;
+}
 
 /**
  * Extract the #sourceunit value from raw trailing metadata, or null if absent.
@@ -133,11 +169,23 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
 
 /**
  * Decode a set_zone_hvac_mode event.
- * Params layout: [zoneGroup, zoneList, f0, f1, f2, f3, f4, f5, f6, f7]
- *   f0 = mode code (0=off, 1=heat, 2=cool, 3=auto, 4=fan_only)
+ * Spec §25.8.10 message: <Zone Group> <Zone List> <HVAC Mode & Flags> <HVAC Type>
+ * <Level> <Aux Level>. C-Gate renders that as ten decimal fields, exploding the
+ * 1-byte Mode & Flags (§25.6.3) into five: [zoneGroup, zoneList, f0..f7]
+ *   f0 = mode code (0=off, 1=heat, 2=cool, 3=auto, 4=fan_only) — ✅ captures + spec
+ *   f1 = "Level is Raw" flag — ✅ 1 exactly when f6 carries a raw level instead of
+ *        °C×256 (the fan_only 0x7F00 sentinel in the 2026-06-11 capture)
+ *   f2–f4 = setback / guard / aux-level-used flags (always 0/0/1 in captures; not decoded)
+ *   f5 = HVAC plant type (§25.6.4 — ✅ captures: 1=furnace, 3=heat pump reverse
+ *        cycle, 255=Any match the captured units)
  *   f6 = setpoint raw (°C = f6/256); 0 means no setpoint
+ *   f7 = Aux Level (§25.6.11): bits 0–5 fan speed (0-63, 0=default speed), bit 6
+ *        fan mode (0=automatic, 1=continuous), bit 7 reserved. Note fan speed can
+ *        live in the Raw Level instead under some conditions (§25.12.8 / mimic
+ *        notes) — we expose what the Aux Level actually carries, nothing more.
  *
  * Requires params indices 0–8 (zoneGroup, zones, f0–f6) — at least 9 params.
+ * f7 (params index 9) is optional: fanSpeed/fanMode are null when absent.
  *
  * @private
  */
@@ -170,16 +218,33 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     const typeParsed = parseInt(params[7], 10); // f5
     const type = Number.isInteger(typeParsed) ? typeParsed : null;
 
-    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, setpointRaw, type, verb };
+    // f7 (params index 9) = Aux Level per spec §25.6.11. Bits 0–5 are the raw fan
+    // speed setting (0 = run at default speed, 1–63 plant-dependant), bit 6 is the
+    // fan mode; bit 7 is reserved and tolerated (ignored) if a device sets it.
+    const auxLevel = params.length > 9 ? parseInt(params[9], 10) : NaN;
+    const fanSpeed = Number.isInteger(auxLevel) ? auxLevel & 0x3F : null;
+    const fanMode = Number.isInteger(auxLevel) ? ((auxLevel & 0x40) !== 0 ? 'continuous' : 'automatic') : null;
+
+    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, setpointRaw, type, fanSpeed, fanMode, verb };
 }
 
 /**
  * Decode a zone_hvac_plant_status event — the live plant running state.
- * Params layout: [zoneGroup, zoneList, statusValid, bitmask, reserved]
- *   bitmask bits: 1=cooling, 2=heating, 4=fan, 8=damper, 32=busy
- *   (heating/fan/damper/busy verified against PICED text in the 2026-06-11
- *    captures; cooling=bit0 is inferred by position — the plant never asserted
- *    cooling in the capture, so that bit is best-effort.)
+ * Spec §25.8.4 message: <Zone Group> <Zone List> <HVAC Type> <HVAC Status>
+ * <HVAC Error Code> → params [zoneGroup, zoneList, hvacType, status, errorCode].
+ * (params[2] was formerly misread as "statusValid"; it is the HVAC Type §25.6.4 —
+ * the captures show 3 = heat pump reverse cycle, matching the plant.)
+ *
+ * Status bits (spec §25.6.6 — ✅ all positions now spec-verified; heating/fan/
+ * damper/busy also confirmed against PICED text in the 2026-06-11 captures):
+ *   bit0 (1)  = cooling      bit4 (16)  = free (unused)
+ *   bit1 (2)  = heating      bit5 (32)  = busy
+ *   bit2 (4)  = fan active   bit6 (64)  = error
+ *   bit3 (8)  = damper open  bit7 (128) = expansion
+ *
+ * The error code (params[4]) is decoded per the §25.6.5 table into errorCode +
+ * errorDescription. `action` keeps reflecting the running state only — a plant
+ * fault does not repurpose it.
  *
  * Derives `action` for Home Assistant's climate hvac_action:
  *   cooling → 'cooling', else heating → 'heating', else fan → 'fan', else 'idle'.
@@ -187,7 +252,7 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
  * @private
  */
 function decodeZonePlantStatus({ network, application, params, sourceUnit, verb }) {
-    // Need at least zoneGroup, zones, statusValid, bitmask
+    // Need at least zoneGroup, zones, hvacType, status
     if (params.length < 4) return null;
 
     const zoneGroup = params[0];
@@ -200,10 +265,18 @@ function decodeZonePlantStatus({ network, application, params, sourceUnit, verb 
     const fan = (bits & 4) !== 0;
     const damper = (bits & 8) !== 0;
     const busy = (bits & 32) !== 0;
+    const error = (bits & 64) !== 0;
+    const expansion = (bits & 128) !== 0;
+
+    // <HVAC Error Code> (spec §25.6.5) — the argument after <HVAC Status>.
+    // Optional in practice: null when the field is absent or unparseable.
+    const errorCodeRaw = params.length > 4 ? parseInt(params[4], 10) : NaN;
+    const errorCode = Number.isInteger(errorCodeRaw) ? errorCodeRaw : null;
+    const errorDescription = errorCode !== null ? describeHvacError(errorCode) : null;
 
     const action = cooling ? 'cooling' : heating ? 'heating' : fan ? 'fan' : 'idle';
 
-    return { kind: 'action', network, application, zoneGroup, zones, sourceUnit, cooling, heating, fan, damper, busy, action, verb };
+    return { kind: 'action', network, application, zoneGroup, zones, sourceUnit, cooling, heating, fan, damper, busy, error, expansion, errorCode, errorDescription, action, verb };
 }
 
 /**

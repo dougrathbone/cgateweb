@@ -117,8 +117,10 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
     // Verbatim from PICED log:
     // aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 0 0 0 0 1 255 0 0 #sourceunit=201 OID=...
     // aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 1 0 0 0 1 1 5632 0 #sourceunit=202 OID=...
-    // Params after addr/zoneGroup/zoneList: f0..f7
-    //   f0=mode (0=off,1=heat,2=cool,3=auto,4=fan_only), f6=setpoint raw (°C=f6/256)
+    // Params after addr/zoneGroup/zoneList: f0..f7 (spec §25.8.10)
+    //   f0=mode (0=off,1=heat,2=cool,3=auto,4=fan_only), f5=HVAC type (§25.6.4),
+    //   f6=setpoint raw (°C=f6/256), f7=Aux Level (§25.6.11: bits 0-5 fan speed,
+    //   bit 6 fan mode)
 
     it('decodes heat mode (sourceunit=202, setpoint 5632→22°C)', () => {
         const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 1 0 0 0 1 1 5632 0 #sourceunit=202 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
@@ -134,6 +136,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             setpoint: 22,
             setpointRaw: 5632,
             type: 1,
+            fanSpeed: 0,
+            fanMode: 'automatic',
             verb: 'set_zone_hvac_mode'
         });
     });
@@ -154,6 +158,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             setpoint: null,
             setpointRaw: 0,
             type: 255,
+            fanSpeed: 0,
+            fanMode: 'automatic',
             verb: 'set_zone_hvac_mode'
         });
     });
@@ -222,6 +228,60 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
     });
 });
 
+describe('airconDecoder — set_zone_hvac_mode fan speed/mode from the Aux Level', () => {
+    // Spec §25.8.10: Set Zone HVAC Mode = <Zone Group> <Zone List> <HVAC Mode &
+    // Flags> <HVAC Type> <Level> <Aux Level> — the Aux Level is the last argument
+    // (f7). Spec §25.6.11: bits 0-5 = fan speed (0 = default speed, 1-63 plant
+    // dependant), bit 6 = fan mode (0=automatic, 1=continuous), bit 7 reserved.
+    // Fixtures below are spec-derived variants of the real 2026-06-11 cool-mode
+    // capture; the f7=63 one is the verbatim auto-mode capture.
+
+    it('decodes fan speed 3, automatic (spec-derived: f7=3)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 3 3840 3 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.fanSpeed).toBe(3);
+        expect(r.fanMode).toBe('automatic');
+    });
+
+    it('decodes fan mode continuous (spec-derived: f7=67 = 0x40|3)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 3 3840 67 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.fanSpeed).toBe(3);
+        expect(r.fanMode).toBe('continuous');
+    });
+
+    it('tolerates the reserved bit 7 being set (spec-derived: f7=131 = 0x80|3)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 3 3840 131 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.fanSpeed).toBe(3);
+        expect(r.fanMode).toBe('automatic');
+    });
+
+    it('decodes the real-capture aux level 63 (verbatim 2026-06-11 auto line: f7=63 → speed 63, automatic)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 3 0 0 0 1 3 5632 63 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.fanSpeed).toBe(63);
+        expect(r.fanMode).toBe('automatic');
+    });
+
+    it('returns null fan fields when the aux level field is absent (9 params)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 1 0 0 0 1 1 5632 #sourceunit=202 OID=x';
+        const r = decodeLine(line);
+        expect(r.mode).toBe('heat');
+        expect(r.setpoint).toBe(22);
+        expect(r.fanSpeed).toBeNull();
+        expect(r.fanMode).toBeNull();
+    });
+
+    it('returns null fan fields when the aux level is not a valid integer', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0 1 0 0 0 1 1 5632 notanumber';
+        const r = decodeLine(line);
+        expect(r.mode).toBe('heat');
+        expect(r.fanSpeed).toBeNull();
+        expect(r.fanMode).toBeNull();
+    });
+});
+
 describe('airconDecoder — set_ward_on / set_ward_off', () => {
     // Verbatim from PICED log:
     // aircon set_ward_on //THEGAFF/254/172 1 #sourceunit=202 OID=...
@@ -263,10 +323,11 @@ describe('airconDecoder — set_ward_on / set_ward_off', () => {
 });
 
 describe('airconDecoder — zone_hvac_plant_status (running action)', () => {
-    // Real captures 2026-06-11. Params after addr: zoneGroup zones <p2> <bitmask> <p4>
-    // bitmask bits: 1=cooling, 2=heating, 4=fan, 8=damper, 32=busy
-    //   (heating/fan/damper/busy verified against PICED text; cooling=bit0 inferred by
-    //    position — Karl's plant never asserted cooling in the capture.)
+    // Real captures 2026-06-11. Params after addr per spec §25.8.4:
+    //   zoneGroup zones <HVAC Type> <HVAC Status> <HVAC Error Code>
+    // Status bits per spec §25.6.6: 1=cooling, 2=heating, 4=fan, 8=damper,
+    //   32=busy, 64=error, 128=expansion (heating/fan/damper/busy also verified
+    //   against PICED text; cooling/error positions now spec-confirmed).
 
     it('decodes heating+fan+damper, not busy → action heating (real: bitmask 14)', () => {
         const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 14 0 #sourceunit=201 OID=07ffed40-b5bd-103e-83ab-af3ab5084337';
@@ -282,6 +343,10 @@ describe('airconDecoder — zone_hvac_plant_status (running action)', () => {
             fan: true,
             damper: true,
             busy: false,
+            error: false,
+            expansion: false,
+            errorCode: 0,
+            errorDescription: 'No error',
             action: 'heating',
             verb: 'zone_hvac_plant_status'
         });
@@ -312,11 +377,90 @@ describe('airconDecoder — zone_hvac_plant_status (running action)', () => {
         expect(r.action).toBe('fan');
     });
 
-    it('derives action cooling when the cooling bit is set (synthesised: bit0; cooling bit inferred)', () => {
+    it('derives action cooling when the cooling bit is set (synthesised: bit0; position spec-confirmed §25.6.6)', () => {
         const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 13 0 #sourceunit=202 OID=x';
         const r = decodeLine(line);
         expect(r.cooling).toBe(true);
         expect(r.action).toBe('cooling');
+    });
+});
+
+describe('airconDecoder — zone_hvac_plant_status error state (spec §25.8.4/§25.6.5/§25.6.6)', () => {
+    // Spec-derived fixtures built on the captured line shape: the 5th argument
+    // (after <HVAC Status>) is the <HVAC Error Code> per §25.8.4.
+
+    it('decodes error bit set + error code $04 → temperature sensor failure; action unchanged', () => {
+        // bitmask 78 = 64(error) + 8(damper) + 4(fan) + 2(heating)
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 78 4 #sourceunit=201 OID=x';
+        expect(decodeLine(line)).toEqual({
+            kind: 'action',
+            network: '254',
+            application: '172',
+            zoneGroup: '1',
+            zones: '0,1,2,3,4',
+            sourceUnit: '201',
+            cooling: false,
+            heating: true,
+            fan: true,
+            damper: true,
+            busy: false,
+            error: true,
+            expansion: false,
+            errorCode: 4,
+            errorDescription: 'Temperature sensor failure',
+            action: 'heating', // action reflects running state; error is separate state
+            verb: 'zone_hvac_plant_status'
+        });
+    });
+
+    it('decodes the expansion bit (bit 7) without affecting the plant bits', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 128 0 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.expansion).toBe(true);
+        expect(r.error).toBe(false);
+        expect(r.action).toBe('idle');
+    });
+
+    // §25.6.5 error code table, incl. the reserved and developer-specific ranges.
+    it.each([
+        [0, 'No error'],
+        [1, 'Heater total failure'],
+        [2, 'Cooler total failure'],
+        [3, 'Fan total failure'],
+        [4, 'Temperature sensor failure'],
+        [5, 'Heater temporary problem'],
+        [6, 'Cooler temporary problem'],
+        [7, 'Fan temporary problem'],
+        [8, 'Heater service required'],
+        [9, 'Cooler service required'],
+        [10, 'Fan service required'],
+        [11, 'Filter replacement required'],
+        [12, 'Reserved (0x0C)'],
+        [127, 'Reserved (0x7F)'],
+        [128, 'Developer-specific (0x80)'],
+        [255, 'Developer-specific (0xFF)']
+    ])('maps error code %i → "%s"', (code, description) => {
+        const line = `# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 64 ${code} #sourceunit=201 OID=x`;
+        const r = decodeLine(line);
+        expect(r.errorCode).toBe(code);
+        expect(r.errorDescription).toBe(description);
+    });
+
+    it('tolerates a missing error code field (4 params) → errorCode/errorDescription null', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 14';
+        const r = decodeLine(line);
+        expect(r.action).toBe('heating');
+        expect(r.error).toBe(false);
+        expect(r.errorCode).toBeNull();
+        expect(r.errorDescription).toBeNull();
+    });
+
+    it('tolerates a non-numeric error code field → errorCode/errorDescription null', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 14 notanumber';
+        const r = decodeLine(line);
+        expect(r.action).toBe('heating');
+        expect(r.errorCode).toBeNull();
+        expect(r.errorDescription).toBeNull();
     });
 });
 

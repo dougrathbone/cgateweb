@@ -129,6 +129,81 @@ function networkHasUnsyncedUnits(networkData) {
     return units.some(unitHasUnsyncedGroups);
 }
 
+// Numeric-aware comparator so a signature does not depend on document order:
+// unit and group addresses are numeric strings in practice, but fall back to a
+// plain string compare for anything else (including the empty string, which
+// Number() would otherwise treat as 0).
+function compareTreeIds(a, b) {
+    const na = Number(a);
+    const nb = Number(b);
+    if (a !== '' && b !== '' && !Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    if (a === b) return 0;
+    return String(a) < String(b) ? -1 : 1;
+}
+
+// Group ids advertised on a unit's non-management applications, or null when
+// the unit advertises no non-management application at all. Management-only
+// units legitimately have no groups and are excluded from the signature, as
+// are units with no application data — the same judgement unitHasUnsyncedGroups
+// makes. Handles both TREEXML shapes (structured Application objects and the
+// flat "56, 255" / Groups "10,11" form).
+function nonManagementGroupIds(unit) {
+    if (unit.Application && typeof unit.Application === 'object') {
+        const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
+        let hasRealApp = false;
+        const groupIds = new Set();
+        apps.forEach(app => {
+            if (!app || app.ApplicationAddress === null || app.ApplicationAddress === undefined) return;
+            if (String(app.ApplicationAddress) === CBUS_NETWORK_MANAGEMENT_APP) return;
+            hasRealApp = true;
+            if (!app.Group) return;
+            const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
+            groups.forEach(g => {
+                if (g && g.GroupAddress !== null && g.GroupAddress !== undefined) {
+                    groupIds.add(String(g.GroupAddress));
+                }
+            });
+        });
+        return hasRealApp ? [...groupIds] : null;
+    }
+
+    const appIds = (unit.Application !== null && unit.Application !== undefined)
+        ? String(unit.Application).split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    if (!appIds.some(a => a !== CBUS_NETWORK_MANAGEMENT_APP)) return null;
+    const groupIds = (unit.Groups && typeof unit.Groups === 'string')
+        ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
+        : [];
+    return [...new Set(groupIds)];
+}
+
+// A stable fingerprint of a network tree's group data: one "address:g1,g2"
+// entry per unit that advertises a non-management application, entries sorted
+// by unit address and group ids sorted within each entry. Two trees with the
+// same signature carry identical group bindings, so a re-fetch (issue #25)
+// whose result matches the tree that scheduled it made no progress — the
+// group-less units are genuinely unassigned and the re-fetch loop can stop
+// early instead of burning its remaining attempts.
+function treeGroupSignature(networkData) {
+    if (!networkData) return '';
+    let units = networkData.Unit || [];
+    if (!Array.isArray(units)) units = [units];
+
+    const entries = [];
+    units.forEach(unit => {
+        if (!unit) return;
+        const groupIds = nonManagementGroupIds(unit);
+        if (groupIds === null) return;
+        const rawAddress = (unit.UnitAddress !== null && unit.UnitAddress !== undefined)
+            ? unit.UnitAddress
+            : unit.Address;
+        const address = (rawAddress !== null && rawAddress !== undefined) ? String(rawAddress) : '';
+        entries.push({ address, groups: groupIds.sort(compareTreeIds).join(',') });
+    });
+    entries.sort((a, b) => compareTreeIds(a.address, b.address));
+    return entries.map(e => `${e.address}:${e.groups}`).join('|');
+}
+
 function collectUnitGroups(unit, groupsByApp, targetApps) {
     if (!unit.Application) return;
 
@@ -174,6 +249,7 @@ module.exports = {
     collectUnitGroups,
     networkHasDeviceData,
     networkHasUnsyncedUnits,
+    treeGroupSignature,
     unitHasDeviceData,
     unitHasUnsyncedGroups
 };

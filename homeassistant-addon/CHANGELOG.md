@@ -5,6 +5,43 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.15] - 2026-07-19
+
+### Fixed
+
+- **Tree re-fetch no longer loops when units legitimately have no groups (#25).** The initial-sync fallback re-fetches TREEXML when units report no group addresses, which for genuinely unassigned units ran the full 30s/60s/120s cycle every startup, republishing the same entities each time. Each scheduled re-fetch now fingerprints the tree's group data and stops early when a re-fetch comes back identical, logging that those units are treated as unassigned.
+
+### Changed
+
+- Internal: the integration test now dumps the addon, supervisor and mqtt container logs when a run fails, and its readiness timeout is env-overridable.
+
+## [1.15.14] - 2026-07-19
+
+### Added
+
+- **HVAC plant error reporting, decoded from the official protocol spec.** Air Conditioning (172) plant status now exposes the Error/Expansion status flags and the previously-ignored HVAC Error Code, published as `error` and `error_description` topics under `cbus/read/<net>/172/<unit>/` with named descriptions from the spec (heater/cooler/fan failure, sensor failure, service/filter required). A non-zero error code also logs a warning once per unit until it clears.
+- **HVAC fan speed and fan mode.** Zone mode events now decode the Aux Level into `fan_speed` (raw 0-63) and `fan_mode` (`automatic`/`continuous`) topics, and native climate entities expose read-only fan mode. Fan mode is not settable; the control path does not write the Aux Level.
+
+### Fixed
+
+- **Processing error logs no longer drop the details.** Errors while handling C-Gate command/event lines logged neither the error nor the offending line; both are now included.
+
+## [1.15.13] - 2026-07-19
+
+### Added
+
+- **Serial device dropdown for the USB-serial PCI alpha (#28).** `cgate_serial_device` now renders as a dropdown of serial devices detected on the host instead of a free-text field. Custom paths (e.g. `/dev/serial/by-id/...`, which survives replugging) remain possible via the YAML config editor. Startup also logs an inventory of detected serial devices when the option is set, so a wrong pick shows what actually exists.
+- **Startup diagnostics for the serial alpha (#28).** With `cgate_serial_device` set in managed mode, startup logs the selected device's resolved target and C-Gate's own `PORT LIST`/`IFLIST` output in a paste-ready block for issue reports. Diagnostics never block or break startup.
+
+### Fixed
+
+- **Default managed-mode C-Gate download is now integrity-checked.** The built-in download URL is verified against a sha256 pinned in the install script instead of proceeding warn-only. A user-set `cgate_download_sha256` still overrides, and custom URLs without one already failed hard.
+- **Web server shutdown no longer hangs test workers.** A `close()` racing an in-flight `start()` silently failed and left the server listening; `close()` now awaits the start first.
+
+### Changed
+
+- Internal: `@ts-check` now covers the stateful core (bridge, C-Gate connection, MQTT manager, device state, and the HA discovery modules); ~185 type errors fixed via JSDoc only, no runtime changes.
+
 ## [1.15.12] - 2026-07-18
 
 ### Added

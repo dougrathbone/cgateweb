@@ -69,10 +69,11 @@ configuration:
     name: Serial PCI Device (Alpha)
     description: >-
       ALPHA: experimental USB-serial PC Interface (5500PC/5500PCU) support.
-      Path to the serial device, e.g. /dev/ttyUSB0 — find it under Settings >
-      System > Hardware > All hardware and prefer /dev/serial/by-id/ paths.
-      Requires managed mode and a C-Bus Toolkit project configured for a serial
-      PC Interface. Report issues on GitHub (issue #28).
+      Select a detected serial device from the dropdown; prefer
+      /dev/serial/by-id/ paths. To enter a custom path, switch the
+      configuration editor to YAML mode. Requires managed mode and a C-Bus
+      Toolkit project configured for a serial PC Interface. Report issues on
+      GitHub (issue #28).
 
   # ── MQTT (usually auto-detected) ──
   mqtt_host:

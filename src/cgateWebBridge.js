@@ -533,9 +533,7 @@ class CgateWebBridge {
             try {
                 this.commandResponseProcessor.processLine(line);
             } catch (e) {
-                // @ts-expect-error -- third argument (the offending line) is silently
-                // dropped by error(); suspected pre-existing bug, left unchanged.
-                this.error(`Error processing command data line:`, e, `Line: ${line}`);
+                this.error(`Error processing command data line: ${e.message}`, { line });
             }
         });
     }
@@ -607,9 +605,7 @@ class CgateWebBridge {
                 this.warn(`Could not parse event line: ${line}`);
             }
         } catch (e) {
-            // @ts-expect-error -- third argument (the offending line) is silently
-            // dropped by error(); suspected pre-existing bug, left unchanged.
-            this.error(`Error processing event data line:`, e, `Line: ${line}`);
+            this.error(`Error processing event data line: ${e.message}`, { line });
         }
     }
 
