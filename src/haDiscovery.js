@@ -90,6 +90,11 @@ class HaDiscovery {
         // "network/app/sourceUnit" keys already published this session.
         this._nativeAirconSeen = new Set();
 
+        // Temperature Broadcast (app 25) groups are likewise discovered
+        // event-driven the first time a sensor broadcasts. Tracks
+        // "network/app/group" keys already published this session.
+        this._temperatureSeen = new Set();
+
         // Network IDs whose CNI/PCI connectivity binary_sensor config has been
         // published this session (event-driven, idempotent).
         this._cniDiscoverySeen = new Set();

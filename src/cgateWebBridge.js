@@ -601,6 +601,15 @@ class CgateWebBridge {
             if (event.isValid()) {
                 this.eventPublisher.publishEvent(event, '(Evt)');
                 this.deviceStateManager.updateLevelFromEvent(event);
+                // Temperature Broadcast (app 25) sensors announce themselves on
+                // the bus — publish their HA sensor config the first time each
+                // group is seen. Idempotent; gated on ha_discovery_enabled inside.
+                if (this.haDiscovery) {
+                    const reading = typeof event.getReading === 'function' ? event.getReading() : null;
+                    if (reading && reading.kind === 'temperature') {
+                        this.haDiscovery.ensureTemperatureDiscovery(event.getNetwork(), event.getApplication(), reading.group);
+                    }
+                }
             } else {
                 this.warn(`Could not parse event line: ${line}`);
             }

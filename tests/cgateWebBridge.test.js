@@ -969,6 +969,17 @@ describe('CgateWebBridge', () => {
                 expect(bridge.haDiscovery.ensureNativeAirconDiscovery).toHaveBeenCalledWith('254', '172', '250');
             });
 
+            it('triggers temperature sensor auto-discovery for an app 25 temperature event', () => {
+                bridge.haDiscovery = { ensureTemperatureDiscovery: jest.fn() };
+                bridge.settings.ha_discovery_enabled = true;
+
+                // Temperature Broadcast (app 25) arrives as a lighting-style ramp
+                // line; the app-25 decoder attaches the temperature reading.
+                bridge._processEventLine('lighting ramp 254/25/3 86');
+
+                expect(bridge.haDiscovery.ensureTemperatureDiscovery).toHaveBeenCalledWith('254', '25', '3');
+            });
+
             it('should log a warning for unknown mode codes and still consume the line', () => {
                 const warnSpy = jest.spyOn(bridge.logger, 'warn');
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');

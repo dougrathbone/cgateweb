@@ -32,6 +32,7 @@ const {
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_CLIMATE,
+    HA_COMPONENT_SENSOR,
     HA_COMPONENT_BINARY_SENSOR,
     HA_COMPONENT_SCENE,
     HA_DISCOVERY_SUFFIX,
@@ -84,6 +85,9 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _nativeAirconSeen;
+
+    /** @type {Set<string>} */
+    _temperatureSeen;
 
     /** @type {Set<string>} */
     _currentRunTopics;
@@ -295,6 +299,87 @@ class _HaDiscoveryPublishers {
         this.discoveryCount++;
         this.logger.info(`CNI connectivity binary_sensor published for network ${net}`);
         return true;
+    }
+
+    /**
+     * Event-driven discovery for C-Bus Temperature Broadcast (app 25) sensors.
+     * Called whenever a temperature reading is published for a group; announces
+     * the HA temperature sensor the first time that group is seen. Like the
+     * native aircon path, groups announce themselves on the bus — only sensors
+     * that actually broadcast get an entity.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId  - temperature app id (e.g. 25)
+     * @param {string|number} group  - temperature group address
+     * @returns {boolean} true if a new sensor entity was published this call
+     */
+    ensureTemperatureDiscovery(network, appId, group) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined || group === null || group === undefined) return false;
+
+        const key = `${network}/${appId}/${group}`;
+        if (this._temperatureSeen.has(key)) return false;
+
+        if (this.exclude.has(key)) {
+            this.logger.debug(`Excluding temperature group ${key} from discovery`);
+            const excludedUniqueId = `cgateweb_${network}_${appId}_${group}`;
+            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
+            this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.delete(excludedTopic);
+            this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            this._temperatureSeen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        this._createTemperatureDiscovery(String(network), String(appId), String(group));
+        this._temperatureSeen.add(key);
+        return true;
+    }
+
+    /**
+     * Build and publish the temperature sensor discovery payload for one group.
+     * State comes from the app-25 temperatureDecoder reading topic
+     * (cbus/read/{net}/{app}/{group}/current_temperature, °C = byte/4).
+     *
+     * @private
+     */
+    _createTemperatureDiscovery(networkId, appId, group) {
+        const labelKey = `${networkId}/${appId}/${group}`;
+        const customLabel = this.labelMap.get(labelKey);
+        const finalLabel = customLabel || `CBus Temperature ${networkId}/${appId}/${group}`;
+        if (customLabel) this.labelStats.custom++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${group}`;
+        const entityId = this.entityIds.get(labelKey);
+        const area = this.areas && this.areas.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(HA_COMPONENT_SENSOR, entityId)),
+
+            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${group}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+            device_class: 'temperature',
+            state_class: 'measurement',
+            unit_of_measurement: '°C', // app-25 wire format is always °C (byte/4)
+
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: [uniqueId],
+                name: finalLabel,
+                model: 'C-Bus Temperature Sensor',
+                area
+            }),
+            origin: buildOriginBlock()
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.add(discoveryTopic);
+        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        this.discoveryCount++;
+        this.logger.info(`Temperature sensor entity published: ${labelKey} (${finalLabel})`);
     }
 
     /**
