@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.15] - 2026-07-19
+
+### Fixed
+
+- **Tree re-fetch no longer loops when units legitimately have no groups (#25).** The initial-sync fallback re-fetches TREEXML when units report no group addresses, which for genuinely unassigned units ran the full 30s/60s/120s cycle every startup, republishing the same entities each time. Each scheduled re-fetch now fingerprints the tree's group data and stops early when a re-fetch comes back identical, logging that those units are treated as unassigned.
+
+### Changed
+
+- Internal: the integration test now dumps the addon, supervisor and mqtt container logs when a run fails, and its readiness timeout is env-overridable.
+
 ## [1.15.14] - 2026-07-19
 
 ### Added
