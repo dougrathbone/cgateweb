@@ -1,3 +1,4 @@
+// @ts-check
 const temperatureDecoder = require('./temperatureDecoder');
 
 // appId → decoder. Only specialised applications appear here; lighting/cover/
