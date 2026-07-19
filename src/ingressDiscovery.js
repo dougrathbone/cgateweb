@@ -1,3 +1,4 @@
+// @ts-check
 const httpDefault = require('http');
 const { backoffDelay } = require('./backoff');
 
@@ -6,6 +7,11 @@ const { backoffDelay } = require('./backoff');
  * may call /addons/self/* with its SUPERVISOR_TOKEN (the Supervisor grants it
  * without extra API roles), so this works on a default install. `httpModule`
  * is injectable for testing.
+ *
+ * @param {Object} options
+ * @param {string} [options.token] - Supervisor token
+ * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
+ * @param {number} [options.timeoutMs=5000] - per-request timeout
  */
 function _fetchAddonInfo({ token, httpModule = httpDefault, timeoutMs = 5000 } = {}) {
     return new Promise((resolve, reject) => {
@@ -39,9 +45,9 @@ function _fetchAddonInfo({ token, httpModule = httpDefault, timeoutMs = 5000 } =
  * right after add-on start, so the lookup is retried with a short backoff
  * before giving up.
  *
- * @param {object} options
- * @param {string} options.token - the SUPERVISOR_TOKEN injected into the add-on container
- * @param {object} [options.httpModule] - http implementation override (testing)
+ * @param {object} [options]
+ * @param {string} [options.token] - the SUPERVISOR_TOKEN injected into the add-on container
+ * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
  * @param {number} [options.timeoutMs=5000] - per-request timeout
  * @param {number} [options.attempts=4] - total attempts before giving up
  * @param {number} [options.initialRetryDelayMs=1000] - base delay for the retry backoff

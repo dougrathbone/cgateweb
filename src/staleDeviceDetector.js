@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
 const { clampSetting } = require('./utils');

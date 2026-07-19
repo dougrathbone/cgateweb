@@ -1,3 +1,4 @@
+// @ts-check
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 

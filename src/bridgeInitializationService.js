@@ -1,3 +1,4 @@
+// @ts-check
 const HaDiscovery = require('./haDiscovery');
 const { createLogger } = require('./logger');
 const {
@@ -293,7 +294,7 @@ class BridgeInitializationService {
         const cbusname = this.settings.cbusname;
         const command = `tree //${cbusname}${NEWLINE}`;
 
-        return new Promise((resolve) => {
+        return /** @type {Promise<void>} */ (new Promise((resolve) => {
             const collectedLines = [];
             const TIMEOUT_MS = 5000;
 
@@ -364,7 +365,7 @@ class BridgeInitializationService {
 
             // Queue the tree command (direct add, bypassing throttle priority so it runs first)
             this.commandQueue.add(command);
-        });
+        }));
     }
 
     /**
