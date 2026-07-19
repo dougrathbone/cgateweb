@@ -1,3 +1,4 @@
+// @ts-check
 const CBusEvent = require('./cbusEvent');
 const { createLogger } = require('./logger');
 const {
@@ -29,6 +30,7 @@ class CommandResponseProcessor {
      * @param {Object} options.eventPublisher - EventPublisher instance for publishing events
      * @param {Object} options.haDiscovery - HaDiscovery instance for handling tree responses
      * @param {Function} options.onObjectStatus - Callback for object status events
+     * @param {Function} [options.onCommandError] - Callback for C-Gate command error responses
      * @param {Function} [options.onNetworkState] - Callback for network-level interface/state readings: (networkId, reading) => void
      * @param {Object} [options.logger] - Logger instance (optional)
      */
