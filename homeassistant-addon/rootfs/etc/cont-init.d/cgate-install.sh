@@ -189,12 +189,32 @@ _cgateweb_check_serial_device() {
         return 1
     fi
 
+    # Log every serial-looking device the host exposes, so a user who picked
+    # the wrong path (or whose dongle enumerated differently than expected)
+    # can see what actually exists. nullglob keeps unmatched patterns from
+    # reaching ls as literal strings; a missing /dev/serial/by-id/ is fine.
+    local inventory
+    inventory=$(shopt -s nullglob; ls -l /dev/ttyUSB* /dev/ttyACM* /dev/serial/by-id/ 2>/dev/null)
+    if [[ -n "${inventory}" ]]; then
+        bashio::log.info "Detected serial devices on this host:"
+        bashio::log.info "${inventory}"
+    else
+        bashio::log.info "No /dev/ttyUSB* or /dev/ttyACM* devices found and no /dev/serial/by-id/ directory — is the PCI plugged in?"
+    fi
+
     if [[ ! -e "${device}" ]]; then
         bashio::log.error "Serial device not found: ${device}"
         bashio::log.error "Find the real path in Home Assistant: Settings > System > Hardware > ⋮ (top right) > All hardware"
         bashio::log.error "Look for /dev/ttyUSB* or /dev/ttyACM*; prefer the stable /dev/serial/by-id/ path"
         return 1
     fi
+
+    # Show the selected device's details and resolve symlinks so a
+    # /dev/serial/by-id/ path also logs its real target (e.g. ../../ttyUSB0).
+    bashio::log.info "Selected device: $(ls -l "${device}" 2>/dev/null)"
+    local resolved
+    resolved=$(readlink -f "${device}" 2>/dev/null || printf '%s' "${device}")
+    bashio::log.info "Serial device ${device} resolves to ${resolved}"
 
     if [[ ! -c "${device}" ]]; then
         bashio::log.warning "${device} exists but is not a character device — C-Gate may fail to open it"

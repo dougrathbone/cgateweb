@@ -69,7 +69,7 @@ configuration:
   cgate_serial_device:
     name: Dispositivo PCI seriale (alfa)
     description: >-
-      ALPHA: supporto sperimentale per interfacce PC USB-seriali (5500PC/5500PCU). Percorso del dispositivo seriale, ad es. /dev/ttyUSB0 (si trova in Impostazioni > Sistema > Hardware > Tutto l'hardware; preferire i percorsi /dev/serial/by-id/). Richiede la modalità gestita e un progetto C-Bus Toolkit configurato per un'interfaccia PC seriale. Segnala i problemi su GitHub (issue #28).
+      ALPHA: supporto sperimentale per interfacce PC USB-seriali (5500PC/5500PCU). Seleziona un dispositivo seriale rilevato dal menu a discesa; preferire i percorsi /dev/serial/by-id/. Per inserire un percorso personalizzato, passa l'editor di configurazione alla modalità YAML. Richiede la modalità gestita e un progetto C-Bus Toolkit configurato per un'interfaccia PC seriale. Segnala i problemi su GitHub (issue #28).
 
   # ── MQTT (di solito rilevato automaticamente) ──
   mqtt_host:

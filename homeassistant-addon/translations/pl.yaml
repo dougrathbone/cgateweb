@@ -65,7 +65,7 @@ configuration:
   cgate_serial_device:
     name: Urządzenie PCI szeregowe (alfa)
     description: >-
-      ALPHA: eksperymentalna obsługa interfejsów PC USB-szeregowych (5500PC/5500PCU). Ścieżka do urządzenia szeregowego, np. /dev/ttyUSB0 (znajdziesz ją w Ustawienia > System > Sprzęt > Cały sprzęt; preferuj ścieżki /dev/serial/by-id/). Wymaga trybu zarządzanego i projektu C-Bus Toolkit skonfigurowanego dla szeregowego interfejsu PC. Problemy zgłaszaj na GitHubie (zgłoszenie #28).
+      ALPHA: eksperymentalna obsługa interfejsów PC USB-szeregowych (5500PC/5500PCU). Wybierz wykryte urządzenie szeregowe z listy rozwijanej; preferuj ścieżki /dev/serial/by-id/. Aby wpisać własną ścieżkę, przełącz edytor konfiguracji w tryb YAML. Wymaga trybu zarządzanego i projektu C-Bus Toolkit skonfigurowanego dla szeregowego interfejsu PC. Problemy zgłaszaj na GitHubie (zgłoszenie #28).
 
   # ── MQTT (zazwyczaj wykrywany automatycznie) ──
   mqtt_host:

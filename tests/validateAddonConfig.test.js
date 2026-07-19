@@ -13,6 +13,16 @@ describe('validate-addon-config', () => {
             expect(isOptional('list(remote|managed)')).toBe(false);
         });
 
+        it('treats device selector types ending in ? as optional', () => {
+            expect(isOptional('device?')).toBe(true);
+            expect(isOptional('device(subsystem=tty)?')).toBe(true);
+        });
+
+        it('treats device selector types without ? as required', () => {
+            expect(isOptional('device')).toBe(false);
+            expect(isOptional('device(subsystem=tty)')).toBe(false);
+        });
+
         it('treats array and object-list schemas as required (not optional)', () => {
             expect(isOptional(['int(1,255)'])).toBe(false);
             expect(isOptional([{ app_id: 'str', period_sec: 'int(0,86400)' }])).toBe(false);
@@ -59,6 +69,16 @@ describe('validate-addon-config', () => {
         it('does not flag an optional scalar missing from options', () => {
             const config = {
                 schema: { cgate_port: 'int(1,65535)?' },
+                options: {},
+            };
+            expect(validateAddonConfig(config)).toEqual([]);
+        });
+
+        it('does not flag an optional device selector missing from options', () => {
+            // cgate_serial_device uses "device(subsystem=tty)?" and is
+            // deliberately absent from options (hidden, opt-in).
+            const config = {
+                schema: { cgate_serial_device: 'device(subsystem=tty)?' },
                 options: {},
             };
             expect(validateAddonConfig(config)).toEqual([]);

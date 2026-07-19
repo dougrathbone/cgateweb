@@ -68,7 +68,7 @@ configuration:
   cgate_serial_device:
     name: Serieel PCI-apparaat (alfa)
     description: >-
-      ALPHA: experimentele ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU). Pad naar het seriële apparaat, bijv. /dev/ttyUSB0 (te vinden via Instellingen > Systeem > Hardware > Alle hardware; gebruik bij voorkeur paden onder /dev/serial/by-id/). Vereist de managed-modus en een C-Bus Toolkit-project dat is geconfigureerd voor een seriële pc-interface. Meld problemen op GitHub (issue #28).
+      ALPHA: experimentele ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU). Selecteer een gedetecteerd serieel apparaat in de vervolgkeuzelijst; gebruik bij voorkeur paden onder /dev/serial/by-id/. Om een aangepast pad in te voeren, schakelt u de configuratie-editor over naar de YAML-modus. Vereist de managed-modus en een C-Bus Toolkit-project dat is geconfigureerd voor een seriële pc-interface. Meld problemen op GitHub (issue #28).
 
   # ── MQTT (meestal automatisch gedetecteerd) ──
   mqtt_host:

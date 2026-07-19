@@ -71,7 +71,7 @@ configuration:
   cgate_serial_device:
     name: Périphérique PCI série (alpha)
     description: >-
-      ALPHA: prise en charge expérimentale des interfaces PC USB-série (5500PC/5500PCU). Chemin du périphérique série, par ex. /dev/ttyUSB0 (à trouver dans Paramètres > Système > Matériel > Tout le matériel ; préférez les chemins /dev/serial/by-id/). Nécessite le mode géré et un projet C-Bus Toolkit configuré pour une interface PC série. Signalez les problèmes sur GitHub (issue #28).
+      ALPHA: prise en charge expérimentale des interfaces PC USB-série (5500PC/5500PCU). Sélectionnez un périphérique série détecté dans la liste déroulante ; préférez les chemins /dev/serial/by-id/. Pour saisir un chemin personnalisé, basculez l'éditeur de configuration en mode YAML. Nécessite le mode géré et un projet C-Bus Toolkit configuré pour une interface PC série. Signalez les problèmes sur GitHub (issue #28).
 
   # ── MQTT (généralement détecté automatiquement) ──
   mqtt_host:

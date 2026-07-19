@@ -68,7 +68,7 @@ configuration:
   cgate_serial_device:
     name: Serielles PCI-Gerät (Alpha)
     description: >-
-      ALPHA: experimentelle Unterstützung für USB-serielle PC-Schnittstellen (5500PC/5500PCU). Pfad zum seriellen Gerät, z. B. /dev/ttyUSB0 (zu finden unter Einstellungen > System > Hardware > Alle Hardware; Pfade unter /dev/serial/by-id/ bevorzugen). Erfordert den Managed-Modus und ein C-Bus-Toolkit-Projekt mit konfigurierter serieller PC-Schnittstelle. Probleme bitte auf GitHub melden (Issue #28).
+      ALPHA: experimentelle Unterstützung für USB-serielle PC-Schnittstellen (5500PC/5500PCU). Wählen Sie ein erkanntes serielles Gerät aus der Dropdown-Liste; Pfade unter /dev/serial/by-id/ bevorzugen. Um einen benutzerdefinierten Pfad einzugeben, wechseln Sie den Konfigurationseditor in den YAML-Modus. Erfordert den Managed-Modus und ein C-Bus-Toolkit-Projekt mit konfigurierter serieller PC-Schnittstelle. Probleme bitte auf GitHub melden (Issue #28).
 
   # ── MQTT (wird normalerweise automatisch erkannt) ──
   mqtt_host:

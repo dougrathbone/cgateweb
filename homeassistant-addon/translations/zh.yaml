@@ -61,7 +61,7 @@ configuration:
   cgate_serial_device:
     name: 串口 PCI 设备（Alpha）
     description: >-
-      ALPHA: USB 串口 PC 接口（5500PC/5500PCU）的实验性支持。串口设备路径，例如 /dev/ttyUSB0（可在“设置 > 系统 > 硬件 > 所有硬件”中查找；建议使用 /dev/serial/by-id/ 路径）。需要托管模式，并且 C-Bus Toolkit 项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
+      ALPHA: USB 串口 PC 接口（5500PC/5500PCU）的实验性支持。从下拉列表中选择检测到的串口设备；建议使用 /dev/serial/by-id/ 路径。如需输入自定义路径，请将配置编辑器切换为 YAML 模式。需要托管模式，并且 C-Bus Toolkit 项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
 
   # ── MQTT（通常自动检测）──
   mqtt_host:

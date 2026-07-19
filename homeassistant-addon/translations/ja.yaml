@@ -67,7 +67,7 @@ configuration:
   cgate_serial_device:
     name: シリアル PCI デバイス（アルファ）
     description: >-
-      ALPHA: USB シリアル PC インターフェース（5500PC/5500PCU）の実験的サポートです。シリアルデバイスのパス（例: /dev/ttyUSB0。設定 > システム > ハードウェア > すべてのハードウェア で確認できます。/dev/serial/by-id/ 以下のパスを推奨）。マネージドモードと、シリアル PC インターフェース用に設定された C-Bus Toolkit プロジェクトが必要です。問題は GitHub で報告してください（issue #28）。
+      ALPHA: USB シリアル PC インターフェース（5500PC/5500PCU）の実験的サポートです。検出されたシリアルデバイスをドロップダウンから選択してください（/dev/serial/by-id/ 以下のパスを推奨）。カスタムパスを入力するには、設定エディターを YAML モードに切り替えてください。マネージドモードと、シリアル PC インターフェース用に設定された C-Bus Toolkit プロジェクトが必要です。問題は GitHub で報告してください（issue #28）。
 
   # ── MQTT（通常は自動検出）──
   mqtt_host:

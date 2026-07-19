@@ -67,7 +67,7 @@ configuration:
   cgate_serial_device:
     name: Sériové PCI zařízení (alfa)
     description: >-
-      ALPHA: experimentální podpora USB-sériových PC rozhraní (5500PC/5500PCU). Cesta k sériovému zařízení, např. /dev/ttyUSB0 (najdete v Nastavení > Systém > Hardware > Veškerý hardware; preferujte cesty /dev/serial/by-id/). Vyžaduje spravovaný režim a projekt C-Bus Toolkit nakonfigurovaný pro sériové PC rozhraní. Problémy hlaste na GitHubu (issue #28).
+      ALPHA: experimentální podpora USB-sériových PC rozhraní (5500PC/5500PCU). Vyberte detekované sériové zařízení z rozbalovací nabídky; preferujte cesty /dev/serial/by-id/. Chcete-li zadat vlastní cestu, přepněte editor konfigurace do režimu YAML. Vyžaduje spravovaný režim a projekt C-Bus Toolkit nakonfigurovaný pro sériové PC rozhraní. Problémy hlaste na GitHubu (issue #28).
 
   # ── MQTT (obvykle detekován automaticky) ──
   mqtt_host:

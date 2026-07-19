@@ -467,5 +467,38 @@ describeBash('cgate-install.sh helpers', () => {
             expect(r.status).toBe(0);
             expect(r.output).toMatch(/only takes effect in managed mode/);
         });
+
+        test('logs an inventory of detected serial devices when the option is set', () => {
+            // The inventory runs on every configured boot — both branches
+            // (devices listed vs. none found) prove it fired.
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(
+                /Detected serial devices on this host|No \/dev\/ttyUSB\* or \/dev\/ttyACM\* devices found/
+            );
+        });
+
+        test('logs the device inventory even when the configured device is missing', () => {
+            // A user who picked the wrong path needs the inventory most —
+            // it must appear before the hard failure, not be skipped by it.
+            const r = checkSerialDevice({
+                cgate_serial_device: '/dev/cgw-no-such-serial-device', cgate_mode: 'managed'
+            });
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/Serial device not found/);
+            expect(r.output).toMatch(
+                /Detected serial devices on this host|No \/dev\/ttyUSB\* or \/dev\/ttyACM\* devices found/
+            );
+        });
+
+        test('logs ls -l details and the resolved target of the selected device', () => {
+            // readlink -f resolution is what lets a /dev/serial/by-id/ path
+            // show its real ttyUSB*/ttyACM* target in the log. /dev/null is
+            // not a symlink, so it resolves to itself on every POSIX host.
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/Selected device: .*\/dev\/null/);
+            expect(r.output).toMatch(/resolves to \/dev\/null/);
+        });
     });
 });

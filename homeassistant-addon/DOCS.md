@@ -51,7 +51,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Downloads from the built-in default URL are verified against a checksum pinned in the install script; setting this overrides that pin (the escape hatch if Clipsal re-releases the zip). Required for a custom `cgate_download_url`; uploads without it proceed with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
-| `cgate_serial_device` | string | (empty) | **ALPHA — opt-in.** Device path of a USB PC Interface attached to the HA host (e.g. `/dev/ttyUSB0`). Hidden optional field; leave empty unless you are testing the alpha. See "Alpha: USB-serial PCI support" below. |
+| `cgate_serial_device` | device | (empty) | **ALPHA — opt-in.** Dropdown of the serial devices detected on the HA host (e.g. `/dev/ttyUSB0` or a `/dev/serial/by-id/...` alias). Hidden optional field; leave empty unless you are testing the alpha. See "Alpha: USB-serial PCI support" below. |
 
 #### Uploading C-Gate manually
 
@@ -133,17 +133,23 @@ devices into the container automatically — no manual device mapping is needed.
 
 **Enabling**
 
-1. Find the device path in Home Assistant: **Settings → System → Hardware →
-   ⋮ (top right) → All hardware**. Look for `/dev/ttyUSB*` or `/dev/ttyACM*`
-   entries, and prefer the stable `/dev/serial/by-id/...` path when one exists
-   (it survives replugging the dongle into a different USB port).
-2. In the add-on's **Configuration** tab, click **Show unused optional
-   configuration options** and add:
+1. In the add-on's **Configuration** tab, click **Show unused optional
+   configuration options** and find **Serial PCI Device (Alpha)**. The field
+   renders as a dropdown listing the serial devices the Supervisor detects on
+   your host (`/dev/ttyUSB*`, `/dev/ttyACM*`, and their stable
+   `/dev/serial/by-id/...` aliases). Prefer a `/dev/serial/by-id/...` entry —
+   it survives replugging the dongle into a different USB port. Not sure which
+   entry is your PC Interface? Check **Settings → System → Hardware →
+   ⋮ (top right) → All hardware**.
+2. If your device does not appear in the dropdown, or you want to enter a
+   custom path, switch the configuration editor to YAML mode (⋮ top right →
+   **Edit in YAML**) and add:
    ```yaml
    cgate_serial_device: /dev/ttyUSB0
    ```
-3. Restart the add-on. Startup validates the path and fails fast with a
-   readable error if it is not a `/dev/` path or the device does not exist.
+3. Restart the add-on. Startup validates the path, logs an inventory of the
+   serial devices it detected, and fails fast with a readable error if the
+   value is not a `/dev/` path or the device does not exist.
 
 **Known limitations**
 
