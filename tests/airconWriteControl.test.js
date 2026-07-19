@@ -25,14 +25,49 @@ function makeRouter({ control = true, withState = true, retainreads = false } = 
 }
 
 describe('native HVAC write control (AIRCON commands)', () => {
-    afterEach(() => jest.restoreAllMocks());
+    // Setpoint writes are debounced (spec §25.12.11) — fake timers let tests
+    // flush the 3s window deterministically.
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
 
     it('setpoint → AIRCON SET_ZONE_HVAC_MODE keeping current mode, new temperature', () => {
         const { router, queued } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        jest.advanceTimersByTime(3000);
         expect(queued).toHaveLength(1);
         // mode stays 1 (heat), rawlevel 0, type 3, level = 25*256 = 6400, targeting ward 1 zone 0
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 6400 0');
+    });
+
+    it('debounces rapid setpoint adjustments into a single command (spec §25.12.11)', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '21');
+        router.routeMessage('cbus/write/254/172/202/setpoint', '23');
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(queued).toHaveLength(0); // nothing sent while the user is still adjusting
+        jest.advanceTimersByTime(3000);
+        expect(queued).toHaveLength(1);
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 6400 0');
+    });
+
+    it('publishes the optimistic setpoint immediately while the command is debounced', () => {
+        const { router, queued, published } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/setpoint', payload: '25', opts: { qos: 0 } });
+        expect(queued).toHaveLength(0);
+    });
+
+    it('a mode change cancels a pending setpoint write', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        router.routeMessage('cbus/write/254/172/202/hvacmode', 'cool');
+        jest.advanceTimersByTime(3000);
+        // only the mode command — the pending setpoint was cancelled
+        expect(queued).toHaveLength(1);
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 2 0 0 0 1 3 5632 0');
     });
 
     it('mode off → AIRCON SET_WARD_OFF', () => {
@@ -77,6 +112,7 @@ describe('native HVAC write control (AIRCON commands)', () => {
     it('setpoint write updates the learned per-mode setpoint', () => {
         const { router } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25'); // current mode heat → 6400
+        jest.advanceTimersByTime(3000);
         expect(router.airconControlRegistry.get('254', '202').setpointRawByMode[1]).toBe(6400);
     });
 
@@ -88,6 +124,7 @@ describe('native HVAC write control (AIRCON commands)', () => {
             zoneGroup: '1', zones: '0,1,2,3,4', modeRaw: 1, type: 3, setpointRaw: 5632
         });
         router.routeMessage('cbus/write/254/172/201/setpoint', '20');
+        jest.advanceTimersByTime(3000);
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0,1,2,3,4 1 0 0 0 1 3 5120 0');
     });
 
@@ -107,7 +144,9 @@ describe('native HVAC write control (AIRCON commands)', () => {
     it('clamps setpoint to the thermostat range (10–32°C)', () => {
         const { router, queued } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '50'); // → 32°C = 8192
+        jest.advanceTimersByTime(3000);
         router.routeMessage('cbus/write/254/172/202/setpoint', '5');  // → 10°C = 2560
+        jest.advanceTimersByTime(3000);
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 8192 0');
         expect(queued[1].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 2560 0');
     });
@@ -121,6 +160,7 @@ describe('native HVAC write control (AIRCON commands)', () => {
             setbackEnabled: true, guardEnabled: false, auxLevelUsed: true, auxLevel: 64
         });
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        jest.advanceTimersByTime(3000);
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 1 0 1 3 6400 64');
     });
 
@@ -132,6 +172,7 @@ describe('native HVAC write control (AIRCON commands)', () => {
             setbackEnabled: false, guardEnabled: false, auxLevelUsed: false, auxLevel: 0
         });
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        jest.advanceTimersByTime(3000);
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 0 3 6400 0');
     });
 

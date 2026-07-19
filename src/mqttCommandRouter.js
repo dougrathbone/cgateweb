@@ -50,6 +50,10 @@ const {
     buildSetWardOff
 } = require('./airconControlRegistry');
 
+// Debounce window for native-aircon setpoint writes (spec §25.12.11: wait a
+// few seconds after the user finishes adjusting, then send a single message).
+const AIRCON_SETPOINT_DEBOUNCE_MS = 3000;
+
 class MqttCommandRouter extends EventEmitter {
     /**
      * Creates a new MQTT command router.
@@ -77,6 +81,8 @@ class MqttCommandRouter extends EventEmitter {
         this.settings = options.settings || {};
         // Per-thermostat ward/zone/type state for native Air Conditioning writes.
         this.airconControlRegistry = options.airconControlRegistry || null;
+        // Pending debounced native-aircon setpoint writes: "net/unit" -> { handle }.
+        this._airconSetpointTimers = new Map();
 
         // Use shared tracker if provided, otherwise create a private one
         this._coverRampTracker = options.coverRampTracker
@@ -640,13 +646,62 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
         const clamped = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempC));
+        // Optimistically reflect the new target so the HA card updates instantly,
+        // then debounce the actual command: the thermostat echoes each Set Zone
+        // HVAC Mode message, so streaming increments causes race conditions —
+        // §25.12.11 says wait until the user has finished, then send one message.
+        this._publishOptimisticHvacState(network, command.getApplication(), unit, { setpointC: clamped });
+        this._debounceAirconSetpoint(network, command.getApplication(), unit, clamped);
+    }
+
+    /**
+     * Collapse rapid setpoint adjustments into a single AIRCON command sent a
+     * few seconds after the last change (spec §25.12.11 "Timeout on
+     * Adjustment"; §25.8.10 also recommends spacing these commands). The
+     * command is built at fire time from the then-current learned state.
+     * @private
+     */
+    _debounceAirconSetpoint(network, application, unit, clamped) {
+        const key = `${network}/${unit}`;
+        const pending = this._airconSetpointTimers.get(key);
+        if (pending) clearTimeout(pending.handle);
+        const handle = setTimeout(() => {
+            this._airconSetpointTimers.delete(key);
+            this._sendAirconSetpoint(network, application, unit, clamped);
+        }, AIRCON_SETPOINT_DEBOUNCE_MS);
+        if (typeof handle.unref === 'function') handle.unref();
+        this._airconSetpointTimers.set(key, { handle });
+        this.logger.debug(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C queued (debounced ${AIRCON_SETPOINT_DEBOUNCE_MS}ms)`);
+    }
+
+    /**
+     * Cancel a pending (debounced) setpoint write, e.g. when the user switches
+     * mode instead — the latest explicit action wins.
+     * @private
+     */
+    _cancelPendingAirconSetpoint(network, unit) {
+        const pending = this._airconSetpointTimers.get(`${network}/${unit}`);
+        if (pending) {
+            clearTimeout(pending.handle);
+            this._airconSetpointTimers.delete(`${network}/${unit}`);
+        }
+    }
+
+    /**
+     * Actually send a debounced setpoint write, using the thermostat's current
+     * learned state (mode, flags, ward/zones/type) at fire time.
+     * @private
+     */
+    _sendAirconSetpoint(network, application, unit, clamped) {
+        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
+        if (!state) return;
         const level = Math.round(clamped * 256); // °C × 256, temperature value (rawlevel=0)
         const modeRaw = (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
             ? state.modeRaw : HVAC_CODE_BY_MODE.heat;
         const cmd = buildSetZoneHvacMode({
             cbusname: this.cbusname,
             network,
-            application: command.getApplication(),
+            application,
             ward: state.ward,
             zones: state.zones,
             modeRaw,
@@ -658,9 +713,6 @@ class MqttCommandRouter extends EventEmitter {
         this._queueCommand(cmd + NEWLINE);
         // Keep the learned state coherent until the thermostat's echo broadcast.
         this.airconControlRegistry.noteSetpointWrite(network, unit, modeRaw, level);
-        // Optimistically reflect the new target so the HA card updates instantly
-        // rather than waiting for the thermostat's next broadcast.
-        this._publishOptimisticHvacState(network, command.getApplication(), unit, { setpointC: clamped });
         this.logger.info(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C (ward ${state.ward}, zones ${state.zones})`);
     }
 
@@ -710,6 +762,7 @@ class MqttCommandRouter extends EventEmitter {
 
         const mode = String(payload).toLowerCase();
         if (mode === 'off') {
+            this._cancelPendingAirconSetpoint(network, unit);
             this._queueCommand(buildSetWardOff({ cbusname: this.cbusname, network, application, ward: state.ward }) + NEWLINE);
             this._publishOptimisticHvacState(network, application, unit, { mode: 'off' });
             this.logger.info(`Native HVAC mode: ${network}/${unit} -> off (ward ${state.ward})`);
@@ -722,6 +775,7 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
+        this._cancelPendingAirconSetpoint(network, unit);
         const { rawlevel, level } = this._airconLevelForModeRaw(state, code);
         const cmd = buildSetZoneHvacMode({
             cbusname: this.cbusname,
@@ -812,6 +866,7 @@ class MqttCommandRouter extends EventEmitter {
 
         const modeRaw = (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
             ? state.modeRaw : HVAC_CODE_BY_MODE.heat;
+        this._cancelPendingAirconSetpoint(network, unit);
         const { rawlevel, level } = this._airconLevelForModeRaw(state, modeRaw);
         const flags = this._airconFlagEcho(state);
         const cmd = buildSetZoneHvacMode({
