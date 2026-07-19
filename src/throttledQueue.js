@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { clampSetting } = require('./utils');
 
@@ -8,6 +9,10 @@ class ThrottledQueue {
      * @param {string} name - Queue name for logging
      * @param {Object} [options] - Additional options
      * @param {number} [options.maxSize=1000] - Maximum queue size (0 = unlimited)
+     * @param {Function} [options.getIntervalMs] - Dynamic interval override; returns the delay before processing the next item
+     * @param {Function} [options.canProcessFn] - Gate checked before each item; processing retries when it returns false
+     * @param {number} [options.retryWhenBlockedMs] - Delay before retrying when canProcessFn blocks processing
+     * @param {Function} [options.onDrop] - Callback invoked with an item when it is dropped to enforce maxSize
      */
     constructor(processFn, intervalMs, name = 'Queue', options = {}) {
         if (typeof processFn !== 'function') {

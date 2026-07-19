@@ -1,6 +1,22 @@
+// @ts-check
 'use strict';
 
 const airconDecoder = require('./applicationDecoders/airconDecoder');
+
+/**
+ * Decoded aircon reading produced by airconDecoder.decodeLine. The exact
+ * fields vary by `kind`; only the ones this handler touches are listed.
+ * @typedef {Object} AirconReading
+ * @property {string} kind - 'temperature' | 'mode' | 'state' | 'action'
+ * @property {string} network
+ * @property {string} application
+ * @property {string|null} [sourceUnit]
+ * @property {string} [zoneGroup]
+ * @property {string|null} [mode]
+ * @property {*} [modeRaw]
+ * @property {number|null} [errorCode]
+ * @property {string} [errorDescription]
+ */
 
 /**
  * Handles C-Bus Air Conditioning (app 172) event lines, which C-Gate renders
@@ -43,7 +59,7 @@ class AirconEventHandler {
         if (!appId) return false;
         if (!this.isAirconLine(line)) return false;
         // Aircon traffic and the feature is enabled — consume it here.
-        const reading = airconDecoder.decodeLine(line);
+        const reading = /** @type {AirconReading|null} */ (airconDecoder.decodeLine(line));
         if (reading && reading.application === String(appId)) {
             const group = reading.sourceUnit || reading.zoneGroup;
             if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {

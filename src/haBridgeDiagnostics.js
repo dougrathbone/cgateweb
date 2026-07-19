@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require('fs');
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');

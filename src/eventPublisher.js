@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { clampSetting, evictOldestFifo, temperatureToCbusLevel } = require('./utils');
 const {
@@ -72,7 +73,7 @@ class EventPublisher {
      * Publishes directly to MQTT without throttling -- QoS 0 publishes are
      * near-instant TCP buffer writes handled asynchronously by the mqtt library.
      * 
-     * @param {CBusEvent} event - Parsed C-Bus event to publish
+     * @param {import('./cbusEvent')} event - Parsed C-Bus event to publish
      * @param {string} [source=''] - Source identifier for logging (e.g., '(Evt)', '(Cmd)')
      */
     publishEvent(event, source = '') {
@@ -90,7 +91,7 @@ class EventPublisher {
         // Specialised application decoders (e.g. Temperature Broadcast, app 25)
         // attach a structured reading to the event. Publish it to the dedicated
         // reading topic and skip the lighting/state path entirely.
-        const reading = event.getReading && event.getReading();
+        const reading = /** @type {{kind?: string}|null} */ (event.getReading && event.getReading());
         if (reading) {
             if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
                 this.logger.debug(`C-Bus Reading ${source}: ${network}/${application}/${group} ${reading.kind}`);

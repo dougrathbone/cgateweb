@@ -1,3 +1,4 @@
+// @ts-check
 const httpDefault = require('http');
 
 /**
@@ -7,6 +8,16 @@ const httpDefault = require('http');
  * for testing.
  */
 
+/**
+ * POST to an HA service via the Supervisor proxy.
+ * @param {string} domainService - Service path, e.g. 'persistent_notification/create'
+ * @param {Object} body - JSON body for the service call
+ * @param {Object} options
+ * @param {string} [options.token] - Supervisor token
+ * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
+ * @param {number} [options.timeoutMs=5000] - request timeout
+ * @private
+ */
 function _postService(domainService, body, { token, httpModule = httpDefault, timeoutMs = 5000 } = {}) {
     return new Promise((resolve, reject) => {
         const data = JSON.stringify(body);
@@ -36,7 +47,7 @@ function _postService(domainService, body, { token, httpModule = httpDefault, ti
 
 /**
  * Create (or replace, by notification_id) an HA persistent notification.
- * @param {{notificationId:string, title:string, message:string, token:string, httpModule?:object, timeoutMs?:number}} opts
+ * @param {{notificationId:string, title:string, message:string, token:string, httpModule?:typeof httpDefault, timeoutMs?:number}} opts
  */
 function createPersistentNotification({ notificationId, title, message, token, httpModule, timeoutMs }) {
     return _postService(
@@ -48,7 +59,7 @@ function createPersistentNotification({ notificationId, title, message, token, h
 
 /**
  * Dismiss a previously-created persistent notification by id.
- * @param {{notificationId:string, token:string, httpModule?:object, timeoutMs?:number}} opts
+ * @param {{notificationId:string, token:string, httpModule?:typeof httpDefault, timeoutMs?:number}} opts
  */
 function dismissPersistentNotification({ notificationId, token, httpModule, timeoutMs }) {
     return _postService(

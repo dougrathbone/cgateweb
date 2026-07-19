@@ -1,3 +1,4 @@
+// @ts-check
 const path = require('path');
 const AdmZip = require('adm-zip');
 const { parseString } = require('xml2js');
@@ -393,4 +394,6 @@ class CbusProjectParser {
 }
 
 module.exports = CbusProjectParser;
-module.exports._isSafeZipEntryName = _isSafeZipEntryName;
+// Attached as a static for tests; the cast keeps @ts-check from treating the
+// property assignment as a second module export next to the assignment above.
+/** @type {any} */ (module.exports)._isSafeZipEntryName = _isSafeZipEntryName;

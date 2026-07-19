@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS } = require('./constants');
 const applicationDecoders = require('./applicationDecoders');

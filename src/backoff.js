@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Compute an exponential-backoff delay with optional full-range jitter.
  *

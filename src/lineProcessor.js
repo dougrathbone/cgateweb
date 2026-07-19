@@ -1,3 +1,4 @@
+// @ts-check
 const { NEWLINE } = require('./constants');
 
 const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB — no valid C-Gate line approaches this

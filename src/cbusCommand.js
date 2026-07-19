@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const {
     COMMAND_TOPIC_REGEX,

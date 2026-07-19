@@ -1,3 +1,4 @@
+// @ts-check
 const { createLogger } = require('./logger');
 const { isPortInRange, isValidMqttAddress, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
 

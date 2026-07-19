@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Remembers what cgateweb needs to *control* each native C-Bus Air Conditioning
  * thermostat, learned from the thermostat's own broadcasts.
