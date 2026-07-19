@@ -609,7 +609,7 @@ class CgateWebBridge {
                 // the bus — publish their HA sensor config the first time each
                 // group is seen. Idempotent; gated on ha_discovery_enabled inside.
                 if (this.haDiscovery) {
-                    const reading = typeof event.getReading === 'function' ? event.getReading() : null;
+                    const reading = /** @type {{ kind?: string, group?: string } | null} */ (typeof event.getReading === 'function' ? event.getReading() : null);
                     if (reading && reading.kind === 'temperature') {
                         this.haDiscovery.ensureTemperatureDiscovery(event.getNetwork(), event.getApplication(), reading.group);
                     }
