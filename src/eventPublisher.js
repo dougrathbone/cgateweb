@@ -19,6 +19,10 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS,
     MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
+    MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY,
+    MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT,
+    MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -247,6 +251,9 @@ class EventPublisher {
      *   state       → cbus/read/{net}/{app}/{group}/state  ('ON'|'OFF')
      *   action      → cbus/read/{net}/{app}/{group}/action + problem
      *               → cbus/read/{net}/{app}/{group}/error + error_description (if error code decoded)
+     *   humidity       → cbus/read/{net}/{app}/{group}/current_humidity (if non-null)
+     *   humidity_mode  → cbus/read/{net}/{app}/{group}/humidity_mode + humidity_setpoint
+     *   humidity_action → cbus/read/{net}/{app}/{group}/humidity_action
      */
     publishReading(network, application, group, reading) {
         if (!reading) return;
@@ -346,6 +353,40 @@ class EventPublisher {
                     this.mqttOptions
                 );
             }
+        } else if (reading.kind === 'humidity') {
+            // Zone humidity (spec §25.8.7, 0–100%). Null when the sensor reports
+            // total failure — surface nothing rather than a bogus reading.
+            if (reading.humidity !== null && reading.humidity !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY}`,
+                    String(reading.humidity),
+                    this.mqttOptions
+                );
+            }
+        } else if (reading.kind === 'humidity_mode') {
+            // Humidity control mode + target (spec §25.8.12). MQTT-only state;
+            // the climate entity reads these as current/target humidity.
+            if (reading.mode !== null && reading.mode !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE}`,
+                    reading.mode,
+                    this.mqttOptions
+                );
+            }
+            if (reading.humiditySetpoint !== null && reading.humiditySetpoint !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT}`,
+                    String(reading.humiditySetpoint),
+                    this.mqttOptions
+                );
+            }
+        } else if (reading.kind === 'humidity_action') {
+            // Humidity plant running state (spec §25.8.5/§25.6.10).
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION}`,
+                reading.action,
+                this.mqttOptions
+            );
         }
     }
 

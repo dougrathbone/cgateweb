@@ -74,7 +74,8 @@ class AirconEventHandler {
         const reading = /** @type {AirconReading|null} */ (airconDecoder.decodeLine(line));
         if (reading && reading.application === String(appId)) {
             const group = reading.sourceUnit || reading.zoneGroup;
-            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action') {
+            if (reading.kind === 'temperature' || reading.kind === 'mode' || reading.kind === 'state' || reading.kind === 'action'
+                || reading.kind === 'humidity' || reading.kind === 'humidity_mode' || reading.kind === 'humidity_action') {
                 this.eventPublisher.publishReading(reading.network, reading.application, group, reading);
             }
             // Remember ward/zones/type so HA can control this thermostat (writes
@@ -99,7 +100,7 @@ class AirconEventHandler {
             if (reading.kind === 'action') {
                 this._warnOnPlantError(reading);
             }
-            if (reading.kind === 'temperature') {
+            if (reading.kind === 'temperature' || reading.kind === 'humidity') {
                 this._warnOnSensorFault(reading);
             }
             this._maybeRefreshWard(reading);
@@ -156,8 +157,9 @@ class AirconEventHandler {
         if (this._lastSensorWarned.get(key) === reading.sensorStatus) return;
         this._lastSensorWarned.set(key, reading.sensorStatus);
         const what = reading.sensorStatus >= 3 ? 'total failure' : 'out of calibration';
+        const sensorKind = reading.kind === 'humidity' ? 'humidity' : 'temperature';
         this.logger.warn(
-            `C-Bus HVAC temperature sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
+            `C-Bus HVAC ${sensorKind} sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
         );
     }
 

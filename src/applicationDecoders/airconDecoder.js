@@ -5,12 +5,20 @@ const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
  * C-Bus Air Conditioning application (172 / $AC) line decoder.
  *
  * Decodes the following verbs from the C-Gate event stream:
- *   - zone_temperature      → { kind:'temperature', …, celsius, unit:'C' }
+ *   - zone_temperature      → { kind:'temperature', …, celsius, unit:'C', sensorStatus }
  *   - set_zone_hvac_mode    → { kind:'mode', …, mode, modeRaw, setpoint, fanSpeed, fanMode }
  *   - set_ward_on           → { kind:'state', …, on:true }
  *   - set_ward_off          → { kind:'state', …, on:false }
  *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy,
  *                               error, expansion, errorCode, errorDescription, action }
+ *   - zone_humidity         → { kind:'humidity', …, humidity, unit:'%', sensorStatus }
+ *   - set_zone_humidity_mode → { kind:'humidity_mode', …, mode, modeRaw, humiditySetpoint }
+ *   - zone_humidity_plant_status → { kind:'humidity_action', …, humidifying,
+ *                               dehumidifying, fan, error, errorCode, action }
+ *
+ * The humidity verbs are spec-derived (§25.8.5/§25.8.7/§25.8.12) from the HVAC
+ * layouts and C-Gate's rendering convention — no live captures exist yet, so
+ * their textual field order is unverified (marked ⚠️ in the field comments).
  *
  * Temperature encoding: °C = rawTemp / 256 (signed 2's complement, §25.5.1)
  * Setpoint encoding:    °C = rawSetpoint / 256 when the Level-is-Raw flag is
@@ -59,8 +67,47 @@ const HVAC_ERROR_DESCRIPTION_BY_CODE = {
  * @returns {string}
  */
 function describeHvacError(code) {
-    if (Object.prototype.hasOwnProperty.call(HVAC_ERROR_DESCRIPTION_BY_CODE, code)) {
-        return HVAC_ERROR_DESCRIPTION_BY_CODE[code];
+    return describePlantError(HVAC_ERROR_DESCRIPTION_BY_CODE, code);
+}
+
+/**
+ * Humidity error code → description (spec §25.6.9). Same code structure as the
+ * HVAC table with humidifier-specific meanings.
+ */
+const HUMIDITY_ERROR_DESCRIPTION_BY_CODE = {
+    0x00: 'No error',
+    0x01: 'Humidifier total failure',
+    0x02: 'Dehumidifier total failure',
+    0x03: 'Fan total failure',
+    0x04: 'Humidity sensor failure',
+    0x05: 'Humidifier temporary problem',
+    0x06: 'Dehumidifier temporary problem',
+    0x07: 'Fan temporary problem',
+    0x08: 'Humidifier service required',
+    0x09: 'Dehumidifier service required',
+    0x0A: 'Fan service required',
+    0x0B: 'Filter replacement required'
+};
+
+/**
+ * Describe a humidity error code per spec §25.6.9.
+ *
+ * @param {number} code - Humidity Error Code (0–255).
+ * @returns {string}
+ */
+function describeHumidityError(code) {
+    return describePlantError(HUMIDITY_ERROR_DESCRIPTION_BY_CODE, code);
+}
+
+/**
+ * Shared lookup for the §25.6.5/§25.6.9 error tables: named codes verbatim,
+ * $0C–$7F reserved, $80–$FF developer-specific.
+ *
+ * @private
+ */
+function describePlantError(table, code) {
+    if (Object.prototype.hasOwnProperty.call(table, code)) {
+        return table[code];
     }
     const hex = `0x${code.toString(16).toUpperCase().padStart(2, '0')}`;
     return code >= 0x80 ? `Developer-specific (${hex})` : `Reserved (${hex})`;
@@ -142,6 +189,18 @@ function decodeLine(line) {
 
     if (verb === 'zone_hvac_plant_status') {
         return decodeZonePlantStatus({ network, application, params, sourceUnit, verb });
+    }
+
+    if (verb === 'zone_humidity') {
+        return decodeZoneHumidity({ network, application, params, sourceUnit, verb });
+    }
+
+    if (verb === 'set_zone_humidity_mode') {
+        return decodeZoneHumidityMode({ network, application, params, sourceUnit, verb });
+    }
+
+    if (verb === 'zone_humidity_plant_status') {
+        return decodeZoneHumidityPlantStatus({ network, application, params, sourceUnit, verb });
     }
 
     return null;
@@ -334,6 +393,117 @@ function decodeWardState({ network, application, params, sourceUnit, verb }) {
     const on = verb === 'set_ward_on';
 
     return { kind: 'state', network, application, zoneGroup, sourceUnit, on, verb };
+}
+
+/**
+ * Decode a zone_humidity event — ⚠️ spec-derived (§25.8.7), no live capture yet.
+ * Message: <Zone Group> <Zone List> <Humidity> <Sensor Status>
+ * → params [zoneGroup, zoneList, rawHumidity, sensorStatus], mirroring
+ * zone_temperature's textual layout.
+ *
+ * <Humidity> is two bytes where 0 = 0% and 65535 = 100% (§25.5.2). At
+ * "Sensor total failure" ($03) the value is meaningless (§25.8.7), so
+ * humidity is null — the reading is still returned so the status surfaces.
+ *
+ * @private
+ */
+function decodeZoneHumidity({ network, application, params, sourceUnit, verb }) {
+    if (params.length < 3) return null;
+
+    const zoneGroup = params[0];
+    const zones = params[1];
+    const raw = parseInt(params[2], 10);
+
+    if (!Number.isInteger(raw) || raw < 0 || raw > 65535) return null;
+
+    // % = raw / 65535 × 100, rounded to 1 decimal place
+    const pct = Math.round(raw / 65535 * 1000) / 10;
+
+    const statusRaw = params.length > 3 ? parseInt(params[3], 10) : NaN;
+    const sensorStatus = Number.isInteger(statusRaw) ? statusRaw : null;
+    const sensorFailed = sensorStatus !== null && sensorStatus >= 3;
+
+    return { kind: 'humidity', network, application, zoneGroup, zones, sourceUnit, humidity: sensorFailed ? null : pct, sensorStatus, unit: '%', verb };
+}
+
+/**
+ * Humidity mode map (spec §25.6.7): C-Bus code → string. Unlike HVAC modes
+ * these have no HA climate equivalent; published as an MQTT-only topic.
+ */
+const HUMIDITY_MODE_BY_CODE = { 0: 'off', 1: 'humidify', 2: 'dehumidify', 3: 'auto' };
+
+/**
+ * Decode a set_zone_humidity_mode event — ⚠️ spec-derived (§25.8.12), no live
+ * capture yet. Same argument layout as Set Zone HVAC Mode (§25.8.10) with the
+ * Humidity Mode & Flags byte (§25.6.7) exploded: [zoneGroup, zones, f0..f7]
+ *   f0 = mode (0=off, 1=humidify only, 2=dehumidify only, 3=humidity control)
+ *   f1 = "Level is Raw" flag   f2–f4 = setback/guard/aux-used   f5 = humidity
+ *        type (§25.6.8)   f6 = set level (humidity 0–65535 when f1=0)   f7 = aux
+ *
+ * @private
+ */
+function decodeZoneHumidityMode({ network, application, params, sourceUnit, verb }) {
+    if (params.length < 9) return null;
+
+    const zoneGroup = params[0];
+    const zones = params[1];
+    const modeRaw = parseInt(params[2], 10);
+
+    if (!Number.isInteger(modeRaw)) return null;
+
+    const mode = Object.prototype.hasOwnProperty.call(HUMIDITY_MODE_BY_CODE, modeRaw)
+        ? HUMIDITY_MODE_BY_CODE[modeRaw]
+        : null;
+
+    const levelIsRaw = parseInt(params[3], 10) === 1;
+
+    // f6 = set level: 0–65535 maps to 0–100% (§25.5.2) unless the raw-level
+    // flag says it is a plant-capacity fraction instead (§25.5.3).
+    const f6Raw = parseInt(params[8], 10);
+    const humiditySetpoint = (!levelIsRaw && Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 65535)
+        ? Math.round(f6Raw / 65535 * 1000) / 10
+        : null;
+
+    const typeParsed = parseInt(params[7], 10);
+    const type = Number.isInteger(typeParsed) ? typeParsed : null;
+
+    return { kind: 'humidity_mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, humiditySetpoint, type, verb };
+}
+
+/**
+ * Decode a zone_humidity_plant_status event — ⚠️ spec-derived (§25.8.5), no
+ * live capture yet. Message: <Zone Group> <Zone List> <Humidity Type>
+ * <Humidity Status> <Humidity Error Code> → params [zoneGroup, zoneList,
+ * humidityType, status, errorCode], mirroring zone_hvac_plant_status.
+ *
+ * Status bits (§25.6.10): 0 humidifying, 1 dehumidifying, 2 fan, 3 damper,
+ * 5 busy, 6 error, 7 expansion. Error code decoded per §25.6.9.
+ *
+ * @private
+ */
+function decodeZoneHumidityPlantStatus({ network, application, params, sourceUnit, verb }) {
+    if (params.length < 4) return null;
+
+    const zoneGroup = params[0];
+    const zones = params[1];
+    const bits = parseInt(params[3], 10);
+    if (!Number.isInteger(bits)) return null;
+
+    const humidifying = (bits & 1) !== 0;
+    const dehumidifying = (bits & 2) !== 0;
+    const fan = (bits & 4) !== 0;
+    const damper = (bits & 8) !== 0;
+    const busy = (bits & 32) !== 0;
+    const error = (bits & 64) !== 0;
+    const expansion = (bits & 128) !== 0;
+
+    const errorCodeRaw = params.length > 4 ? parseInt(params[4], 10) : NaN;
+    const errorCode = Number.isInteger(errorCodeRaw) ? errorCodeRaw : null;
+    const errorDescription = errorCode !== null ? describeHumidityError(errorCode) : null;
+
+    const action = humidifying ? 'humidifying' : dehumidifying ? 'dehumidifying' : fan ? 'fan' : 'idle';
+
+    return { kind: 'humidity_action', network, application, zoneGroup, zones, sourceUnit, humidifying, dehumidifying, fan, damper, busy, error, expansion, errorCode, errorDescription, action, verb };
 }
 
 module.exports = { appId, decodeLine };

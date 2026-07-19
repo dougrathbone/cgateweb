@@ -1098,6 +1098,61 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish current_humidity for a humidity reading', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'humidity',
+                humidity: 50
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/current_humidity',
+                '50',
+                mockMqttOptions
+            );
+        });
+
+        it('should not publish current_humidity when the reading is null (sensor failure)', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'humidity',
+                humidity: null,
+                sensorStatus: 3
+            });
+
+            expect(mockPublishFn).not.toHaveBeenCalled();
+        });
+
+        it('should publish humidity mode and setpoint for a humidity_mode reading', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'humidity_mode',
+                mode: 'humidify',
+                humiditySetpoint: 45
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/humidity_mode',
+                'humidify',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/humidity_setpoint',
+                '45',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish humidity_action for a humidity_action reading', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'humidity_action',
+                action: 'dehumidifying'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/humidity_action',
+                'dehumidifying',
+                mockMqttOptions
+            );
+        });
+
         it('should publish mode and setpoint for a mode reading with heat + setpoint', () => {
             eventPublisher.publishReading('254', '172', '202', {
                 kind: 'mode',

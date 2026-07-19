@@ -200,6 +200,38 @@ describe('AirconEventHandler', () => {
         });
     });
 
+    describe('humidity verbs (spec-derived)', () => {
+        it('consumes and publishes a zone_humidity line', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            const consumed = handler.handleLine('# aircon zone_humidity //THEGAFF/254/172 1 0 32768 0 #sourceunit=201 OID=x');
+            expect(consumed).toBe(true);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '172', '201', expect.objectContaining({ kind: 'humidity', humidity: 50 })
+            );
+        });
+
+        it('consumes and publishes a set_zone_humidity_mode line', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            const consumed = handler.handleLine('aircon set_zone_humidity_mode //THEGAFF/254/172 1 0,1,2,3,4 1 0 0 0 1 1 29491 0 #sourceunit=201 OID=x');
+            expect(consumed).toBe(true);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '172', '201', expect.objectContaining({ kind: 'humidity_mode', mode: 'humidify', humiditySetpoint: 45 })
+            );
+        });
+
+        it('consumes and publishes a zone_humidity_plant_status line', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            const consumed = handler.handleLine('# aircon zone_humidity_plant_status //THEGAFF/254/172 1 0,1,2,3,4 2 66 4 #sourceunit=201 OID=x');
+            expect(consumed).toBe(true);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '172', '201', expect.objectContaining({ kind: 'humidity_action', action: 'dehumidifying', errorCode: 4 })
+            );
+        });
+    });
+
     describe('isAirconLine', () => {
         const handler = new AirconEventHandler(makeDeps());
 

@@ -580,3 +580,74 @@ describe('airconDecoder — null returns for other verbs and non-aircon lines', 
         expect(decodeLine(undefined)).toBeNull();
     });
 });
+
+describe('airconDecoder — humidity verbs (spec-derived §25.8.5/§25.8.7/§25.8.12)', () => {
+    // NOTE: no live captures exist for the humidity application; these fixtures
+    // are built from the spec's message layouts and C-Gate's rendering
+    // convention, mirroring the verified HVAC fixtures field-for-field.
+
+    it('decodes zone_humidity: raw 32768 → 50.0%, sensor status ok', () => {
+        const line = '# aircon zone_humidity //THEGAFF/254/172 1 0,1,2,3,4 32768 0 #sourceunit=201 OID=x';
+        expect(decodeLine(line)).toEqual({
+            kind: 'humidity',
+            network: '254',
+            application: '172',
+            zoneGroup: '1',
+            zones: '0,1,2,3,4',
+            sourceUnit: '201',
+            humidity: 50,
+            sensorStatus: 0,
+            unit: '%',
+            verb: 'zone_humidity'
+        });
+    });
+
+    it('suppresses the humidity when the sensor reports total failure (status 3, §25.8.7)', () => {
+        const line = 'aircon zone_humidity //THEGAFF/254/172 1 0 32768 3';
+        const r = decodeLine(line);
+        expect(r.humidity).toBeNull();
+        expect(r.sensorStatus).toBe(3);
+    });
+
+    it('rejects humidity values above the two-byte range', () => {
+        expect(decodeLine('aircon zone_humidity //THEGAFF/254/172 1 0 65536 0')).toBeNull();
+    });
+
+    it('decodes set_zone_humidity_mode: humidify only at 45%', () => {
+        // f0=1 (humidify only, §25.6.7), f5=1 (evaporator, §25.6.8), f6=29491 (≈45%)
+        const line = 'aircon set_zone_humidity_mode //THEGAFF/254/172 1 0,1,2,3,4 1 0 0 0 1 1 29491 0 #sourceunit=201 OID=x';
+        expect(decodeLine(line)).toEqual({
+            kind: 'humidity_mode',
+            network: '254',
+            application: '172',
+            zoneGroup: '1',
+            zones: '0,1,2,3,4',
+            sourceUnit: '201',
+            mode: 'humidify',
+            modeRaw: 1,
+            levelIsRaw: false,
+            humiditySetpoint: 45,
+            type: 1,
+            verb: 'set_zone_humidity_mode'
+        });
+    });
+
+    it('treats the humidity level as raw (no setpoint) when f1=1', () => {
+        const line = 'aircon set_zone_humidity_mode //THEGAFF/254/172 1 0,1,2,3,4 1 1 0 0 1 1 16384 0 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.levelIsRaw).toBe(true);
+        expect(r.humiditySetpoint).toBeNull();
+    });
+
+    it('decodes zone_humidity_plant_status: dehumidifying + error code (§25.6.9/§25.6.10)', () => {
+        // bitmask 66 = 64(error) + 2(dehumidifying); code 4 = humidity sensor failure
+        const line = '# aircon zone_humidity_plant_status //THEGAFF/254/172 1 0,1,2,3,4 2 66 4 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.kind).toBe('humidity_action');
+        expect(r.dehumidifying).toBe(true);
+        expect(r.error).toBe(true);
+        expect(r.errorCode).toBe(4);
+        expect(r.errorDescription).toBe('Humidity sensor failure');
+        expect(r.action).toBe('dehumidifying');
+    });
+});
