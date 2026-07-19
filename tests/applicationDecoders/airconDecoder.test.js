@@ -30,6 +30,7 @@ describe('airconDecoder — zone_temperature', () => {
             zones: '0,1,2,3,4',
             sourceUnit: '250',
             celsius: 17.3,
+            sensorStatus: 0,
             unit: 'C',
             verb: 'zone_temperature'
         });
@@ -44,6 +45,7 @@ describe('airconDecoder — zone_temperature', () => {
             zones: '0,1,2,3,4',
             sourceUnit: '250',
             celsius: 17.3,
+            sensorStatus: 0,
             unit: 'C',
             verb: 'zone_temperature'
         });
@@ -58,6 +60,7 @@ describe('airconDecoder — zone_temperature', () => {
             zones: '0,1,2,3,4',
             sourceUnit: null,
             celsius: 17.3,
+            sensorStatus: 0,
             unit: 'C',
             verb: 'zone_temperature'
         });
@@ -75,6 +78,7 @@ describe('airconDecoder — zone_temperature', () => {
             zones: '0,1,2,3,4',
             sourceUnit: '201',
             celsius: 17.4,
+            sensorStatus: 0,
             unit: 'C',
             verb: 'zone_temperature'
         });
@@ -91,6 +95,7 @@ describe('airconDecoder — zone_temperature', () => {
             zones: '0',
             sourceUnit: '202',
             celsius: 17.8,
+            sensorStatus: 0,
             unit: 'C',
             verb: 'zone_temperature'
         });
@@ -110,6 +115,58 @@ describe('airconDecoder — zone_temperature', () => {
     it('decodes raw 4412 as celsius 17.2 (4412 / 256 ≈ 17.234 → rounds to 17.2)', () => {
         const line = 'aircon zone_temperature //THEGAFF/254/172 1 0,1,2,3,4 4412 0';
         expect(decodeLine(line).celsius).toBe(17.2);
+    });
+
+    // --- signed 2's complement temperatures (spec §25.5.1: -37.9°C = $DA1A) ---
+    it('decodes a signed-rendered negative temperature: raw -9702 → -37.9°C ($DA1A)', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 -9702 0';
+        expect(decodeLine(line).celsius).toBe(-37.9);
+    });
+
+    it('decodes an unsigned-rendered negative temperature: raw 55834 ($DA1A) → -37.9°C', () => {
+        // C-Gate may render the two bytes unsigned; 55834 - 65536 = -9702.
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 55834 0';
+        expect(decodeLine(line).celsius).toBe(-37.9);
+    });
+
+    it('returns null for raw values outside both 2-byte renderings (65536)', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 65536 0';
+        expect(decodeLine(line)).toBeNull();
+    });
+
+    it('returns null for raw values below the signed 2-byte minimum (-32769)', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 -32769 0';
+        expect(decodeLine(line)).toBeNull();
+    });
+
+    // --- sensor status (spec §25.8.6 / §25.6.12) ---
+    it('suppresses the temperature when the sensor reports total failure (status 3)', () => {
+        // §25.8.6: at "Sensor total failure" the Temperature field is meaningless.
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 4431 3';
+        const r = decodeLine(line);
+        expect(r.celsius).toBeNull();
+        expect(r.sensorStatus).toBe(3);
+    });
+
+    it('keeps the temperature for a degraded-but-working sensor (status 1)', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 4431 1';
+        const r = decodeLine(line);
+        expect(r.celsius).toBe(17.3);
+        expect(r.sensorStatus).toBe(1);
+    });
+
+    it('decodes with sensorStatus null when the field is absent', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0,1,2,3,4 4431';
+        const r = decodeLine(line);
+        expect(r.celsius).toBe(17.3);
+        expect(r.sensorStatus).toBeNull();
+    });
+
+    it('decodes with sensorStatus null when the field is not numeric', () => {
+        const line = 'aircon zone_temperature //THEGAFF/254/172 1 0 4431 notanumber';
+        const r = decodeLine(line);
+        expect(r.celsius).toBe(17.3);
+        expect(r.sensorStatus).toBeNull();
     });
 });
 
@@ -133,6 +190,7 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             sourceUnit: '202',
             mode: 'heat',
             modeRaw: 1,
+            levelIsRaw: false,
             setpoint: 22,
             setpointRaw: 5632,
             type: 1,
@@ -155,6 +213,7 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             sourceUnit: '201',
             mode: 'off',
             modeRaw: 0,
+            levelIsRaw: false,
             setpoint: null,
             setpointRaw: 0,
             type: 255,
@@ -181,14 +240,25 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
         expect(result.setpoint).toBe(22);
     });
 
-    it('decodes fan_only mode with the 0x7F00 no-setpoint sentinel (real capture 2026-06-11: f6=32512 → setpoint null)', () => {
-        // Fan Only has no temperature target; the thermostat sends f6=32512 (0x7F00).
-        // Must NOT be decoded as 127°C.
+    it('decodes fan_only mode with the Level-is-Raw flag (real capture 2026-06-11: f1=1, f6=32512 → setpoint null)', () => {
+        // Fan Only carries a raw fan level, not a temperature: f1=1 marks f6 as a
+        // raw level (§25.5.3), here 32512 ≈ 99.2% output. Must NOT decode as 127°C.
         const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 4 1 0 0 1 3 32512 0 #sourceunit=201 OID=x';
         const result = decodeLine(line);
         expect(result.mode).toBe('fan_only');
         expect(result.modeRaw).toBe(4);
+        expect(result.levelIsRaw).toBe(true);
         expect(result.setpoint).toBeNull();
+    });
+
+    it('treats f6 as a raw level, not a setpoint, whenever f1=1 — even for small levels (spec §25.5.3)', () => {
+        // f6=5120 would decode to a bogus 20.0°C if the Level-is-Raw flag were
+        // ignored; with f1=1 it is ~15.6% plant output, so setpoint is null.
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 4 1 0 0 1 3 5120 0 #sourceunit=201 OID=x';
+        const result = decodeLine(line);
+        expect(result.levelIsRaw).toBe(true);
+        expect(result.setpoint).toBeNull();
+        expect(result.setpointRaw).toBe(5120);
     });
 
     it('decodes unknown mode code (f0=7) → mode null, modeRaw 7, setpoint still parsed', () => {

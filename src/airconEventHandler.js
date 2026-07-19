@@ -16,6 +16,7 @@ const airconDecoder = require('./applicationDecoders/airconDecoder');
  * @property {*} [modeRaw]
  * @property {number|null} [errorCode]
  * @property {string} [errorDescription]
+ * @property {number|null} [sensorStatus]
  */
 
 /**
@@ -39,6 +40,8 @@ class AirconEventHandler {
         this.getHaDiscovery = getHaDiscovery;
         // Last warned plant error code per unit, for edge-triggered warn logging.
         this._lastErrorWarned = new Map();
+        // Last warned temperature-sensor status per unit (same edge-triggered pattern).
+        this._lastSensorWarned = new Map();
     }
 
     /**
@@ -87,6 +90,9 @@ class AirconEventHandler {
             if (reading.kind === 'action') {
                 this._warnOnPlantError(reading);
             }
+            if (reading.kind === 'temperature') {
+                this._warnOnSensorFault(reading);
+            }
             return true;
         }
         // Recognisable aircon traffic, but we couldn't decode it or it targets a
@@ -118,6 +124,30 @@ class AirconEventHandler {
         this._lastErrorWarned.set(key, reading.errorCode);
         this.logger.warn(
             `C-Bus HVAC plant error on unit ${unit}: ${reading.errorDescription} (code ${reading.errorCode})`
+        );
+    }
+
+    /**
+     * Warn on a degraded temperature sensor (spec §25.6.12: 2 = out of
+     * calibration, 3 = total failure). Edge-triggered per unit like
+     * _warnOnPlantError: logs only when the status changes, rearms below 2.
+     *
+     * @param {Object} reading - Decoded 'temperature' reading from airconDecoder.
+     * @private
+     */
+    _warnOnSensorFault(reading) {
+        if (reading.sensorStatus === null || reading.sensorStatus === undefined) return;
+        const unit = reading.sourceUnit || reading.zoneGroup;
+        const key = `${reading.network}/${reading.application}/${unit}`;
+        if (reading.sensorStatus < 2) {
+            this._lastSensorWarned.delete(key);
+            return;
+        }
+        if (this._lastSensorWarned.get(key) === reading.sensorStatus) return;
+        this._lastSensorWarned.set(key, reading.sensorStatus);
+        const what = reading.sensorStatus >= 3 ? 'total failure' : 'out of calibration';
+        this.logger.warn(
+            `C-Bus HVAC temperature sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
         );
     }
 }

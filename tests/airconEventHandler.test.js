@@ -130,6 +130,41 @@ describe('AirconEventHandler', () => {
         });
     });
 
+    describe('temperature sensor fault warnings (edge-triggered)', () => {
+        // Spec §25.6.12: 0 ok, 1 relaxed accuracy, 2 out of calibration, 3 total failure
+        const OK_LINE = '# aircon zone_temperature //THEGAFF/254/172 1 0 4431 0 #sourceunit=201 OID=x';
+        const CAL_LINE = '# aircon zone_temperature //THEGAFF/254/172 1 0 4431 2 #sourceunit=201 OID=x';
+        const FAIL_LINE = '# aircon zone_temperature //THEGAFF/254/172 1 0 4431 3 #sourceunit=201 OID=x';
+
+        it('warns once per status on out-of-calibration and total failure', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(CAL_LINE);
+            handler.handleLine(CAL_LINE); // same status again → no repeat warn
+            handler.handleLine(FAIL_LINE); // escalates → warns again
+            expect(deps.logger.warn).toHaveBeenCalledTimes(2);
+            expect(deps.logger.warn).toHaveBeenNthCalledWith(1, expect.stringContaining('out of calibration'));
+            expect(deps.logger.warn).toHaveBeenNthCalledWith(2, expect.stringContaining('total failure'));
+        });
+
+        it('rearms once the sensor reports a healthy status again', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(FAIL_LINE);
+            handler.handleLine(OK_LINE);  // healthy → rearm
+            handler.handleLine(FAIL_LINE);
+            expect(deps.logger.warn).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not warn for status 0 or 1', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(OK_LINE);
+            handler.handleLine('# aircon zone_temperature //THEGAFF/254/172 1 0 4431 1 #sourceunit=201 OID=x');
+            expect(deps.logger.warn).not.toHaveBeenCalled();
+        });
+    });
+
     describe('isAirconLine', () => {
         const handler = new AirconEventHandler(makeDeps());
 

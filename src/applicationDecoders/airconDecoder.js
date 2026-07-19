@@ -12,8 +12,9 @@ const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
  *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy,
  *                               error, expansion, errorCode, errorDescription, action }
  *
- * Temperature encoding: °C = rawTemp / 256
- * Setpoint encoding:    °C = rawSetpoint / 256 (null when rawSetpoint === 0)
+ * Temperature encoding: °C = rawTemp / 256 (signed 2's complement, §25.5.1)
+ * Setpoint encoding:    °C = rawSetpoint / 256 when the Level-is-Raw flag is
+ *                       clear; null when rawSetpoint === 0 or the level is raw
  *
  * Field layouts verified against the official protocol spec
  * ("Air Conditioning Application", CBUS-APP/25 issue 1.12 — docs/Air Conditioning
@@ -148,7 +149,17 @@ function decodeLine(line) {
 
 /**
  * Decode a zone_temperature event.
- * Params layout: [zoneGroup, zoneList, rawTemp, flag]
+ * Spec §25.8.6 message: <Zone Group> <Zone List> <Temperature> <Sensor Status>
+ * → params [zoneGroup, zoneList, rawTemp, sensorStatus].
+ *
+ * <Temperature> is a signed 2's complement 2-byte value in 1/256 °C (§25.5.1 —
+ * e.g. -37.9 °C = $DA1A). C-Gate may render the two bytes as a signed or an
+ * unsigned 16-bit decimal; treat values > 32767 as wrapped negatives so both
+ * forms decode correctly.
+ *
+ * <Sensor Status> (§25.6.12) is an optional trailing field. When it reaches
+ * "Sensor total failure" ($03) the temperature is meaningless per §25.8.6, so
+ * celsius is null — the reading is still returned so the status surfaces.
  *
  * @private
  */
@@ -160,12 +171,21 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
     const zones = params[1];
     const raw = parseInt(params[2], 10);
 
-    if (!Number.isInteger(raw) || raw < 0) return null;
+    // Two-byte field: accept the signed (-32768..32767) and unsigned (0..65535)
+    // renderings, reject anything outside both.
+    if (!Number.isInteger(raw) || raw < -32768 || raw > 65535) return null;
+    const signed = raw > 32767 ? raw - 65536 : raw;
 
     // °C = raw / 256, rounded to 1 decimal place
-    const celsius = Math.round(raw / 256 * 10) / 10;
+    const celsius = Math.round(signed / 256 * 10) / 10;
 
-    return { kind: 'temperature', network, application, zoneGroup, zones, sourceUnit, celsius, unit: 'C', verb };
+    // <Sensor Status> (spec §25.6.12: 0=ok, 1=relaxed accuracy, 2=out of
+    // calibration, 3=total failure) — optional in practice.
+    const statusRaw = params.length > 3 ? parseInt(params[3], 10) : NaN;
+    const sensorStatus = Number.isInteger(statusRaw) ? statusRaw : null;
+    const sensorFailed = sensorStatus !== null && sensorStatus >= 3;
+
+    return { kind: 'temperature', network, application, zoneGroup, zones, sourceUnit, celsius: sensorFailed ? null : celsius, sensorStatus, unit: 'C', verb };
 }
 
 /**
@@ -174,12 +194,13 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
  * <Level> <Aux Level>. C-Gate renders that as ten decimal fields, exploding the
  * 1-byte Mode & Flags (§25.6.3) into five: [zoneGroup, zoneList, f0..f7]
  *   f0 = mode code (0=off, 1=heat, 2=cool, 3=auto, 4=fan_only) — ✅ captures + spec
- *   f1 = "Level is Raw" flag — ✅ 1 exactly when f6 carries a raw level instead of
- *        °C×256 (the fan_only 0x7F00 sentinel in the 2026-06-11 capture)
+ *   f1 = "Level is Raw" flag (§25.6.3 L bit) — decoded as levelIsRaw. When 1,
+ *        f6 carries a raw fraction of plant capacity (§25.5.3), not a
+ *        temperature — e.g. the fan_only capture's 32512 ≈ 99.2% fan output.
  *   f2–f4 = setback / guard / aux-level-used flags (always 0/0/1 in captures; not decoded)
  *   f5 = HVAC plant type (§25.6.4 — ✅ captures: 1=furnace, 3=heat pump reverse
  *        cycle, 255=Any match the captured units)
- *   f6 = setpoint raw (°C = f6/256); 0 means no setpoint
+ *   f6 = setpoint raw when f1=0 (°C = f6/256); 0 means no setpoint
  *   f7 = Aux Level (§25.6.11): bits 0–5 fan speed (0-63, 0=default speed), bit 6
  *        fan mode (0=automatic, 1=continuous), bit 7 reserved. Note fan speed can
  *        live in the Raw Level instead under some conditions (§25.12.8 / mimic
@@ -204,12 +225,17 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
         ? HVAC_MODE_BY_CODE[modeRaw]
         : null;
 
+    // f1 (params index 3) = "Level is Raw" flag (§25.6.3 L bit).
+    const levelIsRaw = parseInt(params[3], 10) === 1;
+
     // f6 is at params index 8 (zoneGroup + zones + f0..f5 = 8 items before f6).
-    // Setpoint raw is °C × 256. Fan Only mode (and some idle states) send the
-    // 0x7F00 (32512) "no setpoint" sentinel — guard with a plausible-range check
-    // (>0 °C and ≤ 50 °C) so we never publish a bogus 127 °C target.
+    // Its meaning follows f1: with Level-is-Raw it is a signed fraction of
+    // plant capacity (§25.5.3 — the fan_only broadcast's 32512 ≈ 99.2% fan
+    // output), never a temperature, so there is no setpoint to publish.
+    // Otherwise it is °C × 256 (§25.5.1); 0 means no setpoint, and a >0 °C /
+    // ≤50 °C plausibility window keeps garbage from becoming a bogus target.
     const f6Raw = parseInt(params[8], 10);
-    const setpoint = (Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 12800)
+    const setpoint = (!levelIsRaw && Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 12800)
         ? Math.round(f6Raw / 256 * 10) / 10
         : null;
     // setpointRaw (f6) and type (f5) are retained verbatim so write-back can echo
@@ -226,7 +252,7 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     const fanSpeed = Number.isInteger(auxLevel) ? auxLevel & 0x3F : null;
     const fanMode = Number.isInteger(auxLevel) ? ((auxLevel & 0x40) !== 0 ? 'continuous' : 'automatic') : null;
 
-    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, setpoint, setpointRaw, type, fanSpeed, fanMode, verb };
+    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, setpoint, setpointRaw, type, fanSpeed, fanMode, verb };
 }
 
 /**

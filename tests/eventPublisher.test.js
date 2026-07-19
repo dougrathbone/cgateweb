@@ -1020,6 +1020,42 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish sensor_status alongside current_temperature when decoded', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'temperature',
+                celsius: 17.4,
+                sensorStatus: 0
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/current_temperature',
+                '17.4',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/sensor_status',
+                '0',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish sensor_status but not the meaningless temperature on sensor failure', () => {
+            // Spec §25.8.6: at "Sensor total failure" the temperature is meaningless.
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'temperature',
+                celsius: null,
+                sensorStatus: 3
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/sensor_status',
+                '3',
+                mockMqttOptions
+            );
+        });
+
         it('should publish mode and setpoint for a mode reading with heat + setpoint', () => {
             eventPublisher.publishReading('254', '172', '202', {
                 kind: 'mode',

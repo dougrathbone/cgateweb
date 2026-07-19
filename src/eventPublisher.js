@@ -16,6 +16,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_ACTION,
     MQTT_TOPIC_SUFFIX_HVAC_ERROR,
     MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
+    MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -236,7 +237,8 @@ class EventPublisher {
      * Publishes a structured reading produced by a specialised application
      * decoder (e.g. Air Conditioning). Routes by reading.kind:
      *
-     *   temperature → cbus/read/{net}/{app}/{group}/current_temperature
+     *   temperature → cbus/read/{net}/{app}/{group}/current_temperature (if celsius non-null)
+     *               → cbus/read/{net}/{app}/{group}/sensor_status (if decoded)
      *   mode        → cbus/read/{net}/{app}/{group}/mode  (if mode non-null)
      *               → cbus/read/{net}/{app}/{group}/setpoint (if setpoint non-null)
      *               → cbus/read/{net}/{app}/{group}/fan_mode + fan_speed (if aux level decoded)
@@ -250,11 +252,22 @@ class EventPublisher {
         const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
 
         if (reading.kind === 'temperature') {
-            this._publishIfNeeded(
-                `${base}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
-                String(reading.celsius),
-                this.mqttOptions
-            );
+            // celsius is null when the sensor reports total failure (§25.8.6) —
+            // surface the status, not the meaningless temperature.
+            if (reading.celsius !== null && reading.celsius !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+                    String(reading.celsius),
+                    this.mqttOptions
+                );
+            }
+            if (reading.sensorStatus !== null && reading.sensorStatus !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS}`,
+                    String(reading.sensorStatus),
+                    this.mqttOptions
+                );
+            }
         } else if (reading.kind === 'mode') {
             if (reading.mode !== null && reading.mode !== undefined) {
                 this._publishIfNeeded(
