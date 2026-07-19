@@ -325,7 +325,24 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     const fanSpeed = auxLevel !== null ? auxLevel & 0x3F : null;
     const fanMode = auxLevel !== null ? ((auxLevel & 0x40) !== 0 ? 'continuous' : 'automatic') : null;
 
-    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, setbackEnabled, guardEnabled, auxLevelUsed, setpoint, setpointRaw, type, auxLevel, fanSpeed, fanMode, verb };
+    // For vent/fan operating type (and evaporative plant cooling in manual
+    // mode) the fan speed lives in the Raw Level, not the Aux Level (§25.12.8).
+    // Normalise it to 0–100% of plant capacity (Raw Level / $7FFF) — the
+    // plant's numbered speeds aren't broadcast (§25.12.11 Zone Group Data is
+    // manual configuration only), so a percentage is the honest representation.
+    const fanSpeedPercent = (levelIsRaw && Number.isInteger(f6Raw) && f6Raw >= 0 && f6Raw <= 32767)
+        ? Math.round(f6Raw / 32767 * 100)
+        : null;
+
+    // Evaporative plant in (auto) cooling presents a Comfort Level instead of a
+    // temperature (§25.12.7): CL = (T − TStart)/TStep + 1, using the spec
+    // defaults TStart=16 °C / TStep=0.5 °C — the plant's actual values are
+    // Toolkit config, not broadcast. Only meaningful inside the comfort range.
+    const comfortLevel = (type === 2 && modeRaw === 2 && !levelIsRaw && setpoint !== null)
+        ? Math.max(1, Math.round((setpoint - 16) / 0.5) + 1)
+        : null;
+
+    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, setbackEnabled, guardEnabled, auxLevelUsed, setpoint, setpointRaw, type, auxLevel, fanSpeed, fanMode, fanSpeedPercent, comfortLevel, verb };
 }
 
 /**

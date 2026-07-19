@@ -23,6 +23,8 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
+    MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -313,6 +315,23 @@ class EventPublisher {
                 this._publishIfNeeded(
                     `${base}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED}`,
                     String(reading.fanSpeed),
+                    this.mqttOptions
+                );
+            }
+            // Fan speed from the Raw Level (vent/fan, evaporative-manual) as a
+            // percentage (§25.12.8), and the evaporative Comfort Level
+            // (§25.12.7) — both MQTT-only (no HA climate equivalent).
+            if (reading.fanSpeedPercent !== null && reading.fanSpeedPercent !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT}`,
+                    String(reading.fanSpeedPercent),
+                    this.mqttOptions
+                );
+            }
+            if (reading.comfortLevel !== null && reading.comfortLevel !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL}`,
+                    String(reading.comfortLevel),
                     this.mqttOptions
                 );
             }

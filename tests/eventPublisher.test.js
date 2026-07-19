@@ -1153,6 +1153,34 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish fan_speed_pct when a raw-level fan speed is decoded', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'mode',
+                mode: 'fan_only',
+                fanSpeedPercent: 99
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/fan_speed_pct',
+                '99',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish comfort_level when an evaporative comfort level is decoded', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'mode',
+                mode: 'cool',
+                comfortLevel: 13
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/comfort_level',
+                '13',
+                mockMqttOptions
+            );
+        });
+
         it('should publish mode and setpoint for a mode reading with heat + setpoint', () => {
             eventPublisher.publishReading('254', '172', '202', {
                 kind: 'mode',

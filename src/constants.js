@@ -56,6 +56,8 @@ const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY = 'current_humidity';   // Current
 const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT = 'humidity_setpoint'; // Target relative humidity %
 const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE = 'humidity_mode';     // off/humidify/dehumidify/auto (spec §25.6.7)
 const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION = 'humidity_action'; // humidifying/dehumidifying/fan/idle (spec §25.6.10)
+const MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT = 'fan_speed_pct';     // Fan speed % from the Raw Level (spec §25.12.8)
+const MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL = 'comfort_level';     // Evaporative comfort level (spec §25.12.7, default mapping)
 // Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
 // HA's climate card and our write clamp both use this so users can't request a
 // value the thermostat will silently reject.
@@ -214,6 +216,8 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
+    MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,

@@ -200,6 +200,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             auxLevel: 0,
             fanSpeed: 0,
             fanMode: 'automatic',
+            fanSpeedPercent: null,
+            comfortLevel: null,
             verb: 'set_zone_hvac_mode'
         });
     });
@@ -227,6 +229,8 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             auxLevel: 0,
             fanSpeed: 0,
             fanMode: 'automatic',
+            fanSpeedPercent: null,
+            comfortLevel: null,
             verb: 'set_zone_hvac_mode'
         });
     });
@@ -267,6 +271,31 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
         expect(result.levelIsRaw).toBe(true);
         expect(result.setpoint).toBeNull();
         expect(result.setpointRaw).toBe(5120);
+    });
+
+    it('normalises a raw-level fan speed to a percentage (fan_only 32512 → 99%)', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 4 1 0 0 1 3 32512 0 #sourceunit=201 OID=x';
+        expect(decodeLine(line).fanSpeedPercent).toBe(99);
+    });
+
+    it('reports no fan speed percentage when the level is a temperature', () => {
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 3 3840 0 #sourceunit=201 OID=x';
+        expect(decodeLine(line).fanSpeedPercent).toBeNull();
+    });
+
+    it('derives the evaporative comfort level from the setpoint (type 2, cool, 22°C → level 13)', () => {
+        // §25.12.7: CL = (T − 16)/0.5 + 1 with the spec-default TStart/TStep.
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 2 5632 0 #sourceunit=201 OID=x';
+        const result = decodeLine(line);
+        expect(result.type).toBe(2);
+        expect(result.comfortLevel).toBe(13);
+    });
+
+    it('reports no comfort level for non-evaporative plant or raw levels', () => {
+        const heatPump = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 0 0 0 1 3 5632 0 #sourceunit=201 OID=x';
+        expect(decodeLine(heatPump).comfortLevel).toBeNull();
+        const manualEvap = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 2 1 0 0 1 2 5632 0 #sourceunit=201 OID=x';
+        expect(decodeLine(manualEvap).comfortLevel).toBeNull();
     });
 
     it('decodes unknown mode code (f0=7) → mode null, modeRaw 7, setpoint still parsed', () => {
