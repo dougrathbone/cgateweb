@@ -21,6 +21,8 @@ class AirconEventHandler {
         // haDiscovery is initialized after the bridge constructor runs, so read it
         // live via an accessor to preserve the original late-binding behaviour.
         this.getHaDiscovery = getHaDiscovery;
+        // Last warned plant error code per unit, for edge-triggered warn logging.
+        this._lastErrorWarned = new Map();
     }
 
     /**
@@ -66,6 +68,9 @@ class AirconEventHandler {
                     ' — please report. Line: ' + line
                 );
             }
+            if (reading.kind === 'action') {
+                this._warnOnPlantError(reading);
+            }
             return true;
         }
         // Recognisable aircon traffic, but we couldn't decode it or it targets a
@@ -75,6 +80,29 @@ class AirconEventHandler {
             this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
         }
         return false;
+    }
+
+    /**
+     * Warn on a non-zero HVAC plant error code (spec §25.6.5) — plant faults are
+     * noteworthy. Edge-triggered per unit: logs only when the code changes, and
+     * rearms when the plant reports no error (code 0) again.
+     *
+     * @param {Object} reading - Decoded 'action' reading from airconDecoder.
+     * @private
+     */
+    _warnOnPlantError(reading) {
+        if (reading.errorCode === null || reading.errorCode === undefined) return;
+        const unit = reading.sourceUnit || reading.zoneGroup;
+        const key = `${reading.network}/${reading.application}/${unit}`;
+        if (reading.errorCode === 0) {
+            this._lastErrorWarned.delete(key);
+            return;
+        }
+        if (this._lastErrorWarned.get(key) === reading.errorCode) return;
+        this._lastErrorWarned.set(key, reading.errorCode);
+        this.logger.warn(
+            `C-Bus HVAC plant error on unit ${unit}: ${reading.errorDescription} (code ${reading.errorCode})`
+        );
     }
 }
 

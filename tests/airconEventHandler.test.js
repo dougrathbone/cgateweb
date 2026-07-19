@@ -86,6 +86,50 @@ describe('AirconEventHandler', () => {
         expect(deps.registry.recordModeReading).not.toHaveBeenCalled();
     });
 
+    describe('plant error warnings (edge-triggered)', () => {
+        // Spec-derived: bitmask 78 = 64(error)+8+4+2, error code 4 = temperature sensor failure
+        const ERROR_LINE = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 78 4 #sourceunit=201 OID=x';
+        const CLEAR_LINE = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 14 0 #sourceunit=201 OID=x';
+
+        it('warns on a non-zero HVAC error code, once per code per unit', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(ERROR_LINE);
+            handler.handleLine(ERROR_LINE); // same code again → no repeat warn
+            expect(deps.logger.warn).toHaveBeenCalledTimes(1);
+            expect(deps.logger.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Temperature sensor failure')
+            );
+        });
+
+        it('re-warns after the error clears and recurs, and warns again on a different code', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(ERROR_LINE);
+            handler.handleLine(CLEAR_LINE);  // code 0 → rearm
+            handler.handleLine(ERROR_LINE);
+            expect(deps.logger.warn).toHaveBeenCalledTimes(2);
+            // A different non-zero code (2 = cooler total failure) warns again
+            handler.handleLine('# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 66 2 #sourceunit=201 OID=x');
+            expect(deps.logger.warn).toHaveBeenCalledTimes(3);
+        });
+
+        it('does not warn for error code 0', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(CLEAR_LINE);
+            expect(deps.logger.warn).not.toHaveBeenCalled();
+        });
+
+        it('tracks error state independently per unit', () => {
+            const deps = makeDeps();
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(ERROR_LINE); // unit 201
+            handler.handleLine('# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 3 66 4 #sourceunit=202 OID=x'); // unit 202, same code
+            expect(deps.logger.warn).toHaveBeenCalledTimes(2);
+        });
+    });
+
     describe('isAirconLine', () => {
         const handler = new AirconEventHandler(makeDeps());
 
