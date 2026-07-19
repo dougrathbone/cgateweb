@@ -1,3 +1,4 @@
+// @ts-check
 const CbusProjectParser = require('../cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('../constants');
 const { sendJSON, sanitizePlainObject, isUnsafeObjectKey } = require('./httpHelpers');
@@ -50,7 +51,7 @@ class LabelRoutes {
      * PUT /api/labels — replace the label file with the given data.
      */
     async handlePutLabels(req, res) {
-        const body = await readRequestBody(req, this.maxBodySizeBytes);
+        const body = /** @type {string|null} */ (await readRequestBody(req, this.maxBodySizeBytes));
         if (!body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let data;
@@ -93,7 +94,7 @@ class LabelRoutes {
      * PATCH /api/labels — apply partial label updates (null/'' deletes).
      */
     async handlePatchLabels(req, res) {
-        const body = await readRequestBody(req, this.maxBodySizeBytes);
+        const body = /** @type {string|null} */ (await readRequestBody(req, this.maxBodySizeBytes));
         if (!body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let patch;

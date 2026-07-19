@@ -1,9 +1,10 @@
+// @ts-check
 const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
 
 /**
  * Read a request body, enforcing the size cap. Resolves null when the body
  * exceeds the cap or the request errors.
- * @param {http.IncomingMessage} req
+ * @param {import('http').IncomingMessage} req
  * @param {number} [maxBodySizeBytes=DEFAULT_MAX_BODY_SIZE]
  * @param {Object} [options]
  * @param {boolean} [options.raw=false] - Resolve a Buffer instead of a UTF-8 string
@@ -35,7 +36,7 @@ function readRequestBody(req, maxBodySizeBytes = DEFAULT_MAX_BODY_SIZE, { raw = 
 /**
  * Simple multipart/form-data parser for single file uploads.
  * Avoids adding busboy as a dependency for this simple use case.
- * @param {http.IncomingMessage} req
+ * @param {import('http').IncomingMessage} req
  * @param {string} contentType - The request Content-Type header
  * @param {number} [maxBodySizeBytes=DEFAULT_MAX_BODY_SIZE]
  * @returns {Promise<{buffer: Buffer, filename: string}|null>}
@@ -45,7 +46,7 @@ async function parseMultipart(req, contentType, maxBodySizeBytes = DEFAULT_MAX_B
     if (!boundaryMatch) return null;
 
     const boundary = boundaryMatch[1];
-    const rawBody = await readRequestBody(req, maxBodySizeBytes, { raw: true });
+    const rawBody = /** @type {Buffer|null} */ (await readRequestBody(req, maxBodySizeBytes, { raw: true }));
     if (!rawBody) return null;
 
     const boundaryBuffer = Buffer.from(`--${boundary}`);

@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Sliding-window rate limiter for mutating API requests, keyed by client
  * socket address.
@@ -18,7 +19,7 @@ class RateLimiter {
      * Record a request and report whether the client is over the limit.
      * Uses the socket address for rate limiting — X-Forwarded-For is spoofable
      * and would allow bypass by rotating the header value.
-     * @param {http.IncomingMessage} req
+     * @param {import('http').IncomingMessage} req
      * @returns {boolean}
      */
     isLimited(req) {

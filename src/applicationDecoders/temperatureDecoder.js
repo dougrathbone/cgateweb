@@ -1,3 +1,4 @@
+// @ts-check
 const { DEFAULT_CBUS_APP_TEMPERATURE } = require('../constants');
 
 /**

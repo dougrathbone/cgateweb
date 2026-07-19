@@ -1,3 +1,4 @@
+// @ts-check
 const http = require('http');
 const { createLogger } = require('./logger');
 const ApiAuth = require('./web/apiAuth');
@@ -12,10 +13,10 @@ const { sendJSON, setSecurityHeaders, setCorsHeaders } = require('./web/httpHelp
 class WebServer {
     /**
      * @param {Object} options
-     * @param {number} options.port - Port to listen on (default 8080)
+     * @param {number} [options.port] - Port to listen on (default 8080)
  * @param {string} [options.bindHost] - Host interface to bind to (default 127.0.0.1)
      * @param {string} [options.basePath] - Base path prefix for ingress (e.g., '/api/hassio_ingress/abc'); in add-on mode discovered from the Supervisor API and applied later via setBasePath()
-     * @param {import('./labelLoader')} options.labelLoader - Label loader instance
+     * @param {import('./labelLoader')} [options.labelLoader] - Label loader instance
      * @param {Function} [options.getStatus] - Function returning bridge status info
  * @param {string|null} [options.apiKey] - API key required for mutating endpoints
  * @param {boolean} [options.allowUnauthenticatedMutations=false] - Allow mutating requests without API key
@@ -123,7 +124,7 @@ class WebServer {
                 this.logger.info(
                     `Web server listening on ${this.bindHost}:${this.port}${this.basePath ? ` (base path: ${this.basePath})` : ''}`
                 );
-                resolve();
+                resolve(undefined);
             });
         });
         return this._startPromise;
@@ -142,10 +143,10 @@ class WebServer {
                 if (this._server) {
                     this._server.close(() => {
                         this.logger.info('Web server stopped');
-                        resolve();
+                        resolve(undefined);
                     });
                 } else {
-                    resolve();
+                    resolve(undefined);
                 }
             }));
     }

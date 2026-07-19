@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require('fs');
 const path = require('path');
 
@@ -29,7 +30,7 @@ class StaticFileServer {
      * Serve a file from the static directory, falling back to index.html for
      * non-API, non-file routes (SPA fallback).
      * @param {string} urlPath
-     * @param {http.ServerResponse} res
+     * @param {import('http').ServerResponse} res
      */
     serve(urlPath, res) {
         if (urlPath === '/' || urlPath === '') {
@@ -66,7 +67,7 @@ class StaticFileServer {
      * Stream a file to the response with the given content type.
      * @param {string} filePath
      * @param {string} contentType
-     * @param {http.ServerResponse} res
+     * @param {import('http').ServerResponse} res
      */
     _streamFile(filePath, contentType, res) {
         const stream = fs.createReadStream(filePath);

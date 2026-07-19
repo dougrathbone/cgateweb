@@ -1,3 +1,4 @@
+// @ts-check
 const crypto = require('crypto');
 
 /**
@@ -58,7 +59,7 @@ class ApiAuth {
 
     /**
      * Whether the request is authorized for protected endpoints.
-     * @param {http.IncomingMessage} req
+     * @param {import('http').IncomingMessage} req
      * @returns {boolean}
      */
     isAuthorized(req) {
@@ -96,7 +97,7 @@ class ApiAuth {
      * API and applied via setBasePath). Require an exact path match plus HA
      * Core's X-Hass-Source so a casual spoofed X-Ingress-Path on the direct
      * :8080 port cannot authorize mutations.
-     * @param {http.IncomingMessage} req
+     * @param {import('http').IncomingMessage} req
      * @returns {boolean}
      */
     _isIngressRequest(req) {
