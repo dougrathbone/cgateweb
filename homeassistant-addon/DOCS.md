@@ -282,7 +282,8 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_auto_type_cover_keywords` | list | `[blind, shutter, shade, awning, curtain, roller, garage door]` | Keywords that mark a Lighting group as a cover. Matching is case-insensitive and catches plurals. |
 | `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for a **lighting-compatible** HVAC group (PAC/touchscreen-exposed). This is NOT the native Air Conditioning application (172) — use it only for groups mirrored onto a lighting-style app by a PAC or touchscreen. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
 | `ha_hvac_temperature_unit` | list | `C` | Temperature unit for HVAC climate entities: `C` for Celsius, `F` for Fahrenheit. |
-| `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native read-only thermostat data. Decodes `zone_temperature`, `set_zone_hvac_mode`, `zone_setpoint`, and zone on/off broadcasts from the Air Conditioning application. Topics are keyed by the thermostat's **source unit** (not zone group) to support multiple thermostats: `cbus/read/{network}/172/{sourceUnit}/current_temperature`, `/setpoint`, `/mode` (`off`/`heat` verified; `cool`/`auto`/`fan_only` best-effort), and `/state` (`ON`/`OFF`). Read-only — no control commands. Off by default. |
+| `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native thermostat data. Decodes `zone_temperature` (incl. sensor status), `set_zone_hvac_mode` (mode, setpoint, fan speed/mode, flags), `set_ward_on/off`, and `zone_hvac_plant_status` (running action + plant error) broadcasts from the Air Conditioning application. Topics are keyed by the thermostat's **source unit** (not zone group) to support multiple thermostats: `cbus/read/{network}/172/{sourceUnit}/current_temperature`, `/setpoint`, `/mode` (`off`/`heat`/`cool`/`auto`/`fan_only`), `/state`, `/action`, `/fan_mode`, `/fan_speed`, `/error`, `/error_description`, `/sensor_status`. An HA `climate` entity is auto-created per thermostat (with fan mode). Off by default. |
+| `cbus_aircon_control_enabled` | boolean | `false` | Opt-in to **control** of native Air Conditioning thermostats (writes to live heating/cooling): enables `cbus/write/{network}/172/{sourceUnit}/setpoint` (°C), `/hvacmode` (`off`/`heat`/`cool`/`auto`/`fan_only`), and `/fanmode` (`automatic`/`continuous`), and adds command topics to the discovered climate entity. Setpoint writes are debounced (3s) per the protocol's echo guidance; flags, per-mode setpoints, and fan state learned from the thermostat are echoed on writes. Also sends `AIRCON REFRESH` when a zone group is first seen. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -462,7 +463,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | App ID | C-Bus Application | HA Entity Type | Discovery setting |
 |--------|-------------------|----------------|-------------------|
 | 56 | Lighting | `light` | Always enabled |
-| 172 | Air Conditioning (native, read-only) | `current_temperature`, `setpoint`, `mode`, `state` topics (keyed by source unit) | `cbus_aircon_app_id: 172` |
+| 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
@@ -485,14 +486,20 @@ HVAC climate entities use a temperature encoding based on community reports: 0.5
 
 Set `ha_discovery_hvac_app_id` to the app ID of your lighting-compatible HVAC group (the app your PAC or touchscreen uses to expose HVAC control) to enable HVAC discovery — do NOT use the native Air Conditioning app `172` here. Use `ha_hvac_temperature_unit` to select `C` (Celsius, default) or `F` (Fahrenheit).
 
-To read native thermostat data from the real C-Bus Air Conditioning application, set `cbus_aircon_app_id: 172`. This is **read-only** (no control commands). When set, cgateweb decodes room temperature, setpoint, operating mode, and zone on/off state from the AC application and publishes them keyed by the thermostat's source unit address:
+To read native thermostat data from the real C-Bus Air Conditioning application, set `cbus_aircon_app_id: 172`. cgateweb decodes room temperature, setpoint, operating mode, fan speed/mode, zone on/off state, plant running action, and plant error state from the AC application and publishes them keyed by the thermostat's source unit address:
 
 - `cbus/read/{network}/172/{sourceUnit}/current_temperature` — room temperature in °C
 - `cbus/read/{network}/172/{sourceUnit}/setpoint` — target setpoint in °C
-- `cbus/read/{network}/172/{sourceUnit}/mode` — `off` or `heat` (verified); `cool`, `auto`, `fan_only` (best-effort, not confirmed on all hardware)
+- `cbus/read/{network}/172/{sourceUnit}/mode` — `off`, `heat`, `cool`, `auto`, `fan_only` (all verified against real hardware and the protocol spec)
 - `cbus/read/{network}/172/{sourceUnit}/state` — `ON` / `OFF` (zone-group master on/off)
+- `cbus/read/{network}/172/{sourceUnit}/action` — `heating` / `cooling` / `fan` / `idle` (live plant running state)
+- `cbus/read/{network}/172/{sourceUnit}/fan_mode` — `automatic` / `continuous`; `cbus/read/{network}/172/{sourceUnit}/fan_speed` — raw 0–63 fan speed setting
+- `cbus/read/{network}/172/{sourceUnit}/error` + `/error_description` — plant error code and text (0 = no error)
+- `cbus/read/{network}/172/{sourceUnit}/sensor_status` — temperature sensor status (0 = ok)
 
-Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) rather than zone group, so installations with multiple thermostats sharing a zone group are correctly handled.
+Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) rather than zone group, so installations with multiple thermostats sharing a zone group are correctly handled. An HA `climate` entity (with fan mode) is auto-created per thermostat.
+
+Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it writes to live heating/cooling). When enabled: publish a target in °C to `cbus/write/{network}/172/{sourceUnit}/setpoint`, a mode (`off`/`heat`/`cool`/`auto`/`fan_only`) to `cbus/write/{network}/172/{sourceUnit}/hvacmode`, or a fan mode (`automatic`/`continuous`) to `cbus/write/{network}/172/{sourceUnit}/fanmode`. Setpoint writes are debounced to one command per 3s per the protocol's anti-echo guidance, and the thermostat's own flags, per-mode setpoints, and fan state are learned and echoed on writes.
 
 ## Networking
 

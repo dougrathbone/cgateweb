@@ -131,6 +131,7 @@ Supported Device Types:
 *   **Relays:** Devices using the configured `ha_discovery_relay_app_id` (default: `null`) are discovered as `switch` entities with device class `outlet`.
 *   **PIR Motion Sensors:** Devices using the configured `ha_discovery_pir_app_id` (default: `null`) are discovered as `binary_sensor` entities with device class `motion`.
 *   **HVAC / Climate (via lighting):** Devices using the configured `ha_discovery_hvac_app_id` (default: `null` — disabled) are discovered as `climate` entities. This drives a **lighting-compatible group**, not the native C-Bus Air Conditioning application — use the app ID of a PAC/touchscreen-exposed HVAC group (e.g. an "HVAC Actuator" lighting-style app), NOT the Air Conditioning app 172. See "HVAC notes" below.
+*   **Temperature sensors:** C-Bus Temperature Broadcast groups (App ID 25) are discovered event-driven as `sensor` entities (device class `temperature`) the first time each sensor broadcasts — no configuration needed beyond `ha_discovery_enabled`.
 
 > **HVAC notes:** `ha_discovery_hvac_app_id` is for the *lighting-compatible* HVAC pattern only: program a Pascal Logic Controller (PAC) or touchscreen to mirror HVAC control onto a lighting-style group/application, then point this setting at that app. Native C-Bus *Air Conditioning* (172) thermostats are supported directly — set `cbus_aircon_app_id` (typically `172`) for state decoding and climate entities, and opt in to control (set mode/temperature) with `cbus_aircon_control_enabled`. See below.
 >
@@ -142,8 +143,13 @@ Supported Device Types:
 > | `cbus/read/{net}/172/{sourceUnit}/setpoint` | Target setpoint in °C (raw / 256) |
 > | `cbus/read/{net}/172/{sourceUnit}/mode` | `off`, `heat`, `cool`, `auto`, `fan_only` (all verified against real hardware) |
 > | `cbus/read/{net}/172/{sourceUnit}/state` | `ON` / `OFF` (zone-group master on/off) |
+> | `cbus/read/{net}/172/{sourceUnit}/action` | `heating` / `cooling` / `fan` / `idle` (live plant running state) |
+> | `cbus/read/{net}/172/{sourceUnit}/fan_mode` | `automatic` / `continuous` (Aux Level bit 6) |
+> | `cbus/read/{net}/172/{sourceUnit}/fan_speed` | Raw fan speed setting 0–63 (Aux Level bits 0–5) |
+> | `cbus/read/{net}/172/{sourceUnit}/error` + `…/error_description` | Plant error code (0 = no error) and human-readable text |
+> | `cbus/read/{net}/172/{sourceUnit}/sensor_status` | Temperature sensor status (0 = ok; temperature is suppressed at total failure) |
 >
-> Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it writes to live heating/cooling). When enabled, publish a mode (`off`/`heat`/`cool`/`auto`/`fan_only`) to `cbus/write/{net}/172/{sourceUnit}/hvacmode` or a target in °C to `cbus/write/{net}/172/{sourceUnit}/setpoint` and cgateweb sends the native `AIRCON` commands; the discovered climate entity also gains command topics. To help capture raw event samples for other specialised applications (e.g. Temperature Broadcast app 25, Measurement app 228), set `cbusRawEventLogApps` to a list of app IDs (e.g. `['25', '228']`) — cgateweb will then log each matching C-Gate event line verbatim and publish it to `cbus/read/{net}/{app}/{group}/raw`. Defaults to `[]` (off).
+> Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it writes to live heating/cooling). When enabled, publish a mode (`off`/`heat`/`cool`/`auto`/`fan_only`) to `cbus/write/{net}/172/{sourceUnit}/hvacmode`, a target in °C to `cbus/write/{net}/172/{sourceUnit}/setpoint`, or a fan mode (`automatic`/`continuous`) to `cbus/write/{net}/172/{sourceUnit}/fanmode` and cgateweb sends the native `AIRCON` commands; the discovered climate entity also gains command topics. Setpoint writes are debounced to one command per 3s per the protocol's anti-echo guidance, and the thermostat's flags, per-mode setpoints, and fan state are learned and echoed on writes. To help capture raw event samples for other specialised applications (e.g. Temperature Broadcast app 25, Measurement app 228), set `cbusRawEventLogApps` to a list of app IDs (e.g. `['25', '228']`) — cgateweb will then log each matching C-Gate event line verbatim and publish it to `cbus/read/{net}/{app}/{group}/raw`. Defaults to `[]` (off).
 
 **Configuration (`settings.js`):**
 

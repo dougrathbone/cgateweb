@@ -90,8 +90,8 @@ sourceUnit, … , verb }` or `null`.
 
 | Verb | `kind` | Params after `<net>/172` | Decode |
 |------|--------|--------------------------|--------|
-| `zone_temperature` | `temperature` | `zoneGroup zones rawTemp flag` | ✅ `°C = rawTemp / 256` (`decodeZoneTemperature`) |
-| `set_zone_hvac_mode` | `mode` | `zoneGroup zones f0 f1 f2 f3 f4 f5 f6 f7` | ✅ `f0` = mode code; `f6` = setpoint raw; `f7` = Aux Level → `fanSpeed`/`fanMode` (`decodeZoneHvacMode`) |
+| `zone_temperature` | `temperature` | `zoneGroup zones rawTemp sensorStatus` | ✅ `°C = rawTemp / 256`, **signed** 2's complement (spec §25.5.1; both renderings normalised); `sensorStatus` per §25.6.12 → `sensor_status` topic; °C suppressed at total failure (§25.8.6) (`decodeZoneTemperature`) |
+| `set_zone_hvac_mode` | `mode` | `zoneGroup zones f0 f1 f2 f3 f4 f5 f6 f7` | ✅ `f0` = mode code; `f1` = Level-is-Raw; `f2–f4` = setback/guard/aux-used; `f6` = setpoint raw; `f7` = Aux Level → `auxLevel`/`fanSpeed`/`fanMode` (`decodeZoneHvacMode`) |
 | `set_ward_on` / `set_ward_off` | `state` | `zoneGroup` | ✅ on/off (`decodeWardState`) |
 | `zone_hvac_plant_status` | `action` | `zoneGroup zones hvacType hvacStatus hvacErrorCode` | ✅ running state → `hvac_action`; error bit/code → `error`/`errorCode`/`errorDescription` (`decodeZonePlantStatus`) |
 | `set_plant_hvac_level` | — | `zoneGroup zones f0 … level …` | ❓ plant demand level (~0–255); **not decoded** (not needed for a climate entity) |
@@ -104,17 +104,26 @@ sourceUnit, … , verb }` or `null`.
 | 1 | Heat | `heat` | |
 | 2 | Cool | `cool` | |
 | 3 | Heat/Cool (Auto) | `auto` | PICED says "Heat/Cool (Auto)"; HA `heat_cool` may be a better fit when a climate entity is built |
-| 4 | Fan Only | `fan_only` | see setpoint sentinel below |
+| 4 | Fan Only | `fan_only` | `f1=1` → `f6` is a raw fan level, not a setpoint |
 
 Map: `HVAC_MODE_BY_CODE` (`airconDecoder.js:29`). Unknown codes → `mode: null` and a
 warning is logged in `cgateWebBridge._handleAirconLine`.
 
-### Setpoint (`f6`)
-- `°C = f6 / 256` (e.g. `5632 → 22.0`, `3840 → 15.0`).
-- ⚠️ **Sentinel:** in **Fan Only** mode the thermostat sends `f6 = 32512` (`0x7F00`) =
-  "no setpoint". Decoding it naively yields a bogus **127 °C**. Guarded in
-  `decodeZoneHvacMode`: setpoint is only emitted when `0 < f6 ≤ 12800` (≤ 50 °C),
-  otherwise `null`. (Off mode sends `f6 = 0` → also `null`.)
+### Setpoint (`f6`) and the Level-is-Raw flag (`f1`)
+- With `f1 = 0`, `f6` is a temperature: `°C = f6 / 256` (e.g. `5632 → 22.0`,
+  `3840 → 15.0`). `f6 = 0` (sent in Off mode) → `null`, and a >0 °C / ≤50 °C
+  plausibility window guards against garbage.
+- With `f1 = 1` ("Level is Raw", spec §25.6.3 L bit), `f6` is a **raw fraction of
+  plant capacity** (§25.5.3), never a temperature — e.g. the Fan Only capture's
+  `f6 = 32512` is ~99.2 % fan output, not a "no setpoint sentinel" and certainly
+  not 127 °C. The decoder honours the flag: raw levels decode to `setpoint: null`.
+
+### Mode & Flags enable bits (`f2`–`f4`)
+Spec §25.6.3 packs these into the one Mode & Flags byte, which C-Gate explodes:
+`f2` = Setback enabled, `f3` = Guard enabled, `f4` = Aux Level used. Decoded as
+`setbackEnabled`/`guardEnabled`/`auxLevelUsed` and learned by the control
+registry so writes **echo the thermostat's own configuration** instead of
+silently clearing it (formerly hardcoded `0 0 1`).
 
 ### Aux Level (`f7` of `set_zone_hvac_mode`) — ✅ spec §25.8.10 / §25.6.11
 
@@ -184,6 +193,7 @@ cbus/read/{network}/172/{sourceUnit}/fan_mode       # automatic/continuous (Aux 
 cbus/read/{network}/172/{sourceUnit}/fan_speed      # raw 0-63 (Aux Level bits 0-5; 0 = default speed)
 cbus/read/{network}/172/{sourceUnit}/error          # HVAC error code (0 = no error, spec §25.6.5)
 cbus/read/{network}/172/{sourceUnit}/error_description  # human-readable error text
+cbus/read/{network}/172/{sourceUnit}/sensor_status  # temperature sensor status (spec §25.6.12, 0 = ok)
 ```
 
 Suffix constants: `src/constants.js` (`MQTT_TOPIC_SUFFIX_HVAC_*`, incl.
@@ -237,29 +247,42 @@ C-Gate event line
    mode list. Triggered from `cgateWebBridge._handleAirconLine`; gated on
    `ha_discovery_enabled` + `cbus_aircon_app_id`. Read-only by default — command topics
    are added when `cbus_aircon_control_enabled` is on (§7.2).
-2. **Write/control command format — DONE, shipped 1.14.0.** The native command turned out
-   to be a symmetric `AIRCON` command on the command port (syntax verified against the
-   C-Gate v3.3.2 `HELP`): `AIRCON SET_ZONE_HVAC_MODE //<project>/<net>/172 <ward>
-   <zone-list> <mode> <rawlevel> 0 0 1 <type> <level> 0` for mode/setpoint, and
+2. **Write/control command format — DONE, shipped 1.14.0; hardened after the spec review.**
+   The native command turned out to be a symmetric `AIRCON` command on the command port
+   (syntax verified against the C-Gate v3.3.2 `HELP`): `AIRCON SET_ZONE_HVAC_MODE
+   //<project>/<net>/172 <ward> <zone-list> <mode> <rawlevel> <setback> <guard>
+   <useaux> <type> <level> <aux>` for mode/setpoint/fan-mode, and
    `AIRCON SET_WARD_ON|OFF //<project>/<net>/172 <ward>` for on/off. Writes can't be
    keyed by source unit the way reads are, so `src/airconControlRegistry.js` learns each
    thermostat's ward/zones/type from its own broadcasts and echoes them back — a command
    for unit 202 controls 202, not the 201 it shares a ward with. Setpoints go out as
-   `level = °C × 256` (rawlevel=0); Fan Only uses the `0x7F00` "no level" sentinel.
-   `_handleHvacSetpoint` / `_handleHvacMode` (`src/mqttCommandRouter.js`) branch on the
-   target app: the native 172 app takes these AIRCON commands, anything else keeps the
-   via-lighting RAMP/ON/OFF behaviour. Control is opt-in via `cbus_aircon_control_enabled`
-   (off by default) because it writes to live heating/cooling.
-3. **Fan speed — RESOLVED from the spec.** §25.8.10 lays Set Zone HVAC Mode out as
-   `<Zone Group> <Zone List> <HVAC Mode & Flags> <HVAC Type> <Level> <Aux Level>`,
-   so the Aux Level is `f7` (the last field — the one capture with a non-zero
-   trailing field, auto mode `f7=63`, fits). Per §25.6.11 the decoder now exposes
+   `level = °C × 256` (rawlevel=0); Fan Only uses a raw level. Spec-driven refinements:
+   - **Flags echo:** the setback/guard/aux-used bits and Aux Level are learned from
+     broadcasts and echoed on writes (§25.6.3) — no more hardcoded `0 0 1 … 0`
+     clearing the thermostat's own configuration.
+   - **Per-operating-type setpoints (§25.12.11):** the registry keeps a setpoint per
+     mode; a mode change recalls the target mode's own setpoint instead of forcing the
+     current mode's value into it.
+   - **Setpoint debounce (§25.12.11):** rapid setpoint adjustments collapse into a
+     single command 3 s after the last change (the HA state publish stays immediate);
+     a mode/fan/off command cancels a pending setpoint write.
+   `_handleHvacSetpoint` / `_handleHvacMode` / `_handleHvacFanMode`
+   (`src/mqttCommandRouter.js`) branch on the target app: the native 172 app takes
+   these AIRCON commands, anything else keeps the via-lighting RAMP/ON/OFF behaviour.
+   Control is opt-in via `cbus_aircon_control_enabled` (off by default) because it
+   writes to live heating/cooling.
+3. **Fan speed/mode — RESOLVED from the spec; control shipped.** §25.8.10 lays Set Zone
+   HVAC Mode out as `<Zone Group> <Zone List> <HVAC Mode & Flags> <HVAC Type> <Level>
+   <Aux Level>`, so the Aux Level is `f7` (the last field — the one capture with a
+   non-zero trailing field, auto mode `f7=63`, fits). Per §25.6.11 the decoder exposes
    `fanSpeed` (bits 0–5, raw 0–63, 0 = default speed) and `fanMode` (bit 6,
    `'automatic'`/`'continuous'`), published to `fan_speed`/`fan_mode` topics; the HA
-   climate entity wires `fan_mode_state_topic` (read-only — the control path does
-   not write the Aux Level). §25.12.8 + the mimic notes say fan speed can live in
-   the Raw Level instead under some conditions — the decoder exposes what the Aux
-   Level carries and does not implement that conditional logic.
+   climate entity wires `fan_mode_state_topic`, and when control is enabled also
+   `fan_mode_command_topic` (`cbus/write/…/fanmode`): `automatic` clears the aux-used
+   flag (§25.6.3 A bit), `continuous` sets Aux Level bit 6 preserving learned speed
+   bits. §25.12.8 + the mimic notes say fan speed can live in the Raw Level instead
+   under some conditions — the decoder exposes what the Aux Level carries and does not
+   implement that conditional logic.
 4. **`cool`/`error` bits — RESOLVED from the spec.** §25.6.6 confirms bit0 =
    Cooling (previously inferred by position), bit6 = Error, bit7 = Expansion; all
    three are decoded. §25.8.4 identifies the 5th param as the HVAC Error Code,
@@ -269,6 +292,32 @@ C-Gate event line
 5. **`auto` vs `heat_cool` — DECIDED (1.12.0).** PICED labels code 3 "Heat/Cool (Auto)";
    we publish `auto`. The shipped climate entity uses a single setpoint, so HA's
    dual-setpoint `heat_cool` does not apply and `auto` stays.
+6. **Signed temperatures & sensor status — RESOLVED from the spec.** `zone_temperature`
+   is signed 2's complement (§25.5.1); both C-Gate renderings (signed / unsigned
+   16-bit) are normalised, so sub-zero zones decode. The 4th param is the Sensor
+   Status (§25.6.12), published to `sensor_status`; at "Sensor total failure" ($03)
+   the temperature is meaningless (§25.8.6) and suppressed, and a degraded sensor
+   logs an edge-triggered `warn`.
+7. **AIRCON REFRESH — shipped (spec §25.8.3/§25.12.11).** Mimic devices should Refresh
+   after start-up; the first time a zone group is seen we queue `AIRCON REFRESH` for
+   it (once per ward per session, inside the spec's 5-minute cap), only when control
+   is enabled so read-only installs stay passive. ⚠️ The textual `AIRCON REFRESH`
+   verb follows the HELP-verified command convention but is **not itself verified
+   against a live C-Gate HELP** — if unsupported, C-Gate just returns an error
+   response. Verify on real hardware and adjust if the verb differs.
+8. **Remaining gaps (documented, not bugs):**
+   - **Humidity half of the application** ($0D/$1D/$47/$4E + guard/setback limits) —
+     not decoded; no humidity hardware in the reference install. Add per §8 if a user
+     with humidity plant supplies a capture.
+   - **Comfort levels (§25.12.7)** — evaporative plant presents a Comfort Level, not a
+     temperature; we decode it as °C. Only affects evaporative installs.
+   - **Fan speed in the Raw Level (§25.12.8)** — the conditional logic (raw vs aux
+     level by plant/mode) is not implemented; we expose the Aux Level as-is.
+   - **Error/sensor HA entities** — `error`/`error_description`/`sensor_status` are
+     MQTT topics + log warnings; no dedicated `binary_sensor` discovery entity yet.
+   - **Zone-list targeting** — writes echo the zone list from the thermostat's mode
+     broadcasts, which per §25.12.10 are addressed to active zones; we don't model
+     per-zone active state beyond that.
 
 ---
 
