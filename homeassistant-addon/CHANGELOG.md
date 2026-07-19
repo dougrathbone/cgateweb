@@ -5,6 +5,22 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.13] - 2026-07-19
+
+### Added
+
+- **Serial device dropdown for the USB-serial PCI alpha (#28).** `cgate_serial_device` now renders as a dropdown of serial devices detected on the host instead of a free-text field. Custom paths (e.g. `/dev/serial/by-id/...`, which survives replugging) remain possible via the YAML config editor. Startup also logs an inventory of detected serial devices when the option is set, so a wrong pick shows what actually exists.
+- **Startup diagnostics for the serial alpha (#28).** With `cgate_serial_device` set in managed mode, startup logs the selected device's resolved target and C-Gate's own `PORT LIST`/`IFLIST` output in a paste-ready block for issue reports. Diagnostics never block or break startup.
+
+### Fixed
+
+- **Default managed-mode C-Gate download is now integrity-checked.** The built-in download URL is verified against a sha256 pinned in the install script instead of proceeding warn-only. A user-set `cgate_download_sha256` still overrides, and custom URLs without one already failed hard.
+- **Web server shutdown no longer hangs test workers.** A `close()` racing an in-flight `start()` silently failed and left the server listening; `close()` now awaits the start first.
+
+### Changed
+
+- Internal: `@ts-check` now covers the stateful core (bridge, C-Gate connection, MQTT manager, device state, and the HA discovery modules); ~185 type errors fixed via JSDoc only, no runtime changes.
+
 ## [1.15.12] - 2026-07-18
 
 ### Added
