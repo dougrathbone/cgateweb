@@ -1,3 +1,4 @@
+// @ts-check
 /**
  * Shared HTTP helpers for the web server: JSON responses, security/CORS
  * headers, and plain-object sanitization for untrusted request bodies.
@@ -5,7 +6,7 @@
 
 /**
  * Send a JSON response with the given status code.
- * @param {http.ServerResponse} res
+ * @param {import('http').ServerResponse} res
  * @param {number} statusCode
  * @param {Object} data
  */
@@ -23,7 +24,7 @@ function sendJSON(res, statusCode, data) {
  * common XSS payloads (loading attacker-controlled JS from a third-party
  * host). frame-ancestors is intentionally omitted because HA Ingress embeds
  * the addon from a different host.
- * @param {http.ServerResponse} res
+ * @param {import('http').ServerResponse} res
  */
 function setSecurityHeaders(res) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -44,8 +45,8 @@ function setSecurityHeaders(res) {
  * Apply CORS headers based on the allowlist. If the request origin is not in
  * the allowlist, the Allow-Origin header is omitted entirely — the browser
  * will block the cross-origin request.
- * @param {http.IncomingMessage} req
- * @param {http.ServerResponse} res
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
  * @param {string[]|null} allowedOrigins
  */
 function setCorsHeaders(req, res, allowedOrigins) {

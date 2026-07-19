@@ -1,3 +1,4 @@
+// @ts-check
 const http = require('http');
 const { sendJSON } = require('./httpHelpers');
 
