@@ -5,6 +5,17 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.14] - 2026-07-19
+
+### Added
+
+- **HVAC plant error reporting, decoded from the official protocol spec.** Air Conditioning (172) plant status now exposes the Error/Expansion status flags and the previously-ignored HVAC Error Code, published as `error` and `error_description` topics under `cbus/read/<net>/172/<unit>/` with named descriptions from the spec (heater/cooler/fan failure, sensor failure, service/filter required). A non-zero error code also logs a warning once per unit until it clears.
+- **HVAC fan speed and fan mode.** Zone mode events now decode the Aux Level into `fan_speed` (raw 0-63) and `fan_mode` (`automatic`/`continuous`) topics, and native climate entities expose read-only fan mode. Fan mode is not settable; the control path does not write the Aux Level.
+
+### Fixed
+
+- **Processing error logs no longer drop the details.** Errors while handling C-Gate command/event lines logged neither the error nor the offending line; both are now included.
+
 ## [1.15.13] - 2026-07-19
 
 ### Added
