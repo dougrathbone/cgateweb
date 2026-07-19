@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-07-19
+
+### Added
+
+- **Tree re-fetch diagnostics now name the unassigned units (#25).** The empty-`<Groups>` re-fetch scheduling, budget-exhausted, and unchanged-tree stop messages list the affected units (e.g. `15 SENLL, 16 SENLL, 20 SENTEMP`) so installations with permanently group-less input units (sensors whose bindings never appear in TREEXML) self-identify in logs.
+
 ## [1.16.0] - 2026-07-19
 
 ### Added
