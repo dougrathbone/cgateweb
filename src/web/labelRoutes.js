@@ -141,7 +141,9 @@ class LabelRoutes {
         }
 
         const contentType = req.headers['content-type'] || '';
-        let fileBuffer, filename;
+        /** @type {Buffer} */
+        let fileBuffer;
+        let filename;
 
         if (contentType.includes('multipart/form-data')) {
             const result = await parseMultipart(req, contentType, this.maxBodySizeBytes);
@@ -151,7 +153,7 @@ class LabelRoutes {
             fileBuffer = result.buffer;
             filename = result.filename;
         } else {
-            const body = await readRequestBody(req, this.maxBodySizeBytes, { raw: true });
+            const body = /** @type {Buffer|null} */ (await readRequestBody(req, this.maxBodySizeBytes, { raw: true }));
             if (!body || body.length === 0) {
                 return sendJSON(res, 400, { error: 'No file data received' });
             }
