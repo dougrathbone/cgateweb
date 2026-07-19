@@ -2,6 +2,8 @@
 'use strict';
 
 const airconDecoder = require('./applicationDecoders/airconDecoder');
+const { buildAirconRefresh } = require('./airconControlRegistry');
+const { NEWLINE } = require('./constants');
 
 /**
  * Decoded aircon reading produced by airconDecoder.decodeLine. The exact
@@ -30,7 +32,7 @@ const airconDecoder = require('./applicationDecoders/airconDecoder');
  * event capture and the standard parser rather than being silently dropped.
  */
 class AirconEventHandler {
-    constructor({ registry, eventPublisher, logger, settings, getHaDiscovery }) {
+    constructor({ registry, eventPublisher, logger, settings, getHaDiscovery, cbusname, sendCommand }) {
         this.registry = registry;
         this.eventPublisher = eventPublisher;
         this.logger = logger;
@@ -38,10 +40,17 @@ class AirconEventHandler {
         // haDiscovery is initialized after the bridge constructor runs, so read it
         // live via an accessor to preserve the original late-binding behaviour.
         this.getHaDiscovery = getHaDiscovery;
+        // C-Gate project name + command sink, used for AIRCON REFRESH requests.
+        // Optional: without them no refresh is ever sent.
+        this.cbusname = cbusname || null;
+        this.sendCommand = typeof sendCommand === 'function' ? sendCommand : null;
         // Last warned plant error code per unit, for edge-triggered warn logging.
         this._lastErrorWarned = new Map();
         // Last warned temperature-sensor status per unit (same edge-triggered pattern).
         this._lastSensorWarned = new Map();
+        // Zone groups ("wards") already sent an AIRCON REFRESH this session.
+        // Once-per-session honours the spec's max-once-per-5-minutes (§25.8.3).
+        this._refreshedWards = new Set();
     }
 
     /**
@@ -93,6 +102,7 @@ class AirconEventHandler {
             if (reading.kind === 'temperature') {
                 this._warnOnSensorFault(reading);
             }
+            this._maybeRefreshWard(reading);
             return true;
         }
         // Recognisable aircon traffic, but we couldn't decode it or it targets a
@@ -149,6 +159,36 @@ class AirconEventHandler {
         this.logger.warn(
             `C-Bus HVAC temperature sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
         );
+    }
+
+    /**
+     * Mimic-device behaviour (§25.12.11 "send a Refresh as soon as practical
+     * after start-up"): the first time a zone group is seen, ask its services
+     * to broadcast their full state so learned state and HA entities settle
+     * quickly instead of waiting for the periodic broadcast trickle. Sent at
+     * most once per ward per session (§25.8.3 caps REFRESH at once per 5
+     * minutes) and only when control is enabled, so read-only installs stay
+     * purely passive listeners.
+     *
+     * @param {Object} reading - Any decoded aircon reading with a zoneGroup.
+     * @private
+     */
+    _maybeRefreshWard(reading) {
+        if (!this.settings.cbus_aircon_control_enabled) return;
+        if (!this.sendCommand || !this.cbusname) return;
+        const ward = reading.zoneGroup;
+        if (!ward) return;
+        const key = `${reading.network}/${reading.application}/${ward}`;
+        if (this._refreshedWards.has(key)) return;
+        this._refreshedWards.add(key);
+        const cmd = buildAirconRefresh({
+            cbusname: this.cbusname,
+            network: reading.network,
+            application: reading.application,
+            ward
+        });
+        this.logger.info(`Requesting aircon state refresh for zone group ${ward} (${reading.network}/${reading.application})`);
+        this.sendCommand(cmd + NEWLINE);
     }
 }
 

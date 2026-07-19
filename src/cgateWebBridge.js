@@ -217,12 +217,16 @@ class CgateWebBridge {
 
         // Decodes native-aircon (app 172) event lines, records control state, and
         // publishes readings. haDiscovery is read live as it's initialized later.
+        // sendCommand feeds the throttled command queue (AIRCON REFRESH only,
+        // and only when control is enabled — see _maybeRefreshWard).
         this.airconEventHandler = new AirconEventHandler({
             registry: this.airconControlRegistry,
             eventPublisher: this.eventPublisher,
             logger: this.logger,
             settings: this.settings,
-            getHaDiscovery: this._getHaDiscovery
+            getHaDiscovery: this._getHaDiscovery,
+            cbusname: this.settings.cbusname,
+            sendCommand: (command) => this.cgateCommandQueue.add(command)
         });
 
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).

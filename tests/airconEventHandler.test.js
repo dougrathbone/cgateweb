@@ -8,7 +8,7 @@ function makeDeps(overrides = {}) {
     return {
         registry: { recordModeReading: jest.fn() },
         eventPublisher: { publishReading: jest.fn() },
-        logger: { debug: jest.fn(), warn: jest.fn(), isLevelEnabled: jest.fn().mockReturnValue(false) },
+        logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), isLevelEnabled: jest.fn().mockReturnValue(false) },
         settings: { cbus_aircon_app_id: '172' },
         getHaDiscovery: () => null,
         ...overrides,
@@ -162,6 +162,41 @@ describe('AirconEventHandler', () => {
             handler.handleLine(OK_LINE);
             handler.handleLine('# aircon zone_temperature //THEGAFF/254/172 1 0 4431 1 #sourceunit=201 OID=x');
             expect(deps.logger.warn).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('AIRCON REFRESH on first ward sighting (spec §25.8.3/§25.12.11)', () => {
+        const CONTROL_SETTINGS = { cbus_aircon_app_id: '172', cbus_aircon_control_enabled: true };
+
+        it('sends AIRCON REFRESH once per ward when control is enabled', () => {
+            const deps = makeDeps({ settings: CONTROL_SETTINGS, cbusname: 'THEGAFF', sendCommand: jest.fn() });
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(AIRCON_MODE_LINE); // ward 1
+            handler.handleLine(AIRCON_MODE_LINE); // same ward again
+            expect(deps.sendCommand).toHaveBeenCalledTimes(1);
+            expect(deps.sendCommand).toHaveBeenCalledWith('AIRCON REFRESH //THEGAFF/254/172 1\n');
+        });
+
+        it('refreshes each newly seen ward independently', () => {
+            const deps = makeDeps({ settings: CONTROL_SETTINGS, cbusname: 'THEGAFF', sendCommand: jest.fn() });
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(AIRCON_MODE_LINE); // ward 1
+            handler.handleLine('aircon set_ward_on //THEGAFF/254/172 2 #sourceunit=201 OID=x'); // ward 2
+            expect(deps.sendCommand).toHaveBeenCalledTimes(2);
+            expect(deps.sendCommand).toHaveBeenLastCalledWith('AIRCON REFRESH //THEGAFF/254/172 2\n');
+        });
+
+        it('stays passive when control is disabled (read-only installs)', () => {
+            const deps = makeDeps({ cbusname: 'THEGAFF', sendCommand: jest.fn() });
+            const handler = new AirconEventHandler(deps);
+            handler.handleLine(AIRCON_MODE_LINE);
+            expect(deps.sendCommand).not.toHaveBeenCalled();
+        });
+
+        it('does nothing without a command sink', () => {
+            const deps = makeDeps({ settings: CONTROL_SETTINGS });
+            const handler = new AirconEventHandler(deps);
+            expect(() => handler.handleLine(AIRCON_MODE_LINE)).not.toThrow();
         });
     });
 

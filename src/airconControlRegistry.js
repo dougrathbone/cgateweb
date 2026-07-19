@@ -124,11 +124,22 @@ function buildSetWardOff({ cbusname, network, application, ward }) {
     return `AIRCON SET_WARD_OFF //${cbusname}/${network}/${application} ${ward}`;
 }
 
+/**
+ * Build an `AIRCON REFRESH <ward>` command line (no trailing newline) — asks
+ * the services in a zone group to broadcast their full state (spec §25.8.3).
+ * Follows the same AIRCON verb convention as the HELP-verified commands above;
+ * unlike them it has not been verified against a live C-Gate HELP listing.
+ */
+function buildAirconRefresh({ cbusname, network, application, ward }) {
+    return `AIRCON REFRESH //${cbusname}/${network}/${application} ${ward}`;
+}
+
 module.exports = {
     AirconControlRegistry,
     HVAC_CODE_BY_MODE,
     FAN_LEVEL_SENTINEL,
     DEFAULT_SETPOINT_C,
     buildSetZoneHvacMode,
-    buildSetWardOff
+    buildSetWardOff,
+    buildAirconRefresh
 };

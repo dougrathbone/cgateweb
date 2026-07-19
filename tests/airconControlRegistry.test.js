@@ -2,7 +2,8 @@ const {
     AirconControlRegistry,
     HVAC_CODE_BY_MODE,
     buildSetZoneHvacMode,
-    buildSetWardOff
+    buildSetWardOff,
+    buildAirconRefresh
 } = require('../src/airconControlRegistry');
 
 describe('AirconControlRegistry', () => {
@@ -113,5 +114,10 @@ describe('aircon command builders', () => {
     it('builds SET_WARD_OFF', () => {
         expect(buildSetWardOff({ cbusname: 'THEGAFF', network: '254', application: '172', ward: '1' }))
             .toBe('AIRCON SET_WARD_OFF //THEGAFF/254/172 1');
+    });
+
+    it('builds AIRCON REFRESH for a ward', () => {
+        expect(buildAirconRefresh({ cbusname: 'THEGAFF', network: '254', application: '172', ward: '1' }))
+            .toBe('AIRCON REFRESH //THEGAFF/254/172 1');
     });
 });
