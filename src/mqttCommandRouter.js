@@ -645,6 +645,7 @@ class MqttCommandRouter extends EventEmitter {
             modeRaw: (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
                 ? state.modeRaw : HVAC_CODE_BY_MODE.heat,
             rawlevel: 0,
+            ...this._airconFlagEcho(state),
             type: (state.type !== null && state.type !== undefined) ? state.type : 0,
             level
         });
@@ -728,12 +729,30 @@ class MqttCommandRouter extends EventEmitter {
             zones: state.zones,
             modeRaw: code,
             rawlevel,
+            ...this._airconFlagEcho(state),
             type: (state.type !== null && state.type !== undefined) ? state.type : 0,
             level
         });
         this._queueCommand(cmd + NEWLINE);
         this._publishOptimisticHvacState(network, application, unit, { mode });
         this.logger.info(`Native HVAC mode: ${network}/${unit} -> ${mode} (ward ${state.ward}, zones ${state.zones})`);
+    }
+
+    /**
+     * Resolve the Mode & Flags byte fields (§25.6.3) and Aux Level for a write
+     * from the thermostat's learned broadcasts, so HA-originated commands echo
+     * its configuration instead of silently clearing setback/guard/aux state.
+     * Defaults mirror the thermostat-typical broadcast (setback 0, guard 0,
+     * aux used, aux level 0) when nothing has been learned.
+     * @private
+     */
+    _airconFlagEcho(state) {
+        return {
+            setback: state.setbackEnabled === true ? 1 : 0,
+            guard: state.guardEnabled === true ? 1 : 0,
+            useaux: state.auxLevelUsed === false ? 0 : 1,
+            aux: (state.auxLevelUsed && Number.isInteger(state.auxLevel)) ? state.auxLevel : 0
+        };
     }
 
     /**

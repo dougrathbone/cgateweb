@@ -95,6 +95,29 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(queued[1].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 2560 0');
     });
 
+    it('echoes the thermostat\'s learned flags and aux level instead of clearing them', () => {
+        const { router, queued } = makeRouter();
+        // Thermostat reports setback enabled, guard off, aux used with continuous fan
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', modeRaw: 1, type: 3, setpointRaw: 5632,
+            setbackEnabled: true, guardEnabled: false, auxLevelUsed: true, auxLevel: 64
+        });
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 1 0 1 3 6400 64');
+    });
+
+    it('sends useaux=0 when the thermostat broadcasts aux-unused', () => {
+        const { router, queued } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', modeRaw: 1, type: 3, setpointRaw: 5632,
+            setbackEnabled: false, guardEnabled: false, auxLevelUsed: false, auxLevel: 0
+        });
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 0 3 6400 0');
+    });
+
     it('optimistically publishes the new state so HA updates instantly', () => {
         const { router, published } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');

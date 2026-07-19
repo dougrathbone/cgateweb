@@ -46,17 +46,25 @@ class AirconControlRegistry {
         const key = AirconControlRegistry._key(reading.network, reading.sourceUnit);
         const prev = this._byUnit.get(key) || {};
         const isOn = reading.modeRaw !== null && reading.modeRaw !== undefined && reading.modeRaw !== 0;
+        const keep = (value, fallback) => (value !== null && value !== undefined ? value : fallback);
         this._byUnit.set(key, {
             network: reading.network,
             application: reading.application,
             ward: reading.zoneGroup,
             zones: reading.zones,
-            // Prefer the plant type seen while running; off broadcasts carry a
-            // different (sentinel) type that won't drive the plant on.
+            // Prefer the plant type seen while running; off broadcasts carry
+            // type 255 ("Any", §25.6.4) which won't drive the plant on.
             type: (isOn && reading.type !== null && reading.type !== undefined) ? reading.type : prev.type,
             modeRaw: (reading.modeRaw !== null && reading.modeRaw !== undefined) ? reading.modeRaw : prev.modeRaw,
             // Off broadcasts carry setpointRaw=0 as a sentinel; keep the last active target.
-            setpointRaw: (isOn && reading.setpointRaw > 0) ? reading.setpointRaw : prev.setpointRaw
+            setpointRaw: (isOn && reading.setpointRaw > 0) ? reading.setpointRaw : prev.setpointRaw,
+            // Mode & Flags byte (§25.6.3) + Aux Level, echoed back on writes so
+            // an HA-originated command doesn't silently clear the thermostat's
+            // own setback/guard/aux configuration.
+            setbackEnabled: keep(reading.setbackEnabled, prev.setbackEnabled),
+            guardEnabled: keep(reading.guardEnabled, prev.guardEnabled),
+            auxLevelUsed: keep(reading.auxLevelUsed, prev.auxLevelUsed),
+            auxLevel: keep(reading.auxLevel, prev.auxLevel)
         });
     }
 
@@ -67,11 +75,12 @@ class AirconControlRegistry {
 
 /**
  * Build an `AIRCON SET_ZONE_HVAC_MODE` command line (no trailing newline).
- * Flags mirror the values C-Bus thermostats broadcast in normal operation
- * (setback=0, guard=0, useaux=1, aux=0).
+ * The setback/guard/useaux/aux fields default to the values C-Bus thermostats
+ * broadcast in normal operation (0/0/1/0); callers pass the flags learned by
+ * the registry so a write echoes the thermostat's own configuration (§25.6.3).
  */
-function buildSetZoneHvacMode({ cbusname, network, application, ward, zones, modeRaw, rawlevel, type, level }) {
-    return `AIRCON SET_ZONE_HVAC_MODE //${cbusname}/${network}/${application} ${ward} ${zones} ${modeRaw} ${rawlevel} 0 0 1 ${type} ${level} 0`;
+function buildSetZoneHvacMode({ cbusname, network, application, ward, zones, modeRaw, rawlevel, setback = 0, guard = 0, useaux = 1, type, level, aux = 0 }) {
+    return `AIRCON SET_ZONE_HVAC_MODE //${cbusname}/${network}/${application} ${ward} ${zones} ${modeRaw} ${rawlevel} ${setback} ${guard} ${useaux} ${type} ${level} ${aux}`;
 }
 
 function buildSetWardOff({ cbusname, network, application, ward }) {

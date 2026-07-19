@@ -197,7 +197,9 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
  *   f1 = "Level is Raw" flag (§25.6.3 L bit) — decoded as levelIsRaw. When 1,
  *        f6 carries a raw fraction of plant capacity (§25.5.3), not a
  *        temperature — e.g. the fan_only capture's 32512 ≈ 99.2% fan output.
- *   f2–f4 = setback / guard / aux-level-used flags (always 0/0/1 in captures; not decoded)
+ *   f2–f4 = setback / guard / aux-level-used flags (§25.6.3 B/G/A bits) —
+ *        decoded as setbackEnabled / guardEnabled / auxLevelUsed so write-back
+ *        can echo the thermostat's own configuration instead of clearing it.
  *   f5 = HVAC plant type (§25.6.4 — ✅ captures: 1=furnace, 3=heat pump reverse
  *        cycle, 255=Any match the captured units)
  *   f6 = setpoint raw when f1=0 (°C = f6/256); 0 means no setpoint
@@ -228,6 +230,16 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     // f1 (params index 3) = "Level is Raw" flag (§25.6.3 L bit).
     const levelIsRaw = parseInt(params[3], 10) === 1;
 
+    // f2–f4 (params indices 4–6) = Setback / Guard / Aux-Level-used enable flags
+    // (§25.6.3 B/G/A bits) → booleans, null when unparseable. Learned by the
+    // control registry so writes echo the thermostat's own configuration.
+    const f2 = parseInt(params[4], 10);
+    const f3 = parseInt(params[5], 10);
+    const f4 = parseInt(params[6], 10);
+    const setbackEnabled = Number.isInteger(f2) ? f2 === 1 : null;
+    const guardEnabled = Number.isInteger(f3) ? f3 === 1 : null;
+    const auxLevelUsed = Number.isInteger(f4) ? f4 === 1 : null;
+
     // f6 is at params index 8 (zoneGroup + zones + f0..f5 = 8 items before f6).
     // Its meaning follows f1: with Level-is-Raw it is a signed fraction of
     // plant capacity (§25.5.3 — the fan_only broadcast's 32512 ≈ 99.2% fan
@@ -248,11 +260,13 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     // f7 (params index 9) = Aux Level per spec §25.6.11. Bits 0–5 are the raw fan
     // speed setting (0 = run at default speed, 1–63 plant-dependant), bit 6 is the
     // fan mode; bit 7 is reserved and tolerated (ignored) if a device sets it.
-    const auxLevel = params.length > 9 ? parseInt(params[9], 10) : NaN;
-    const fanSpeed = Number.isInteger(auxLevel) ? auxLevel & 0x3F : null;
-    const fanMode = Number.isInteger(auxLevel) ? ((auxLevel & 0x40) !== 0 ? 'continuous' : 'automatic') : null;
+    // The raw byte is also exposed verbatim so write-back can echo it.
+    const auxLevelRaw = params.length > 9 ? parseInt(params[9], 10) : NaN;
+    const auxLevel = Number.isInteger(auxLevelRaw) ? auxLevelRaw : null;
+    const fanSpeed = auxLevel !== null ? auxLevel & 0x3F : null;
+    const fanMode = auxLevel !== null ? ((auxLevel & 0x40) !== 0 ? 'continuous' : 'automatic') : null;
 
-    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, setpoint, setpointRaw, type, fanSpeed, fanMode, verb };
+    return { kind: 'mode', network, application, zoneGroup, zones, sourceUnit, mode, modeRaw, levelIsRaw, setbackEnabled, guardEnabled, auxLevelUsed, setpoint, setpointRaw, type, auxLevel, fanSpeed, fanMode, verb };
 }
 
 /**

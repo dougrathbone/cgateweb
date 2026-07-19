@@ -191,9 +191,13 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             mode: 'heat',
             modeRaw: 1,
             levelIsRaw: false,
+            setbackEnabled: false,
+            guardEnabled: false,
+            auxLevelUsed: true,
             setpoint: 22,
             setpointRaw: 5632,
             type: 1,
+            auxLevel: 0,
             fanSpeed: 0,
             fanMode: 'automatic',
             verb: 'set_zone_hvac_mode'
@@ -214,9 +218,13 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
             mode: 'off',
             modeRaw: 0,
             levelIsRaw: false,
+            setbackEnabled: false,
+            guardEnabled: false,
+            auxLevelUsed: true,
             setpoint: null,
             setpointRaw: 0,
             type: 255,
+            auxLevel: 0,
             fanSpeed: 0,
             fanMode: 'automatic',
             verb: 'set_zone_hvac_mode'
@@ -284,6 +292,17 @@ describe('airconDecoder — set_zone_hvac_mode', () => {
         expect(result.mode).toBe('fan_only');
         expect(result.modeRaw).toBe(4);
         expect(result.setpoint).toBe(25);
+    });
+
+    it('decodes the Mode & Flags enable bits (f2 setback, f3 guard, f4 aux-used) for write-back echo', () => {
+        // Spec §25.6.3: B (setback) / G (guard) / A (aux level used) bits.
+        const line = 'aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 1 0 1 1 0 3 5632 64 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.setbackEnabled).toBe(true);
+        expect(r.guardEnabled).toBe(true);
+        expect(r.auxLevelUsed).toBe(false);
+        expect(r.auxLevel).toBe(64);
+        expect(r.fanMode).toBe('continuous');
     });
 
     it('returns null when fewer than 7 trailing fields (f0..f6 not all present)', () => {
