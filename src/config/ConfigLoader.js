@@ -1,3 +1,4 @@
+// @ts-check
 const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
@@ -354,7 +355,7 @@ class ConfigLoader {
      * Apply auto-detected MQTT config to the loaded settings.
      * Only fills in host/credentials when not explicitly configured.
      * @param {Object} settings - The settings object to augment
-     * @returns {Object} settings with MQTT fields populated (mutated in place)
+     * @returns {Promise<Object>} settings with MQTT fields populated (mutated in place)
      */
     async applyMqttAutoDetection(settings) {
         const mqttConfig = await this.detectMqttConfig();
