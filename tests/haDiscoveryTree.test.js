@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -427,5 +427,108 @@ describe('networkHasUnsyncedUnits', () => {
     it('returns false for a network element with no units and for null', () => {
         expect(networkHasUnsyncedUnits({ NetworkNumber: '254' })).toBe(false);
         expect(networkHasUnsyncedUnits(null)).toBe(false);
+    });
+});
+
+describe('treeGroupSignature', () => {
+    it('returns an empty string for null and for a network with no units', () => {
+        expect(treeGroupSignature(null)).toBe('');
+        expect(treeGroupSignature({ NetworkNumber: '254' })).toBe('');
+    });
+
+    it('fingerprints flat-shape units as address:sorted-groups, one entry per non-management unit', () => {
+        const network = { Unit: [
+            { Address: '13', Application: '56, 255', Groups: '32,31' },
+            { Address: '14', Application: '56, 255', Groups: '' }
+        ] };
+        expect(treeGroupSignature(network)).toBe('13:31,32|14:');
+    });
+
+    it('fingerprints structured-shape units, collecting groups across real apps', () => {
+        const network = { Unit: [
+            { UnitAddress: '100', Application: [
+                { ApplicationAddress: '56', Group: [
+                    { GroupAddress: '10', Label: 'Kitchen' },
+                    { GroupAddress: '9', Label: 'Hall' }
+                ] },
+                { ApplicationAddress: '57', Group: { GroupAddress: '21' } }
+            ] },
+            { UnitAddress: '101', Application: { ApplicationAddress: '56' } }
+        ] };
+        expect(treeGroupSignature(network)).toBe('100:9,10,21|101:');
+    });
+
+    it('excludes management-only units and units with no application data', () => {
+        const network = { Unit: [
+            { Address: '4', Application: '255, 255', Groups: '' },
+            { Address: '9' },
+            { Address: '13', Application: '56, 255', Groups: '31' }
+        ] };
+        expect(treeGroupSignature(network)).toBe('13:31');
+    });
+
+    it('ignores groups carried on the management application (network variables)', () => {
+        const network = { Unit: { UnitAddress: '100', Application: [
+            { ApplicationAddress: '56', Group: { GroupAddress: '10' } },
+            { ApplicationAddress: '255', Group: { GroupAddress: '200' } }
+        ] } };
+        expect(treeGroupSignature(network)).toBe('100:10');
+    });
+
+    it('is stable across unit and group ordering (both shapes)', () => {
+        const flatA = { Unit: [
+            { Address: '13', Application: '56, 255', Groups: '31,32' },
+            { Address: '14', Application: '56, 255', Groups: '' }
+        ] };
+        const flatB = { Unit: [
+            { Address: '14', Application: '56, 255', Groups: '' },
+            { Address: '13', Application: '56, 255', Groups: '32,31' }
+        ] };
+        expect(treeGroupSignature(flatA)).toBe(treeGroupSignature(flatB));
+
+        const structuredA = { Unit: [
+            { UnitAddress: '100', Application: { ApplicationAddress: '56', Group: [
+                { GroupAddress: '10' }, { GroupAddress: '9' }
+            ] } },
+            { UnitAddress: '101', Application: { ApplicationAddress: '56' } }
+        ] };
+        const structuredB = { Unit: [
+            { UnitAddress: '101', Application: { ApplicationAddress: '56' } },
+            { UnitAddress: '100', Application: { ApplicationAddress: '56', Group: [
+                { GroupAddress: '9' }, { GroupAddress: '10' }
+            ] } }
+        ] };
+        expect(treeGroupSignature(structuredA)).toBe(treeGroupSignature(structuredB));
+    });
+
+    it('sorts numerically, not lexically (4 before 13, 9 before 10)', () => {
+        const network = { Unit: [
+            { Address: '13', Application: '56', Groups: '10,9' },
+            { Address: '4', Application: '56', Groups: '2' }
+        ] };
+        expect(treeGroupSignature(network)).toBe('4:2|13:9,10');
+    });
+
+    it('changes when any group binding changes, appears, or disappears', () => {
+        const base = { Unit: [
+            { Address: '13', Application: '56, 255', Groups: '31,32' },
+            { Address: '14', Application: '56, 255', Groups: '' }
+        ] };
+        const changed = { Unit: [
+            { Address: '13', Application: '56, 255', Groups: '31,33' },
+            { Address: '14', Application: '56, 255', Groups: '' }
+        ] };
+        const lateSynced = { Unit: [
+            { Address: '13', Application: '56, 255', Groups: '31,32' },
+            { Address: '14', Application: '56, 255', Groups: '115' }
+        ] };
+        const baseSignature = treeGroupSignature(base);
+        expect(treeGroupSignature(changed)).not.toBe(baseSignature);
+        expect(treeGroupSignature(lateSynced)).not.toBe(baseSignature);
+    });
+
+    it('handles a single unit given as an object rather than an array', () => {
+        const network = { Unit: { Address: '13', Application: '56, 255', Groups: '31' } };
+        expect(treeGroupSignature(network)).toBe('13:31');
     });
 });

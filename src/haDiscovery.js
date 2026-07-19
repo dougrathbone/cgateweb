@@ -69,8 +69,10 @@ class HaDiscovery {
         // Re-fetch budget for trees that were accepted (they carry device
         // data) but still contain units with empty <Groups> because C-Gate
         // hasn't finished syncing group bindings (issue #25). Bounded so
-        // networks with legitimately group-less units stop re-fetching.
-        // networkId -> { attempts, handle }
+        // networks with legitimately group-less units stop re-fetching; the
+        // signature fingerprints the tree that scheduled the pending fetch so
+        // an unchanged re-fetch result stops the cycle early.
+        // networkId -> { attempts, handle, signature }
         this._treeResyncState = new Map();
         this._maxTreeResyncAttempts = (settings && settings.haDiscoveryMaxTreeResyncAttempts) || 3;
         this._treeResyncInitialDelayMs = (settings && settings.haDiscoveryTreeResyncInitialDelayMs) || 30000;
