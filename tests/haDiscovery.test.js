@@ -1546,6 +1546,10 @@ describe('HaDiscovery', () => {
             expect(infoSpy).toHaveBeenCalledWith(
                 expect.stringContaining('tree for network 254 unchanged since last fetch')
             );
+            // The stop message names the unassigned units for field diagnostics.
+            expect(infoSpy).toHaveBeenCalledWith(
+                expect.stringContaining('unassigned (14 RELAY2)')
+            );
 
             jest.advanceTimersByTime(haDiscovery._treeResyncMaxDelayMs * 2);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(2);

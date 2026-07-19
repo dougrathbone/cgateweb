@@ -1,6 +1,6 @@
 // @ts-check
 const parseString = require('xml2js').parseString;
-const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits, treeGroupSignature } = require('./haDiscoveryTree');
+const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature } = require('./haDiscoveryTree');
 const { buildOriginBlock } = require('./haDiscoveryPayloads');
 const { backoffDelay } = require('./backoff');
 const {
@@ -229,15 +229,18 @@ class _HaDiscoveryTreeSession {
      * @param {string} signature - treeGroupSignature of the tree that
      * triggered this attempt; stored so the next tree can be compared against
      * it (an identical tree means no progress and stops the cycle early).
+     * @param {string[]} [unsyncedSummaries] - "address TYPE" labels of the
+     * group-less units (for diagnostics).
      */
-    _scheduleTreeResync(networkId, signature) {
+    _scheduleTreeResync(networkId, signature, unsyncedSummaries = []) {
+        const unassigned = unsyncedSummaries.join(', ') || 'none identified';
         const resync = this._getOrCreateTreeResyncState(networkId);
         resync.attempts += 1;
 
         if (resync.attempts > this._maxTreeResyncAttempts) {
             this.logger.info(
                 `HA Discovery: tree for network ${networkId} still has units without group addresses ` +
-                `after ${this._maxTreeResyncAttempts} extra fetch(es); assuming those units have no groups. ` +
+                `after ${this._maxTreeResyncAttempts} extra fetch(es); assuming those units have no groups (${unassigned}). ` +
                 `If groups appear later, publish to cbus/write/${networkId}///gettree to refresh.`
             );
             this._clearTreeResyncState(networkId);
@@ -253,8 +256,8 @@ class _HaDiscoveryTreeSession {
         });
 
         this.logger.info(
-            `HA Discovery: tree for network ${networkId} has units with no group addresses yet ` +
-            `(C-Gate still syncing?); re-fetching in ${Math.round(delay / 1000)}s ` +
+            `HA Discovery: tree for network ${networkId} has units with no group addresses yet (${unassigned}; ` +
+            `C-Gate still syncing?); re-fetching in ${Math.round(delay / 1000)}s ` +
             `(attempt ${resync.attempts}/${this._maxTreeResyncAttempts}).`
         );
 
@@ -537,12 +540,12 @@ class _HaDiscoveryTreeSession {
                         if (resync && resync.signature !== null && resync.signature === signature) {
                             this.logger.info(
                                 `HA Discovery: tree for network ${networkForTree} unchanged since last fetch; ` +
-                                `treating units without groups as unassigned. ` +
+                                `treating units without groups as unassigned (${unsyncedUnitSummaries(networkData).join(', ') || 'none identified'}). ` +
                                 `If groups appear later, publish to cbus/write/${networkForTree}///gettree to refresh.`
                             );
                             this._clearTreeResyncState(networkForTree);
                         } else {
-                            this._scheduleTreeResync(networkForTree, signature);
+                            this._scheduleTreeResync(networkForTree, signature, unsyncedUnitSummaries(networkData));
                         }
                     } else {
                         this._clearTreeResyncState(networkForTree);

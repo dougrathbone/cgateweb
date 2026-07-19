@@ -129,6 +129,27 @@ function networkHasUnsyncedUnits(networkData) {
     return units.some(unitHasUnsyncedGroups);
 }
 
+// Short "address TYPE" labels for the units unitHasUnsyncedGroups flags in a
+// tree, e.g. ["14 RELAY2", "20 SENTEMP"]. Used in re-fetch diagnostics so
+// field reports can see which units are being waited on / treated as
+// unassigned without raw-tree archaeology (issue #25 follow-up).
+function unsyncedUnitSummaries(networkData) {
+    if (!networkData) return [];
+    let units = networkData.Unit || [];
+    if (!Array.isArray(units)) units = [units];
+    const summaries = [];
+    units.forEach(unit => {
+        if (!unitHasUnsyncedGroups(unit)) return;
+        const rawAddress = (unit.UnitAddress !== null && unit.UnitAddress !== undefined)
+            ? unit.UnitAddress
+            : unit.Address;
+        const address = (rawAddress !== null && rawAddress !== undefined) ? String(rawAddress).trim() : '?';
+        const type = (unit.Type !== null && unit.Type !== undefined) ? String(unit.Type).trim() : '?';
+        summaries.push(`${address} ${type}`);
+    });
+    return summaries;
+}
+
 // Numeric-aware comparator so a signature does not depend on document order:
 // unit and group addresses are numeric strings in practice, but fall back to a
 // plain string compare for anything else (including the empty string, which
@@ -249,6 +270,7 @@ module.exports = {
     collectUnitGroups,
     networkHasDeviceData,
     networkHasUnsyncedUnits,
+    unsyncedUnitSummaries,
     treeGroupSignature,
     unitHasDeviceData,
     unitHasUnsyncedGroups

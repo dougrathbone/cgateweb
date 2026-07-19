@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -530,5 +530,52 @@ describe('treeGroupSignature', () => {
     it('handles a single unit given as an object rather than an array', () => {
         const network = { Unit: { Address: '13', Application: '56, 255', Groups: '31' } };
         expect(treeGroupSignature(network)).toBe('13:31');
+    });
+});
+
+describe('unsyncedUnitSummaries', () => {
+    it('returns "address TYPE" labels for units with unsynced groups (flat shape)', () => {
+        const network = { Unit: [
+            { Type: 'RELDN12', Address: '13', Application: '56, 255', Groups: '31,32' },
+            { Type: 'SENLL', Address: '15', Application: '56, 255', Groups: '' },
+            { Type: 'SENTEMP', Address: '20', Application: '56, 255' }
+        ] };
+        expect(unsyncedUnitSummaries(network)).toEqual(['15 SENLL', '20 SENTEMP']);
+    });
+
+    it('excludes management-only units (255, 255) even with no groups', () => {
+        const network = { Unit: [
+            { Type: 'PCLOCAL4', Address: '0', Application: '255, 255', Groups: '' },
+            { Type: 'SENLL', Address: '15', Application: '56, 255', Groups: '' }
+        ] };
+        expect(unsyncedUnitSummaries(network)).toEqual(['15 SENLL']);
+    });
+
+    it('prefers UnitAddress over Address when both exist', () => {
+        const network = { Unit: [
+            { Type: 'SENLL', UnitAddress: '15', Address: '99', Application: '56, 255', Groups: '' }
+        ] };
+        expect(unsyncedUnitSummaries(network)).toEqual(['15 SENLL']);
+    });
+
+    it('falls back to ? for missing address/type, and handles a single object unit', () => {
+        const network = { Unit: { Application: '56, 255', Groups: '' } };
+        expect(unsyncedUnitSummaries(network)).toEqual(['? ?']);
+    });
+
+    it('returns [] for null/empty input and fully-synced trees', () => {
+        expect(unsyncedUnitSummaries(null)).toEqual([]);
+        expect(unsyncedUnitSummaries(undefined)).toEqual([]);
+        expect(unsyncedUnitSummaries({ Unit: [] })).toEqual([]);
+        const synced = { Unit: [{ Type: 'RELDN12', Address: '13', Application: '56, 255', Groups: '31' }] };
+        expect(unsyncedUnitSummaries(synced)).toEqual([]);
+    });
+
+    it('handles the structured Application shape', () => {
+        const network = { Unit: [
+            { Type: 'DIMDN8', Address: '1', Application: [{ ApplicationAddress: '56' }] },
+            { Type: 'RELDN12', Address: '13', Application: [{ ApplicationAddress: '56', Group: [{ GroupAddress: '31' }] }] }
+        ] };
+        expect(unsyncedUnitSummaries(network)).toEqual(['1 DIMDN8']);
     });
 });
