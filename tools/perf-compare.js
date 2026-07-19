@@ -50,8 +50,8 @@ function printSection(title) {
 }
 
 function main() {
-    const baselineFile = process.argv[2] || path.join('perf', 'baseline.json');
-    const afterFile = process.argv[3] || path.join('perf', 'after.json');
+    const baselineFile = process.argv[2] || path.join('perf', 'raw.json');
+    const afterFile = process.argv[3] || path.join('perf', 'dedup.json');
     const maxP95RegressionPct = Number(process.env.PERF_MAX_P95_REGRESSION || 10);
 
     const baseline = readJson(baselineFile);

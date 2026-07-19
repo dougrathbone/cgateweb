@@ -55,7 +55,6 @@
     "perf:baseline": "npm run perf:raw",
     "perf:after": "npm run perf:dedup",
     "perf:compare": "node tools/perf-compare.js perf/raw.json perf/dedup.json",
-    "perf:compare:legacy": "node tools/perf-compare.js perf/baseline.json perf/after.json",
     "perf:run": "npm run perf:raw && npm run perf:dedup && npm run perf:compare",
     "validate:addon-config": "node tools/validate-addon-config.js",
     "validate:translations": "node tools/validate-translations.js",

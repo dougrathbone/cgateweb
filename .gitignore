@@ -11,7 +11,6 @@ tools/cbus-labels-backup-*.json
 toolkit-certs/
 
 # Benchmark raw output regenerates with timing noise on every run.
-# Curated/baseline perf snapshots (baseline.json, after.json, dedup.json) are
-# still tracked intentionally.
+# The curated dedup snapshot (perf/dedup.json) is still tracked intentionally.
 perf/raw.json
 .worktrees/
