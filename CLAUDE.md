@@ -11,11 +11,13 @@ cgateweb is a Node.js MQTT bridge for C-Bus lighting systems that connects to C-
 - **Start application**: `npm start` or `node index.js`
 - **Run tests**: `npm test`
 - **Run tests with coverage**: `npm test -- --coverage`
+- **Lint**: `npm run lint` (ESLint, `--max-warnings 0`)
+- **Typecheck**: `npm run typecheck` (`tsc --noEmit`). Files with `// @ts-check` are checked even though `tsconfig` sets `checkJs: false`. CI installs the typescript version pinned in `package-lock.json`, which may be stricter than a stale local `node_modules` — `npm ci` before trusting a local pass on a release-bound change.
 - **Install dependencies**: `npm install`
 
 ## Development Guidelines
 
-**IMPORTANT**: Before making any source code commits, you MUST run the full test suite (`npm test`) and ensure all tests pass. No code should be committed with failing tests. This ensures code quality and prevents regressions in the codebase.
+**IMPORTANT**: Before making any source code commits, you MUST run `npm test`, `npm run lint`, and `npm run typecheck`, and ensure all pass. No code should be committed with failing checks. CI runs the same three gates, so a local pass means a CI pass.
 
 ## Releasing / Home Assistant Add-on Distribution
 
