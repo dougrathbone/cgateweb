@@ -84,6 +84,7 @@ const MQTT_CMD_TYPE_STOP = 'stop';          // Stop cover movement
 const MQTT_CMD_TYPE_TRIGGER = 'trigger';          // Fire a C-Bus trigger group
 const MQTT_CMD_TYPE_HVAC_SETPOINT = 'setpoint';  // Set HVAC target temperature
 const MQTT_CMD_TYPE_HVAC_MODE = 'hvacmode';      // Set HVAC operating mode
+const MQTT_CMD_TYPE_HVAC_FAN_MODE = 'fanmode';   // Set HVAC fan mode (automatic/continuous)
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
@@ -224,6 +225,7 @@ module.exports = {
     MQTT_CMD_TYPE_TRIGGER,
     MQTT_CMD_TYPE_HVAC_SETPOINT,
     MQTT_CMD_TYPE_HVAC_MODE,
+    MQTT_CMD_TYPE_HVAC_FAN_MODE,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,

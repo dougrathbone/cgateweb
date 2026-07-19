@@ -471,8 +471,6 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         const payload = JSON.parse(call[1]);
         expect(payload.temperature_command_topic).toBeUndefined();
         expect(payload.mode_command_topic).toBeUndefined();
-        // Fan mode stays read-only even with control enabled: the control path
-        // does not write the Aux Level.
         expect(payload.fan_mode_command_topic).toBeUndefined();
     });
 
@@ -487,6 +485,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         const payload = JSON.parse(call[1]);
         expect(payload.temperature_command_topic).toBe('cbus/write/254/172/201/setpoint');
         expect(payload.mode_command_topic).toBe('cbus/write/254/172/201/hvacmode');
+        expect(payload.fan_mode_command_topic).toBe('cbus/write/254/172/201/fanmode');
     });
 
     test('publishes only once per unit (idempotent across repeated events)', () => {

@@ -93,6 +93,18 @@ class AirconControlRegistry {
         this._byUnit.set(key, next);
     }
 
+    /**
+     * Optimistically record an HA-originated fan-mode (Aux Level) write so the
+     * learned state stays coherent until the thermostat's echo broadcast.
+     * No-op for unknown units.
+     */
+    noteAuxLevelWrite(network, unit, auxLevelUsed, auxLevel) {
+        const key = AirconControlRegistry._key(network, unit);
+        const prev = this._byUnit.get(key);
+        if (!prev) return;
+        this._byUnit.set(key, { ...prev, auxLevelUsed, auxLevel });
+    }
+
     get(network, unit) {
         return this._byUnit.get(AirconControlRegistry._key(network, unit)) || null;
     }

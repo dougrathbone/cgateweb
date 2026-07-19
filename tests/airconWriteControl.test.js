@@ -135,6 +135,51 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 0 3 6400 0');
     });
 
+    it('fan mode automatic → useaux=0 aux=0, keeping mode and setpoint', () => {
+        const { router, queued } = makeRouter(); // heat at 22°C learned
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'automatic');
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 0 3 5632 0');
+    });
+
+    it('fan mode continuous → Aux Level bit 6, preserving learned speed bits', () => {
+        const { router, queued } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', modeRaw: 1, type: 3, setpointRaw: 5632,
+            auxLevelUsed: true, auxLevel: 3 // fan speed 3, automatic
+        });
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 5632 67');
+    });
+
+    it('fan mode write updates the learned aux state and publishes optimistically', () => {
+        const { router, published } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        const s = router.airconControlRegistry.get('254', '202');
+        expect(s.auxLevelUsed).toBe(true);
+        expect(s.auxLevel).toBe(64);
+        expect(published).toContainEqual({ topic: 'cbus/read/254/172/202/fan_mode', payload: 'continuous', opts: { qos: 0 } });
+    });
+
+    it('rejects an unknown fan mode without sending anything', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'turbo');
+        expect(queued).toHaveLength(0);
+    });
+
+    it('fan mode does nothing when control is disabled', () => {
+        const { router, queued } = makeRouter({ control: false });
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        expect(queued).toHaveLength(0);
+    });
+
+    it('fan mode is rejected for non-native (HVAC-via-lighting) apps', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/201/5/fanmode', 'continuous');
+        expect(queued).toHaveLength(0);
+        expect(router.logger.warn).toHaveBeenCalledWith(expect.stringContaining('only supported on the native'));
+    });
+
     it('optimistically publishes the new state so HA updates instantly', () => {
         const { router, published } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
