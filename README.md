@@ -146,8 +146,12 @@ Supported Device Types:
 > | `cbus/read/{net}/172/{sourceUnit}/action` | `heating` / `cooling` / `fan` / `idle` (live plant running state) |
 > | `cbus/read/{net}/172/{sourceUnit}/fan_mode` | `automatic` / `continuous` (Aux Level bit 6) |
 > | `cbus/read/{net}/172/{sourceUnit}/fan_speed` | Raw fan speed setting 0–63 (Aux Level bits 0–5) |
+> | `cbus/read/{net}/172/{sourceUnit}/fan_speed_pct` | Fan speed % when it lives in the raw level (vent/fan, evaporative manual) |
 > | `cbus/read/{net}/172/{sourceUnit}/error` + `…/error_description` | Plant error code (0 = no error) and human-readable text |
+> | `cbus/read/{net}/172/{sourceUnit}/problem` + `…/sensor_problem` | `ON`/`OFF` problem states backing the HA `binary_sensor` entities (plant fault / temperature-sensor fault) |
 > | `cbus/read/{net}/172/{sourceUnit}/sensor_status` | Temperature sensor status (0 = ok; temperature is suppressed at total failure) |
+> | `cbus/read/{net}/172/{sourceUnit}/current_humidity`, `…/humidity_mode`, `…/humidity_setpoint`, `…/humidity_action` | Humidity application state (spec-derived; only present with humidity plant) |
+> | `cbus/read/{net}/172/{sourceUnit}/comfort_level` | Evaporative comfort level (evaporative plant cooling only) |
 >
 > Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it writes to live heating/cooling). When enabled, publish a mode (`off`/`heat`/`cool`/`auto`/`fan_only`) to `cbus/write/{net}/172/{sourceUnit}/hvacmode`, a target in °C to `cbus/write/{net}/172/{sourceUnit}/setpoint`, or a fan mode (`automatic`/`continuous`) to `cbus/write/{net}/172/{sourceUnit}/fanmode` and cgateweb sends the native `AIRCON` commands; the discovered climate entity also gains command topics. Setpoint writes are debounced to one command per 3s per the protocol's anti-echo guidance, and the thermostat's flags, per-mode setpoints, and fan state are learned and echoed on writes. To help capture raw event samples for other specialised applications (e.g. Temperature Broadcast app 25, Measurement app 228), set `cbusRawEventLogApps` to a list of app IDs (e.g. `['25', '228']`) — cgateweb will then log each matching C-Gate event line verbatim and publish it to `cbus/read/{net}/{app}/{group}/raw`. Defaults to `[]` (off).
 

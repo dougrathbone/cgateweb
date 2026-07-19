@@ -95,6 +95,9 @@ sourceUnit, … , verb }` or `null`.
 | `set_ward_on` / `set_ward_off` | `state` | `zoneGroup` | ✅ on/off (`decodeWardState`) |
 | `zone_hvac_plant_status` | `action` | `zoneGroup zones hvacType hvacStatus hvacErrorCode` | ✅ running state → `hvac_action`; error bit/code → `error`/`errorCode`/`errorDescription` (`decodeZonePlantStatus`) |
 | `set_plant_hvac_level` | — | `zoneGroup zones f0 … level …` | ❓ plant demand level (~0–255); **not decoded** (not needed for a climate entity) |
+| `zone_humidity` | `humidity` | `zoneGroup zones rawHumidity sensorStatus` | ⚠️ spec-derived (§25.8.7): `% = raw / 65535 × 100`; sensor-failure suppression as for temperature. **No live capture yet** |
+| `set_zone_humidity_mode` | `humidity_mode` | `zoneGroup zones f0…f7` | ⚠️ spec-derived (§25.8.12): `f0` = humidity mode (off/humidify/dehumidify/auto), `f6` = setpoint %. **No live capture yet** |
+| `zone_humidity_plant_status` | `humidity_action` | `zoneGroup zones humidityType humidityStatus humidityErrorCode` | ⚠️ spec-derived (§25.8.5): humidifying/dehumidifying/fan bits + §25.6.9 error table. **No live capture yet** |
 
 ### Mode codes (`f0`) — all ✅ verified (capture 2026-06-11)
 
@@ -194,7 +197,21 @@ cbus/read/{network}/172/{sourceUnit}/fan_speed      # raw 0-63 (Aux Level bits 0
 cbus/read/{network}/172/{sourceUnit}/error          # HVAC error code (0 = no error, spec §25.6.5)
 cbus/read/{network}/172/{sourceUnit}/error_description  # human-readable error text
 cbus/read/{network}/172/{sourceUnit}/sensor_status  # temperature sensor status (spec §25.6.12, 0 = ok)
+cbus/read/{network}/172/{sourceUnit}/problem        # ON when the plant reports an error (binary_sensor state)
+cbus/read/{network}/172/{sourceUnit}/sensor_problem # ON when the temperature sensor is degraded/failed
+cbus/read/{network}/172/{sourceUnit}/fan_speed_pct  # fan speed % from the Raw Level (§25.12.8; vent/fan, evap manual)
+cbus/read/{network}/172/{sourceUnit}/comfort_level  # evaporative comfort level (§25.12.7, spec-default mapping)
+# Humidity application (spec-derived — see verbs table caveat):
+cbus/read/{network}/172/{sourceUnit}/current_humidity   # relative humidity %
+cbus/read/{network}/172/{sourceUnit}/humidity_mode      # off/humidify/dehumidify/auto
+cbus/read/{network}/172/{sourceUnit}/humidity_setpoint  # target relative humidity %
+cbus/read/{network}/172/{sourceUnit}/humidity_action    # humidifying/dehumidifying/fan/idle
 ```
+
+The `problem` / `sensor_problem` states also back two HA `binary_sensor`
+entities (device class `problem`) published alongside the thermostat's climate
+entity; `current_humidity` / `humidity_setpoint` wire the climate entity's
+current/target humidity.
 
 Suffix constants: `src/constants.js` (`MQTT_TOPIC_SUFFIX_HVAC_*`, incl.
 `MQTT_TOPIC_SUFFIX_HVAC_ACTION = 'action'`).
@@ -305,19 +322,29 @@ C-Gate event line
    verb follows the HELP-verified command convention but is **not itself verified
    against a live C-Gate HELP** — if unsupported, C-Gate just returns an error
    response. Verify on real hardware and adjust if the verb differs.
-8. **Remaining gaps (documented, not bugs):**
-   - **Humidity half of the application** ($0D/$1D/$47/$4E + guard/setback limits) —
-     not decoded; no humidity hardware in the reference install. Add per §8 if a user
-     with humidity plant supplies a capture.
-   - **Comfort levels (§25.12.7)** — evaporative plant presents a Comfort Level, not a
-     temperature; we decode it as °C. Only affects evaporative installs.
-   - **Fan speed in the Raw Level (§25.12.8)** — the conditional logic (raw vs aux
-     level by plant/mode) is not implemented; we expose the Aux Level as-is.
-   - **Error/sensor HA entities** — `error`/`error_description`/`sensor_status` are
-     MQTT topics + log warnings; no dedicated `binary_sensor` discovery entity yet.
-   - **Zone-list targeting** — writes echo the zone list from the thermostat's mode
-     broadcasts, which per §25.12.10 are addressed to active zones; we don't model
-     per-zone active state beyond that.
+8. **Humidity application — decoded read-only (spec-derived).** `zone_humidity`,
+   `set_zone_humidity_mode`, and `zone_humidity_plant_status` are decoded per
+   §25.8.5/§25.8.7/§25.8.12 and published (incl. the climate entity's
+   current/target humidity). ⚠️ **No live captures exist** — layouts follow the
+   verified HVAC conventions, so verify against humidity hardware before
+   trusting them; humidity *writes* are deliberately not implemented (the
+   textual command form is unverified).
+9. **Comfort levels & raw-level fan speed — surfaced.** Comfort Level is
+   published for evaporative cooling using the spec-default TStart/TStep
+   (§25.12.7 — the plant's own values are Toolkit config), and raw-level fan
+   speed is normalised to `fan_speed_pct` (§25.12.8). The full aux-vs-raw
+   conditional (evaporative running state) is not modelled; we expose each
+   field as it arrives.
+10. **Error/sensor HA entities — DONE.** `problem` and `sensor_problem`
+    binary_sensors (device class `problem`) are published alongside each
+    thermostat's climate entity.
+11. **Remaining gaps (documented, not bugs):**
+    - **Zone-list targeting** — writes echo the zone list from the thermostat's
+      mode broadcasts, which per §25.12.10 are already addressed to active
+      zones; we don't model per-zone active state beyond that.
+    - **Live verification** — the textual `AIRCON REFRESH` verb and the
+      humidity verb layouts are spec/convention-derived and need a capture
+      against real hardware (see §2 for how to capture).
 
 ---
 
