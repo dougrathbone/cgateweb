@@ -5,6 +5,28 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-07-19
+
+### Added
+
+- **Home Assistant discovery for Temperature Broadcast (app 25) sensors.** Temperature groups now announce a HA `sensor` (device class temperature, °C) the first time each sensor broadcasts — no configuration needed beyond `ha_discovery_enabled`.
+- **Plant and sensor fault entities for native aircon.** Each Air Conditioning (172) thermostat gets `Plant problem` and `Temperature sensor problem` binary_sensors attached to its climate device, driven by the plant error state (spec §25.6.6/§25.6.5) and temperature sensor status (§25.6.12), with matching `problem`/`sensor_problem` MQTT topics.
+- **Aircon humidity application (read-only, spec-derived).** `zone_humidity`, `set_zone_humidity_mode` and `zone_humidity_plant_status` are decoded and published as `current_humidity`, `humidity_mode`, `humidity_setpoint` and `humidity_action` topics, wired into the climate entity's humidity state. Field layouts follow the verified HVAC conventions but have no live captures yet; humidity writes are deliberately not implemented.
+- **Fan mode control for native aircon.** `cbus/write/<net>/172/<unit>/fanmode` accepts `automatic`/`continuous` (Aux Level per spec §25.6.11), exposed as `fan_mode_command_topic` when control is enabled; learned fan-speed bits are preserved on writes.
+- **Raw-level fan speed and evaporative comfort level topics.** `fan_speed_pct` (0-100% of plant capacity, §25.12.8) and `comfort_level` (§25.12.7, spec-default mapping) for native thermostats.
+- **AIRCON REFRESH on first sight of a zone group** (control-enabled installs only), per the spec's mimic-device guidance (§25.8.3/§25.12.11) and rate-limited to once per zone group per session. The textual verb follows the verified AIRCON command convention but is not yet verified against a live C-Gate HELP.
+
+### Fixed
+
+- **Sub-zero aircon temperatures now decode.** Zone temperatures are signed 2's complement (§25.5.1); both C-Gate renderings are normalised, and a degraded or failed temperature sensor publishes its status instead of a bogus reading.
+- **Raw levels are no longer misread as setpoints.** The Level-is-Raw flag (§25.6.3) is honoured — the fan-only `32512` is ~99% fan output, not a 127°C setpoint or a "no setpoint" sentinel.
+- **Aircon writes echo the thermostat's own configuration.** Setback/guard/aux-used flags and the Aux Level are learned from broadcasts and echoed on writes instead of being silently reset; setpoints are kept per operating type (§25.12.11); and rapid setpoint adjustments are debounced into a single command per the spec's anti-echo guidance (§25.12.11).
+- **Ingress path trimming no longer uses a ReDoS-prone regex.**
+
+### Changed
+
+- Internal: `@ts-check` enabled across the remaining source modules, GitHub Actions dependencies bumped, legacy perf snapshots removed.
+
 ## [1.15.15] - 2026-07-19
 
 ### Fixed
