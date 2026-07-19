@@ -636,20 +636,23 @@ class MqttCommandRouter extends EventEmitter {
         }
         const clamped = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempC));
         const level = Math.round(clamped * 256); // °C × 256, temperature value (rawlevel=0)
+        const modeRaw = (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
+            ? state.modeRaw : HVAC_CODE_BY_MODE.heat;
         const cmd = buildSetZoneHvacMode({
             cbusname: this.cbusname,
             network,
             application: command.getApplication(),
             ward: state.ward,
             zones: state.zones,
-            modeRaw: (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
-                ? state.modeRaw : HVAC_CODE_BY_MODE.heat,
+            modeRaw,
             rawlevel: 0,
             ...this._airconFlagEcho(state),
             type: (state.type !== null && state.type !== undefined) ? state.type : 0,
             level
         });
         this._queueCommand(cmd + NEWLINE);
+        // Keep the learned state coherent until the thermostat's echo broadcast.
+        this.airconControlRegistry.noteSetpointWrite(network, unit, modeRaw, level);
         // Optimistically reflect the new target so the HA card updates instantly
         // rather than waiting for the thermostat's next broadcast.
         this._publishOptimisticHvacState(network, command.getApplication(), unit, { setpointC: clamped });
@@ -717,9 +720,18 @@ class MqttCommandRouter extends EventEmitter {
             level = FAN_LEVEL_SENTINEL;
         } else {
             rawlevel = 0;
-            level = (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= 12800)
-                ? state.setpointRaw
-                : Math.round(DEFAULT_SETPOINT_C * 256);
+            // §25.12.11: each Operating Type has its own Set Point — recall the
+            // one learned for the target mode rather than forcing the current
+            // mode's value into it. Fall back to the last seen target, then a
+            // default, when that mode's setpoint was never observed.
+            const byMode = state.setpointRawByMode && state.setpointRawByMode[code];
+            if (Number.isInteger(byMode) && byMode > 0 && byMode <= 12800) {
+                level = byMode;
+            } else if (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= 12800) {
+                level = state.setpointRaw;
+            } else {
+                level = Math.round(DEFAULT_SETPOINT_C * 256);
+            }
         }
         const cmd = buildSetZoneHvacMode({
             cbusname: this.cbusname,

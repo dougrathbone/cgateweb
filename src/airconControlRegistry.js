@@ -47,6 +47,12 @@ class AirconControlRegistry {
         const prev = this._byUnit.get(key) || {};
         const isOn = reading.modeRaw !== null && reading.modeRaw !== undefined && reading.modeRaw !== 0;
         const keep = (value, fallback) => (value !== null && value !== undefined ? value : fallback);
+        // Only temperature setpoints are learned (§25.12.11: each Operating Type
+        // has its own Set Point, recalled on mode change). Raw levels (levelIsRaw,
+        // e.g. fan-only fan speed) are never a temperature target.
+        const hasTempSetpoint = isOn && !reading.levelIsRaw
+            && Number.isInteger(reading.setpointRaw) && reading.setpointRaw > 0
+            && Number.isInteger(reading.modeRaw);
         this._byUnit.set(key, {
             network: reading.network,
             application: reading.application,
@@ -57,7 +63,10 @@ class AirconControlRegistry {
             type: (isOn && reading.type !== null && reading.type !== undefined) ? reading.type : prev.type,
             modeRaw: (reading.modeRaw !== null && reading.modeRaw !== undefined) ? reading.modeRaw : prev.modeRaw,
             // Off broadcasts carry setpointRaw=0 as a sentinel; keep the last active target.
-            setpointRaw: (isOn && reading.setpointRaw > 0) ? reading.setpointRaw : prev.setpointRaw,
+            setpointRaw: hasTempSetpoint ? reading.setpointRaw : prev.setpointRaw,
+            setpointRawByMode: hasTempSetpoint
+                ? { ...(prev.setpointRawByMode || {}), [reading.modeRaw]: reading.setpointRaw }
+                : prev.setpointRawByMode,
             // Mode & Flags byte (§25.6.3) + Aux Level, echoed back on writes so
             // an HA-originated command doesn't silently clear the thermostat's
             // own setback/guard/aux configuration.
@@ -66,6 +75,22 @@ class AirconControlRegistry {
             auxLevelUsed: keep(reading.auxLevelUsed, prev.auxLevelUsed),
             auxLevel: keep(reading.auxLevel, prev.auxLevel)
         });
+    }
+
+    /**
+     * Optimistically record an HA-originated setpoint write so the registry
+     * stays coherent until the thermostat's echo broadcast confirms it.
+     * No-op for unknown units or implausible values.
+     */
+    noteSetpointWrite(network, unit, modeRaw, setpointRaw) {
+        const key = AirconControlRegistry._key(network, unit);
+        const prev = this._byUnit.get(key);
+        if (!prev || !Number.isInteger(setpointRaw) || setpointRaw <= 0) return;
+        const next = { ...prev, setpointRaw };
+        if (Number.isInteger(modeRaw)) {
+            next.setpointRawByMode = { ...(prev.setpointRawByMode || {}), [modeRaw]: setpointRaw };
+        }
+        this._byUnit.set(key, next);
     }
 
     get(network, unit) {

@@ -19,7 +19,7 @@ describe('AirconControlRegistry', () => {
         reg.recordModeReading(heatReading);
         expect(reg.get('254', '201')).toEqual({
             network: '254', application: '172', ward: '1', zones: '0,1,2,3,4',
-            type: 3, modeRaw: 1, setpointRaw: 5632,
+            type: 3, modeRaw: 1, setpointRaw: 5632, setpointRawByMode: { 1: 5632 },
             setbackEnabled: false, guardEnabled: false, auxLevelUsed: true, auxLevel: 0
         });
     });
@@ -57,6 +57,32 @@ describe('AirconControlRegistry', () => {
     it('ignores non-mode readings and returns null for unknown units', () => {
         reg.recordModeReading({ kind: 'temperature', network: '254', sourceUnit: '201' });
         expect(reg.get('254', '201')).toBeNull();
+        expect(reg.get('254', '999')).toBeNull();
+    });
+
+    it('learns a setpoint per operating type (§25.12.11)', () => {
+        reg.recordModeReading(heatReading); // heat at 22°C
+        reg.recordModeReading({ ...heatReading, mode: 'cool', modeRaw: 2, setpointRaw: 3840 }); // cool at 15°C
+        const s = reg.get('254', '201');
+        expect(s.setpointRawByMode).toEqual({ 1: 5632, 2: 3840 });
+        expect(s.setpointRaw).toBe(3840); // last active target
+    });
+
+    it('does not learn raw levels as temperature setpoints (fan-only broadcast)', () => {
+        reg.recordModeReading(heatReading); // heat 5632
+        reg.recordModeReading({ ...heatReading, mode: 'fan_only', modeRaw: 4, levelIsRaw: true, setpointRaw: 32512, type: 3 });
+        const s = reg.get('254', '201');
+        expect(s.setpointRaw).toBe(5632);
+        expect(s.setpointRawByMode).toEqual({ 1: 5632 });
+    });
+
+    it('noteSetpointWrite updates the last and per-mode setpoints optimistically', () => {
+        reg.recordModeReading(heatReading);
+        reg.noteSetpointWrite('254', '201', 1, 6400);
+        const s = reg.get('254', '201');
+        expect(s.setpointRaw).toBe(6400);
+        expect(s.setpointRawByMode[1]).toBe(6400);
+        reg.noteSetpointWrite('254', '999', 1, 6400); // unknown unit → no-op
         expect(reg.get('254', '999')).toBeNull();
     });
 

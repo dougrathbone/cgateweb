@@ -63,6 +63,23 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 4 1 0 0 1 3 32512 0');
     });
 
+    it('mode change recalls the setpoint learned for the target operating type', () => {
+        const { router, queued } = makeRouter(); // heat 22°C already learned
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', modeRaw: 2, type: 3, setpointRaw: 3840 // cool at 15°C
+        });
+        router.routeMessage('cbus/write/254/172/202/hvacmode', 'cool');
+        // uses the cool setpoint (3840), not the heat one (5632)
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 2 0 0 0 1 3 3840 0');
+    });
+
+    it('setpoint write updates the learned per-mode setpoint', () => {
+        const { router } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25'); // current mode heat → 6400
+        expect(router.airconControlRegistry.get('254', '202').setpointRawByMode[1]).toBe(6400);
+    });
+
     it('targets the right thermostat by its zone-list (201 vs 202 share ward 1)', () => {
         const { router, queued } = makeRouter();
         // add 201 with zones 0,1,2,3,4
