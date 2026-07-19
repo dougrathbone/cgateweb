@@ -1,0 +1,69 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# ALPHA (issue #28): USB-serial PCI diagnostics
+#
+# Runs after managed C-Gate is accepting commands and reports what C-Gate
+# itself sees (PORT LIST / IFLIST), so users can paste real data into GitHub
+# issue #28 instead of guessing. Only active when the opt-in
+# cgate_serial_device is configured and cgate_mode is managed.
+#
+# This script must NEVER break add-on startup: every failure path (nc missing,
+# timeout, C-Gate not ready) logs a warning and still exits 0.
+# ==============================================================================
+set -euo pipefail
+
+CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
+
+# Silent no-op unless the alpha serial passthrough is enabled AND C-Gate runs
+# inside this add-on. bashio::config yields the literal string "null" for
+# unset optional fields — treat that as unset too.
+if [[ "${CGATE_MODE}" != "managed" || -z "${SERIAL_DEVICE}" || "${SERIAL_DEVICE}" == "null" ]]; then
+    exit 0
+fi
+
+# Test hooks: point the query at a fake C-Gate listener. Default to the
+# in-container C-Gate on the configured command port.
+CGATE_HOST="${CGATEWEB_CGATE_HOST:-127.0.0.1}"
+if [[ -n "${CGATEWEB_CGATE_PORT:-}" ]]; then
+    CGATE_PORT="${CGATEWEB_CGATE_PORT}"
+else
+    CGATE_PORT=$(bashio::config 'cgate_port' '20023')
+fi
+
+# Re-log the configured device and its real target so this block is
+# self-contained when pasted into an issue report.
+bashio::log.info "cgate_serial_device = ${SERIAL_DEVICE}"
+RESOLVED=$(readlink -f "${SERIAL_DEVICE}" 2>/dev/null || printf '%s' "${SERIAL_DEVICE}")
+bashio::log.info "Serial device ${SERIAL_DEVICE} resolves to ${RESOLVED}"
+
+bashio::log.info "==================================================================="
+bashio::log.info " C-Gate serial diagnostics (ALPHA USB-serial PCI, issue #28)"
+bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, IFLIST)"
+bashio::log.info " Reporting a problem? Paste this whole block into GitHub issue #28:"
+bashio::log.info "   https://github.com/dougrathbone/cgateweb/issues/28"
+bashio::log.info "==================================================================="
+
+RESPONSE=""
+NC_STATUS=0
+if command -v nc >/dev/null 2>&1; then
+    # nc's stderr is folded into RESPONSE so error text (e.g. "connection
+    # refused") can be logged; its exit status decides success, not whether
+    # the response happened to be empty.
+    RESPONSE=$(printf 'PORT LIST\nIFLIST\nQUIT\n' | nc -w 10 "${CGATE_HOST}" "${CGATE_PORT}" 2>&1) || NC_STATUS=$?
+fi
+
+if [[ ${NC_STATUS} -ne 0 || -z "${RESPONSE}" ]]; then
+    bashio::log.warning "Could not query C-Gate at ${CGATE_HOST}:${CGATE_PORT} (nc missing, timed out, or C-Gate not ready) — no PORT LIST/IFLIST data available"
+    if [[ -n "${RESPONSE}" ]]; then
+        bashio::log.warning "nc output: ${RESPONSE}"
+    fi
+else
+    # One log line per response line so each entry renders separately in the
+    # Home Assistant log viewer.
+    while IFS= read -r line; do
+        bashio::log.info "CGATE> ${line}"
+    done <<< "${RESPONSE}"
+fi
+bashio::log.info "=== End of C-Gate serial diagnostics ==="
+exit 0

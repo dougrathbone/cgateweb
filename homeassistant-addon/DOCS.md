@@ -151,6 +151,25 @@ devices into the container automatically — no manual device mapping is needed.
    serial devices it detected, and fails fast with a readable error if the
    value is not a `/dev/` path or the device does not exist.
 
+**Diagnostics**
+
+When `cgate_serial_device` is set, startup logs extra detail so you (and
+issue #28) can see what the host and C-Gate actually see:
+
+- At add-on initialisation: the configured device with its `ls -l` details
+  and resolved symlink target (so a `/dev/serial/by-id/` path shows the real
+  `ttyUSB*`/`ttyACM*` node), plus an inventory of every detected
+  `/dev/ttyUSB*`, `/dev/ttyACM*` and `/dev/serial/by-id/` entry.
+- Once managed C-Gate is accepting commands: the output of the C-Gate
+  `PORT LIST` and `IFLIST` commands, showing which ports/interfaces C-Gate
+  itself opened. This runs in the background and never blocks startup.
+
+When reporting a problem on
+[GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28),
+restart the add-on and copy its full startup log (**Settings → Add-ons →
+C-Gate Web Bridge → Log**) into your report — the diagnostics block is
+clearly marked with a banner so you can see exactly what to include.
+
 **Known limitations**
 
 - **Projects saved on Windows reference `COMx` ports.** If your Toolkit
