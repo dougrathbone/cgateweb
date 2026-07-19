@@ -17,6 +17,8 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_ERROR,
     MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS,
+    MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
+    MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -238,12 +240,12 @@ class EventPublisher {
      * decoder (e.g. Air Conditioning). Routes by reading.kind:
      *
      *   temperature → cbus/read/{net}/{app}/{group}/current_temperature (if celsius non-null)
-     *               → cbus/read/{net}/{app}/{group}/sensor_status (if decoded)
+     *               → cbus/read/{net}/{app}/{group}/sensor_status + sensor_problem (if decoded)
      *   mode        → cbus/read/{net}/{app}/{group}/mode  (if mode non-null)
      *               → cbus/read/{net}/{app}/{group}/setpoint (if setpoint non-null)
      *               → cbus/read/{net}/{app}/{group}/fan_mode + fan_speed (if aux level decoded)
      *   state       → cbus/read/{net}/{app}/{group}/state  ('ON'|'OFF')
-     *   action      → cbus/read/{net}/{app}/{group}/action
+     *   action      → cbus/read/{net}/{app}/{group}/action + problem
      *               → cbus/read/{net}/{app}/{group}/error + error_description (if error code decoded)
      */
     publishReading(network, application, group, reading) {
@@ -265,6 +267,13 @@ class EventPublisher {
                 this._publishIfNeeded(
                     `${base}/${MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS}`,
                     String(reading.sensorStatus),
+                    this.mqttOptions
+                );
+                // Degraded (out of calibration) or failed sensor → problem state
+                // for the binary_sensor (spec §25.6.12).
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM}`,
+                    reading.sensorStatus >= 2 ? MQTT_STATE_ON : MQTT_STATE_OFF,
                     this.mqttOptions
                 );
             }
@@ -323,6 +332,17 @@ class EventPublisher {
                 this._publishIfNeeded(
                     `${base}/${MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION}`,
                     reading.errorDescription,
+                    this.mqttOptions
+                );
+            }
+            // Problem binary state for the HA binary_sensor: ON when the status
+            // error bit (§25.6.6 bit 6) or a non-zero error code says so.
+            if ((reading.error !== null && reading.error !== undefined)
+                || (reading.errorCode !== null && reading.errorCode !== undefined)) {
+                const problem = reading.error === true || (reading.errorCode || 0) > 0;
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_PROBLEM}`,
+                    problem ? MQTT_STATE_ON : MQTT_STATE_OFF,
                     this.mqttOptions
                 );
             }

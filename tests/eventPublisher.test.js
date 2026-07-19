@@ -1020,14 +1020,14 @@ describe('EventPublisher', () => {
             );
         });
 
-        it('should publish sensor_status alongside current_temperature when decoded', () => {
+        it('should publish sensor_status and sensor_problem alongside current_temperature when decoded', () => {
             eventPublisher.publishReading('254', '172', '201', {
                 kind: 'temperature',
                 celsius: 17.4,
                 sensorStatus: 0
             });
 
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/172/201/current_temperature',
                 '17.4',
@@ -1038,9 +1038,14 @@ describe('EventPublisher', () => {
                 '0',
                 mockMqttOptions
             );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/sensor_problem',
+                'OFF',
+                mockMqttOptions
+            );
         });
 
-        it('should publish sensor_status but not the meaningless temperature on sensor failure', () => {
+        it('should publish sensor fault topics but not the meaningless temperature on sensor failure', () => {
             // Spec §25.8.6: at "Sensor total failure" the temperature is meaningless.
             eventPublisher.publishReading('254', '172', '201', {
                 kind: 'temperature',
@@ -1048,10 +1053,47 @@ describe('EventPublisher', () => {
                 sensorStatus: 3
             });
 
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/172/201/sensor_status',
                 '3',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/sensor_problem',
+                'ON',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish problem state from a plant action reading', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'action',
+                action: 'heating',
+                error: true,
+                errorCode: 4,
+                errorDescription: 'Temperature sensor failure'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/problem',
+                'ON',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish problem OFF when the plant reports no error', () => {
+            eventPublisher.publishReading('254', '172', '201', {
+                kind: 'action',
+                action: 'heating',
+                error: false,
+                errorCode: 0,
+                errorDescription: 'No error'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/problem',
+                'OFF',
                 mockMqttOptions
             );
         });
@@ -1168,7 +1210,7 @@ describe('EventPublisher', () => {
             expect(mockPublishFn.mock.calls.some(c => c[0].includes('/fan_'))).toBe(false);
         });
 
-        it('should publish action plus error and error_description for an action reading with an error code', () => {
+        it('should publish action plus error, error_description and problem for an action reading with an error code', () => {
             eventPublisher.publishReading('254', '172', '201', {
                 kind: 'action',
                 action: 'heating',
@@ -1176,7 +1218,7 @@ describe('EventPublisher', () => {
                 errorDescription: 'Temperature sensor failure'
             });
 
-            expect(mockPublishFn).toHaveBeenCalledTimes(3);
+            expect(mockPublishFn).toHaveBeenCalledTimes(4);
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/172/201/action',
                 'heating',
@@ -1190,6 +1232,11 @@ describe('EventPublisher', () => {
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/172/201/error_description',
                 'Temperature sensor failure',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/172/201/problem',
+                'ON',
                 mockMqttOptions
             );
         });

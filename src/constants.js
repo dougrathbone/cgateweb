@@ -50,6 +50,8 @@ const MQTT_TOPIC_SUFFIX_HVAC_ACTION = 'action';                   // Current run
 const MQTT_TOPIC_SUFFIX_HVAC_ERROR = 'error';                     // HVAC plant error code (0 = no error, spec §25.6.5)
 const MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION = 'error_description'; // Human-readable HVAC plant error
 const MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS = 'sensor_status';     // Temp sensor status (spec §25.6.12, 0 = ok)
+const MQTT_TOPIC_SUFFIX_HVAC_PROBLEM = 'problem';                 // ON when plant error bit/code set (binary_sensor)
+const MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM = 'sensor_problem';   // ON when temp sensor degraded/failed (binary_sensor)
 // Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
 // HA's climate card and our write clamp both use this so users can't request a
 // value the thermostat will silently reject.
@@ -202,6 +204,8 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_ERROR,
     MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS,
+    MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
+    MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,

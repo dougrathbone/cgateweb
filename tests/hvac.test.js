@@ -516,6 +516,32 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_250/config');
         expect(call).toBeDefined();
         expect(call[1]).toBe('');
+        // …and the problem binary_sensors are retracted too
+        for (const suffix of ['_problem', '_sensor_problem']) {
+            const sensorCall = mockPublishFn.mock.calls.find(c => c[0] === `homeassistant/binary_sensor/cgateweb_254_172_250${suffix}/config`);
+            expect(sensorCall).toBeDefined();
+            expect(sensorCall[1]).toBe('');
+        }
+    });
+
+    test('publishes plant and sensor problem binary_sensors attached to the thermostat device', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+
+        const plantCall = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/binary_sensor/cgateweb_254_172_201_problem/config');
+        expect(plantCall).toBeDefined();
+        const plant = JSON.parse(plantCall[1]);
+        expect(plant.device_class).toBe('problem');
+        expect(plant.state_topic).toBe('cbus/read/254/172/201/problem');
+        expect(plant.payload_on).toBe('ON');
+        expect(plant.payload_off).toBe('OFF');
+        expect(plant.device.identifiers).toEqual(['cgateweb_254_172_201']);
+
+        const sensorCall = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/binary_sensor/cgateweb_254_172_201_sensor_problem/config');
+        expect(sensorCall).toBeDefined();
+        const sensor = JSON.parse(sensorCall[1]);
+        expect(sensor.device_class).toBe('problem');
+        expect(sensor.state_topic).toBe('cbus/read/254/172/201/sensor_problem');
+        expect(sensor.device.identifiers).toEqual(['cgateweb_254_172_201']);
     });
 
     test('bounds the climate entity to the C-Bus thermostat range (10–32°C)', () => {
