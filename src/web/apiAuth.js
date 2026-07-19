@@ -105,7 +105,11 @@ class ApiAuth {
         if (!basePath) return false;
         const ingressPath = req.headers['x-ingress-path'];
         if (typeof ingressPath !== 'string' || ingressPath.length === 0) return false;
-        const normalized = ingressPath.replace(/\/+$/, '');
+        // Trim trailing slashes without a regex: /\/+$/ on an attacker-controlled
+        // header is a polynomial-backtracking (ReDoS) risk on slash-dense input.
+        let end = ingressPath.length;
+        while (end > 0 && ingressPath.charCodeAt(end - 1) === 47) end -= 1; // 47 = '/'
+        const normalized = ingressPath.slice(0, end);
         if (normalized !== basePath) return false;
         return req.headers['x-hass-source'] === 'core.ingress';
     }
