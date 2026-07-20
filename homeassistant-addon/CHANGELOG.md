@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.2] - 2026-07-20
+
+### Added
+
+- **Sync-complete (762) events now reach the bridge (#25).** The command session opens with `EVENT e6s0c0` (C-Gate manual §4.5.83): level-6 events such as "Network sync ok" are now delivered, so HA Discovery re-fetches the tree the moment a network finishes syncing instead of waiting out the bounded polling cycle. Verified on a live C-Gate v3.3.2: 762 is broadcast to all event-enabled sessions and triggers the immediate refresh.
+
+### Fixed
+
+- **Async event lines in the digit-level (`#e#`) format are parsed.** With a digit event level, C-Gate prefixes async events by channel (`#e#`/`#s#`/`#c#`) and some timestamps omit milliseconds; the command-port parser dropped those lines at debug, which would also have broken the existing 742 Network-created handling once the level changed.
+
 ## [1.16.1] - 2026-07-19
 
 ### Added
