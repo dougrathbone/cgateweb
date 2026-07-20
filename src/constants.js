@@ -19,6 +19,11 @@ const CGATE_CMD_TERMINATERAMP = 'TERMINATERAMP';  // Stop an in-progress ramp op
 const CGATE_CMD_GET = 'GET';
 const CGATE_CMD_TREEXML = 'TREEXML';
 const CGATE_CMD_EVENT_ON = 'EVENT ON';
+// Event-mode opting the command session into level-6 events — needed to
+// receive the "762 Network sync ok" async event, which is level 6 and thus
+// absent from the default e+s0c0 stream (C-Gate manual §4.5.83; issue #25).
+// s0c0 keeps the SCP/CCP streams off the command port (they have their own).
+const CGATE_CMD_EVENT_MODE_L6 = 'EVENT e6s0c0';
 const CGATE_CMD_LOGIN = 'LOGIN';
 const CGATE_PARAM_LEVEL = 'level';
 
@@ -179,6 +184,7 @@ module.exports = {
     CGATE_CMD_GET,
     CGATE_CMD_TREEXML,
     CGATE_CMD_EVENT_ON,
+    CGATE_CMD_EVENT_MODE_L6,
     CGATE_CMD_LOGIN,
     CGATE_PARAM_LEVEL,
     

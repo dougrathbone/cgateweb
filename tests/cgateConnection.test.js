@@ -258,7 +258,7 @@ describe('CgateConnection', () => {
                 cmd.connect();
                 mockSocket.emit('connect');
 
-                expect(mockSocket.write).toHaveBeenCalledWith(expect.stringContaining('EVENT ON'));
+                expect(mockSocket.write).toHaveBeenCalledWith('EVENT e6s0c0\n');
                 expect(mockSocket.write).toHaveBeenCalledWith('LOGIN admin s3cret!\n');
             });
 
@@ -272,7 +272,7 @@ describe('CgateConnection', () => {
                 cmd.connect();
                 mockSocket.emit('connect');
 
-                expect(mockSocket.write).toHaveBeenCalledWith(expect.stringContaining('EVENT ON'));
+                expect(mockSocket.write).toHaveBeenCalledWith('EVENT e6s0c0\n');
                 expect(mockSocket.write).not.toHaveBeenCalledWith(expect.stringContaining('LOGIN'));
                 expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('Refusing to send LOGIN'));
             });

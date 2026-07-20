@@ -100,9 +100,9 @@ class CommandResponseProcessor {
      */
     _parseCommandResponseLine(line) {
         // Strip a leading C-Gate timestamp (e.g. "20260504-193110.569 ").
-        // Asynchronous notifications enabled by EVENT ON arrive on the command
-        // port with this prefix; without stripping it the hyphen-first split
-        // below would land in the date instead of the response code.
+        // Asynchronous notifications enabled by the session EVENT command
+        // (e6s0c0) arrive on the command port with this prefix; without
+        // stripping it the hyphen-first split below would land in the date.
         const stripped = (line || '').replace(CGATE_TIMESTAMP_PREFIX, '');
 
         // C-Gate response codes are exactly 3 digits at the start of the line,

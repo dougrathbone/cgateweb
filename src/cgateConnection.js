@@ -4,7 +4,7 @@ const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 const { backoffDelay } = require('./backoff');
 const { 
-    CGATE_CMD_EVENT_ON, 
+    CGATE_CMD_EVENT_MODE_L6, 
     CGATE_CMD_LOGIN, 
     NEWLINE 
 } = require('./constants');
@@ -268,10 +268,12 @@ class CgateConnection extends EventEmitter {
     _sendInitialCommands() {
         try {
             if (this.socket && !this.socket.destroyed) {
-                // 1. Enable events
-                const eventCmd = CGATE_CMD_EVENT_ON + NEWLINE;
+                // 1. Enable events at level 6 so the session receives the
+                // "762 Network sync ok" async event (level 6; absent from the
+                // default EVENT ON / e+s0c0 stream — C-Gate manual §4.5.83).
+                const eventCmd = CGATE_CMD_EVENT_MODE_L6 + NEWLINE;
                 this.socket.write(eventCmd);
-                this.logger.info(`C-Gate Sent: ${CGATE_CMD_EVENT_ON}`);
+                this.logger.info(`C-Gate Sent: ${CGATE_CMD_EVENT_MODE_L6}`);
                 
                 // 2. Send LOGIN if credentials provided
                 const user = this.settings.cgateusername;
@@ -290,10 +292,10 @@ class CgateConnection extends EventEmitter {
                     }
                 }
             } else {
-                this.logger.warn(`Command socket not available to send initial commands (EVENT ON / LOGIN).`);
+                this.logger.warn(`Command socket not available to send initial commands (EVENT / LOGIN).`);
             }
         } catch (e) {
-            this.logger.error(`Error sending initial commands (EVENT ON / LOGIN):`, { error: e });
+            this.logger.error(`Error sending initial commands (EVENT / LOGIN):`, { error: e });
             this._handleError(e);
         }
     }
