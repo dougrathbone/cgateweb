@@ -10,8 +10,14 @@ const {
     CGATE_RESPONSE_NETWORK_SYNC_OK
 } = require('./constants');
 
-// Strips C-Gate's leading async-event timestamp ("20260504-193110.569 ").
-const CGATE_TIMESTAMP_PREFIX = /^\d{8}-\d{6}\.\d+\s+/;
+// Strips C-Gate's leading async-event timestamp ("20260504-193110.569 " or
+// "20260720-102130 " — milliseconds are optional, §4.3 event format).
+const CGATE_TIMESTAMP_PREFIX = /^\d{8}-\d{6}(?:\.\d+)?\s+/;
+// Strips the async-event channel prefix a session gets when its EVENT
+// event-mode uses a digit level (§4.5.83: e6 → "#e# ", s1 → "#s# ", c1 →
+// "#c# "). EVENT ON's '+' mode is unprefixed, which is why the parser never
+// needed this before the level-6 opt-in.
+const CGATE_ASYNC_CHANNEL_PREFIX = /^#[esc]#\s+/;
 // Extracts the numeric network id from a C-Gate object path "//PROJECT/254 ...".
 const CGATE_NETWORK_PATH = /\/\/[^/]+\/(\d+)\b/;
 
@@ -99,11 +105,15 @@ class CommandResponseProcessor {
      * @returns {Object|null} Parsed response with responseCode and statusData, or null if invalid
      */
     _parseCommandResponseLine(line) {
-        // Strip a leading C-Gate timestamp (e.g. "20260504-193110.569 ").
+        // Strip the async channel prefix ("#e# "/"#s# "/"#c# ") present when the
+        // session event-mode uses a digit level (§4.5.83), then the leading
+        // C-Gate timestamp (e.g. "20260504-193110.569 " or "20260720-102130 ").
         // Asynchronous notifications enabled by the session EVENT command
-        // (e6s0c0) arrive on the command port with this prefix; without
-        // stripping it the hyphen-first split below would land in the date.
-        const stripped = (line || '').replace(CGATE_TIMESTAMP_PREFIX, '');
+        // (e6s0c0) arrive on the command port in that shape; without stripping
+        // both, the response-code check below rejects them.
+        const stripped = (line || '')
+            .replace(CGATE_ASYNC_CHANNEL_PREFIX, '')
+            .replace(CGATE_TIMESTAMP_PREFIX, '');
 
         // C-Gate response codes are exactly 3 digits at the start of the line,
         // followed by either '-' (e.g. "200-OK") or ' ' (e.g. "742 //PROJECT

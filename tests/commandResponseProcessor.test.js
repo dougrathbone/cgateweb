@@ -294,6 +294,26 @@ describe('CommandResponseProcessor', () => {
             expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
         });
 
+        it('end-to-end: #e#-prefixed 762 line (digit event level) forwards to handleNetworkSyncComplete', () => {
+            // Real capture (2026-07-20, C-Gate v3.3.2, session mode e6s0c0):
+            // #e# 20260720-102130 762 //5COGAN/254 <OID> Network sync ok
+            processor.processLine('#e# 20260720-102130 762 //5COGAN/254 cd6de380-3e2e-103f-802a-c8f0bd7df974 Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
+        it('end-to-end: timestamp without milliseconds still parses', () => {
+            processor.processLine('20260718-123456 762 //MIDSTRM/254 Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
+        it('end-to-end: #s# and #c# prefixed lines parse their response code too', () => {
+            // With s1/c1 modes the status/config channels arrive prefixed; the
+            // parser must not drop them before the response-code dispatch.
+            const okSpy = jest.spyOn(processor, '_processCommandObjectStatus');
+            processor.processLine('#s# 20260720-102131 300 //MIDSTRM/254/56/1: level=255');
+            expect(okSpy).toHaveBeenCalled();
+        });
+
         it('should ignore 762 events without a parseable network id', () => {
             processor._processCommandResponse('762', 'Network sync ok');
             expect(mockHaDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
