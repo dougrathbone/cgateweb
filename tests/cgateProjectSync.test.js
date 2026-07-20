@@ -18,10 +18,11 @@ const SCRIPT = path.join(
     'cgate-project-sync.sh'
 );
 
-// Stub bashio: config keys come from env vars CGW_TEST_<key>.
+// Stub bashio: config keys come from env vars CGW_TEST_<key>. Warnings are
+// echoed so tests can assert on them (info/error stay silent).
 const BASHIO_STUB = `
     bashio::log.info()    { :; }
-    bashio::log.warning() { :; }
+    bashio::log.warning() { printf 'WARNING: %s\\n' "$*"; }
     bashio::log.error()   { :; }
     bashio::log.trace()   { :; }
     bashio::config() {
@@ -144,6 +145,42 @@ describeBash('cgate-project-sync.sh', () => {
             configObject: { cgate_mode: 'managed' }
         });
         expect(fs.existsSync(dirs.projectsDir)).toBe(false);
+    });
+
+    test('warns clearly when managed mode has no project .db anywhere (share dir missing)', () => {
+        fs.rmSync(dirs.root, { recursive: true, force: true });
+        dirs = makeTmpDirs({ withShare: false, withData: true });
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(out).toMatch(/No C-Bus project database found/);
+        expect(out).toMatch(/401 Network not found/);
+        expect(out).toMatch(/labels into the cgateweb web UI does NOT install the project/);
+    });
+
+    test('warns clearly when the share dir exists but is empty and no project is installed', () => {
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(out).toMatch(/No C-Bus project database found/);
+    });
+
+    test('does not warn when a project already exists in Projects (share dir missing)', () => {
+        fs.rmSync(dirs.root, { recursive: true, force: true });
+        dirs = makeTmpDirs({ withShare: false, withData: true });
+        const dest = projectDbPath(dirs.projectsDir, 'HOME');
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, 'existing-project');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(out).not.toMatch(/No C-Bus project database found/);
     });
 
     test('does not overwrite a newer destination .db (managed C-Gate may have saved state)', () => {

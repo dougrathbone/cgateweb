@@ -161,8 +161,16 @@ issue #28) can see what the host and C-Gate actually see:
   `ttyUSB*`/`ttyACM*` node), plus an inventory of every detected
   `/dev/ttyUSB*`, `/dev/ttyACM*` and `/dev/serial/by-id/` entry.
 - Once managed C-Gate is accepting commands: the output of the C-Gate
-  `PORT LIST` and `IFLIST` commands, showing which ports/interfaces C-Gate
+  `PORT LIST` and `PORT IFLIST` commands, showing which ports/interfaces C-Gate
   itself opened. This runs in the background and never blocks startup.
+
+**Troubleshooting**
+
+- **`401 Network not found` on every network command:** the C-Bus project is
+  not installed in C-Gate. Importing labels into the Web UI does **not** do
+  this — install the Toolkit `.db` into `/share/cgate/tag/` as described in
+  "Loading your C-Gate project in managed mode" above and restart. Startup
+  also logs an explicit warning when no project database is found.
 
 When reporting a problem on
 [GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28),

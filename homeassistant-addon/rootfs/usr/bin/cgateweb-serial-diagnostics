@@ -3,8 +3,8 @@
 # ALPHA (issue #28): USB-serial PCI diagnostics
 #
 # Runs after managed C-Gate is accepting commands and reports what C-Gate
-# itself sees (PORT LIST / IFLIST), so users can paste real data into GitHub
-# issue #28 instead of guessing. Only active when the opt-in
+# itself sees (PORT LIST / PORT IFLIST), so users can paste real data into
+# GitHub issue #28 instead of guessing. Only active when the opt-in
 # cgate_serial_device is configured and cgate_mode is managed.
 #
 # This script must NEVER break add-on startup: every failure path (nc missing,
@@ -39,7 +39,7 @@ bashio::log.info "Serial device ${SERIAL_DEVICE} resolves to ${RESOLVED}"
 
 bashio::log.info "==================================================================="
 bashio::log.info " C-Gate serial diagnostics (ALPHA USB-serial PCI, issue #28)"
-bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, IFLIST)"
+bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, PORT IFLIST)"
 bashio::log.info " Reporting a problem? Paste this whole block into GitHub issue #28:"
 bashio::log.info "   https://github.com/dougrathbone/cgateweb/issues/28"
 bashio::log.info "==================================================================="
@@ -50,7 +50,7 @@ if command -v nc >/dev/null 2>&1; then
     # nc's stderr is folded into RESPONSE so error text (e.g. "connection
     # refused") can be logged; its exit status decides success, not whether
     # the response happened to be empty.
-    RESPONSE=$(printf 'PORT LIST\nIFLIST\nQUIT\n' | nc -w 10 "${CGATE_HOST}" "${CGATE_PORT}" 2>&1) || NC_STATUS=$?
+    RESPONSE=$(printf 'PORT LIST\nPORT IFLIST\nQUIT\n' | nc -w 10 "${CGATE_HOST}" "${CGATE_PORT}" 2>&1) || NC_STATUS=$?
 fi
 
 if [[ ${NC_STATUS} -ne 0 || -z "${RESPONSE}" ]]; then

@@ -24,8 +24,31 @@ if [[ "${CGATE_MODE}" != "managed" ]]; then
     exit 0
 fi
 
+# True when the managed C-Gate already has at least one project .db to load.
+_cgateweb_have_project_db() {
+    shopt -s nullglob
+    local dbs=("${PROJECTS_DIR}"/*/*.db)
+    shopt -u nullglob
+    ((${#dbs[@]} > 0))
+}
+
+# Managed mode with no project anywhere is the #28 startup trap: C-Gate then
+# answers every network command with "401 Network not found" and discovery
+# loops until the retries exhaust. Say exactly what's wrong and how to fix it —
+# importing labels into the cgateweb web UI is NOT a project install.
+_cgateweb_warn_no_project() {
+    bashio::log.warning "No C-Bus project database found — managed C-Gate cannot open any network without one."
+    bashio::log.warning "Every network command will fail with '401 Network not found'."
+    bashio::log.warning "Install your C-Bus Toolkit project: place <PROJECT>.db in ${SHARE_TAG_DIR}/ (e.g. via the Samba add-on share), then restart this add-on."
+    bashio::log.warning "Note: importing labels into the cgateweb web UI does NOT install the project into C-Gate."
+}
+
 if [[ ! -d "${SHARE_TAG_DIR}" ]]; then
-    bashio::log.info "No project tag directory at ${SHARE_TAG_DIR}; skipping project sync"
+    if _cgateweb_have_project_db; then
+        bashio::log.info "No project tag directory at ${SHARE_TAG_DIR}; skipping project sync"
+    else
+        _cgateweb_warn_no_project
+    fi
     exit 0
 fi
 
@@ -54,7 +77,11 @@ done
 shopt -u nullglob
 
 if [[ ${SYNCED} -eq 0 && ${SKIPPED} -eq 0 ]]; then
-    bashio::log.info "No .db files found in ${SHARE_TAG_DIR}; nothing to sync"
+    if _cgateweb_have_project_db; then
+        bashio::log.info "No .db files found in ${SHARE_TAG_DIR}; nothing to sync"
+    else
+        _cgateweb_warn_no_project
+    fi
 elif [[ ${SKIPPED} -gt 0 ]]; then
     bashio::log.info "Skipped ${SKIPPED} project(s) - destination newer than share copy"
 fi
