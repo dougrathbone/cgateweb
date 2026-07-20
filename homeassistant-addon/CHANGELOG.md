@@ -5,6 +5,16 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.3] - 2026-07-20
+
+### Added
+
+- **Clear warning when managed C-Gate has no project database (#28).** Startup now warns explicitly when managed mode finds no Toolkit `.db` anywhere — naming the symptom (`401 Network not found` on every network command), the fix (place `<PROJECT>.db` in `/share/cgate/tag/` and restart), and the common confusion behind it (importing labels into the Web UI does not install the C-Bus project). The alpha USB-serial docs gained a matching Troubleshooting note.
+
+### Fixed
+
+- **Serial diagnostics query `PORT IFLIST` instead of bare `IFLIST` (#28).** C-Gate rejected the latter with `400 Syntax Error`; the interface-list command is `PORT IFLIST` per the manual (§4.5.152).
+
 ## [1.16.2] - 2026-07-20
 
 ### Added
