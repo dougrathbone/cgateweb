@@ -181,7 +181,7 @@ jobs:
         esac
         docker buildx build \
           --platform "$platform" \
-          --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.19 \
+          --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.21 \
           --build-arg BUILD_ARCH=${{ matrix.arch }} \
           --build-arg BUILD_VERSION=ci \
           --build-arg BUILD_DATE=ci \

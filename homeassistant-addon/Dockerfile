@@ -7,7 +7,7 @@ ARG BUILD_FROM
 # aarch64/armv7 has caused intermittent SIGILL crashes in CI.
 # ----------------------------------------------------------------------------
 ARG BUILDPLATFORM
-FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.19 AS builder
+FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.21 AS builder
 
 RUN apk add --no-cache nodejs npm
 
@@ -25,9 +25,10 @@ FROM $BUILD_FROM
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# OpenJDK 17 is not packaged for every Alpine arch (notably armv7/armhf on
-# 3.19). Prefer 17 where available; fall back to OpenJDK 8 so managed-mode
-# C-Gate still has a JRE on 32-bit ARM. Remote-mode users only need nodejs.
+# OpenJDK 17 is not packaged for every Alpine arch (armv7/armhf/i386 on 3.21
+# have only OpenJDK 8 — verified against pkgs.alpinelinux.org). Prefer 17 where
+# available; fall back to OpenJDK 8 so managed-mode C-Gate still has a JRE on
+# 32-bit ARM/x86. Remote-mode users only need nodejs.
 ARG BUILD_ARCH
 RUN \
     apk add --no-cache \
