@@ -640,6 +640,13 @@ class MqttCommandRouter extends EventEmitter {
             this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set setpoint until the thermostat reports once (${topic})`);
             return;
         }
+        if (state.modeRaw === 0) {
+            // Writing a setpoint to an off thermostat would force it on in the
+            // fallback mode — the climate card adjusting a target must never
+            // power the unit up.
+            this.logger.warn(`HVAC unit ${network}/${unit} is off; ignoring setpoint of ${payload}°C — turn it on first (${topic})`);
+            return;
+        }
         const tempC = parseFloat(payload);
         if (isNaN(tempC)) {
             this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
@@ -849,6 +856,12 @@ class MqttCommandRouter extends EventEmitter {
             this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set fan mode until the thermostat reports once (${topic})`);
             return;
         }
+        if (state.modeRaw === 0) {
+            // Same guard as the setpoint path: a fan-mode write would force the
+            // off unit on in the fallback mode.
+            this.logger.warn(`HVAC unit ${network}/${unit} is off; ignoring fan mode "${payload}" — turn it on first (${topic})`);
+            return;
+        }
 
         const fanMode = String(payload).toLowerCase();
         let useaux;
@@ -858,7 +871,10 @@ class MqttCommandRouter extends EventEmitter {
             aux = 0;
         } else if (fanMode === 'continuous') {
             useaux = 1;
-            aux = 0x40 | ((state.auxLevelUsed && Number.isInteger(state.auxLevel)) ? (state.auxLevel & 0x3F) : 0);
+            // Re-combine bit 6 with the learned speed bits whenever we have
+            // them — including after an automatic write, which clears the
+            // aux-used flag but deliberately keeps the learned aux level.
+            aux = 0x40 | (Number.isInteger(state.auxLevel) ? (state.auxLevel & 0x3F) : 0);
         } else {
             this.logger.warn(`Unknown HVAC fan mode "${payload}" on topic ${topic} (expected automatic|continuous)`);
             return;
@@ -885,7 +901,11 @@ class MqttCommandRouter extends EventEmitter {
             aux
         });
         this._queueCommand(cmd + NEWLINE);
-        this.airconControlRegistry.noteAuxLevelWrite(network, unit, useaux === 1, aux);
+        // An automatic write clears the aux-used flag but must not clobber the
+        // learned fan-speed bits — a later continuous write combines bit 6
+        // with them (§25.6.11).
+        this.airconControlRegistry.noteAuxLevelWrite(network, unit, useaux === 1,
+            useaux === 1 ? aux : (Number.isInteger(state.auxLevel) ? state.auxLevel : aux));
         this._publishOptimisticHvacState(network, application, unit, { fanMode });
         this.logger.info(`Native HVAC fan mode: ${network}/${unit} -> ${fanMode} (ward ${state.ward}, zones ${state.zones})`);
     }

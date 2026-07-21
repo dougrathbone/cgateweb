@@ -221,6 +221,54 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(router.logger.warn).toHaveBeenCalledWith(expect.stringContaining('only supported on the native'));
     });
 
+    it('ignores a setpoint write while the thermostat is off (would force it on)', () => {
+        const { router, queued, published } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', mode: 'off', modeRaw: 0, type: 255, setpointRaw: 0
+        });
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        jest.advanceTimersByTime(3000);
+        expect(queued).toHaveLength(0);
+        expect(published.some(p => p.topic.endsWith('/setpoint'))).toBe(false);
+        expect(router.logger.warn).toHaveBeenCalledWith(expect.stringContaining('is off'));
+    });
+
+    it('ignores a fan-mode write while the thermostat is off', () => {
+        const { router, queued } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', mode: 'off', modeRaw: 0, type: 255, setpointRaw: 0
+        });
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        expect(queued).toHaveLength(0);
+        expect(router.logger.warn).toHaveBeenCalledWith(expect.stringContaining('is off'));
+    });
+
+    it('an automatic fan-mode write preserves the learned fan speed for a later continuous write', () => {
+        const { router, queued } = makeRouter();
+        router.airconControlRegistry.recordModeReading({
+            kind: 'mode', network: '254', application: '172', sourceUnit: '202',
+            zoneGroup: '1', zones: '0', modeRaw: 1, type: 3, setpointRaw: 5632,
+            auxLevelUsed: true, auxLevel: 3 // fan speed 3, automatic
+        });
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'automatic');
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        expect(queued).toHaveLength(2);
+        // continuous re-combines bit 6 with the preserved speed 3 → aux 67, not 64
+        expect(queued[1].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 5632 67');
+    });
+
+    it('a fan-mode change cancels a pending debounced setpoint write', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        router.routeMessage('cbus/write/254/172/202/fanmode', 'continuous');
+        jest.advanceTimersByTime(3000);
+        // only the fan-mode command — the pending setpoint was cancelled
+        expect(queued).toHaveLength(1);
+        expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 5632 64');
+    });
+
     it('optimistically publishes the new state so HA updates instantly', () => {
         const { router, published } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
