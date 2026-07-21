@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-07-20
+
+### Added
+
+- **Discovery type from entity-id label prefix (#35).** New opt-in `ha_discovery_type_from_label_prefix` setting: groups named with their intended Home Assistant entity id (`cover.bedroom_shutter`, `switch.porch_light`, `light.bedroom_downlights`) are discovered as that type. Supported prefixes match the `type_overrides` vocabulary (`light.`, `cover.`, `switch.`, `relay.`, `pir.`); a manual override still wins. Available in the add-on UI, off by default.
+- **Source unit per group (#35).** Every C-Bus event's originating unit (`#sourceunit`) is published to `cbus/read/{net}/{app}/{group}/source_unit`, so automations can react to a physical switch press specifically or filter out bridge/CNI-originated writes. Events without a source (e.g. sync updates) publish nothing.
+
 ## [1.16.3] - 2026-07-20
 
 ### Added
