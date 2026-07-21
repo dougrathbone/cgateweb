@@ -5,7 +5,6 @@ const packageJson = require('../package.json');
 const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting devices
 const DEFAULT_CBUS_APP_TRIGGER = '202'; // C-Bus application ID for trigger groups (keypads, scenes)
 const DEFAULT_CBUS_APP_TEMPERATURE = '25';   // C-Bus Temperature Broadcast application ($19)
-const DEFAULT_CBUS_APP_MEASUREMENT = '228';  // C-Bus Measurement application ($E4)
 const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning application ($AC)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
@@ -18,7 +17,6 @@ const CGATE_CMD_RAMP = 'RAMP';
 const CGATE_CMD_TERMINATERAMP = 'TERMINATERAMP';  // Stop an in-progress ramp operation
 const CGATE_CMD_GET = 'GET';
 const CGATE_CMD_TREEXML = 'TREEXML';
-const CGATE_CMD_EVENT_ON = 'EVENT ON';
 // Event-mode opting the command session into level-6 events — needed to
 // receive the "762 Network sync ok" async event, which is level 6 and thus
 // absent from the default e+s0c0 stream (C-Gate manual §4.5.83; issue #25).
@@ -44,7 +42,6 @@ const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
 const MQTT_TOPIC_SUFFIX_TILT = 'tilt';          // Cover tilt angle (0-100%)
 const MQTT_TOPIC_SUFFIX_EVENT = 'event';        // Trigger group event
-const MQTT_TOPIC_SUFFIX_TREE = 'tree';
 // HVAC topic suffixes
 const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP = 'current_temperature'; // Current temperature reading
 const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target temperature setpoint
@@ -171,7 +168,6 @@ module.exports = {
     DEFAULT_CBUS_APP_LIGHTING,
     DEFAULT_CBUS_APP_TRIGGER,
     DEFAULT_CBUS_APP_TEMPERATURE,
-    DEFAULT_CBUS_APP_MEASUREMENT,
     DEFAULT_CBUS_APP_AIRCON,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
@@ -184,7 +180,6 @@ module.exports = {
     CGATE_CMD_TERMINATERAMP,
     CGATE_CMD_GET,
     CGATE_CMD_TREEXML,
-    CGATE_CMD_EVENT_ON,
     CGATE_CMD_EVENT_MODE_L6,
     CGATE_CMD_LOGIN,
     CGATE_PARAM_LEVEL,
@@ -206,7 +201,6 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
-    MQTT_TOPIC_SUFFIX_TREE,
     MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,

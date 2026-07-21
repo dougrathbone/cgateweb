@@ -14,3 +14,8 @@ toolkit-certs/
 # The curated dedup snapshot (perf/dedup.json) is still tracked intentionally.
 perf/raw.json
 .worktrees/
+
+# macOS finder junk and local coverage reports — don't rely on a contributor's
+# global gitignore for these.
+.DS_Store
+coverage/

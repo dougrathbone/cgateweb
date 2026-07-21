@@ -19,8 +19,4 @@ describe('temperature constants', () => {
         expect(c.DEFAULT_CBUS_APP_TEMPERATURE).toBe('25');
         expect(c.MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP).toBe('current_temperature');
     });
-    it('exports the Measurement app id', () => {
-        const c = require('../src/constants');
-        expect(c.DEFAULT_CBUS_APP_MEASUREMENT).toBe('228');
-    });
 });
