@@ -45,7 +45,16 @@ class CBusEvent {
         this._group = null;
         this._isValid = false;
         this._reading = null;
+        this._sourceUnit = null;
         this._logger = logger;
+
+        // Trailing event metadata carries the origin unit (" #sourceunit=19
+        // OID=...") — the C-Bus unit that changed the group (issue #35: lets
+        // consumers tell a physical switch press from a bridge/CNI write). A
+        // value of -1 (no source, e.g. sync updates) naturally fails the
+        // digits-only match and stays null.
+        const sourceMatch = this._rawEvent.match(/#sourceunit=(\d+)/);
+        if (sourceMatch) this._sourceUnit = sourceMatch[1];
 
         if (this._rawEvent) {
             this._parse();
@@ -391,6 +400,15 @@ class CBusEvent {
      */
     getReading() {
         return this._reading;
+    }
+
+    /**
+     * The C-Bus unit address that originated this event (from the trailing
+     * "#sourceunit=N" metadata), or null when absent.
+     * @returns {string|null}
+     */
+    getSourceUnit() {
+        return this._sourceUnit;
     }
 
     /**

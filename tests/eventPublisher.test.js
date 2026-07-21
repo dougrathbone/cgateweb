@@ -55,6 +55,24 @@ describe('EventPublisher', () => {
             expect(mockPublishFn).not.toHaveBeenCalled();
         });
 
+        it('should publish the origin unit to source_unit when present (issue #35)', () => {
+            const event = new CBusEvent('lighting off //HOME/254/56/10  #sourceunit=18 OID=abc');
+            eventPublisher.publishEvent(event, '(Test)');
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/10/source_unit',
+                '18',
+                mockMqttOptions
+            );
+        });
+
+        it('should not publish source_unit when the event has no sourceunit metadata', () => {
+            const event = new CBusEvent('lighting on 254/56/4');
+            eventPublisher.publishEvent(event, '(Test)');
+
+            expect(mockPublishFn.mock.calls.some(c => c[0].includes('/source_unit'))).toBe(false);
+        });
+
         it('should publish current_temperature for a Temperature Broadcast (app 25) event', () => {
             // App 25 has a specialised decoder that attaches a structured reading
             // (byte / 4 = °C). publishEvent must route it to current_temperature

@@ -25,6 +25,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
+    MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -110,6 +111,18 @@ class EventPublisher {
         }
 
         const topics = this._getTopicsForAddress(network, application, group);
+
+        // The event's origin unit (#sourceunit metadata) — which C-Bus unit
+        // changed the group. Lets automations react to physical switch presses
+        // and distinguish them from bridge/CNI-originated writes (issue #35).
+        const sourceUnit = event.getSourceUnit && event.getSourceUnit();
+        if (sourceUnit !== null && sourceUnit !== undefined) {
+            this._publishIfNeeded(
+                `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}/${MQTT_TOPIC_SUFFIX_SOURCE_UNIT}`,
+                sourceUnit,
+                this.mqttOptions
+            );
+        }
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
         const isTrigger = application === this.settings.ha_discovery_trigger_app_id;
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;

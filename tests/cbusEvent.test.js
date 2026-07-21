@@ -383,3 +383,33 @@ describe('CBusEvent', () => {
     });
 });
  
+describe('CBusEvent — getSourceUnit (issue #35)', () => {
+    beforeEach(() => {
+        jest.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        console.warn.mockRestore();
+    });
+
+    it('extracts the origin unit from trailing #sourceunit metadata', () => {
+        const event = new CBusEvent('lighting off //HOME/254/56/10  #sourceunit=18 OID=abc');
+        expect(event.isValid()).toBe(true);
+        expect(event.getSourceUnit()).toBe('18');
+    });
+
+    it('extracts the origin unit on ramp events with a level', () => {
+        const event = new CBusEvent('lighting ramp //HOME/254/56/246 4 0 #sourceunit=19 OID=abc');
+        expect(event.isValid()).toBe(true);
+        expect(event.getSourceUnit()).toBe('19');
+    });
+
+    it('returns null when no sourceunit metadata is present', () => {
+        const event = new CBusEvent('lighting on 254/56/4');
+        expect(event.getSourceUnit()).toBeNull();
+    });
+
+    it('returns null for sourceunit -1 (no originating unit, e.g. sync updates)', () => {
+        const event = new CBusEvent('lighting ramp 254/56/4 128 #sourceunit=-1 OID=abc');
+        expect(event.getSourceUnit()).toBeNull();
+    });
+});
