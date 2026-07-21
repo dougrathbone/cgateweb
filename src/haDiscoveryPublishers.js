@@ -471,8 +471,10 @@ class _HaDiscoveryPublishers {
             action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
             // Humidity state (spec-derived humidity verbs; only populated on
             // installs with humidity plant). Read-only — no humidity writes.
+            // Note the key is target_humidity_state_topic: the MQTT climate
+            // schema has no "humidity_state_topic" — that key is silently dead.
             current_humidity_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY}`,
-            humidity_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT}`,
+            target_humidity_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT}`,
             min_humidity: 0,
             max_humidity: 100,
             // Fan mode from the Aux Level (spec §25.6.11 bit 6). HA accepts an
