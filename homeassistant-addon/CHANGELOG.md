@@ -5,6 +5,21 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.2] - 2026-07-21
+
+### Added
+
+- **Web UI brute-force protection.** Failed API-key attempts now get their own stricter rate-limit bucket (default 20/min per client, tunable via `web_auth_failure_rate_limit_per_minute`); repeated failures return 429 instead of unlimited 401s. Successful authentications are unaffected.
+
+### Fixed
+
+- **A throwing route handler can no longer crash the process after writing response headers.** A second `writeHead` would have raised `ERR_HTTP_HEADERS_SENT` into an unhandled rejection; the error handler now just ends the response.
+
+### Changed
+
+- **Add-on base images bumped to Alpine 3.21** (3.19 is end-of-support, so its package repo was frozen and unpatched). Java layout verified per-arch: openjdk17 on x86_64/aarch64, openjdk8 fallback on armv7/armhf/i386.
+- Internal: dead code pruned (unused `CgateManager`, three dead constants); `.DS_Store` and `coverage/` added to the repo `.gitignore`.
+
 ## [1.17.1] - 2026-07-21
 
 ### Fixed
