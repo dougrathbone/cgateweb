@@ -5,6 +5,13 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.3] - 2026-07-21
+
+### Added
+
+- **Windows-saved projects now work with the USB-serial alpha (#28).** A Toolkit project saved on Windows references a `COMx` port that cannot exist on Linux, so the network opened with `InterfaceState=closed` and an empty tree. When `cgate_serial_device` is set, the project sync now rewrites any `COMx` interface address in the synced project `.db` to your serial device (stored as the bare port name C-Gate lists in `PORT LIST`, e.g. `ttyUSB0`). Idempotent, and interfaces with a Linux-usable address are left untouched.
+- **Serial diagnostics include `NET LIST_ALL`** — the log now shows each network's `interfaceType`/`interfaceAddress`/`interfaceState`, so a mis-pointed project interface is visible directly in the startup log.
+
 ## [1.17.2] - 2026-07-21
 
 ### Added
