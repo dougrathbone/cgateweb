@@ -5,6 +5,14 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.1] - 2026-07-21
+
+### Fixed
+
+- **Target humidity now appears on climate entities.** The discovery payload used `humidity_state_topic`, which is not a valid MQTT climate key and was silently ignored; it now uses `target_humidity_state_topic` (verified against the current `climate.mqtt` documentation).
+- **Setpoint and fan-mode writes no longer power on an off thermostat.** Both fell back to heat mode when the unit was off, so adjusting the target on an off climate card started the plant. The writes are now ignored with a warning when the unit is off (selecting a mode remains the way to turn it on).
+- **Fan speed survives automatic fan-mode writes.** Switching the fan to `automatic` zeroed the learned Aux Level, so a later `continuous` write reverted to default speed; the learned speed bits are now preserved and re-applied.
+
 ## [1.17.0] - 2026-07-20
 
 ### Added
