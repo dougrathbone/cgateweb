@@ -66,3 +66,45 @@ describe('classifyLightingGroup', () => {
         );
     });
 });
+
+describe('typeFromLabelPrefix (issue #35)', () => {
+    const { typeFromLabelPrefix, LABEL_PREFIX_TYPES } = require('../src/deviceTypeClassifier');
+    const on = { ha_discovery_type_from_label_prefix: true };
+
+    it('maps entity-id domain prefixes to discovery types', () => {
+        expect(typeFromLabelPrefix('light.bedroom_downlights', on)).toBe('light');
+        expect(typeFromLabelPrefix('cover.bedroom_shutter', on)).toBe('cover');
+        expect(typeFromLabelPrefix('switch.porch_light', on)).toBe('switch');
+        expect(typeFromLabelPrefix('relay.pool_pump', on)).toBe('relay');
+        expect(typeFromLabelPrefix('pir.hallway_sensor', on)).toBe('pir');
+    });
+
+    it('returns null when the setting is off or absent', () => {
+        expect(typeFromLabelPrefix('cover.bedroom_shutter', { ha_discovery_type_from_label_prefix: false })).toBeNull();
+        expect(typeFromLabelPrefix('cover.bedroom_shutter', {})).toBeNull();
+        expect(typeFromLabelPrefix('cover.bedroom_shutter')).toBeNull();
+    });
+
+    it('ignores unsupported prefixes (e.g. lock.) and non-prefix labels', () => {
+        expect(typeFromLabelPrefix('lock.front_door', on)).toBeNull();
+        expect(typeFromLabelPrefix('fan.bedroom_fan', on)).toBeNull();
+        expect(typeFromLabelPrefix('Master Bedroom Blind', on)).toBeNull();
+        expect(typeFromLabelPrefix('lightbedroom', on)).toBeNull();
+    });
+
+    it('requires a lowercase domain (entity-id style) at the very start', () => {
+        expect(typeFromLabelPrefix('Cover.bedroom_shutter', on)).toBeNull();
+        expect(typeFromLabelPrefix(' cover.bedroom_shutter', on)).toBeNull();
+        expect(typeFromLabelPrefix('x cover.bedroom_shutter', on)).toBeNull();
+    });
+
+    it('returns null for empty/invalid labels', () => {
+        expect(typeFromLabelPrefix('', on)).toBeNull();
+        expect(typeFromLabelPrefix(undefined, on)).toBeNull();
+        expect(typeFromLabelPrefix(null, on)).toBeNull();
+    });
+
+    it('exposes exactly the supported prefix map', () => {
+        expect(LABEL_PREFIX_TYPES).toEqual({ light: 'light', cover: 'cover', switch: 'switch', relay: 'relay', pir: 'pir' });
+    });
+});

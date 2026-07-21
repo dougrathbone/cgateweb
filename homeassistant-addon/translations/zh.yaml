@@ -287,3 +287,8 @@ configuration:
     name: Web 写入速率限制
     description: >-
       每个客户端每分钟的最大变更 API 请求数。默认：120。
+  ha_discovery_type_from_label_prefix:
+    name: 从标签前缀识别类型
+    description: >-
+      将以实体域前缀开头的组标签识别为对应设备类型(例如 cover.bedroom_shutter 识别为窗帘,switch.porch_light 识别为开关)。支持的前缀:light.、cover.、switch.、relay.、pir.。手动 type_overrides 条目始终优先。默认关闭。
+

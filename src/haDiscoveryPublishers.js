@@ -1,6 +1,6 @@
 // @ts-check
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
-const { classifyLightingGroup } = require('./deviceTypeClassifier');
+const { classifyLightingGroup, typeFromLabelPrefix } = require('./deviceTypeClassifier');
 const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
 const {
     MQTT_TOPIC_PREFIX_READ,
@@ -197,7 +197,11 @@ class _HaDiscoveryPublishers {
     _tryCreateTypedEntity(networkId, appId, groupId, group, labelKey) {
         const { labelMap, typeOverrides } = this._labelSnapshot;
         const labelForClassification = labelMap.get(labelKey) || group.Label || '';
-        const resolvedType = typeOverrides.get(labelKey) || classifyLightingGroup(labelForClassification, this.settings);
+        // Precedence: manual type_overrides, then an explicit entity-id domain
+        // prefix in the label (issue #35), then the keyword heuristics.
+        const resolvedType = typeOverrides.get(labelKey)
+            || typeFromLabelPrefix(labelForClassification, this.settings)
+            || classifyLightingGroup(labelForClassification, this.settings);
 
         if (!resolvedType || resolvedType === 'light') {
             return false;

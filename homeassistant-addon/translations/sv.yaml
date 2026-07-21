@@ -315,3 +315,8 @@ configuration:
     description: >-
       Maximalt antal muterande API-förfrågningar per minut per klient.
       Standard: 120.
+  ha_discovery_type_from_label_prefix:
+    name: Typ från etiketttprefix
+    description: >-
+      Behandla en gruppetikett som börjar med ett entitetsdomänprefix som den enhetstypen (t.ex. cover.sovrum_persienn blir en cover, switch.altan_ljus en switch). Prefix som stöds: light., cover., switch., relay., pir. En manuell type_overrides-post vinner alltid. Av som standard.
+

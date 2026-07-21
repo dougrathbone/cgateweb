@@ -28,6 +28,7 @@ const ADDON_OPTION_MAP = [
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },
+    { src: 'ha_discovery_type_from_label_prefix', dst: 'ha_discovery_type_from_label_prefix', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'cbus_aircon_control_enabled', dst: 'cbus_aircon_control_enabled', kind: 'boolDefined', when: 'haDiscovery' },
 
     { src: 'ha_bridge_diagnostics_enabled', dst: 'ha_bridge_diagnostics_enabled', kind: 'boolDefined' },

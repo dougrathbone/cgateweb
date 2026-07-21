@@ -130,6 +130,7 @@ schema:
   ha_discovery_scene_enabled: "bool?"
   ha_discovery_auto_type: "bool?"
   ha_discovery_auto_type_name_heuristics: "bool?"
+  ha_discovery_type_from_label_prefix: "bool?"
   ha_discovery_auto_type_cover_keywords: ["str"]
   ha_discovery_hvac_app_id: "int(1,255)?"
   cbus_aircon_app_id: "int(1,255)?"

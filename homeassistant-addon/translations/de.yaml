@@ -324,3 +324,8 @@ configuration:
     name: Web-Schreibratenlimit
     description: >-
       Maximale ändernde API-Anfragen pro Minute pro Client. Standard: 120.
+  ha_discovery_type_from_label_prefix:
+    name: Typ aus Label-Präfix
+    description: >-
+      Eine Gruppenbezeichnung mit Entitäts-Domain-Präfix als diesen Gerätetyp erkennen (z. B. wird cover.schlafzimmer_rollo zu einer Abdeckung, switch.terassen_licht zu einem Schalter). Unterstützte Präfixe: light., cover., switch., relay., pir. Ein manueller type_overrides-Eintrag hat immer Vorrang. Standardmäßig deaktiviert.
+

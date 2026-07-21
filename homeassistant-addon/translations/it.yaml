@@ -329,3 +329,8 @@ configuration:
     description: >-
       Massimo di richieste API mutanti per minuto per client.
       Predefinito: 120.
+  ha_discovery_type_from_label_prefix:
+    name: Tipo da prefisso etichetta
+    description: >-
+      Considera un'etichetta di gruppo che inizia con un prefisso di dominio entità come quel tipo di dispositivo (es. cover.tapparella_camera diventa una copertura, switch.luce_portico un interruttore). Prefissi supportati: light., cover., switch., relay., pir. Una voce manuale type_overrides ha sempre la precedenza. Disattivato per impostazione predefinita.
+

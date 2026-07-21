@@ -325,3 +325,8 @@ configuration:
     description: >-
       Maximum aantal muterende API-verzoeken per minuut per client.
       Standaard: 120.
+  ha_discovery_type_from_label_prefix:
+    name: Type uit labelprefix
+    description: >-
+      Behandel een groepslabel dat begint met een entiteitsdomein-prefix als dat apparaattype (bijv. cover.slaapkamer_luik wordt een cover, switch.verandalamp een schakelaar). Ondersteunde prefixes: light., cover., switch., relay., pir. Een handmatige type_overrides-vermelding gaat altijd voor. Standaard uit.
+

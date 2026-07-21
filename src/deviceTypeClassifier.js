@@ -56,4 +56,32 @@ function classifyLightingGroup(label, settings = {}) {
     return null;
 }
 
-module.exports = { classifyLightingGroup, DEFAULT_COVER_KEYWORDS };
+// Domain prefixes accepted by the label-prefix rule, aligned with the manual
+// type_overrides vocabulary. Lowercase only: a prefix is an entity-id domain,
+// which HA itself writes in lowercase.
+const LABEL_PREFIX_TYPES = { light: 'light', cover: 'cover', switch: 'switch', relay: 'relay', pir: 'pir' };
+
+/**
+ * Resolve a discovery type from an entity-id-style label prefix
+ * (e.g. "cover.bedroom_shutter" → 'cover'). For users who name C-Bus groups
+ * with their intended Home Assistant entity id (issue #35). Opt-in via
+ * settings.ha_discovery_type_from_label_prefix; a manual type_overrides entry
+ * still wins (the caller checks it first). Unknown prefixes (e.g. "lock.")
+ * return null — only types cgateweb can actually publish are mapped.
+ *
+ * @param {string} label - The resolved group label (custom label or TREEXML label).
+ * @param {Object} settings - Bridge settings.
+ * @param {boolean} [settings.ha_discovery_type_from_label_prefix] - Enable the prefix rule.
+ * @returns {'light'|'cover'|'switch'|'relay'|'pir'|null}
+ */
+function typeFromLabelPrefix(label, settings = {}) {
+    if (settings.ha_discovery_type_from_label_prefix !== true) return null;
+    if (typeof label !== 'string') return null;
+    const match = label.match(/^([a-z]+)\./);
+    if (!match) return null;
+    return Object.prototype.hasOwnProperty.call(LABEL_PREFIX_TYPES, match[1])
+        ? LABEL_PREFIX_TYPES[match[1]]
+        : null;
+}
+
+module.exports = { classifyLightingGroup, typeFromLabelPrefix, LABEL_PREFIX_TYPES, DEFAULT_COVER_KEYWORDS };

@@ -73,6 +73,11 @@ const defaultSettings = {
     ha_discovery_auto_type_cover_keywords: [
         'blind', 'shutter', 'shade', 'awning', 'curtain', 'roller', 'garage door'
     ],
+    // Resolve a group's discovery type from an entity-id-style label prefix
+    // (e.g. "cover.bedroom_shutter" → cover) for users who name C-Bus groups
+    // with their intended HA entity id (issue #35). Opt-in; manual
+    // type_overrides still win.
+    ha_discovery_type_from_label_prefix: false,
     ha_discovery_hvac_app_id: null,
     // C-Bus Air Conditioning app ID for native temperature reads (e.g. 172); null disables.
     cbus_aircon_app_id: null,

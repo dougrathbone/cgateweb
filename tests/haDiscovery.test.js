@@ -2701,3 +2701,85 @@ describe('HaDiscovery', () => {
         });
     });
 });
+describe('HaDiscovery — label domain-prefix types (issue #35)', () => {
+    const PREFIX_TREE = {
+        Network: {
+            Interface: {
+                Network: {
+                    NetworkNumber: '254',
+                    Unit: [
+                        {
+                            UnitAddress: '100',
+                            Application: [
+                                {
+                                    ApplicationAddress: '56',
+                                    Group: [
+                                        { GroupAddress: '30', Label: 'cover.bedroom_shutter' },
+                                        { GroupAddress: '31', Label: 'switch.porch_light' },
+                                        { GroupAddress: '32', Label: 'Kitchen Downlights' }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    };
+
+    function makeDiscovery(settings = {}, labelData = null) {
+        const publish = jest.fn();
+        const d = new HaDiscovery(
+            { ha_discovery_enabled: true, ha_discovery_prefix: 'testhomeassistant', ha_discovery_networks: ['254'], ...settings },
+            publish,
+            jest.fn(),
+            labelData
+        );
+        return { d, publish };
+    }
+
+    it('publishes cover/switch entities for domain-prefixed labels when enabled', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_label_prefix: true });
+        d._publishDiscoveryFromTree('254', PREFIX_TREE);
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/cover/cgateweb_254_56_30/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/switch/cgateweb_254_56_31/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+        // Unprefixed label still defaults to light.
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/light/cgateweb_254_56_32/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+    });
+
+    it('leaves prefixed labels as lights when the setting is off (default)', () => {
+        const { d, publish } = makeDiscovery();
+        d._publishDiscoveryFromTree('254', PREFIX_TREE);
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/light/cgateweb_254_56_30/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+        expect(publish.mock.calls.some(c => c[0].includes('/cover/cgateweb_254_56_30/'))).toBe(false);
+    });
+
+    it('a manual type_overrides entry wins over the prefix', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_label_prefix: true },
+            { typeOverrides: new Map([['254/56/30', 'switch']]) }
+        );
+        d._publishDiscoveryFromTree('254', PREFIX_TREE);
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/switch/cgateweb_254_56_30/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+    });
+});

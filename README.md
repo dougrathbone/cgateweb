@@ -203,6 +203,14 @@ Precedence: a manual `type_overrides` entry always wins, then application-id map
 
 Note: a shutter relay with a non-descriptive name still appears as a light — add a `type_overrides` entry (e.g. `"254/56/15": "cover"`) for those.
 
+#### Type from label prefix (opt-in)
+
+If you name your C-Bus groups with their intended Home Assistant entity id (e.g. `cover.bedroom_shutter`, `switch.porch_light`, `light.bedroom_downlights`), set `ha_discovery_type_from_label_prefix: true` and the domain prefix becomes the group's discovery type. Supported prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` (anything else, e.g. `lock.`, is ignored). Precedence matches the other rules: a manual `type_overrides` entry wins, then the label prefix, then keyword detection, then the default `light`.
+
+#### Source unit per group
+
+Every C-Bus event carries the unit that originated it (`#sourceunit`). cgateweb publishes it to `cbus/read/{net}/{app}/{group}/source_unit`, so automations can react to a physical switch press specifically, or ignore bridge/CNI-originated writes to avoid loops. (Not published for events without a source unit, e.g. sync updates.)
+
 ### Testing
 
 This project uses Jest for unit testing.

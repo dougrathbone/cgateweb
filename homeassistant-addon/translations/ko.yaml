@@ -304,3 +304,8 @@ configuration:
     name: Web 쓰기 속도 제한
     description: >-
       클라이언트당 분당 최대 변경 API 요청 수. 기본값: 120.
+  ha_discovery_type_from_label_prefix:
+    name: 레이블 접두사로 유형 결정
+    description: >-
+      엔티티 도메인 접두사로 시작하는 그룹 레이블을 해당 장치 유형으로 인식합니다(예: cover.bedroom_shutter는 커버, switch.porch_light는 스위치). 지원 접두사: light., cover., switch., relay., pir. 수동 type_overrides 항목이 항상 우선합니다. 기본값은 꺼짐입니다.
+
