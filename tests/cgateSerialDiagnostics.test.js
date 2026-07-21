@@ -148,11 +148,12 @@ describeBash('cgateweb-serial-diagnostics (alpha USB-serial PCI, #28)', () => {
             expect(r.output).toMatch(/CGATE> 300- Port 1: \/dev\/ttyUSB0 state=open/);
             expect(r.output).toMatch(/End of C-Gate serial diagnostics/);
 
-            // The script sent PORT LIST + PORT IFLIST to the default in-container
-            // C-Gate address (127.0.0.1, cgate_port default 20023).
+            // The script sent PORT LIST + PORT IFLIST + NET LIST_ALL to the
+            // default in-container C-Gate address (127.0.0.1, cgate_port 20023).
             const stdin = fs.readFileSync(path.join(r.dir, 'nc-stdin.txt'), 'utf8');
             expect(stdin).toMatch(/^PORT LIST$/m);
             expect(stdin).toMatch(/^PORT IFLIST$/m);
+            expect(stdin).toMatch(/^NET LIST_ALL$/m);
             const args = fs.readFileSync(path.join(r.dir, 'nc-args.txt'), 'utf8');
             expect(args).toContain('-w 10 127.0.0.1 20023');
         } finally {

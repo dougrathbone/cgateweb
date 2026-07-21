@@ -180,11 +180,16 @@ clearly marked with a banner so you can see exactly what to include.
 
 **Known limitations**
 
-- **Projects saved on Windows reference `COMx` ports.** If your Toolkit
-  project was built on Windows, its PC Interface entry points at a COM port
-  that does not exist on Linux. Re-point the interface at the Linux device
-  path in C-Bus Toolkit, then copy the `.db` over as described in "Loading
-  your C-Gate project in managed mode" above.
+- **Projects saved on Windows reference `COMx` ports** — which cannot exist on
+  Linux, leaving the network with `InterfaceState=closed` and an empty tree.
+  The add-on handles this for you: when `cgate_serial_device` is set, the
+  project sync rewrites any `COMx` interface address in the synced project
+  `.db` to your serial device (stored as the bare port name C-Gate lists in
+  `PORT LIST`, e.g. `ttyUSB0`). Interfaces already pointing at a Linux-usable
+  address are left untouched. If your project's interface is a **CNI (ethernet)
+  type** rather than serial, that is a different fix — the startup diagnostics
+  (`NET LIST_ALL`) show the project's `interfaceType`/`interfaceAddress` so you
+  can tell them apart.
 - **Untested on ARM** (aarch64/armhf/armv7) and only lightly tested on
   amd64 — which is why this ships as an opt-in alpha.
 - Whether a given dongle/USB chipset works depends on C-Gate's bundled serial

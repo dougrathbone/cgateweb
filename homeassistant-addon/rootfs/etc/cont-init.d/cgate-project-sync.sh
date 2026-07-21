@@ -85,3 +85,27 @@ if [[ ${SYNCED} -eq 0 && ${SKIPPED} -eq 0 ]]; then
 elif [[ ${SKIPPED} -gt 0 ]]; then
     bashio::log.info "Skipped ${SKIPPED} project(s) - destination newer than share copy"
 fi
+
+# ALPHA (issue #28): point Windows-authored project interfaces at the
+# configured USB-serial PCI. Toolkit projects saved on Windows reference a COMx
+# port that cannot exist on Linux, so C-Gate opens the network with
+# InterfaceState=closed and every TREEXML comes back empty. Rewrite those
+# addresses to the resolved cgate_serial_device port name BEFORE C-Gate loads
+# the project. Runs every boot (idempotent) so a re-synced Windows project is
+# fixed again. Only meaningful in managed mode with the alpha opt-in set.
+SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
+if [[ -n "${SERIAL_DEVICE}" && "${SERIAL_DEVICE}" != "null" ]]; then
+    if command -v node >/dev/null 2>&1; then
+        shopt -s nullglob
+        for db in "${PROJECTS_DIR}"/*/*.db; do
+            if ! OUT=$(node /usr/bin/cgateweb-project-serial-fixup.js "${db}" "${SERIAL_DEVICE}" 2>&1); then
+                bashio::log.warning "Project serial fixup failed for ${db}: ${OUT}"
+            elif [[ "${OUT}" == *"rewrote project interface"* ]]; then
+                bashio::log.info "${OUT}"
+            fi
+        done
+        shopt -u nullglob
+    else
+        bashio::log.warning "cgate_serial_device is set but node is unavailable — skipping project serial fixup"
+    fi
+fi

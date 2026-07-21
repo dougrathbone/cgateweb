@@ -39,7 +39,7 @@ bashio::log.info "Serial device ${SERIAL_DEVICE} resolves to ${RESOLVED}"
 
 bashio::log.info "==================================================================="
 bashio::log.info " C-Gate serial diagnostics (ALPHA USB-serial PCI, issue #28)"
-bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, PORT IFLIST)"
+bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, PORT IFLIST, NET LIST_ALL)"
 bashio::log.info " Reporting a problem? Paste this whole block into GitHub issue #28:"
 bashio::log.info "   https://github.com/dougrathbone/cgateweb/issues/28"
 bashio::log.info "==================================================================="
@@ -49,8 +49,11 @@ NC_STATUS=0
 if command -v nc >/dev/null 2>&1; then
     # nc's stderr is folded into RESPONSE so error text (e.g. "connection
     # refused") can be logged; its exit status decides success, not whether
-    # the response happened to be empty.
-    RESPONSE=$(printf 'PORT LIST\nPORT IFLIST\nQUIT\n' | nc -w 10 "${CGATE_HOST}" "${CGATE_PORT}" 2>&1) || NC_STATUS=$?
+    # the response happened to be empty. NET LIST_ALL shows each network's
+    # interfaceType/interfaceAddress/interfaceState (manual §4.5.130) — the
+    # decisive line when a Windows-saved project points the interface at a
+    # COMx port C-Gate cannot open on Linux.
+    RESPONSE=$(printf 'PORT LIST\nPORT IFLIST\nNET LIST_ALL\nQUIT\n' | nc -w 10 "${CGATE_HOST}" "${CGATE_PORT}" 2>&1) || NC_STATUS=$?
 fi
 
 if [[ ${NC_STATUS} -ne 0 || -z "${RESPONSE}" ]]; then

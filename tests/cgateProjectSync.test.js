@@ -54,7 +54,7 @@ function projectDbPath(projectsDir, name) {
     return path.join(projectsDir, base, `${base}.db`);
 }
 
-function runSync({ shareTag, dataCgate, configObject = {} }) {
+function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} }) {
     const env = {
         ...process.env,
         CGATEWEB_SHARE_TAG_DIR: shareTag,
@@ -62,7 +62,8 @@ function runSync({ shareTag, dataCgate, configObject = {} }) {
         // Pass the script path via the environment rather than interpolating it
         // into the bash -c command text, so the absolute path is never part of
         // the executed command string.
-        CGW_SYNC_SCRIPT: SCRIPT
+        CGW_SYNC_SCRIPT: SCRIPT,
+        ...extraEnv
     };
     for (const [k, v] of Object.entries(configObject)) {
         env[`CGW_TEST_${k}`] = v;
@@ -220,5 +221,46 @@ describeBash('cgate-project-sync.sh', () => {
             configObject: { cgate_mode: 'managed' }
         });
         expect(fs.readFileSync(dest, 'utf8')).toBe('fresh-from-user');
+    });
+
+    test('runs the serial fixup on synced projects when cgate_serial_device is set (issue #28)', () => {
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        const calls = fs.readFileSync(nodeCalls, 'utf8');
+        expect(calls).toContain('cgateweb-project-serial-fixup.js');
+        expect(calls).toContain('/dev/ttyUSB0');
+        expect(calls).toContain('HOME.db');
+        fs.rmSync(binDir, { recursive: true, force: true });
+    });
+
+    test('skips the serial fixup when cgate_serial_device is not set', () => {
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        expect(fs.existsSync(nodeCalls)).toBe(false);
+        fs.rmSync(binDir, { recursive: true, force: true });
     });
 });
