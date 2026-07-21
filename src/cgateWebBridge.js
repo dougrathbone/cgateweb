@@ -266,6 +266,7 @@ class CgateWebBridge {
             allowUnauthenticatedMutations: this.settings.web_allow_unauthenticated_mutations === true,
             allowedOrigins: this.settings.web_allowed_origins || null,
             maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
+            maxAuthFailuresPerWindow: this.settings.web_auth_failure_rate_limit_per_minute || 20,
             maxBodySizeBytes: this.settings.webMaxBodySizeBytes,
             activeDeviceWindowMs: this.settings.web_active_device_window_ms,
             haAreasCacheTtlMs: this.settings.web_ha_areas_cache_ttl_ms,

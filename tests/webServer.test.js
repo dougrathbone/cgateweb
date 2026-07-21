@@ -2227,3 +2227,80 @@ describe('WebServer', () => {
         });
     });
 });
+
+describe('WebServer — auth failure rate limiting', () => {
+    const labelLoaderStub = { getLabelData: () => null, addListener: () => {}, getLabelsObject: () => ({}), filePath: null };
+    let srv;
+    let port;
+
+    afterEach(async () => {
+        if (srv) await srv.close();
+        srv = null;
+    });
+
+    it('returns 429 after the failed-auth bucket is exhausted, while valid keys keep working', async () => {
+        srv = new WebServer({
+            port: 0,
+            labelLoader: labelLoaderStub,
+            apiKey: 'secret-key',
+            maxAuthFailuresPerWindow: 3,
+            getStatus: () => ({})
+        });
+        await srv.start();
+        port = srv._server.address().port;
+
+        const attempt = (headers = {}) => new Promise((resolve, reject) => {
+            const req = http.request({
+                hostname: '127.0.0.1', port, path: '/api/status', method: 'GET',
+                headers
+            }, (res) => {
+                res.resume();
+                res.on('end', () => resolve(res.statusCode));
+            });
+            req.on('error', reject);
+            req.end();
+        });
+
+        expect(await attempt()).toBe(401);
+        expect(await attempt()).toBe(401);
+        expect(await attempt()).toBe(401);
+        expect(await attempt()).toBe(429);
+        // A correctly-authenticated request is unaffected by the failure bucket.
+        expect(await attempt({ 'X-API-Key': 'secret-key' })).toBe(200);
+    });
+});
+
+describe('WebServer — error handling after the response head is written', () => {
+    const labelLoaderStub = { getLabelData: () => null, addListener: () => {}, getLabelsObject: () => ({}), filePath: null };
+
+    it('ends the response instead of throwing ERR_HTTP_HEADERS_SENT', async () => {
+        const srv = new WebServer({ port: 0, labelLoader: labelLoaderStub, getStatus: () => ({}) });
+        const req = { url: '/healthz', method: 'GET', socket: {}, headers: {} };
+        const res = {
+            headersSent: false,
+            statusCode: null,
+            ended: false,
+            writeHead(code) {
+                if (this.headersSent) {
+                    const err = new Error('writeHead after end');
+                    err.code = 'ERR_HTTP_HEADERS_SENT';
+                    throw err;
+                }
+                this.headersSent = true;
+                this.statusCode = code;
+            },
+            setHeader() {},
+            end() { this.ended = true; }
+        };
+        // A handler that writes the head and THEN throws (like the SSE handler).
+        srv._statusRoutes.handleHealth = (rq, rs) => {
+            rs.writeHead(200);
+            throw new Error('boom after headers');
+        };
+
+        await srv._handleRequest(req, res);
+
+        expect(res.ended).toBe(true);
+        expect(res.statusCode).toBe(200); // the head is not overwritten with a 500
+    });
+});

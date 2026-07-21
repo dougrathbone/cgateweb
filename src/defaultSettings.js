@@ -98,6 +98,8 @@ const defaultSettings = {
     web_allow_unauthenticated_mutations: false,
     web_allowed_origins: null,
     web_mutation_rate_limit_per_minute: 120,
+    // Stricter bucket for failed web API authentication attempts (brute-force guard).
+    web_auth_failure_rate_limit_per_minute: 20,
     // Cap concurrent SSE clients on /api/events/stream (DoS guard on exposed ports).
     web_max_sse_connections: 32,
     // SSE comment keepalive interval (ms) so proxies don't idle-close the stream.

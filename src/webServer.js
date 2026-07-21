@@ -22,6 +22,7 @@ class WebServer {
  * @param {boolean} [options.allowUnauthenticatedMutations=false] - Allow mutating requests without API key
  * @param {string[]|string|null} [options.allowedOrigins] - CORS allowlist (empty disables cross-origin access)
  * @param {number} [options.maxMutationRequestsPerWindow=120] - Maximum mutating requests per minute per client
+ * @param {number} [options.maxAuthFailuresPerWindow=20] - Maximum failed auth attempts per minute per client before 429
  * @param {string|null} [options.triggerAppId] - C-Bus app ID configured as trigger groups (e.g. '202')
  * @param {Object} [options.deviceStateManager] - DeviceStateManager instance for device status endpoints
  * @param {Object} [options.eventStream] - Event stream interface ({ subscribe, unsubscribe, getRecent }) for the SSE endpoint
@@ -55,6 +56,14 @@ class WebServer {
                 ? options.maxMutationRequestsPerWindow
                 : 120
         );
+        // Failed authentication attempts get a separate, stricter bucket so an
+        // exposed web_api_key can't be brute-forced unthrottled.
+        this.maxAuthFailuresPerWindow = Math.max(
+            1,
+            Number.isFinite(options.maxAuthFailuresPerWindow)
+                ? options.maxAuthFailuresPerWindow
+                : 20
+        );
         this.maxBodySizeBytes = Number.isFinite(options.maxBodySizeBytes) && options.maxBodySizeBytes > 0
             ? options.maxBodySizeBytes
             : DEFAULT_MAX_BODY_SIZE;
@@ -78,6 +87,10 @@ class WebServer {
         this._rateLimiter = new RateLimiter({
             windowMs: this.rateLimitWindowMs,
             maxRequests: this.maxMutationRequestsPerWindow
+        });
+        this._authFailureLimiter = new RateLimiter({
+            windowMs: this.rateLimitWindowMs,
+            maxRequests: this.maxAuthFailuresPerWindow
         });
         this._labelRoutes = new LabelRoutes({
             labelLoader: this.labelLoader,
@@ -183,6 +196,11 @@ class WebServer {
             }
 
             if (this._apiAuth.requiresAuth(urlPath, req.method) && !this._apiAuth.isAuthorized(req)) {
+                // Failed auth attempts get their own stricter bucket — an
+                // exposed api key must not be brute-forceable unthrottled.
+                if (this._authFailureLimiter.isLimited(req)) {
+                    return sendJSON(res, 429, { error: 'Too many requests' });
+                }
                 return sendJSON(res, 401, { error: 'Unauthorized' });
             }
 
@@ -229,6 +247,13 @@ class WebServer {
             return this._staticFiles.serve(urlPath, res);
         } catch (err) {
             this.logger.error(`Request error: ${err.message}`);
+            // A handler that threw after writing the response head (e.g. SSE)
+            // must not get a second writeHead — that throws ERR_HTTP_HEADERS_SENT
+            // and would take the process down via unhandledRejection.
+            if (res.headersSent) {
+                res.end();
+                return;
+            }
             sendJSON(res, 500, { error: 'Internal server error' });
         }
     }
