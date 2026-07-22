@@ -65,10 +65,9 @@ configuration:
       Bruges kun i administreret tilstand. Når C-Gate først er installeret, bevares det normalt, som det er. Slå dette til for at geninstallere/opgradere C-Gate fra installationskilden ved næste start (dine projektdatabaser og konfiguration bevares); i upload-tilstand kan du i stedet lægge en nyere zip i /share/cgate. Slå det fra igen efter opgraderingen.
 
   cgate_serial_device:
-    name: Seriel PCI-enhed (alfa)
+    name: Seriel PCI-enhed (beta)
     description: >-
-      ALPHA: eksperimentel understøttelse af USB-serielle PC-interfaces (5500PC/5500PCU). Vælg en registreret seriel enhed i rullemenuen; foretræk stier under /dev/serial/by-id/. For at angive en brugerdefineret sti skifter du konfigurationseditoren til YAML-tilstand. Kræver administreret tilstand og et C-Bus Toolkit-projekt konfigureret til et serielt PC-interface. Rapportér problemer på GitHub (issue #28).
-
+      BETA: understøttelse af USB-serielle PC-interfaces (5500PC/5500PCU) — testet med begge interfaces. Vælg en registreret seriel enhed i rullemenuen; foretræk stier under /dev/serial/by-id/. For at angive en brugerdefineret sti skifter du konfigurationseditoren til YAML-tilstand. Kræver administreret tilstand og et C-Bus Toolkit-projekt konfigureret til et serielt PC-interface. Rapportér problemer på GitHub (issue #28).
   # ── MQTT (registreres normalt automatisk) ──
   mqtt_host:
     name: MQTT Broker vært

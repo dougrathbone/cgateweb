@@ -66,10 +66,9 @@ configuration:
       Nur im Managed-Modus. Einmal installiert, bleibt C-Gate normalerweise unverändert. Aktivieren Sie dies, um C-Gate beim nächsten Start aus der Installationsquelle neu zu installieren bzw. zu aktualisieren (Ihre Projekt-Datenbanken und Konfiguration bleiben erhalten); im Upload-Modus können Sie stattdessen eine neuere zip in /share/cgate ablegen. Schalten Sie dies nach dem Upgrade wieder aus.
 
   cgate_serial_device:
-    name: Serielles PCI-Gerät (Alpha)
+    name: Serielles PCI-Gerät (Beta)
     description: >-
-      ALPHA: experimentelle Unterstützung für USB-serielle PC-Schnittstellen (5500PC/5500PCU). Wählen Sie ein erkanntes serielles Gerät aus der Dropdown-Liste; Pfade unter /dev/serial/by-id/ bevorzugen. Um einen benutzerdefinierten Pfad einzugeben, wechseln Sie den Konfigurationseditor in den YAML-Modus. Erfordert den Managed-Modus und ein C-Bus-Toolkit-Projekt mit konfigurierter serieller PC-Schnittstelle. Probleme bitte auf GitHub melden (Issue #28).
-
+      BETA: Unterstützung für USB-serielle PC-Schnittstellen (5500PC/5500PCU) — mit beiden Schnittstellen getestet. Wählen Sie ein erkanntes serielles Gerät aus der Dropdown-Liste; Pfade unter /dev/serial/by-id/ bevorzugen. Um einen benutzerdefinierten Pfad einzugeben, wechseln Sie den Konfigurationseditor in den YAML-Modus. Erfordert den Managed-Modus und ein C-Bus-Toolkit-Projekt mit konfigurierter serieller PC-Schnittstelle. Probleme bitte auf GitHub melden (Issue #28).
   # ── MQTT (wird normalerweise automatisch erkannt) ──
   mqtt_host:
     name: MQTT Broker Host

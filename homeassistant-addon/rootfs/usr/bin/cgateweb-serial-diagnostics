@@ -38,7 +38,7 @@ RESOLVED=$(readlink -f "${SERIAL_DEVICE}" 2>/dev/null || printf '%s' "${SERIAL_D
 bashio::log.info "Serial device ${SERIAL_DEVICE} resolves to ${RESOLVED}"
 
 bashio::log.info "==================================================================="
-bashio::log.info " C-Gate serial diagnostics (ALPHA USB-serial PCI, issue #28)"
+bashio::log.info " C-Gate serial diagnostics (USB-serial PCI, issue #28)"
 bashio::log.info " Querying C-Gate at ${CGATE_HOST}:${CGATE_PORT} (PORT LIST, PORT IFLIST, NET LIST_ALL)"
 bashio::log.info " Reporting a problem? Paste this whole block into GitHub issue #28:"
 bashio::log.info "   https://github.com/dougrathbone/cgateweb/issues/28"

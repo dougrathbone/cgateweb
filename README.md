@@ -211,6 +211,13 @@ If you name your C-Bus groups with their intended Home Assistant entity id (e.g.
 
 Every C-Bus event carries the unit that originated it (`#sourceunit`). cgateweb publishes it to `cbus/read/{net}/{app}/{group}/source_unit`, so automations can react to a physical switch press specifically, or ignore bridge/CNI-originated writes to avoid loops. (Not published for events without a source unit, e.g. sync updates.)
 
+### USB-serial PC Interface support (beta)
+
+Two ways to use a C-Bus USB PC Interface (5500PC native USB, or 5500PC via a USB-to-serial adapter):
+
+- **Remote mode (recommended for most):** run C-Gate on any Windows or Linux machine with the interface attached, and point cgateweb at it (`cbusip` / `cgate_host`).
+- **Managed mode (Home Assistant add-on):** the add-on can run C-Gate with the interface plugged into the HA host itself. Set `cgate_serial_device` (a dropdown of detected serial devices — prefer a stable `/dev/serial/by-id/...` path), keep `cgate_mode: managed`, and install your Toolkit project `.db` into `/share/cgate/tag/`. Projects saved on Windows reference a `COMx` port that cannot exist on Linux — the add-on rewrites those interface addresses to your serial device automatically on each startup. Field-tested with both interface types; report problems on [GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28).
+
 ### Testing
 
 This project uses Jest for unit testing.

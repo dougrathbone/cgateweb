@@ -116,7 +116,7 @@ function runHelperWithArgs(helperName, args = [], configObject = {}) {
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
 
-// The serial-check tests assert on log output (the ALPHA banner is part of
+// The serial-check tests assert on log output (the banner is part of
 // the contract), so this variant of the stub prints log lines with a level
 // prefix instead of swallowing them. bashio::config mirrors BASHIO_STUB,
 // including the "null"-for-unset quirk.
@@ -413,7 +413,7 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
-    describe('_cgateweb_check_serial_device (alpha USB-serial PCI, #28)', () => {
+    describe('_cgateweb_check_serial_device (USB-serial PCI, #28)', () => {
         // The helper signals failure with `return 1`; sourced and invoked as
         // the last command of the bash process, that return code becomes the
         // process exit code, which checkSerialDevice captures.
@@ -443,14 +443,14 @@ describeBash('cgate-install.sh helpers', () => {
             expect(r.output).toMatch(/Serial device not found/);
         });
 
-        test('succeeds and logs the ALPHA banner for an existing device', () => {
+        test('succeeds and logs the beta banner for an existing device', () => {
             // /dev/null: exists, is a character device, and starts with /dev/
             // on every POSIX host these bash tests run on. (A regular temp
             // file cannot stand in here: it lives outside /dev/ and would
             // trip the prefix check tested above.)
             const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
             expect(r.status).toBe(0);
-            expect(r.output).toMatch(/ALPHA FEATURE ACTIVE/);
+            expect(r.output).toMatch(/USB-serial PC Interface support \(beta\)/);
         });
 
         test('warns but does not fail when the path is not a character device', () => {

@@ -66,15 +66,9 @@ configuration:
       automatically. Turn this back off after the upgrade.
 
   cgate_serial_device:
-    name: Serial PCI Device (Alpha)
+    name: Serial PCI Device (Beta)
     description: >-
-      ALPHA: experimental USB-serial PC Interface (5500PC/5500PCU) support.
-      Select a detected serial device from the dropdown; prefer
-      /dev/serial/by-id/ paths. To enter a custom path, switch the
-      configuration editor to YAML mode. Requires managed mode and a C-Bus
-      Toolkit project configured for a serial PC Interface. Report issues on
-      GitHub (issue #28).
-
+      BETA: USB-serial PC Interface (5500PC/5500PCU) support — field-tested with both interfaces. Select a detected serial device from the dropdown; prefer /dev/serial/by-id/ paths. To enter a custom path, switch the config editor to YAML mode. Requires managed mode and a C-Bus Toolkit project configured for a serial PC Interface. Report issues on GitHub (issue #28).
   # ── MQTT (usually auto-detected) ──
   mqtt_host:
     name: MQTT Broker Host

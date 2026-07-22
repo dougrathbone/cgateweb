@@ -176,10 +176,9 @@ _cgateweb_check_serial_device() {
     fi
 
     bashio::log.warning "==================================================================="
-    bashio::log.warning " ALPHA FEATURE ACTIVE: USB-serial PC Interface (5500PC/5500PCU)"
+    bashio::log.warning " USB-serial PC Interface support (beta): 5500PC/5500PCU"
     bashio::log.warning " cgate_serial_device = ${device}"
-    bashio::log.warning " This support is experimental and largely untested. Please report"
-    bashio::log.warning " success or failure on GitHub issue #28:"
+    bashio::log.warning " Field-tested with both interfaces. Report problems on GitHub issue #28:"
     bashio::log.warning "   https://github.com/dougrathbone/cgateweb/issues/28"
     bashio::log.warning "==================================================================="
 

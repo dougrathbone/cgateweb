@@ -67,10 +67,9 @@ configuration:
       Usato solo in modalità gestita. Una volta installato, C-Gate viene normalmente mantenuto invariato. Attiva questa opzione per reinstallare/aggiornare C-Gate dalla sorgente di installazione al prossimo avvio (i database del progetto e la configurazione vengono conservati); in modalità upload puoi invece inserire uno zip più recente in /share/cgate. Disattivala dopo l'aggiornamento.
 
   cgate_serial_device:
-    name: Dispositivo PCI seriale (alfa)
+    name: Dispositivo PCI seriale (beta)
     description: >-
-      ALPHA: supporto sperimentale per interfacce PC USB-seriali (5500PC/5500PCU). Seleziona un dispositivo seriale rilevato dal menu a discesa; preferire i percorsi /dev/serial/by-id/. Per inserire un percorso personalizzato, passa l'editor di configurazione alla modalità YAML. Richiede la modalità gestita e un progetto C-Bus Toolkit configurato per un'interfaccia PC seriale. Segnala i problemi su GitHub (issue #28).
-
+      BETA: supporto per interfacce PC USB-seriali (5500PC/5500PCU) — testato con entrambe le interfacce. Seleziona un dispositivo seriale rilevato dal menu a discesa; preferire i percorsi /dev/serial/by-id/. Per inserire un percorso personalizzato, passa l'editor di configurazione alla modalità YAML. Richiede la modalità gestita e un progetto C-Bus Toolkit configurato per un'interfaccia PC seriale. Segnala i problemi su GitHub (issue #28).
   # ── MQTT (di solito rilevato automaticamente) ──
   mqtt_host:
     name: Host del broker MQTT

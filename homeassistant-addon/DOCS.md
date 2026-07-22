@@ -30,7 +30,8 @@ The add-on supports two modes:
 > **remote mode**: run C-Gate on any Windows or Linux machine with the USB
 > dongle attached, then point this add-on at it (`cgate_mode: remote`,
 > `cgate_host` = that machine's IP). Managed mode additionally has opt-in
-> alpha serial passthrough — see "Alpha: USB-serial PCI support" below.
+> serial passthrough (beta — field-tested with both interfaces) — see
+> "USB-serial PCI support" below.
 
 ### C-Gate Connection Settings
 
@@ -51,7 +52,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Downloads from the built-in default URL are verified against a checksum pinned in the install script; setting this overrides that pin (the escape hatch if Clipsal re-releases the zip). Required for a custom `cgate_download_url`; uploads without it proceed with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
-| `cgate_serial_device` | device | (empty) | **ALPHA — opt-in.** Dropdown of the serial devices detected on the HA host (e.g. `/dev/ttyUSB0` or a `/dev/serial/by-id/...` alias). Hidden optional field; leave empty unless you are testing the alpha. See "Alpha: USB-serial PCI support" below. |
+| `cgate_serial_device` | device | (empty) | **BETA — opt-in, field-tested with 5500PC and 5500PCU.** Dropdown of the serial devices detected on the HA host (e.g. `/dev/ttyUSB0` or a `/dev/serial/by-id/...` alias). Hidden optional field; leave empty to disable. See "USB-serial PCI support" below. |
 
 #### Uploading C-Gate manually
 
@@ -111,10 +112,12 @@ XML export, an older `.cbz` (zipped XML), and the newer C-Bus Toolkit 1.17.x
 from the database. It does **not** load the actual C-Gate project; making
 managed C-Gate serve your project still uses the `.db` workflow above.
 
-#### Alpha: USB-serial PCI support
+#### USB-serial PCI support
 
-> **Status: ALPHA — opt-in, off by default, and largely untested.** Please
-> report success or failure on
+> **Status: BETA — opt-in, off by default.** Field-tested with both the
+> 5500PCU (native USB) and a 5500PC over a USB-to-serial adapter, including
+> Windows-saved projects (their `COMx` interfaces are rewritten to your device
+> automatically). Please report problems on
 > [GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28).
 
 Managed mode can pass a USB PC Interface (5500PC/5500PCU) attached to your
