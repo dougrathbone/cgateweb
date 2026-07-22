@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.4] - 2026-07-22
+
+### Added
+
+- **Corrupt C-Gate downloads are now retried (#28).** The managed-mode C-Gate download retries up to 3 times with backoff, logs the downloaded size, and rejects non-zip payloads (HTML error/block pages) early. Persistent checksum failures now explain the likely cause (a corrupting network/proxy path — the pinned checksum still matches the official zip) and the fix (download the zip elsewhere and use `upload` mode).
+
 ## [1.17.3] - 2026-07-21
 
 ### Added
