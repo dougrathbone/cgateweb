@@ -76,7 +76,7 @@ describe('cgateweb-project-serial-fixup (issue #28)', () => {
         const { spawnSync } = require('child_process');
         const result = spawnSync('node', [SCRIPT, dbPath, '/dev/ttyUSB0'], { encoding: 'utf8' });
         expect(result.status).toBe(0);
-        expect(result.stderr).toMatch(/WARNING: project serial fixup failed/);
+        expect(result.stderr).toMatch(/project serial fixup failed/);
     });
 
     it('prints the nothing-to-change message for a COM-free project', () => {

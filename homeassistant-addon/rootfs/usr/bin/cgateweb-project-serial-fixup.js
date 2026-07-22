@@ -94,15 +94,15 @@ async function main() {
     try {
         const changes = await fixupProjectSerialInterface(dbPath, devicePath);
         if (changes.length === 0) {
-            console.log('INFO: no Windows COMx interface addresses found; nothing to change');
+            console.log('no Windows COMx interface addresses found; nothing to change');
         } else {
             for (const change of changes) {
-                console.log(`INFO: rewrote project interface ${change}`);
+                console.log(`rewrote project interface ${change}`);
             }
         }
     } catch (e) {
         // Never break add-on startup over a fixup.
-        console.error(`WARNING: project serial fixup failed for ${dbPath}: ${e.message}`);
+        console.error(`project serial fixup failed for ${dbPath}: ${e.message}`);
     }
 }
 

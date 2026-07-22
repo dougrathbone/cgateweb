@@ -231,7 +231,7 @@ _cgateweb_check_serial_device() {
     fi
 
     bashio::log.info "USB-serial PCI: your C-Bus Toolkit project (.db) must define a serial PC Interface for the network"
-    bashio::log.info "Projects saved on Windows may reference a COMx port — re-point the interface at the Linux device path in Toolkit"
+    bashio::log.info "Projects saved on Windows reference a COMx port — the project sync will rewrite it to this device automatically"
     return 0
 }
 
@@ -329,35 +329,80 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     fi
 
     TEMP_ZIP="${WORK_DIR}/cgate-download.zip"
-    HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
-    CURL_EXIT=$?
+    HTTP_CODE=""
+    ACTUAL_SHA256=""
+    DOWNLOAD_SIZE=0
+    DOWNLOAD_OK=0
+    EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
 
-    if [[ ${CURL_EXIT} -ne 0 ]]; then
-        CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
-        bashio::log.error "Failed to download C-Gate (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT})"
-        bashio::log.error "URL: ${DOWNLOAD_URL}"
-        bashio::log.error "Error: ${CURL_ERR}"
-        if [[ "${HTTP_CODE}" == "404" ]]; then
-            bashio::log.error "The download URL returned 404. Schneider Electric may have updated the download location."
-            bashio::log.error "Visit https://www.se.com and search for 'C-Gate 3 Linux' to find the current URL."
-            bashio::log.error "Then set cgate_download_url in the addon configuration."
-        fi
-        bashio::log.error "Alternative: set cgate_install_source to 'upload' and place the C-Gate zip in /share/cgate/"
-        exit 1
-    fi
+    # Retry the download a few times: field reports show CDN/proxy paths that
+    # hand back truncated or error-page content (different bytes each run), and
+    # a fresh attempt is the cheapest fix. Size + zip-magic logging makes a bad
+    # download obvious in the log even when it ultimately fails.
+    for attempt in 1 2 3; do
+        HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
+        CURL_EXIT=$?
 
-    if [[ -n "${DOWNLOAD_SHA256}" ]]; then
-        ACTUAL_SHA256=$(sha256sum "${TEMP_ZIP}" | awk '{print $1}')
-        EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
-        if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
-            bashio::log.error "C-Gate download checksum mismatch"
-            bashio::log.error "Expected: ${EXPECTED_SHA256}"
-            bashio::log.error "Actual:   ${ACTUAL_SHA256}"
+        if [[ ${CURL_EXIT} -ne 0 ]]; then
+            CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
+            bashio::log.error "Failed to download C-Gate (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT})"
+            bashio::log.error "URL: ${DOWNLOAD_URL}"
+            bashio::log.error "Error: ${CURL_ERR}"
+            if [[ "${HTTP_CODE}" == "404" ]]; then
+                bashio::log.error "The download URL returned 404. Schneider Electric may have updated the download location."
+                bashio::log.error "Visit https://www.se.com and search for 'C-Gate 3 Linux' to find the current URL."
+                bashio::log.error "Then set cgate_download_url in the addon configuration."
+            fi
+            bashio::log.error "Alternative: set cgate_install_source to 'upload' and place the C-Gate zip in /share/cgate/"
             exit 1
         fi
-        bashio::log.info "Checksum verification passed"
-    else
-        bashio::log.warning "No cgate_download_sha256 configured; integrity verification skipped"
+
+        DOWNLOAD_SIZE=$(stat -c%s "${TEMP_ZIP}" 2>/dev/null || stat -f%z "${TEMP_ZIP}" 2>/dev/null || echo 0)
+        bashio::log.info "Downloaded ${DOWNLOAD_SIZE} bytes (attempt ${attempt}/3)"
+
+        # A real zip starts with PK; an HTML error page or proxy block page does not.
+        if ! head -c 2 "${TEMP_ZIP}" | grep -q '^PK'; then
+            bashio::log.warning "Downloaded file is not a zip archive (no PK header — likely an error or block page)"
+            if [[ ${attempt} -lt 3 ]]; then
+                bashio::log.warning "Retrying the download..."
+                sleep $((attempt * 10))
+                continue
+            fi
+            break
+        fi
+
+        if [[ -z "${DOWNLOAD_SHA256}" ]]; then
+            bashio::log.warning "No cgate_download_sha256 configured; integrity verification skipped"
+            DOWNLOAD_OK=1
+            break
+        fi
+
+        ACTUAL_SHA256=$(sha256sum "${TEMP_ZIP}" | awk '{print $1}')
+        if [[ "${ACTUAL_SHA256}" == "${EXPECTED_SHA256}" ]]; then
+            bashio::log.info "Checksum verification passed"
+            DOWNLOAD_OK=1
+            break
+        fi
+
+        if [[ ${attempt} -lt 3 ]]; then
+            bashio::log.warning "Checksum mismatch (attempt ${attempt}/3) — download may be truncated or rewritten by a proxy; retrying..."
+            sleep $((attempt * 10))
+        fi
+    done
+
+    if [[ ${DOWNLOAD_OK} -ne 1 ]]; then
+        bashio::log.error "C-Gate download failed verification after 3 attempts"
+        if [[ -n "${DOWNLOAD_SHA256}" ]]; then
+            bashio::log.error "Expected: ${EXPECTED_SHA256}"
+            bashio::log.error "Actual:   ${ACTUAL_SHA256:-unknown} (${DOWNLOAD_SIZE} bytes)"
+        fi
+        bashio::log.error "The pinned checksum matches the official Schneider file, so repeated mismatches mean the"
+        bashio::log.error "download path is corrupting the file (flaky network, proxy or CDN block page) — or,"
+        bashio::log.error "less likely, the vendor re-released the zip."
+        bashio::log.error "Fix: download the zip on another machine (${DOWNLOAD_URL}),"
+        bashio::log.error "set cgate_install_source to 'upload', and place the zip in /share/cgate/."
+        bashio::log.error "Or, to use a different file intentionally, set cgate_download_sha256 to its checksum."
+        exit 1
     fi
 
     # Reject suspiciously large downloads (>500MB)
