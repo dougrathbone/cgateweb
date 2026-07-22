@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.5] - 2026-07-22
+
+### Changed
+
+- **USB-serial PCI support is now beta (#28).** Field-validated end-to-end with both the 5500PCU (native USB) and a 5500PC over a USB-to-serial adapter — including Windows-saved projects, whose `COMx` interfaces are rewritten to your device automatically. The option copy (all 17 languages), add-on docs, startup banner, and README now document the feature as beta with the tested configurations, setup steps (managed mode + device dropdown + project `.db` in `/share/cgate/tag/`), and the automatic interface rewrite.
+
 ## [1.17.4] - 2026-07-22
 
 ### Added
