@@ -35,6 +35,19 @@
 
 **Commit Messages**: Do not mention "Amp", "Claude", or AI assistants in commit messages. Keep commit messages professional and focused on the technical changes being made.
 
+## Changelog Format
+`homeassistant-addon/CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) and is written for the person upgrading, not the developer. Every release entry MUST follow these rules:
+
+1. Keep the skeleton: `## [x.y.z] - date` headers, sections in the order Added / Fixed / Changed / Removed / Security. Skip empty sections.
+2. Lead each bullet with the user-visible outcome in plain words (bold the headline phrase), followed by at most one or two sentences of context or action required. One bullet per change; merge tiny related changes.
+3. **No code formatting (no backticks) anywhere.** Refer to options, topics, files, and commands in plain words: "the Air Conditioning control option", "the source_unit topic", "your settings file", "the project database in the share folder". Where a literal name is unavoidable, write it as plain text without backticks — but prefer description over literal names.
+4. **No internal implementation detail**: no function names, repo file paths, bit layouts, C-Gate response codes, spec section numbers, or commit mechanics. Translate mechanism into user-visible behavior.
+5. Issue references stay, in the form "(#28)" at the end of the bullet's first sentence.
+6. Internal-only changes (refactors, CI, test work, dependency bumps) go in a single short "Internal:" bullet, or are omitted if invisible to users.
+
+Good: "**Changing the temperature of an off thermostat no longer turns it on.** Adjusting the target on an off climate card used to start the plant; the command is now ignored with a warning."
+Bad: "Fixed `_sendAirconSetpoint` fallback `HVAC_CODE_BY_MODE.heat` when `modeRaw === 0` (`mqttCommandRouter.js:699`)."
+
 ## Home Assistant Add-on Development
 **Branch**: `develop/homeassistant` - Contains HA add-on development work
 **Directory**: `homeassistant-addon/` - Contains add-on files (config.yaml, Dockerfile, run.sh, DOCS.md)

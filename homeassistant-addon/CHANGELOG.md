@@ -5,952 +5,957 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.6] - 2026-07-22
+
+### Changed
+
+- **The changelog now reads like it was written for you.** Every release note back to the first one has been rewritten in plain language — what changed and what it means for your setup, without code formatting or internal jargon. A short style guide now lives in the contributor docs so future entries follow the same format.
+
 ## [1.17.5] - 2026-07-22
 
 ### Changed
 
-- **USB-serial PCI support is now beta (#28).** Field-validated end-to-end with both the 5500PCU (native USB) and a 5500PC over a USB-to-serial adapter — including Windows-saved projects, whose `COMx` interfaces are rewritten to your device automatically. The option copy (all 17 languages), add-on docs, startup banner, and README now document the feature as beta with the tested configurations, setup steps (managed mode + device dropdown + project `.db` in `/share/cgate/tag/`), and the automatic interface rewrite.
+- **USB-serial PC Interfaces are now supported in beta.** The managed-mode USB PCI feature has been validated with both the native USB 5500PCU and a 5500PC over a USB-to-serial adapter, including projects saved on Windows. Documentation and the option text in every language now describe the tested setups and how to get started.
 
 ## [1.17.4] - 2026-07-22
 
 ### Added
 
-- **Corrupt C-Gate downloads are now retried (#28).** The managed-mode C-Gate download retries up to 3 times with backoff, logs the downloaded size, and rejects non-zip payloads (HTML error/block pages) early. Persistent checksum failures now explain the likely cause (a corrupting network/proxy path — the pinned checksum still matches the official zip) and the fix (download the zip elsewhere and use `upload` mode).
+- **C-Gate downloads retry when the network corrupts them.** A fresh managed-mode install downloads C-Gate from Schneider; on flaky or proxied connections that file sometimes arrives truncated or as an error page and failed the integrity check. The download now retries a few times, logs how big the file actually is, and — if it still fails — tells you how to install from a manually downloaded copy instead.
 
 ## [1.17.3] - 2026-07-21
 
 ### Added
 
-- **Windows-saved projects now work with the USB-serial alpha (#28).** A Toolkit project saved on Windows references a `COMx` port that cannot exist on Linux, so the network opened with `InterfaceState=closed` and an empty tree. When `cgate_serial_device` is set, the project sync now rewrites any `COMx` interface address in the synced project `.db` to your serial device (stored as the bare port name C-Gate lists in `PORT LIST`, e.g. `ttyUSB0`). Idempotent, and interfaces with a Linux-usable address are left untouched.
-- **Serial diagnostics include `NET LIST_ALL`** — the log now shows each network's `interfaceType`/`interfaceAddress`/`interfaceState`, so a mis-pointed project interface is visible directly in the startup log.
+- **Projects saved on Windows now work with a USB PC Interface.** A Toolkit project saved on Windows points its network interface at a Windows COM port, which cannot exist on Linux, so the network never opened. When a serial device is configured, the project sync now rewrites that Windows port to your device automatically on every start.
+- The startup serial diagnostics now also list each network's interface type, address, and state, so a misconfigured project is visible directly in the log.
 
 ## [1.17.2] - 2026-07-21
 
 ### Added
 
-- **Web UI brute-force protection.** Failed API-key attempts now get their own stricter rate-limit bucket (default 20/min per client, tunable via `web_auth_failure_rate_limit_per_minute`); repeated failures return 429 instead of unlimited 401s. Successful authentications are unaffected.
+- **Brute-force protection for the web UI.** Repeated failed attempts with the wrong web API key are now rate-limited; after 20 failures in a minute from one client, further attempts get a "too many requests" response instead of a clean 401. Valid keys are unaffected, and the limit is configurable.
 
 ### Fixed
 
-- **A throwing route handler can no longer crash the process after writing response headers.** A second `writeHead` would have raised `ERR_HTTP_HEADERS_SENT` into an unhandled rejection; the error handler now just ends the response.
+- **A failing event stream can no longer crash the add-on.** If a web request failed after its response had already started, the error handler tried to write a second response and took the whole process down. It now simply ends the response.
 
 ### Changed
 
-- **Add-on base images bumped to Alpine 3.21** (3.19 is end-of-support, so its package repo was frozen and unpatched). Java layout verified per-arch: openjdk17 on x86_64/aarch64, openjdk8 fallback on armv7/armhf/i386.
-- Internal: dead code pruned (unused `CgateManager`, three dead constants); `.DS_Store` and `coverage/` added to the repo `.gitignore`.
+- The add-on's base images moved to a supported Alpine release, restoring security updates for the packages inside the image.
 
 ## [1.17.1] - 2026-07-21
 
 ### Fixed
 
-- **Target humidity now appears on climate entities.** The discovery payload used `humidity_state_topic`, which is not a valid MQTT climate key and was silently ignored; it now uses `target_humidity_state_topic` (verified against the current `climate.mqtt` documentation).
-- **Setpoint and fan-mode writes no longer power on an off thermostat.** Both fell back to heat mode when the unit was off, so adjusting the target on an off climate card started the plant. The writes are now ignored with a warning when the unit is off (selecting a mode remains the way to turn it on).
-- **Fan speed survives automatic fan-mode writes.** Switching the fan to `automatic` zeroed the learned Aux Level, so a later `continuous` write reverted to default speed; the learned speed bits are now preserved and re-applied.
+- **Target humidity now shows on climate entities.** It was published under a setting name Home Assistant doesn't recognize, so it silently never appeared.
+- **Changing the temperature or fan of an off thermostat no longer turns it on.** Adjusting the target on an off climate card used to start the plant in heat mode; the command is now ignored with a warning. Selecting a mode remains the way to switch a unit on.
+- **Fan speed is remembered across automatic fan mode.** Switching the fan to automatic used to forget the learned fan speed, so switching back to continuous reverted to default speed.
 
 ## [1.17.0] - 2026-07-20
 
 ### Added
 
-- **Discovery type from entity-id label prefix (#35).** New opt-in `ha_discovery_type_from_label_prefix` setting: groups named with their intended Home Assistant entity id (`cover.bedroom_shutter`, `switch.porch_light`, `light.bedroom_downlights`) are discovered as that type. Supported prefixes match the `type_overrides` vocabulary (`light.`, `cover.`, `switch.`, `relay.`, `pir.`); a manual override still wins. Available in the add-on UI, off by default.
-- **Source unit per group (#35).** Every C-Bus event's originating unit (`#sourceunit`) is published to `cbus/read/{net}/{app}/{group}/source_unit`, so automations can react to a physical switch press specifically or filter out bridge/CNI-originated writes. Events without a source (e.g. sync updates) publish nothing.
+- **Name groups with their Home Assistant entity id to set their type.** With the new "type from label prefix" option (off by default), a group named cover.bedroom_shutter is discovered as a cover, switch.porch_light as a switch, and so on. Supported prefixes are light, cover, switch, relay, and pir; a manual type override still wins.
+- **Each group now reports which unit changed it.** A new source_unit topic per group carries the C-Bus unit that last changed the group, so automations can react to a physical switch press or ignore changes that came from the bridge itself.
 
 ## [1.16.3] - 2026-07-20
 
 ### Added
 
-- **Clear warning when managed C-Gate has no project database (#28).** Startup now warns explicitly when managed mode finds no Toolkit `.db` anywhere — naming the symptom (`401 Network not found` on every network command), the fix (place `<PROJECT>.db` in `/share/cgate/tag/` and restart), and the common confusion behind it (importing labels into the Web UI does not install the C-Bus project). The alpha USB-serial docs gained a matching Troubleshooting note.
+- **A clear warning when managed C-Gate has no project.** If you start managed mode without installing a Toolkit project database, the log now says exactly that — including the "Network not found" symptom it causes and how to fix it — instead of a confusing retry loop. Importing labels in the web UI does not install the project; the database still goes in the share folder.
 
 ### Fixed
 
-- **Serial diagnostics query `PORT IFLIST` instead of bare `IFLIST` (#28).** C-Gate rejected the latter with `400 Syntax Error`; the interface-list command is `PORT IFLIST` per the manual (§4.5.152).
+- The startup serial diagnostics now query C-Gate's interface list with the correct command, instead of one the server rejected.
 
 ## [1.16.2] - 2026-07-20
 
 ### Added
 
-- **Sync-complete (762) events now reach the bridge (#25).** The command session opens with `EVENT e6s0c0` (C-Gate manual §4.5.83): level-6 events such as "Network sync ok" are now delivered, so HA Discovery re-fetches the tree the moment a network finishes syncing instead of waiting out the bounded polling cycle. Verified on a live C-Gate v3.3.2: 762 is broadcast to all event-enabled sessions and triggers the immediate refresh.
+- **Discovery now refreshes the moment a network finishes syncing.** The bridge asks C-Gate for sync-complete events, so after a startup or resync the group tree is re-fetched immediately instead of after the polling fallback cycle. On systems where the event never arrives, the bounded polling still applies.
 
 ### Fixed
 
-- **Async event lines in the digit-level (`#e#`) format are parsed.** With a digit event level, C-Gate prefixes async events by channel (`#e#`/`#s#`/`#c#`) and some timestamps omit milliseconds; the command-port parser dropped those lines at debug, which would also have broken the existing 742 Network-created handling once the level changed.
+- Some C-Gate event lines were silently dropped because of their prefix format, which would also have hidden network-created notifications.
 
 ## [1.16.1] - 2026-07-19
 
 ### Added
 
-- **Tree re-fetch diagnostics now name the unassigned units (#25).** The empty-`<Groups>` re-fetch scheduling, budget-exhausted, and unchanged-tree stop messages list the affected units (e.g. `15 SENLL, 16 SENLL, 20 SENTEMP`) so installations with permanently group-less input units (sensors whose bindings never appear in TREEXML) self-identify in logs.
+- **The startup sync log now names the units it is waiting for.** When discovery gives up waiting for units that never report group bindings, it lists them by address and type, so it's obvious which devices caused the wait.
 
 ## [1.16.0] - 2026-07-19
 
 ### Added
 
-- **Home Assistant discovery for Temperature Broadcast (app 25) sensors.** Temperature groups now announce a HA `sensor` (device class temperature, °C) the first time each sensor broadcasts — no configuration needed beyond `ha_discovery_enabled`.
-- **Plant and sensor fault entities for native aircon.** Each Air Conditioning (172) thermostat gets `Plant problem` and `Temperature sensor problem` binary_sensors attached to its climate device, driven by the plant error state (spec §25.6.6/§25.6.5) and temperature sensor status (§25.6.12), with matching `problem`/`sensor_problem` MQTT topics.
-- **Aircon humidity application (read-only, spec-derived).** `zone_humidity`, `set_zone_humidity_mode` and `zone_humidity_plant_status` are decoded and published as `current_humidity`, `humidity_mode`, `humidity_setpoint` and `humidity_action` topics, wired into the climate entity's humidity state. Field layouts follow the verified HVAC conventions but have no live captures yet; humidity writes are deliberately not implemented.
-- **Fan mode control for native aircon.** `cbus/write/<net>/172/<unit>/fanmode` accepts `automatic`/`continuous` (Aux Level per spec §25.6.11), exposed as `fan_mode_command_topic` when control is enabled; learned fan-speed bits are preserved on writes.
-- **Raw-level fan speed and evaporative comfort level topics.** `fan_speed_pct` (0-100% of plant capacity, §25.12.8) and `comfort_level` (§25.12.7, spec-default mapping) for native thermostats.
-- **AIRCON REFRESH on first sight of a zone group** (control-enabled installs only), per the spec's mimic-device guidance (§25.8.3/§25.12.11) and rate-limited to once per zone group per session. The textual verb follows the verified AIRCON command convention but is not yet verified against a live C-Gate HELP.
+- **Temperature sensors now appear in Home Assistant automatically.** Any Temperature Broadcast group shows up as a temperature sensor the first time it reports, with no extra configuration.
+- **Thermostat fault alerts.** Each air-conditioning thermostat gains "plant problem" and "temperature sensor problem" indicators, driven by the unit's own error reports.
+- **Humidity support for air conditioning.** Installations with humidity plant get current and target humidity on their climate entities, plus humidity mode and plant state topics. This follows the protocol documentation but hasn't been tested against real humidity hardware yet, and is read-only.
+- **Fan mode control.** Thermostats can now be switched between automatic and continuous fan from Home Assistant (when control is enabled), and the climate card shows the current fan mode and speed.
+- **Faster, quieter startup.** The bridge asks each air-conditioning zone group for its full state the first time it appears, instead of waiting for broadcasts to trickle in.
 
 ### Fixed
 
-- **Sub-zero aircon temperatures now decode.** Zone temperatures are signed 2's complement (§25.5.1); both C-Gate renderings are normalised, and a degraded or failed temperature sensor publishes its status instead of a bogus reading.
-- **Raw levels are no longer misread as setpoints.** The Level-is-Raw flag (§25.6.3) is honoured — the fan-only `32512` is ~99% fan output, not a 127°C setpoint or a "no setpoint" sentinel.
-- **Aircon writes echo the thermostat's own configuration.** Setback/guard/aux-used flags and the Aux Level are learned from broadcasts and echoed on writes instead of being silently reset; setpoints are kept per operating type (§25.12.11); and rapid setpoint adjustments are debounced into a single command per the spec's anti-echo guidance (§25.12.11).
-- **Ingress path trimming no longer uses a ReDoS-prone regex.**
+- Sub-zero zone temperatures now read correctly instead of being dropped.
+- Fan-only broadcasts are no longer misread as a 127 °C setpoint.
+- Changes made from Home Assistant no longer reset a thermostat's own settings: setback and guard options, fan configuration, and per-mode setpoints are now learned from the thermostat and echoed back. Rapid temperature adjustments are also collapsed into a single command, as the protocol recommends.
+- Fixed a regular-expression performance issue in web request handling.
 
 ### Changed
 
-- Internal: `@ts-check` enabled across the remaining source modules, GitHub Actions dependencies bumped, legacy perf snapshots removed.
+- Internal: type-checking enabled across the source, CI dependencies updated.
 
 ## [1.15.15] - 2026-07-19
 
 ### Fixed
 
-- **Tree re-fetch no longer loops when units legitimately have no groups (#25).** The initial-sync fallback re-fetches TREEXML when units report no group addresses, which for genuinely unassigned units ran the full 30s/60s/120s cycle every startup, republishing the same entities each time. Each scheduled re-fetch now fingerprints the tree's group data and stops early when a re-fetch comes back identical, logging that those units are treated as unassigned.
+- **Startup no longer re-scans the network tree in a loop when some units have no groups (#25).** Units that legitimately control no groups (some sensors, for example) used to trigger a full tree re-fetch on every startup — after 30, 60, then 120 seconds — republishing the same entities each time. A re-fetch that returns an identical tree now stops early, and the log notes those units are treated as unassigned.
 
 ### Changed
 
-- Internal: the integration test now dumps the addon, supervisor and mqtt container logs when a run fails, and its readiness timeout is env-overridable.
+- Internal: integration-test failures now dump the container logs to make CI failures diagnosable.
 
 ## [1.15.14] - 2026-07-19
 
 ### Added
 
-- **HVAC plant error reporting, decoded from the official protocol spec.** Air Conditioning (172) plant status now exposes the Error/Expansion status flags and the previously-ignored HVAC Error Code, published as `error` and `error_description` topics under `cbus/read/<net>/172/<unit>/` with named descriptions from the spec (heater/cooler/fan failure, sensor failure, service/filter required). A non-zero error code also logs a warning once per unit until it clears.
-- **HVAC fan speed and fan mode.** Zone mode events now decode the Aux Level into `fan_speed` (raw 0-63) and `fan_mode` (`automatic`/`continuous`) topics, and native climate entities expose read-only fan mode. Fan mode is not settable; the control path does not write the Aux Level.
+- **Air-conditioning plant errors are now reported.** Each thermostat publishes its error state as an error code and a plain-language description (heater, cooler or fan failure, sensor failure, service or filter required), decoded from the official protocol documentation. A non-zero error also logs a warning once per unit until it clears.
+- **Fan speed and fan mode readings for air conditioning.** Zone events now expose the fan speed and whether the fan is running automatically or continuously, and climate entities show the current fan mode. Fan mode is read-only in this release.
 
 ### Fixed
 
-- **Processing error logs no longer drop the details.** Errors while handling C-Gate command/event lines logged neither the error nor the offending line; both are now included.
+- Errors while handling C-Gate traffic now log both the error and the offending line, instead of dropping both.
 
 ## [1.15.13] - 2026-07-19
 
 ### Added
 
-- **Serial device dropdown for the USB-serial PCI alpha (#28).** `cgate_serial_device` now renders as a dropdown of serial devices detected on the host instead of a free-text field. Custom paths (e.g. `/dev/serial/by-id/...`, which survives replugging) remain possible via the YAML config editor. Startup also logs an inventory of detected serial devices when the option is set, so a wrong pick shows what actually exists.
-- **Startup diagnostics for the serial alpha (#28).** With `cgate_serial_device` set in managed mode, startup logs the selected device's resolved target and C-Gate's own `PORT LIST`/`IFLIST` output in a paste-ready block for issue reports. Diagnostics never block or break startup.
+- **Serial device dropdown for the USB-serial PC Interface alpha (#28).** The serial device option now offers a dropdown of devices actually detected on the host instead of a free-text field. Custom paths — such as the by-id path, which survives replugging — are still possible via the YAML configuration editor. Startup also logs an inventory of detected devices, so a wrong pick shows what actually exists.
+- **Startup diagnostics for the serial alpha (#28).** With a serial device configured in managed mode, startup logs the device's resolved target and C-Gate's own port and interface lists in a paste-ready block for issue reports. The diagnostics never block or break startup.
 
 ### Fixed
 
-- **Default managed-mode C-Gate download is now integrity-checked.** The built-in download URL is verified against a sha256 pinned in the install script instead of proceeding warn-only. A user-set `cgate_download_sha256` still overrides, and custom URLs without one already failed hard.
-- **Web server shutdown no longer hangs test workers.** A `close()` racing an in-flight `start()` silently failed and left the server listening; `close()` now awaits the start first.
+- **The built-in C-Gate download is now integrity-checked.** The default managed-mode download is verified against a pinned checksum instead of proceeding warn-only. Your own checksum still overrides it, and custom download addresses without one already failed hard.
 
 ### Changed
 
-- Internal: `@ts-check` now covers the stateful core (bridge, C-Gate connection, MQTT manager, device state, and the HA discovery modules); ~185 type errors fixed via JSDoc only, no runtime changes.
+- Internal: type-checking extended across the core modules and a test-only web-server shutdown hang fixed; no runtime behaviour change.
 
 ## [1.15.12] - 2026-07-18
 
 ### Added
 
-- **Alpha USB-serial PC Interface passthrough for managed mode (#28).** A new opt-in, hidden `cgate_serial_device` option passes a USB PCI (5500PC/5500PCU) attached to the Home Assistant host through to the C-Gate instance running inside the add-on (`uart: true` lets the Supervisor map host serial devices into the container). Off by default and deliberately absent from `options`, so upgrades change nothing for existing users. Startup validates the configured path and fails fast with a readable error. Experimental: known limitations (Windows-saved COMx port names in the Toolkit project, untested on ARM) are documented in DOCS.md — report results on issue #28.
-- Documented that USB PC Interfaces also work today via remote mode (self-hosted C-Gate on any machine with the dongle attached).
+- **Alpha support for USB PC Interfaces in managed mode (#28).** A new opt-in serial device option (hidden by default, so upgrades change nothing for existing users) passes a USB PCI — a 5500PC or 5500PCU attached to the Home Assistant host — through to the C-Gate instance inside the add-on. Startup validates the configured device and fails fast with a readable error. Experimental: known limitations (Windows-saved port names in the Toolkit project, untested on ARM) are documented — please report results on issue #28.
+- Documented that USB PC Interfaces also work today via remote mode, running your own C-Gate on any machine with the dongle attached.
 
 ## [1.15.11] - 2026-07-18
 
 ### Fixed
 
-- **Label save/import failing with "Unauthorized" from the ingress side panel (#33).** The add-on relied on an `INGRESS_ENTRY` environment variable that the Supervisor never sets (it only injects `SUPERVISOR_TOKEN`), so with no `web_api_key` configured every label save, import, and the status tab failed authorization through ingress. The bridge now discovers its ingress path from the Supervisor API at startup, so side-panel saves authorize as intended — and the label UI surfaces a failed save instead of silently dropping it.
-- **Groups missing on initial sync are now discovered automatically (#25).** When C-Gate is still syncing with the C-Bus network at startup, TREEXML returns units with empty group lists and those groups previously stayed missing until a manual `gettree`. The bridge now re-fetches the tree when C-Gate reports network sync complete (event 762) and, since 762 is only emitted at event level 6, also schedules a bounded re-fetch (30s→60s→120s) whenever an accepted tree still contains unsynced units.
-- **Malformed address segments in command topics are rejected.** Network/application/group segments must be 1-3 digits; values like `254abc` were previously accepted and silently truncated.
+- **Label save and import no longer fail with "Unauthorized" from the side panel (#33).** The add-on relied on an environment variable the Supervisor never sets, so with no web API key configured, every label save, import, and the status tab failed authorization through the side panel. The bridge now discovers its side-panel path from the Supervisor at startup, and the label editor surfaces a failed save instead of silently dropping it.
+- **Groups missing at startup are now discovered automatically (#25).** While C-Gate is still syncing with the C-Bus network, it reports units without their groups, and those groups previously stayed missing until a manual tree refresh. The bridge now re-fetches the tree when C-Gate reports the network has finished syncing, and schedules a bounded retry (30, 60, then 120 seconds) whenever a tree still contains unsynced units.
+- **Malformed addresses in command topics are rejected.** Network, application, and group numbers must be one to three digits; values with stray characters were previously accepted and silently truncated.
 
 ### Changed
 
-- **Custom managed-mode C-Gate downloads now require a checksum.** A custom `cgate_download_url` without `cgate_download_sha256` fails the install with a clear error instead of only warning. If you use a custom URL, set its sha256 before upgrading.
-- Internal: web server split into `src/web/` modules, `@ts-check` enabled on the connection pool and command router, and local `npm run lint` now enforces zero warnings like CI.
+- **Custom C-Gate downloads now require a checksum.** A custom download address without its checksum fails the install with a clear error instead of only warning. If you use a custom address, set its checksum before upgrading.
+- Internal: web server split into modules; local linting now matches CI.
 
 ## [1.15.10] - 2026-07-12
 
 ### Fixed
 
-- **Manual `gettree` no longer creates duplicate `unknown` entities (#25).** A `cbus/write/<net>///gettree` was sending TREEXML twice — once directly from the command router and once via the tracked HA Discovery path — so C-Gate returned two tree responses. The second was misattributed to an `unknown` network, duplicating every entity (e.g. `cgateweb_unknown_56_115` alongside `cgateweb_254_56_115`). The router now issues exactly one tracked TREEXML, and any unattributable tree response is dropped instead of published.
-- Docs typo: the tree control topic is `cbus/write/<net>///gettree`, not `tree` (README, CLAUDE.md).
+- **A manual tree refresh no longer creates duplicate "unknown" entities (#25).** Refreshing the tree over MQTT asked C-Gate twice, and the second response was misattributed to a phantom unknown network, duplicating every entity in Home Assistant. Exactly one request is now sent, and any tree response that can't be attributed to a network is dropped instead of published.
+- Documentation typo: corrected the name of the tree refresh topic.
 
 ## [1.15.9] - 2026-07-11
 
 ### Fixed
 
-- **Distribution publish no longer skips when the optional C-Gate upload integration job is skipped.** The deploy job now uses `always()` plus explicit success checks on required gates (GitHub Actions otherwise skips deploy whenever any upstream job was skipped).
+- Internal: the release pipeline no longer skips publishing the add-on when an optional integration job is skipped.
 
 ## [1.15.8] - 2026-07-11
 
 ### Fixed
 
-- **aarch64 add-on image builds no longer crash during `npm ci` under QEMU.** Production deps are installed on the build-host arch (pure JS/WASM) via BuildKit `BUILDPLATFORM`, then copied into the target image.
-- ESLint unused-variable warning in webServer tests that blocked the distribution test job (and therefore skipped C-Gate integration).
+- **The 64-bit ARM add-on image builds again.** It crashed while installing dependencies under emulation; dependencies are now installed on the build machine's architecture and copied into the image. A lint issue that blocked the distribution pipeline was fixed too.
 
 ### Changed
 
-- CI/distribution add-on image builds use Docker Buildx with explicit target platforms.
+- Internal: add-on image builds now use Docker Buildx with explicit target platforms.
 
 ## [1.15.7] - 2026-07-11
 
 ### Fixed
 
-- **armv7 add-on images build again.** Alpine 3.19 has no OpenJDK 17 package on armv7; the Dockerfile now falls back to OpenJDK 8 on arches that lack OpenJDK 17 so distribution can publish (unblocking the failed 1.15.6 ship).
-- **Sensitive web reads and SSE require the same auth as mutations** (`/api/labels`, status, dashboard, areas, export, event stream). `/healthz` and `/readyz` stay public. Ingress URL is no longer logged at startup.
-- Uploaded C-Gate zips without `cgate_download_sha256` now log the same integrity-skip warning as the download path.
+- **32-bit ARM images build again.** The base image has no current Java package on armv7, so the build now falls back to the older Java on the platforms that need it — unblocking the failed 1.15.6 release.
+- **Sensitive web pages now require the same authorization as changes.** The labels, status, dashboard, areas, export, and live event pages previously allowed unauthenticated reads; the health endpoints stay public. The add-on's side-panel address is also no longer written to the log at startup.
+- Uploaded C-Gate packages without a checksum now log the same integrity warning as downloads do.
 
 ### Changed
 
-- Distribution publish runs only from `v*` tags (not arbitrary `workflow_dispatch` refs) and uses workflow concurrency to avoid overlapping deploys.
-- Pool reconnect backoff honours `reconnectinitialdelay` / `reconnectmaxdelay`. New tunables: `initDebounceMs`, `webSseKeepaliveMs`, `eventLogMaxEntries`, `mqttPendingPublishMaxEntries`.
-- Runtime warns when `mqttRejectUnauthorized` is false (MITM risk). Operator docs cover MQTT broker ACL requirements.
-- Internal: HaDiscovery tree/publishers split into modules; addon option mapping is table-driven. No intentional behaviour change from those refactors.
-
-### Tests
-
-- ThrottledQueue priority/gating/onDrop coverage and bridge command-queue pool gating tests.
+- Add-on publishing is restricted to real release tags, and overlapping deploys are prevented.
+- Reconnect backoff now honours the configured initial and maximum delays, and several previously hard-coded limits (event log size, event-stream keepalive, MQTT queue size, startup debounce) are now tunable.
+- The bridge warns at startup when MQTT broker certificate verification is disabled, and the operator docs now cover broker access-control requirements.
+- Internal: discovery and option handling refactored, with added test coverage; no behaviour change intended.
 
 ## [1.15.6] - 2026-07-11
 
 ### Fixed
 
-- **Web mutation auth no longer trusts a spoofed `X-Ingress-Path` on the direct port.** Ingress requests must match the configured ingress path and include `X-Hass-Source: core.ingress`. Host port 8080 is no longer mapped by default (ingress still works); set `web_api_key` if you re-expose the port.
-- **PUT `/api/labels` now strips prototype-polluting keys** the same way PATCH already did.
-- **Network auto-discovery skips the project-level `tree` probe** when `getall_networks` / `ha_discovery_networks` are already configured, avoiding the recurring C-Gate 402 on typical HA installs. Residual 402 responses log at debug.
-- **Startup no longer WARNs about MQTT publish queueing before the first connect.** Mid-session disconnects still warn. Retained publishes continue to queue and replay.
-- **MQTT authentication failure no longer restart-loops the Home Assistant add-on.** Standalone still exits fatally; add-on mode stays alive, throttles the banner, and retries.
-- **Unsafe C-Gate project names and LOGIN credentials are rejected** so newlines/spaces cannot inject extra commands on the C-Gate socket.
-- **Failed C-Gate command sends publish a warning** on `hello/cgateweb/warnings` instead of failing silently.
-- **Stale TreeXML parse callbacks are ignored** after a newer request for the same network, and overlapping TREEXML requests are deduped across session and parse windows.
+- **Requests pretending to come through the Home Assistant side panel are rejected, and the web port is no longer exposed by default.** Web changes now verify the request really came from the ingress proxy. Host port 8080 is no longer mapped; if you re-expose the port, set a web API key.
+- **Label updates are hardened against malicious keys**, matching the protection partial updates already had.
+- **Network auto-discovery no longer probes in a way typical installs can't answer** when your networks are already configured, removing a recurring error from the log; any remaining occurrences log quietly.
+- **Startup no longer warns about MQTT messages queueing before the first connection.** Mid-session disconnects still warn, and queued retained messages still replay on reconnect.
+- **An MQTT login failure no longer restart-loops the add-on.** Add-on mode stays alive, throttles the warning, and retries; standalone mode still exits.
+- **Project names and login credentials are validated** so embedded newlines or spaces can't inject extra commands to C-Gate.
+- **Failed C-Gate commands now publish a warning** on the bridge warnings topic instead of failing silently.
+- **Overlapping tree requests are de-duplicated**, and stale responses are ignored once a newer request for the same network is in flight.
 
 ### Changed
 
-- Concurrent SSE event-stream connections are capped (default 32) to limit DoS on an exposed web port.
-- Distribution releases now require multi-arch add-on image builds and C-Gate integration tests (plus schema/i18n validation and typecheck) before publishing.
+- Concurrent live event-stream connections are capped (32 by default) to limit denial-of-service on an exposed web port.
+- Releases now require multi-architecture builds and the C-Gate integration tests to pass before publishing.
 
 ## [1.15.5] - 2026-07-10
 
 ### Added
 
-- **New auto-type discovery options are now configurable from the add-on UI.** `ha_discovery_auto_type`, `ha_discovery_auto_type_name_heuristics`, and `ha_discovery_auto_type_cover_keywords` can be set directly in the add-on configuration (previously only reachable via a standalone settings file).
-- **Multi-architecture images.** The add-on image is now built for `amd64`, `aarch64`, and `armv7`.
-- Reconnect and timeout intervals that were previously hard-coded (MQTT reconnect/connect timeouts, C-Gate max reconnect attempts, cover ramp update interval) are now overridable settings.
+- **The automatic device-type options can now be set from the add-on UI.** Automatic type detection, label-name heuristics, and the cover keyword list were previously only reachable from a standalone settings file.
+- **Multi-architecture images.** The add-on is now built for 64-bit Intel/AMD, 64-bit ARM, and 32-bit ARM.
+- Reconnect and timeout intervals that were hard-coded (MQTT reconnect and connect timeouts, C-Gate reconnect attempts, cover ramp updates) are now configurable.
 
 ### Fixed
 
-- **Temperature Broadcast (application 25) readings are now published.** Decoded temperature events were parsed but never reached MQTT; they are now published to their dedicated reading topic.
-- **Network auto-discovery now honours its documented default for standalone deployments.** A camelCase/snake_case mismatch (`autoDiscoverNetworks` vs `auto_discover_networks`) left auto-discovery silently disabled for `settings.js`-based installs; it now defaults to on, matching the add-on and the documentation.
-- **Home Assistant discovery no longer leaks internal label state** when a discovery pass throws partway through, preventing stale data on the next run.
-- **The web server reports a proper error** instead of a broken response when a static asset fails to stream.
-- Corrected the Home Assistant add-on installation instructions in the README.
+- **Temperature sensor readings are now published.** Decoded temperature events were parsed but never reached MQTT; they now appear on their reading topic.
+- **Network auto-discovery now works out of the box for standalone installs.** A settings-name mismatch left it silently disabled for settings-file deployments; it now defaults to on, matching the add-on and the documentation.
+- Discovery no longer leaks internal label state when a pass fails partway through, which could leave stale data on the next run.
+- The web server reports a proper error when a page asset fails to stream, instead of a broken response.
+- Corrected the add-on installation instructions in the README.
 
 ### Changed
 
-- Removed the unimplemented `setvalue` MQTT command from the accepted command set (it had no defined behaviour).
-- Hardened the release workflow so version-sync, add-on validation, static checks, and tests must pass before an image is published.
-- Internal refactoring and additional CI guards (schema/translation parity, type checking) with no change to runtime behaviour.
+- Removed a never-implemented MQTT command from the accepted command set.
+- The release workflow now requires version checks, add-on validation, static checks, and tests to pass before an image is published.
+- Internal: refactoring and added CI guards (schema and translation parity, type checking); no runtime behaviour change.
 
 ## [1.15.4] - 2026-06-29
 
 ### Fixed
 
-- **Hardened the synced-tree check against incomplete unit data.** A structured TREEXML `Application` entry that carried a group but no application address was wrongly counted as a real device (the network-management comparison treated a missing id as non-management), so discovery could accept a tree as synced while producing no entities. The check now requires a resolvable application id, matching the group-collection logic. (#16 follow-up)
+- **Discovery no longer accepts a partially-synced tree as complete.** A tree entry carrying a group but no application address was wrongly counted as a real device, so discovery could finish "successfully" with zero entities. The check now requires a resolvable application address. (#16 follow-up)
 
 ## [1.15.3] - 2026-06-29
 
 ### Fixed
 
-- **Light statuses now update in managed mode.** The managed-mode installer wrote `event-port=20025` into C-GateConfig.txt, which collides with C-Gate's `load-change-port` (also 20025) — the real-time status stream cgateweb reads on port 20025. C-Gate then served the wrong stream there, so status changes never reached Home Assistant and all entities stayed `Unknown`. The installer no longer sets `event-port` (C-Gate keeps its default 20024, leaving the status stream on 20025), and it strips any previously persisted `event-port=20025` so existing broken installs self-heal on the next start. (#21)
-- **Discovery waits for C-Bus groups to finish syncing.** On networks that sync progressively, C-Gate briefly returns load units that advertise an application (e.g. lighting) but have no group bindings yet. Discovery treated that as synced, published 0 entities, and stopped retrying before the groups arrived, so devices never appeared without a manual tree refresh. A unit now counts as a real device only when it carries group addresses on a non-management application; an all-empty tree is treated as still-syncing and retried until the groups appear. (#16)
+- **Light statuses now update in managed mode (#21).** The managed-mode installer set C-Gate's event port to the same port as the real-time status stream cgateweb reads, so C-Gate served the wrong stream and every entity stayed Unknown in Home Assistant. The installer no longer sets that port — and removes the bad setting from existing installs, which self-heal on the next start.
+- **Discovery waits for C-Bus groups to finish syncing (#16).** On networks that sync progressively, C-Gate briefly reports units that have no group bindings yet; discovery treated that as complete, published zero entities, and stopped retrying. A unit now only counts as a real device once it carries group addresses, and an all-empty tree is retried until the groups appear.
 
 ## [1.15.2] - 2026-06-28
 
 ### Fixed
 
-- **Discovery now explains a zero-entity result instead of failing silently.** When C-Gate returns a fully-synced network tree whose units carry no group addresses (empty `<Groups>`) and no labels file supplies them, discovery has nothing addressable to expose and previously logged a quiet "Published 0 entities" that looked like success. It now logs a warning naming the cause and the remedy (import your C-Bus Toolkit project labels via the web UI so the group addresses are known). (#16)
+- **Discovery now explains a zero-entity result instead of looking successful (#16).** When the network tree carries no group addresses and no labels file supplies them, the log now warns with the cause and the remedy — import your Toolkit project labels via the web UI — instead of a quiet line that looked like success.
 
 ## [1.15.1] - 2026-06-28
 
 ### Fixed
 
-- **HA Discovery now works on C-Gate 3.7.1.** The TreeXML request was sent with a bare network number (`TREEXML 254`), which C-Gate 3.3.2 tolerated but C-Gate 3.7.1 rejects with `401 Bad object or device ID`. Discovery therefore never received a device tree and no entities appeared. The request is now project-qualified (`TREEXML //<project>/254`), the same addressing every other C-Gate command already uses; this also works on 3.3.2, so it applies unconditionally. (#23)
+- **Discovery now works on C-Gate 3.7.1 (#23).** The device-tree request used a form of network addressing that C-Gate 3.3.2 tolerated but 3.7.1 rejects, so no entities ever appeared. The request now uses the same project-qualified addressing as every other command, which works on both versions.
 
 ## [1.15.0] - 2026-06-28
 
 ### Added
 
-- **You can now upgrade the managed C-Gate version without losing your project.** Previously, once C-Gate was installed it stayed on the add-on's persistent storage forever — the installer only refreshed config and never replaced the binary, so there was no way to move off the bundled 3.3.2 (a user with a 3.7.1-format project DB ended up with an empty tree and no entities, because 3.3.2 cannot read it). Two upgrade paths are now available in managed mode: turn on the new **Force C-Gate Reinstall** (`cgate_force_reinstall`) option to reinstall from the configured source on the next start, or — in upload mode — simply drop a newer C-Gate `.zip` into `/share/cgate/` and it is detected and installed automatically. Your project databases (`Projects/`) and C-Gate config are preserved across the reinstall. (#16)
+- **You can now upgrade the managed C-Gate version without losing your project (#16).** Once installed, C-Gate previously stayed at the bundled version forever — there was no way to move off 3.3.2, which can't read newer project databases and left affected installs with an empty tree. Two upgrade paths are now available in managed mode: turn on the new Force C-Gate Reinstall option to reinstall on the next start, or — in upload mode — drop a newer C-Gate zip into the share folder and it is detected and installed automatically. Your project databases and C-Gate configuration are preserved across the reinstall.
 
 ## [1.14.9] - 2026-06-21
 
 ### Fixed
 
-- **Native HVAC thermostats and CNI connectivity sensors no longer vanish after a tree refresh.** Native Air Conditioning (172) climate entities and CNI connectivity binary_sensors are published event-driven (when a thermostat broadcast or interface-state event arrives), but they share the `cgateweb_{network}_` unique-id prefix with TREEXML-discovered entities. The per-network stale-topic cleanup that runs after each TreeXML discovery treated them as stale and cleared them, since they are never part of a tree run. On networks that re-scan the tree at startup (now more common with the 1.14.8 sync-retry), thermostats would disappear on reboot. Event-driven discovery topics are now tracked separately and excluded from the tree cleanup.
+- **Thermostats and network connectivity sensors no longer vanish after a tree refresh.** Those entities are published when their events arrive rather than as part of a tree scan, but the stale-entity cleanup that runs after each scan treated them as leftovers and removed them — so on networks that re-scan at startup, thermostats disappeared on reboot. Event-driven entities are now tracked separately and left alone by the tree cleanup.
 
 ### Changed
 
-- **Clarified the "Air Conditioning Control" setting description.** It now states that thermostats still appear as read-only climate entities without it; enabling it only adds set mode/temperature commands (which write to live heating/cooling and add C-Bus traffic). This setting is not required for thermostats to be visible in Home Assistant.
+- **The Air Conditioning Control option description is clearer.** It now states that thermostats appear as read-only climate entities without it; enabling it only adds mode and temperature control, which writes to live heating and cooling. It is not required for thermostats to be visible.
 
 ## [1.14.8] - 2026-06-21
 
 ### Fixed
 
-- **HA Discovery no longer completes with zero entities while the network is still syncing.** At startup C-Gate briefly returns a network tree containing only its interface/management unit (the CNI, on C-Bus application 255 with no groups) before the load units finish syncing. The empty-tree retry added in 1.14.4 only caught a completely empty tree, so this management-only tree was accepted as a (zero-device) success: discovery published 0 entities and stopped retrying, and the real devices that synced moments later never appeared until a manual `gettree`. A tree carrying only network-management units is now treated as "still syncing" and retried with backoff until the load units arrive. (#17)
+- **Discovery no longer finishes with zero entities while the network is still syncing (#17).** At startup C-Gate briefly returns a tree containing only its own interface unit before the real units finish syncing; that was accepted as a zero-device success, and the devices that arrived moments later never appeared until a manual refresh. A management-only tree is now treated as still syncing and retried until the real units arrive.
 
 ## [1.14.7] - 2026-06-17
 
 ### Fixed
 
-- **Clear error message for unsupported label-import files instead of a cryptic XML parse error.** Selecting a non-project file (e.g. a genuine `.cbr` Comic Book RAR, which the Android-friendly file picker can offer) previously handed binary bytes to the XML parser and produced a baffling "Non-whitespace before first tag" error. The importer now detects the format by content and rejects anything that isn't a `.cbz`, `.xml`, or `.db` with an actionable message telling you to export the project as one of those. A `.cbz` that was misnamed (e.g. gained a `.cbr` suffix in transfer) still imports, since detection is content-based, not extension-based.
+- **A clear error for unsupported label-import files.** Picking a non-project file — a real Comic Book archive, say, which the Android-friendly file picker can offer — used to produce a baffling XML parse error. The importer now detects the format by content and rejects anything that isn't a Toolkit project export with an actionable message. A misnamed archive still imports, since detection looks at content, not the file extension.
 
 ## [1.14.6] - 2026-06-17
 
 ### Fixed
 
-- **Label import file picker now works in the Home Assistant Android app.** The import file input restricted selection to `.cbz`/`.xml`, which Android's picker greyed out (those extensions have no reliable MIME mapping on Android), so the file couldn't be selected. The picker now accepts the project file (incl. `.db`) on mobile; the server still validates the actual content.
+- **Label import now works in the Home Assistant Android app.** The file picker restricted selection to extensions Android can't reliably map, so the project file was greyed out and couldn't be selected. The picker now accepts the project file on mobile; the server still validates the actual content.
 
 ## [1.14.5] - 2026-06-17
 
 ### Fixed
 
-- **CBZ import now works with C-Bus Toolkit 1.17.x.** Newer Toolkit exports a `.cbz` containing a **SQLite project database** (a `.db`), not XML — so the importer kept reporting "no XML file". The label importer now reads a SQLite project database directly (inside a `.cbz`, or as a bare `.db`), reconstructing the network/app/group names from the database. Older XML/`.cbz` exports continue to work unchanged.
+- **Project import now works with C-Bus Toolkit 1.17.x.** Newer Toolkit exports contain a project database rather than XML, so the importer kept reporting that no XML file was found. It now reads the database directly — inside an archive or on its own — and reconstructs the network, application, and group names from it. Older XML exports continue to work unchanged.
 
 ## [1.14.4] - 2026-06-17
 
 ### Fixed
 
-- **HA Discovery now finds your devices on startup, not only after a manual refresh.** When a C-Bus network had not finished syncing its units yet, C-Gate returned an empty tree and cgateweb accepted it as a (zero-device) success, so no entities appeared until you published to a `gettree` topic. An empty tree is now treated as "network still syncing" and retried with backoff until the populated tree arrives. (#16)
-- **No more phantom `unknown` network.** Duplicate TreeXML requests for the same network (the initial scan plus the "network created" event) caused a second response to be misattributed to an `unknown` network, publishing a stray tree topic and discovery sensor. Duplicate in-flight requests are now suppressed.
+- **Discovery now finds your devices on startup, not only after a manual refresh (#16).** When the network hadn't finished syncing, C-Gate returned an empty tree that was accepted as a zero-device success, so nothing appeared until you refreshed the tree manually. An empty tree is now treated as still syncing and retried with backoff until the populated tree arrives.
+- **No more phantom "unknown" network.** Duplicate tree requests for the same network caused the second response to be misattributed, publishing a stray tree topic and discovery sensor. Duplicate in-flight requests are now suppressed.
 
 ## [1.14.3] - 2026-06-16
 
 ### Fixed
 
-- **Managed mode now actually loads your C-Gate project.** Project database files were being synced into C-Gate's `tag/` directory, but C-Gate 3.x loads projects from `Projects/<NAME>/<NAME>.db`. Managed C-Gate therefore started with **no project loaded** — every command returned `401 Bad object or device ID` and Home Assistant Discovery found nothing. cgateweb now places `<NAME>.db` in `Projects/<NAME>/` and sets `project.start` so C-Gate auto-loads and starts the project on boot. (#16)
-- **Project configuration is reapplied on every start.** Previously the project name / port settings were only written during a *fresh* C-Gate install, so existing and upgrading managed installs never received them. The configuration step now runs on every container start (the C-Gate download/extract is still skipped when already installed).
+- **Managed mode now actually loads your C-Gate project (#16).** Project databases were placed where C-Gate 3.x never looks, so managed C-Gate started with no project loaded, every command failed, and discovery found nothing. The database now goes into C-Gate's project folder and the project is set to load and start automatically on boot.
+- **Project configuration is reapplied on every start.** The project name and port settings were previously only written on a fresh C-Gate install, so existing and upgrading installs never received them.
 
-### Internal
+### Changed
 
-- **End-to-end managed-mode test verifies the project loads.** The integration test now talks to C-Gate's command port and asserts the project reaches `state=started` with its database parsed (App 56 Lighting), so a "project not loaded" regression fails CI instead of silently soft-passing. A sample project fixture is committed for the test. Live entity-discovery assertions require real C-Bus hardware (`CGATEWEB_E2E_EXPECT_LIVE=1`); simulating a CNI for full discovery in CI is tracked as future work.
+- Internal: the integration test now verifies the project actually loads in managed mode, so this regression fails CI instead of passing silently.
 
 ## [1.14.2] - 2026-06-16
 
 ### Fixed
 
-- **Thermostat card temperature range matches the hardware.** The HVAC climate card (and the control clamp) is now bounded to 10–32 °C instead of 0–50, so Home Assistant no longer lets you request a value the thermostat silently rejects.
-- **Thermostat cards update instantly.** When you change mode/temperature from HA, cgateweb now reflects the new state immediately instead of waiting for the thermostat's next broadcast.
-- **Mirrored controller can be hidden.** A PAC/controller that re-broadcasts a ward (showing up as a duplicate climate card) can now be removed by adding its unit to the label exclude list — its entity is cleared from HA.
-- **Lights named like covers stay lights.** A group such as "Garage Door Lamps" is no longer auto-classified as a cover when its label also names a light.
-- **CBZ import works with newer C-Bus Toolkit exports.** Archives from Toolkit 1.17.6 (e.g. an uppercase `.XML` entry) now import; the project XML is matched case-insensitively and content-sniffed as a fallback.
-- **No more spurious aircon parse warnings** for unconsumed Air Conditioning lines.
+- **The thermostat card's temperature range now matches the hardware** — 10 to 32 °C instead of 0 to 50 — so Home Assistant no longer offers values the thermostat silently rejects.
+- **Thermostat cards update instantly.** Changing mode or temperature from Home Assistant is now reflected immediately instead of waiting for the thermostat's next broadcast.
+- **A mirrored controller can be hidden.** A controller that re-broadcasts a zone, showing up as a duplicate climate card, can now be removed by adding its unit to the label exclude list.
+- **Lights named like covers stay lights.** A group such as Garage Door Lamps is no longer auto-classified as a cover when its label also names a light.
+- **Project import works with more Toolkit exports**, including archives whose internal files use different letter casing.
+- **No more spurious air-conditioning parse warnings** for unrecognised broadcast lines.
 
 ## [1.14.1] - 2026-06-15
 
 ### Fixed
 
-- **Clearer message when cgateweb can't reach C-Gate.** A connection that never establishes now logs *what to check* — host/port reachability, the C-Gate machine's firewall, and C-Gate's `access.txt` — instead of a bare "socket timed out", making setup problems far easier to diagnose.
-- **HVAC setpoint no longer lost when a thermostat turns off.** Native C-Bus thermostats broadcast a sentinel setpoint of 0 on "off"; cgateweb now keeps the last active target instead of reporting 0°C.
-- **Air Conditioning control toggle reads correctly in standalone mode.** `cbus_aircon_control_enabled` supplied as a string (e.g. a hand-edited `settings.js`) is now coerced properly.
-- **Status-page event table escapes labels and addresses.** Values in the live events table are HTML-escaped so label text can't be interpreted as markup (XSS hardening).
-- **Secrets are kept out of logs.** Any password/token/secret-keyed value passed to the logger is replaced with `[REDACTED]` before output, as defence in depth.
-- **Faster failover signalling.** When the last command connection drops, the pool is reported unhealthy immediately rather than waiting up to 30s for the next health check.
+- **Clearer message when cgateweb can't reach C-Gate.** A connection that never establishes now logs what to check — host and port reachability, the C-Gate machine's firewall, and C-Gate's access list — instead of a bare timeout.
+- **The setpoint is no longer lost when a thermostat turns off.** Native thermostats report a zero setpoint when off; the last active target is now kept instead of reporting 0 °C.
+- **The Air Conditioning control option reads correctly in standalone mode**, where a hand-edited settings file could supply it in a form that was previously misread.
+- **The status page escapes labels and addresses**, so label text can't be interpreted as markup.
+- **Secrets are kept out of logs** — any password- or token-like value passed to the logger is redacted before output.
+- **Faster failover signalling.** When the last command connection drops, the problem is reported immediately instead of up to 30 seconds later.
 
-### Internal
+### Changed
 
-- Extracted the HVAC temperature encoding into a shared helper, logged previously-swallowed errors, and stopped the network auto-discovery timer from delaying shutdown.
-- Hardened CI: the production add-on image is now built on every PR, `config.yaml` upgrade-safety and 17-language translation parity are validated, workflows/shell/Dockerfiles are linted, `GITHUB_TOKEN` is scoped read-only, and Dependabot is enabled. Added tests for the connection pool, the HA notifier error paths, and the config/translation validators. Minimum Node bumped to 20.
+- Internal: error handling and shutdown tidied; CI hardened (add-on image built on every pull request, translation parity validated, minimum Node version 20).
 
 ## [1.14.0] - 2026-06-14
 
 ### Added
 
-- **Control your C-Bus thermostats from Home Assistant.** Building on the read-only HVAC support, you can now set the **mode and target temperature** of native C-Bus Air Conditioning thermostats directly from the Home Assistant climate card. It's **opt-in** via the new **Air Conditioning Control** option (`cbus_aircon_control_enabled`, off by default) because it writes to live heating/cooling. When enabled, cgateweb sends the native C-Gate `AIRCON` commands, targeting each thermostat correctly even when several share a zone group. No touchscreen, Wiser, or extra hardware required.
+- **Control your C-Bus thermostats from Home Assistant.** You can now set the mode and target temperature of native C-Bus air-conditioning thermostats directly from the climate card. It's opt-in via the new Air Conditioning Control option (off by default) because it writes to live heating and cooling. Each thermostat is targeted correctly even when several share a zone group — no touchscreen, Wiser, or extra hardware required.
 
-### Internal
+### Changed
 
-- Hardened the add-on startup scripts with shell strict mode and refactored the HA-discovery lighting path for clarity (no functional change).
+- Internal: startup scripts hardened; no functional change.
 
 ## [1.13.1] - 2026-06-13
 
 ### Added
 
-- **C-Bus network connectivity binary sensor.** Each monitored C-Bus network now also exposes a Home Assistant `binary_sensor` (device class *connectivity*) reflecting its CNI/PCI link — so you can alert or automate on a network going offline, not just read it on the status page.
-- **Optional offline notification.** New `cni_offline_notification` setting (off by default): when enabled, cgateweb raises a Home Assistant persistent notification if a network's CNI/PCI link goes offline and dismisses it when the link recovers.
+- **Network connectivity sensors.** Each monitored C-Bus network now exposes a connectivity sensor in Home Assistant reflecting its CNI or PCI link, so you can alert or automate on a network going offline, not just read it on the status page.
+- **Optional offline notification.** A new setting (off by default) raises a Home Assistant persistent notification when a network's link goes offline and dismisses it when the link recovers.
 
 ## [1.13.0] - 2026-06-13
 
 ### Added
 
-- **C-Bus network / CNI connectivity on the status page.** cgateweb now detects when the CNI (or PCI) link between C-Gate and the C-Bus network drops — an outage that was previously invisible because C-Gate keeps its connection to cgateweb up the whole time. It polls each network's interface state (read-only) and shows a **"C-Bus Networks (CNI)"** indicator on the status page (highlighted when a link is down), and logs a warning on dropout and an info message on recovery. Poll interval is configurable via `cniMonitorIntervalMs` (default 30s; set to 0 to disable).
+- **C-Bus network link status on the status page.** cgateweb now detects when the link between C-Gate and the C-Bus network drops — an outage that was previously invisible because C-Gate keeps its own connection up the whole time. It polls each network's interface state (read-only), shows an indicator on the status page that's highlighted when a link is down, and logs a warning on dropout and a message on recovery. The poll interval is configurable (30 seconds by default; set it to 0 to disable).
 
 ## [1.12.1] - 2026-06-13
 
 ### Fixed
 
-- **Air Conditioning option now translated in every language.** The `cbus_aircon_app_id` setting (added in 1.11.0) was only present in English, so non-English users saw an untranslated label. Added translations for all 16 other supported languages.
-- **Hardened the label edit API.** `PATCH /api/labels` now skips prototype-polluting keys (`__proto__`/`constructor`/`prototype`) from request bodies as defence in depth.
+- **The Air Conditioning option is now translated in every language.** It was only present in English, so non-English users saw an untranslated label.
+- The label-edit API now skips potentially malicious keys in requests, as defence in depth.
 
 ### Changed
 
-- **Web UI timeouts are now tunable.** Three previously-hardcoded web-server values are configurable settings (defaults unchanged): the diagnostics "active device" window (`web_active_device_window_ms`), the HA areas cache TTL (`web_ha_areas_cache_ttl_ms`), and the HA Supervisor API timeout (`web_ha_api_timeout_ms`).
+- **Web UI timeouts are now tunable.** Three previously hard-coded values — the diagnostics active-device window, the areas cache lifetime, and the Supervisor API timeout — are now settings with unchanged defaults.
 
 ## [1.12.0] - 2026-06-13
 
 ### Added
 
-- **Air Conditioning (172): thermostats now appear automatically in Home Assistant.** When the native Air Conditioning feature is enabled (`cbus_aircon_app_id`) and HA Discovery is on, cgateweb now publishes a Home Assistant **climate** entity for each thermostat the first time it is seen on the bus (event-driven, keyed by the thermostat's source unit). The entity shows current temperature, target setpoint, operating mode (`off`/`heat`/`cool`/`auto`/`fan_only`), and the live running action (`heating`/`cooling`/`fan`/`idle`). Custom names from the label file are used (key `{network}/172/{sourceUnit}`).
-
-### Notes
-
-- This first release is **read-only** — the thermostat card displays state but does not yet send control commands. Write control (set mode/setpoint from HA) is a deliberate next step pending verification of the native app-172 command format against hardware.
+- **Air-conditioning thermostats now appear automatically in Home Assistant.** With the Air Conditioning option enabled and discovery on, each thermostat gets a climate entity the first time it's seen on the bus, showing current temperature, target setpoint, operating mode, and the live running action. Custom names from the label file are used.
+- This first release is read-only: the thermostat card displays state but does not yet send control commands, pending verification of the command format against hardware.
 
 ## [1.11.4] - 2026-06-13
 
-### Fixed
-
-- **Air Conditioning (172): no bogus setpoint in Fan Only mode.** In Fan Only mode the thermostat reports the `0x7F00` (32512) "no setpoint" sentinel; cgateweb was decoding this as a spurious 127 °C target. The setpoint is now correctly omitted when outside the plausible range (>0 °C and ≤50 °C). Only affects the opt-in `cbus_aircon_app_id` feature.
-
 ### Added
 
-- **Air Conditioning (172): live running action (`hvac_action`).** cgateweb now decodes the `zone_hvac_plant_status` broadcast and publishes the plant's current activity to `cbus/read/{network}/172/{sourceUnit}/action` (`heating`/`cooling`/`fan`/`idle`) — suitable for a Home Assistant climate entity's `hvac_action`.
-- **Verified HVAC mode codes.** The `cool` (2), `auto`/heat-cool (3) and `fan_only` (4) operating modes — previously best-effort — are now confirmed against real thermostat captures (Clipsal 5070THP / 5070THB).
+- **Live running action for air conditioning.** The plant's current activity — heating, cooling, fan, or idle — is now published per thermostat, ready to show on the climate card.
+- **Verified air-conditioning mode codes.** The cool, auto, and fan-only operating modes — previously best-effort — are now confirmed against real thermostat captures.
+
+### Fixed
+
+- **No bogus setpoint in fan-only mode.** In fan-only mode the thermostat reports a special "no setpoint" value that was being decoded as a 127 °C target; the setpoint is now omitted whenever it falls outside the plausible range.
 
 ## [1.11.3] - 2026-06-10
 
 ### Added
 
-- **Air Conditioning (172): mode, setpoint, and multiple thermostats.** Building on 1.11.x's temperature reading, cgateweb now also decodes the operating **mode** (`off`/`heat` verified; `cool`/`auto`/`fan_only` best-effort pending hardware confirmation), the target **setpoint** (°C = raw/256), and the zone-group on/off **state** from the C-Bus Air Conditioning application. Multiple thermostats on the same network/application are now supported: topics are keyed by the thermostat's **source unit** so two units sharing a zone group no longer collide.
+- **Air conditioning: mode, setpoint, and multiple thermostats.** Building on the temperature reading, the bridge now also decodes the operating mode (off and heat verified; cool, auto, and fan-only best-effort pending hardware confirmation), the target setpoint, and the zone on/off state. Multiple thermostats on one network are now supported: readings are keyed by the thermostat's own unit address, so two units sharing a zone group no longer collide.
 
 ### Changed
 
-- **Air Conditioning read topics are now keyed by source unit, not zone group.** Temperature now publishes to `cbus/read/{network}/172/{sourceUnit}/current_temperature` (plus `/setpoint`, `/mode`, `/state`). This corrects multi-thermostat collisions. Only affects the opt-in `cbus_aircon_app_id` feature introduced in 1.11.0.
+- **Air-conditioning topics are now keyed by thermostat unit, not zone group.** This corrects collisions between thermostats sharing a zone group and only affects the opt-in Air Conditioning feature introduced in 1.11.0.
 
 ## [1.11.1] - 2026-06-06
 
 ### Fixed
 
-- **Restore add-on distribution for the 1.11.0 Air Conditioning feature.** The 1.11.0 tag failed its distribution build on a strict-equality (`eqeqeq`) lint warning in the new Air Conditioning decoder, so the add-on never updated. Corrected the comparison; the native Air Conditioning (172) temperature feature from 1.11.0 ships in 1.11.1.
+- **The 1.11.0 release now actually ships.** A lint failure blocked its distribution build, so the add-on never updated; the air-conditioning temperature feature arrives with this release.
 
 ## [1.11.0] - 2026-06-06
 
 ### Added
 
-- **Native C-Bus Air Conditioning (172) room temperature.** cgateweb now decodes the C-Bus Air Conditioning application's `zone_temperature` broadcasts (encoding °C = raw/256) and publishes the reading to `cbus/read/{network}/172/{zoneGroup}/current_temperature`. Enable by setting `cbus_aircon_app_id` to your Air Conditioning app id (typically `172`); it is off by default. This is read-only temperature for now — HVAC mode and setpoint are not yet decoded. Note this is the *real* C-Bus Air Conditioning application, distinct from the lighting-bridge "HVAC-via-lighting" pattern used by `ha_discovery_hvac_app_id`.
+- **Native C-Bus air-conditioning room temperature.** The bridge now decodes temperature broadcasts from the C-Bus Air Conditioning application and publishes them per zone. Enable it with the Air Conditioning application option (off by default). Read-only for now — mode and setpoint come later. This is the real Air Conditioning application, distinct from the older HVAC-via-lighting approach.
 
 ### Fixed
 
-- **Add-on docs incorrectly cited C-Bus application `201` as the HVAC app.** Application 201 does not exist in standard C-Bus; the real Air Conditioning application is `172`. Documentation corrected.
+- Documentation no longer cites a non-existent application number for air conditioning; the real one is 172.
 
 ## [1.10.1] - 2026-05-31
 
 ### Fixed
 
-- **Cover "stop" button did nothing.** Home Assistant's MQTT cover platform has no dedicated stop topic — it publishes `payload_stop` ("STOP") to the cover's command (`switch`) topic, not the `stop` topic cgateweb advertised in discovery. The bridge previously treated `STOP` as an invalid switch payload and silently dropped it, so blinds would open/close but never stop mid-travel. `STOP` on the switch topic is now routed to the cover-stop handler (`TERMINATERAMP`), which also cancels any in-progress interpolated position ramp.
+- **The cover stop button now works.** Home Assistant sends stop as a payload on the cover's command topic, which the bridge treated as invalid and silently dropped — so blinds would open and close but never stop mid-travel. Stop now halts the blind and cancels any in-progress position animation.
 
 ## [1.10.0] - 2026-05-30
 
 ### Added
 
-- **Automatic cover detection.** Groups on the Lighting application (56) whose label contains a cover keyword (`blind`, `shutter`, `shade`, `awning`, `curtain`, `roller`, `garage door`) are now discovered as Home Assistant `cover` entities instead of `light`. This fixes the common case where shutter relays share the lighting application with real lights and previously all appeared as lights. Classification is conservative and label-only: a manual `type_overrides` entry and application-id mappings always take precedence; auto-detection only ever upgrades the default `light`. Configurable via `ha_discovery_auto_type` (default on), `ha_discovery_auto_type_name_heuristics`, and `ha_discovery_auto_type_cover_keywords`.
+- **Automatic cover detection.** Lighting groups whose label mentions a blind, shutter, shade, awning, curtain, roller, or garage door are now discovered as covers instead of lights — fixing the common case where shutter relays share the lighting application with real lights and everything appeared as a light. Detection is conservative and label-only: a manual type override always wins, and auto-detection only ever upgrades the default light type. On by default, with adjustable keywords.
 
 ### Fixed
 
-- **`.cbz` import "Failed Unauthorised" through HA Ingress.** The web UI import endpoint now trusts requests proxied through Home Assistant Ingress when no API key is configured, so importing a C-Bus project from the add-on UI works out of the box. A configured `web_api_key` is still always enforced, and direct (non-ingress) requests remain blocked unless explicitly allowed.
-- **HVAC type overrides produced a broken thermostat.** Reclassifying a lighting group to `hvac` via `type_overrides` now publishes a full climate payload (temperature/mode topics) instead of a generic payload missing the thermostat controls.
+- **Project import no longer fails with "Unauthorised" through the side panel.** Importing from the add-on UI now works out of the box when no web API key is configured; a configured key is still always enforced, and direct requests remain blocked unless explicitly allowed.
+- **HVAC type overrides produce a working thermostat.** Reclassifying a lighting group as HVAC now publishes the full climate payload instead of one missing the thermostat controls.
 
 ## [1.9.4] - 2026-05-27
 
+### Changed
+
+- **The web UI is now usable on phones and tablets.** Previously desktop-only, it now adapts to small screens: no iOS zoom-on-tap, larger touch targets, a scrollable label table on narrow screens, and a sensible layout down to phone widths — while desktop keeps the compact layout.
+
 ### Security
 
-- **API key comparison is now constant-time** (`crypto.timingSafeEqual`). Removes the timing oracle the previous `===` comparison exposed.
-- **`.cbz` import is guarded against zip-bombs**. The parser pre-flights the sum of declared decompressed sizes for every ZIP entry against a 100MB cap (overridable via constructor) before extracting anything, so a small upload cannot blow up RAM. Defence-in-depth path-traversal guard on internal entry names extracted alongside.
-- **HTTP security headers** added on every response: `Content-Security-Policy` (locks resource loading to same-origin, killing the common third-party-script XSS payload pattern without breaking the bundled inline UI) and `Referrer-Policy: no-referrer` (prevents leaking the HA Ingress-tokenised URL to any external resource).
-- **Managed-mode install pre-flights ZIP entry names** for path-traversal (`..`) or absolute paths via a new `_cgateweb_verify_zip_safe` helper in `cgate-install.sh`. Runs before each `unzip` call. Modern unzip already strips these but the explicit guard makes any future tooling regression visible.
-
-### Mobile / Responsive
-
-- **Web UI is now responsive across all common viewport sizes** for both direct LAN access and HA Companion App (iframe-embedded via HA Ingress). Previously had zero `@media` breakpoints. Includes:
-  - `viewport-fit=cover` + `env(safe-area-inset-*)` padding for notched phones.
-  - `font-size: 16px` on all form inputs - eliminates the iOS auto-zoom-on-focus behaviour that previously fired every time a user tapped a label.
-  - Touch targets enlarged on touch-primary devices (row checkboxes 22×22, buttons min-height 44px) per WCAG 2.5.5 / iOS HIG. Desktop mouse users keep the compact layout.
-  - `<= 768px`: main labels table becomes horizontally scrollable; Entity ID and "unsaved" columns hide; tab bar tightens; toast spans full width.
-  - `<= 480px`: Type column also hides; add-row and bulk toolbar stack vertically; header collapses; status bar single-column.
-  - Area dropdown is constrained to viewport width on narrow screens so it can't shoot off the right edge.
+- **API key comparison is now constant-time**, removing a timing side channel that could have helped an attacker guess the key.
+- **Project imports are guarded against zip bombs.** The total decompressed size is checked against a cap before anything is extracted, so a small upload can't exhaust memory; archived file names are also checked for path tricks.
+- **Security headers on every web response**, blocking scripts loaded from other sites and preventing the side-panel address from leaking to external resources.
+- **Managed-mode installs verify archive contents** for path tricks before extracting.
 
 ## [1.9.3] - 2026-05-27
 
 ### Fixed
 
-- **Editing labels (or areas / type overrides / entity IDs / exclusions) via the Web UI did not update Home Assistant device names**. `LabelLoader.save()` wrote the file and updated internal state but never emitted `labels-changed` directly. The only emit site was the `fs.watch` callback, which is gated by a 1000ms self-write grace period to prevent double-processing - so for in-process saves (PUT/PATCH `/api/labels`, POST `/api/labels/import`), the event was silently suppressed. The downstream listener that re-triggers HA Discovery therefore never fired, and HA never saw the updated entity configs.
-  - `save()` now emits `labels-changed` directly with the full `getLabelData()` payload (labels, areas, typeOverrides, entityIds, exclude). The file-watcher path still correctly suppresses the resulting fs event within the grace window, so there's no double-fire.
-  - The same fix automatically covers areas, type overrides, entity IDs, and the exclude list - all flow through the single `save()` codepath.
+- **Label edits from the web UI update Home Assistant again.** Saves through the editor wrote the file but, due to a guard meant to prevent double-processing, never triggered re-discovery — so changed names, areas, type overrides, and exclusions never reached Home Assistant until something else reloaded the file.
 
 ## [1.9.2] - 2026-05-26
 
 ### Changed
 
-- **Log noise reduction**: demoted two high-volume INFO log lines to DEBUG. Both fire per-event and dominated production log volume (~45% of lines in a typical sampled window). Real startup/shutdown/state-transition messages stay at INFO so they remain easy to spot; users who need the per-command trace can set `log_level: debug` in the add-on config.
-  - `MqttCommandRouter` "MQTT Recv: ..." (every received MQTT write/switch/ramp command)
-  - `BridgeInitializationService` "Getting all periodic values for ..." (every periodic getall poll fire)
+- **Quieter logs.** Two high-volume lines — one for every received command and one for every periodic poll — moved from info to debug level; together they were about 45% of typical log volume. Startup, shutdown, and state messages stay at info; set the log level option to debug if you need the full trace.
 
 ## [1.9.1] - 2026-05-24
 
-### Performance
+### Changed
 
-- **Managed-mode JVM tuned for the small-heap, low-throughput control-plane workload**. Adds `-XX:+UseSerialGC` (Serial GC's overhead is ~30-50MB lower than the default G1 for a 64-256MB heap), `-XX:TieredStopAtLevel=1` (skip the C2 server JIT - C-Gate is not throughput-critical and tier-1 C1 is faster to warm up), and `-Djava.net.preferIPv4Stack=true` (eliminate unused IPv6 DNS roundtrips during socket setup). Expected impact on Pi/NAS managed-mode deploys: ~30-50MB lower JVM RSS plus ~2-5s faster cold start. Remote-mode users are unaffected.
-- **Node.js V8 heap capped at 256MB via `--max-old-space-size=256`**. Node defaults to a fraction of host memory (often 1.5-4GB on shared HA hardware), which means a runaway leak or unbounded cache only OOMs after starving other addons. 256MB sits ~2-3x above the observed ~100-110MB steady-state RSS and makes worst-case behaviour predictable (clean process OOM and s6 restart vs slow host degradation).
-- **Web server start deferred past the readiness signal**. The label-editing web UI was on the await chain before `connectionManager.start()`, adding measurable latency to the startup-to-ready window. The web server now starts in the background after readiness fires; failure still logs a warning but never blocks the bridge.
-- **HA Discovery and auto-network-discovery deferred off the readiness path**. Previously `lifecycle_state=ready` published only after the post-connect work (including a potentially 5s auto-discovery wait for the tree response) finished. Now readiness publishes as soon as connection health is confirmed; auto-discovery / initial getall / HA Discovery TreeXML sweep run in the background. Users with the default `autoDiscoverNetworks=true` see up to 5s less ready-signal latency.
-- **`DeviceStateManager` device-level / last-seen maps now bounded** (`deviceStateMaxEntries`, default 5000, floor 100) with FIFO-on-insert eviction. Matches the existing pattern used by `eventPublisher._topicCache`. Defense-in-depth against long-uptime growth; no behaviour change for any realistic install.
-
-### Build / Image
-
-- **Multi-stage Dockerfile** drops `npm` from the runtime image (~50-80MB saved). The builder stage installs npm, runs `npm ci`, cleans the cache; the runtime stage only carries `nodejs + openjdk17 + curl + unzip + netcat-openbsd` plus the resolved `node_modules`.
-- **`.dockerignore` at the repo root** excludes `.git/`, `tests/`, `test-env/`, `coverage/`, `tools/`, IDE state, and the host's `node_modules` (which can contain platform-incompatible native binaries) from the build context.
-
-### CI
-
-- **`package.json` / `config.yaml` version drift now gates the build** via a new `version-sync` CI job. Previously documented in CLAUDE.md as a manual step that had caused stale deploys.
-- **GitHub Actions pinned to commit SHAs** for `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, and `softprops/action-gh-release`. Pin updates become explicit changes instead of silent absorption of upstream tag movements.
-- **HACS deploy token moved out of the rendered `git clone` URL** in `hacs-distribution.yml` (now passed via `env:`).
-- **`HEALTHCHECK` added to the addon Dockerfile**: TCP probe on port 8080 with a 180s start-period (covers managed-mode first-boot C-Gate download).
-- **Integration test now passes end-to-end and is no longer masked by `continue-on-error`**. Switched from `podman compose` (which delegated to a daemon-socket-requiring docker-compose plugin on Linux) to `podman-compose` (the Python wrapper that was already pip-installed in the workflow), then softened four project-dependent assertions that the previous flaky-mask had hidden so the no-project test fixture passes cleanly.
-
-### Fixed
-
-- **`perf/raw.json` no longer tracked** (regenerated benchmark output causing constant 190-line / 190-line diff churn in every working tree).
-
-### Tests
-
-- Closed three real coverage gaps surfaced by an audit: cgateConnectionPool end-to-end cascade-exhaustion, web-server OPTIONS-preflight rejection from a disallowed origin, web-server GET traffic exemption from the mutation rate limit.
+- **Lower memory footprint and faster startup in managed mode.** The bundled Java runtime is tuned for a small control-plane workload — roughly 30–50 MB less memory and a few seconds faster cold start on Pi- and NAS-class hardware — and the bridge's own memory is capped so a fault can't starve other add-ons. Remote-mode users are unaffected.
+- **Faster readiness at startup.** The web UI and initial discovery no longer delay the bridge's ready signal; they start in the background once the connection is healthy.
+- Internal: smaller Docker image, version-drift and dependency-pinning CI gates, a container health check, and bounded internal caches.
 
 ## [1.9.0] - 2026-05-24
 
 ### Added
-- **Tunable HA Discovery TreeXML retry settings**: four new keys in `settings.js` allow ops to tune the discovery startup-race retry budget without forking. `haDiscoveryMaxTreeRetryAttempts` (default 8), `haDiscoveryTreeRetryInitialDelayMs` (default 2000), `haDiscoveryTreeRetryMaxDelayMs` (default 60000), `haDiscoveryTreeRequestTimeoutMs` (default 8000). Defaults are unchanged from prior behaviour.
-- **Tunable web UI body-size limit**: `webMaxBodySizeBytes` setting (default 10MB) controls the max accepted POST/PUT/PATCH body on the label-editing API. Useful for unusually large `.cbz` uploads on permissive deployments.
+
+- **Discovery retry tuning.** New settings control how long and how often discovery retries fetching the network tree at startup; defaults are unchanged.
+- **The web upload size limit is now configurable**, useful for unusually large project files.
 
 ### Fixed
-- **Stuck HA Discovery on malformed TreeXML**: when `parseString` failed (truncated payload, encoding glitch, C-Gate restart mid-stream), the discovery network previously sat in `DISCOVERING` state forever - no retry, no `PAUSED` transition, no diagnostic signal. The parse error now flows through the same retry-with-backoff mechanism as 401 Network not found, eventually transitioning to `PAUSED` after the retry budget is exhausted.
+
+- **Discovery no longer gets stuck on a malformed tree response.** A truncated or interrupted reply previously left discovery waiting forever with no retry or diagnostic; it now retries with backoff and eventually pauses with a clear state.
 
 ### Changed
-- **Internal: `labelSnapshot` lifted to instance property in `HaDiscovery`**. Eliminates a positional parameter that was threaded through seven helper methods (23+ call sites). No external behaviour change.
-- **Internal: exponential-backoff calculation extracted to `src/backoff.js`**. Replaces three subtly different inline formulas in `cgateConnectionPool.js`, `cgateConnection.js`, and `haDiscovery.js`. No behaviour change at the three call sites.
 
-### Operations / CI
-- **Added a CI gate that fails the build when `package.json` and `homeassistant-addon/config.yaml` versions disagree**. Previously documented as manual-and-error-prone in `CLAUDE.md`; now enforced.
-- **GitHub Actions versions pinned to commit SHAs** for `actions/checkout`, `actions/setup-node`, `actions/upload-artifact`, and `softprops/action-gh-release`. Pin updates become explicit code changes instead of silent absorption of upstream tag movements.
-- **HACS deploy token moved out of the rendered git-clone URL** in `hacs-distribution.yml`, into the run step's `env:` block. Eliminates the risk of token leakage via verbose-mode logging.
-- **`HEALTHCHECK` added to the addon Dockerfile**. TCP-probes the always-on cgateweb web UI port after a 180s start-period (allows for managed-mode first-boot C-Gate download). Mostly diagnostic under HA Supervisor, but useful for visibility.
+- Internal: discovery internals simplified and CI hardened (version-drift gate, pinned action versions, token-leak fix, health check); no behaviour change.
 
 ## [1.8.10] - 2026-05-24
 
 ### Added
-- **Managed mode project sync from `/share/cgate/tag/`**: a new `cont-init` script syncs pre-built C-Gate project database files into the managed C-Gate `tag/` directory on every container start. Place `<PROJECTNAME>.db` (built in C-Bus Toolkit or copied from another C-Gate install) into `/share/cgate/tag/`, restart the add-on, and managed C-Gate will serve the project so TreeXML / HA Discovery succeed. The sync is timestamp-aware (`source -nt dest`) so C-Gate state written between restarts is never clobbered by a stale share copy.
-- **Web UI import response now flags itself as labels-only**: `POST /api/labels/import` returns `scope: "labels-only"` and a `notice` field explaining that the `.cbz`/`.xml` import does not load the C-Gate project itself, with a pointer to the managed-mode `.db` workflow. Avoids the trap where users assumed importing in the Web UI was sufficient to populate managed C-Gate (issue #9).
 
-### Documentation
-- New "Loading your C-Gate project in managed mode" section in `DOCS.md` explaining the `.db` sync workflow and why `.cbz` import alone is insufficient.
+- **Install your Toolkit project into managed C-Gate via the share folder.** Drop the project database built in C-Bus Toolkit (or copied from another C-Gate install) into the share folder and restart; managed C-Gate will serve the project so discovery succeeds. The sync is timestamp-aware, so changes C-Gate saves between restarts are never overwritten by a stale copy.
+- **The web import now warns that it's labels-only (#9).** Importing a project file into the web UI imports names and groups but does not install the project into C-Gate — the import now says so and points at the managed-mode workflow, avoiding a common setup trap.
+
+### Changed
+
+- Documentation: new section on loading your C-Gate project in managed mode.
 
 ## [1.8.9] - 2026-05-09
 
 ### Added
-- **MIT LICENSE bundled with the distribution repo**: the release workflow now copies the MIT license into both the `cgateweb-homeassistant` repo root and the add-on subfolder so the licensing terms are visible alongside the installable add-on (and so the repo passes OSI-license listing checks for awesome-home-assistant).
+
+- The MIT license now ships alongside the installable add-on in the distribution repository.
 
 ## [1.8.8] - 2026-05-07
 
 ### Fixed
-- **Managed mode install failed with "Invalid download URL scheme: null"**: when running the add-on in managed mode without overriding `cgate_download_url`, the install script would log `Downloading C-Gate from: null` and abort. Root cause: `bashio::config 'cgate_download_url' ''` returns the literal string `"null"` for unset optional fields (upstream bashio's `${2:-null}` rewrites an empty default to `"null"`), so the script's `[[ -z … ]]` empty-check never fired and the hardcoded fallback URL was never applied. The install script now treats both empty and `"null"` as unset for `cgate_download_url` and `cgate_download_sha256`, and the URL/SHA resolution is extracted into helpers covered by unit tests.
+
+- **Managed mode no longer fails with an invalid download address.** An unset download option was being read as the literal word "null", so the built-in fallback address was never used and the install aborted. Empty and unset values are now handled correctly for both the download address and its checksum.
 
 ## [1.8.7] - 2026-05-05
 
 ### Fixed
-- **Startup-race silent publish drops**: HA Discovery configs and initial state values published before the MQTT broker was fully connected were silently dropped — `MqttManager.publish()` incremented a counter but never replayed the lost messages. Affected entities sat at `unavailable` in Home Assistant indefinitely (until C-Gate happened to emit a fresh event for that group while MQTT was up). `cgateweb`'s own startup path is the largest culprit: `cgateWebBridge.start()` calls `_updateBridgeReadiness('startup')` and `haBridgeDiagnostics.publishNow('startup')` before the broker connects, so ~38 retained publishes per restart go to /dev/null.
-- `MqttManager` now keeps a bounded retain-aware queue of publishes attempted while disconnected. Map semantics give us newest-wins-per-topic so a stale `level=0` is correctly overwritten by a fresh `level=128` if both queue during the same disconnect window. The queue is bounded (default 1000 entries; configurable via `mqttPendingPublishMaxEntries`) and oldest entries are evicted with a warning if the broker stays unreachable. On (re)connect, the queue is flushed and the count is logged. Non-retained publishes (one-shot events whose meaning would be invalidated by replay) are still dropped — only retained state is queued.
+
+- **Entities no longer get stuck unavailable after a restart.** State and discovery messages published before the MQTT broker finished connecting were silently dropped, so affected entities sat unavailable until the device happened to change. Messages published while disconnected are now queued — newest wins per topic, bounded, with a warning if the broker stays down — and replayed on reconnect. One-shot events are still dropped rather than replayed.
 
 ## [1.8.6] - 2026-05-05
 
 ### Added
-- **Network removed cleanup**: counterpart to the v1.8.5 "Network created" handler. When C-Gate signals that a network has been removed or deleted (async system event 742, "Network removed" / "Network deleted"), HA Discovery now publishes empty retained payloads to every previously-published entity config topic for that network — including the per-network discovery diagnostic sensor itself — so HA tears the entities down instead of leaving them sitting Offline forever. Any in-flight TREEXML retry for the removed network is canceled.
+
+- **Removed networks are cleaned up in Home Assistant.** When C-Gate reports a network was removed or deleted, all of that network's discovered entities are now torn down instead of sitting offline forever, and any pending tree retry is cancelled.
 
 ## [1.8.5] - 2026-05-04
 
 ### Added
-- **Event-driven HA Discovery refresh**: when a network finishes loading in C-Gate (async system event 742, "Network created"), HA Discovery now refreshes the network's tree the moment it becomes available, instead of waiting for the v1.8.1 retry backoff to fire. This eliminates the discovery delay on cold starts where C-Gate initialises a few seconds after opening its TCP port. The retry remains as belt-and-braces.
+
+- **Discovery refreshes the moment a network comes up.** When C-Gate finishes loading a network, discovery re-fetches the tree immediately instead of waiting for the retry timer — eliminating the discovery delay on cold starts. The retry remains as a fallback.
 
 ### Changed
-- **Command response parser hardening**: the parser now recognises C-Gate's timestamp-prefixed async event lines (e.g. `20260504-193110.569 742 //PROJECT/254 ... Network created ...`) by stripping the leading timestamp before parsing. The parser also pins response codes to positions 0-2 of the line, eliminating mis-parses caused by hyphens elsewhere in the payload (UUIDs, etc.). Validity range expanded from 1xx-6xx to 1xx-9xx so 7xx/8xx async events route correctly. Behaviour for canonical lines like `200-OK` is unchanged.
+
+- Internal: more robust parsing of C-Gate event lines; timestamps, unusual event codes, and hyphens in payloads no longer cause mis-parses.
 
 ## [1.8.4] - 2026-05-04
 
 ### Added
-- **Per-network discovery health sensor**: HA Discovery now publishes a "Discovery (Network N)" diagnostic sensor for each configured network, with three states — `discovering` (request in flight or retry pending), `ok` (last TreeXML succeeded), or `paused` (retry budget exhausted from the v1.8.1 startup-race protection). The sensor lives under the existing cgateweb Bridge device in HA, so users can see at a glance whether auto-discovery is healthy without trawling the add-on logs. State publishes are de-duplicated; the HA Discovery config payload is published once per network.
+
+- **A per-network discovery health sensor.** Each network gets a diagnostic sensor in Home Assistant — discovering, ok, or paused — so you can see at a glance whether auto-discovery is healthy without trawling the add-on logs.
 
 ## [1.8.3] - 2026-05-04
 
-### Refactor
-- **HA Discovery retry state**: collapsed the parallel `_treeWatchdogs` and `_treeRetryState` Maps in `HaDiscovery` into a single `_treeRequestState` Map (`networkId -> { attempts, watchdogHandle, retryHandle }`), eliminating duplicate lookups, an awkward `keepAttempts` boolean parameter, and three near-duplicate cleanup helpers. Behaviour is unchanged.
-- Removed unnecessary `typeof === 'function'` guards around `haDiscovery.handleCommandError` and `haDiscovery.stop` calls in `BridgeInitializationService`; the methods are part of the class contract and the bridge holds a locally constructed instance.
+### Changed
+
+- Internal: discovery retry bookkeeping simplified; no behaviour change.
 
 ## [1.8.2] - 2026-05-04
 
 ### Fixed
-- **C-Gate config keys**: `cgate-install.sh` was writing `CommandInterface.port` and `EventInterface.port` into `C-GateConfig.txt`, but C-Gate uses `command-port` and `event-port`. C-Gate logged "Invalid key" warnings on every startup and any user-customized ports were silently dropped, so the addon kept using C-Gate defaults regardless of the configured `cgate_port` / `cgate_event_port` values. The script now writes the correct keys, anchors its grep checks with `^…=` so comment headers in `C-GateConfig.txt` don't produce false-positive matches, and strips any legacy invalid keys left over from earlier installs.
+
+- **Custom C-Gate ports now actually take effect in managed mode.** The installer wrote the port settings under names C-Gate doesn't recognise, so C-Gate warned on every start and silently kept its defaults. The correct names are now written, and leftovers from earlier installs are cleaned up.
 
 ## [1.8.1] - 2026-05-04
 
 ### Fixed
-- **HA Discovery startup race**: C-Gate accepts TCP connections on the command port before its project's networks are loaded, so the initial `TREEXML` query could return `401 Network not found` and HA Discovery would silently give up — devices never appeared in Home Assistant even though events flowed normally. `HaDiscovery` now retries failed TreeXML requests with exponential backoff (2s → 60s, up to 8 attempts), driven both by the `401 Network not found` fast-fail and an 8s no-response watchdog. After the retry limit, a clear warning explains how to recover via `cbus/write/<network>///gettree`.
+
+- **Discovery no longer gives up when C-Gate is still starting.** C-Gate accepts connections before its networks are loaded, so the first tree request could fail and devices never appeared even though events flowed normally. The request is now retried with backoff — up to 8 attempts over about a minute — and after the limit a clear warning explains how to trigger a manual refresh.
 
 ## [1.8.0] - 2026-04-29
 
 ### Changed
-- **MQTT pre-connect log noise**: when the bridge starts before the MQTT broker is reachable, `MqttManager` now warns once per disconnect window instead of per-publish. On reconnect, a single rolled-up info line reports how many publishes were dropped while disconnected. Eliminates ~17 startup warnings per restart and bounds spam if the broker stays unreachable.
-- **Network auto-discovery fallback**: when `tree //PROJECT` returns a 4xx/5xx (e.g. C-Gate 402 "Operation not supported"), the discovery handler now claims the response so the default error logger does not also fire, and the discovery messages are demoted from WARN/ERROR to INFO since the fallback to configured `getall_networks` is the expected path on C-Gate versions that do not support project-level tree queries.
 
-### Refactor
-- Extracted entity-id field construction (`default_entity_id` + `object_id`) into a shared `entityIdFields(component, objectId)` helper in `src/constants.js` and replaced six inline callsites across `haDiscovery`, `haBridgeDiagnostics`, and `staleDeviceDetector`.
-- Replaced raw `'sensor'`, `'binary_sensor'`, and `'cgateweb_bridge'` string literals with `HA_COMPONENT_SENSOR`, `HA_COMPONENT_BINARY_SENSOR`, and `HA_DEVICE_VIA` constants for consistency with the rest of the HA discovery code.
+- **Less log noise when the MQTT broker isn't up yet.** The bridge warns once per disconnect instead of once per message, and reports a single rolled-up count of dropped messages on reconnect.
+- **Quieter network auto-discovery fallback.** On C-Gate versions that don't support the project-level query, falling back to your configured networks is now logged as routine information instead of warnings and errors.
+- Internal: discovery payload construction deduplicated; no behaviour change.
 
 ## [1.7.2] - 2026-04-19
 
 ### Fixed
-- **Fresh-install Import failure**: the add-on now falls back to `/config/cgateweb-labels.json` when no `cbus_label_file` option is set and no label file exists at auto-detect paths. Previously, importing a Clipsal project file on a fresh install failed with "No label file path configured". Dropped `/share/cgate/labels.json` from auto-detect since `/share` is mounted read-only.
-- **Standalone Import error message**: when the label file path really is unset (standalone mode), the Import endpoint now returns a 400 with an actionable message pointing at `cbus_label_file` instead of a generic failure.
-- **Doubled toast prefix**: removed the server-side "Import failed: " prefix that was duplicating the client-side prefix in error toasts.
+
+- **Importing a project file works on a fresh install.** With no label file configured, the add-on now falls back to a default location instead of failing with "No label file path configured".
+- **A clearer error in standalone mode** when no label file path is set, pointing at the relevant setting.
+- Removed a duplicated prefix in import error messages.
 
 ## [1.7.1] - 2026-04-14
 
 ### Fixed
-- **Backwards compatibility**: retain `object_id` alongside `default_entity_id` in MQTT discovery payloads so Home Assistant versions prior to 2025.10 continue to work. Unknown keys are silently ignored by both old and new HA versions.
+
+- **Compatibility with older Home Assistant versions.** Discovery payloads again include the old entity-id field alongside the new one, so Home Assistant versions before 2025.10 keep working.
 
 ## [1.7.0] - 2026-04-14
 
 ### Fixed
-- **HA 2026.4 compatibility**: Home Assistant 2026.4 removed support for the deprecated `object_id` field in MQTT discovery. Replaced with `default_entity_id` (which includes the domain prefix, e.g. `light.kitchen_light`) across `haDiscovery`, `haBridgeDiagnostics`, and `staleDeviceDetector`.
+
+- **Home Assistant 2026.4 compatibility.** That release dropped the old entity-id field in MQTT discovery; the bridge now uses the replacement field everywhere.
 
 ## [1.6.1] - 2026-04-05
 
 ### Fixed
-- **Area picker**: fetch areas via HA template API (registry endpoint removed in HA 2026.x); dropdown now shows full area names without icons
-- **Save toast**: show actual label count instead of "undefined"
-- **Tab bar scrollbar**: removed spurious scrollbar on tab bar
+
+- The area picker works again after Home Assistant removed the endpoint it used, and now shows full area names.
+- The save confirmation shows the real label count instead of "undefined".
+- Removed a spurious scrollbar on the tab bar.
 
 ## [1.6.0] - 2026-04-05
 
-### Changed
-- **Tabbed web interface**: replaced collapsible sections with tabs — Status, Device Labels, Live Events, Import/Export. State is preserved between tab switches.
-
 ### Fixed
-- **Live Events accordion**: was not toggling due to double click handler conflict
-- **Area column width**: widened to prevent text truncation
+
+- The Live Events panel toggles correctly again, and the area column no longer truncates text.
+
+### Changed
+
+- **Tabbed web interface.** The collapsible sections are now tabs — Status, Device Labels, Live Events, Import/Export — with state preserved between switches.
+- Internal: CI modernised and test coverage expanded.
 
 ### Security
-- **Managed C-Gate hardening**: HTTPS-only download URLs, curl timeouts, 500MB file size cap, symlink rejection, file permission hardening, Java memory limits
 
-### Improved
-- **CI modernization**: GitHub Actions updated to v5/v7, test matrix Node 20+22, no deprecation warnings
-- **Test coverage**: 1153 tests, 92.7% coverage — added tests for address validation, signal handlers, event filtering, tab interface
+- Managed-mode C-Gate downloads are hardened: secure download addresses only, timeouts, a download size cap, symlink rejection, stricter file permissions, and Java memory limits.
 
 ## [1.5.5] - 2026-04-04
 
-### Improved
-- **Translation refinements**: improved translations for Czech, Danish, Norwegian, Polish, Swedish, and Ukrainian
+### Changed
+
+- Translation refinements for Czech, Danish, Norwegian, Polish, Swedish, and Ukrainian.
 
 ## [1.5.4] - 2026-04-04
 
 ### Added
-- **Complete translations**: all 16 non-English translation files updated to match the full en.yaml configuration schema (previously missing 20+ fields added in recent releases)
-- **Test coverage**: new tests for bridge diagnostics consolidated stats, line processor buffer cap, connection pool recovery via `connectionAdded`, ConfigLoader unknown settings key warning, web API dashboard/areas endpoints, CORS enforcement, and security headers
+
+- **Complete option translations.** All 16 non-English languages now cover the full configuration schema, including fields added in recent releases.
+
+### Changed
+
+- Internal: test coverage expanded.
 
 ## [1.5.3] - 2026-04-04
 
-### Security
-- **CORS origin leak**: disallowed origins no longer receive an `Access-Control-Allow-Origin` header; previously fell back to the first allowed origin, enabling cross-site API access from any website
-- **Rate limit bypass**: rate limiting now uses the TCP socket address instead of the spoofable `X-Forwarded-For` header
-- **MIME sniffing**: added `X-Content-Type-Options: nosniff` header to all responses
-
 ### Fixed
-- **Searchable area dropdown**: area field in the label editor is now a searchable dropdown showing existing areas from Home Assistant and the label file, preventing duplicate/inconsistent area names
-- **HA area registry API**: use POST (not GET) for the Supervisor area registry endpoint; add 30-second cache to avoid repeated API calls
-- **Area dropdown UX**: prevent double-commit on click/Tab/Escape; allow ArrowUp to deselect; fix `API_BASE` variable reference
-- **MQTT reconnection**: clear `_connecting` flag on connection close so the bridge can reconnect after a failed initial connection attempt
-- **Cover state**: handle null `rawLevel` on plain `on` action (without level) by falling back to the action, matching the lighting path
-- **HVAC mode**: revert `rawLevel===0` off detection — C-Bus level 0 maps to 0°C setpoint, not an off state; only the explicit `off` action sets mode to off
-- **730 event parsing**: search for ` level=` (space-prefixed) to avoid matching inside other key names
-- **Tree message buffer**: cap at 500 entries to prevent unbounded growth when HA Discovery is disabled
+
+- **A searchable area dropdown** in the label editor, showing existing areas from Home Assistant and your labels, preventing duplicate or inconsistent room names.
+- The area list is fetched correctly and cached briefly to avoid repeated API calls.
+- Area dropdown polish: no double-commit on click, Tab, or Escape; arrow-up deselects.
+- **MQTT reconnection fixed** — the bridge can now reconnect after a failed first connection attempt.
+- **Cover state fixed** for plain on commands without a level, matching the lighting behaviour.
+- **HVAC mode fixed** — a level of zero is a 0 °C setpoint, not off; only an explicit off turns the unit off.
+- More reliable parsing of level-change events, and a cap on an internal buffer that could grow unbounded when discovery is disabled.
 
 ### Changed
-- Performance benchmarks updated: event throughput +30%, command throughput +58%, P95 latencies down 28-83%
+
+- Performance improved: higher event and command throughput and lower latencies, per the project's benchmarks.
+
+### Security
+
+- **Cross-origin protection fixed.** Disallowed websites no longer receive a permission header that previously let any site call the API from a visitor's browser.
+- **Rate limiting can no longer be spoofed** through forwarded-address headers; it now uses the real connection address.
+- All responses now tell browsers not to second-guess content types.
 
 ## [1.5.2] - 2026-04-04
 
 ### Fixed
-- **Upgrade failure**: users upgrading from v1.4.x got "Missing option 'getall_app_periods' in root" because array-type schema fields were removed from `options` defaults; HA Supervisor requires these to exist in the saved config for validation. Restored default values for `getall_networks`, `getall_app_periods`, `ha_discovery_networks`, and `web_allowed_origins`.
+
+- **Upgrading from 1.4.x no longer fails** with a missing-option error. Defaults for the list-type options were restored, which the Supervisor requires to validate your saved configuration.
 
 ## [1.5.1] - 2026-04-04
 
-### Fixed
-- **730 event level parsing**: C-Gate 730 events include a UUID before the `level=N` field; the fast-path parser was extracting the leading digit from the UUID (e.g. `6` from `6c2b7f80-...`) instead of the correct level value, causing lights to appear permanently on in Home Assistant
-- Cover and lighting ON/OFF state now uses raw C-Bus level instead of quantized percentage, fixing incorrect OFF state at very low brightness levels (1-2 out of 255)
-- HVAC mode correctly reports `off` for ramp-to-zero commands
-- haDiscovery race condition: tree responses arriving before HA Discovery initialized are now buffered and replayed instead of silently dropped
-- Connection pool recovery: bridge no longer gets stuck after all pool connections go unhealthy then recover
-- Socket state verified after drain timeout to prevent writing to destroyed sockets
-- Try/catch in command data handler prevents a single malformed C-Gate line from crashing the processing loop
-
 ### Added
-- Startup diagnostics summary: logs connections, networks, features, device types, and labels on boot
-- MQTT consolidated stats topic (`cbus/read/bridge/stats`): JSON with version, uptime, connections, queue, publisher, and discovery stats
-- Web dashboard endpoint (`GET /api/dashboard`): bridge health, device list with levels/labels, and recent event count
-- Unknown settings key warnings in standalone mode (catches typos in settings.js)
-- `cbusname` validation (rejects spaces, slashes, and quotes)
-- Queue drop warnings published to `hello/cgateweb/warnings` when the command queue is full
-- Configurable INCREASE/DECREASE timeout (`relativeLevelTimeoutMs`, default 5000ms)
+
+- **Startup diagnostics summary** logging connections, networks, features, and labels on boot.
+- **A bridge statistics topic** with version, uptime, connection, queue, and discovery stats.
+- **A web dashboard** with bridge health, the device list with levels and labels, and recent event counts.
+- Warnings for unrecognised settings in standalone mode, catching typos in your settings file.
+- Validation of the C-Bus name setting, and warnings published when the command queue is full.
+- The dim up/down timeout is now configurable.
+
+### Fixed
+
+- **Lights no longer appear stuck on.** Level-change events carry an identifier the fast parser misread as the level, so lights could appear permanently on in Home Assistant; the correct value is now read.
+- **Very dim lights no longer report as off.** On/off state now uses the raw C-Bus level, fixing false offs at the lowest brightness steps.
+- HVAC mode now correctly reports off after a ramp-to-zero command.
+- Tree responses arriving before discovery is ready are buffered and replayed instead of silently dropped.
+- The bridge no longer gets stuck after all connections drop and recover.
+- Hardened connection handling: writes to a dead socket after a timeout, and a single malformed C-Gate line, can no longer crash processing.
 
 ### Changed
-- HA addon config simplified from ~40 visible fields to 5 essentials; all other settings hidden by default and accessible via "Show unused optional configuration options"
-- Improved addon config descriptions with defaults and auto-detection notes
-- All resources properly cleaned up on bridge stop (event listeners, timers, ramp trackers, coalesce buffers)
-- Input validation: C-Bus address ranges, 1MB line buffer cap, WebServer body read guards, rate limit memory cap
-- TLS certificate errors now show clear file path in the error message
+
+- **The add-on configuration page is much simpler** — about five essential options instead of forty; everything else sits behind "Show unused optional configuration options", with better descriptions.
+- Improved cleanup on shutdown, stricter input validation, and clearer certificate error messages.
 
 ## [1.4.30] - 2026-03-29
 
 ### Fixed
-- **Devices turning off on bridge restart**: the bridge was executing stale retained write commands replayed by the MQTT broker on reconnect (e.g. `cbus/write/254/56/5/ramp -> OFF`). Retained messages on write topics are now silently ignored on subscribe — only fresh commands from HA automations/UI are executed
-- C-Gate 401/404 errors for getall on unconfigured apps (e.g. cover app 203 when no covers exist) now log as WARN instead of ERROR; 401 hint text corrected from "Unauthorized" to "Object Not Found or Unauthorized"
+
+- **Devices no longer turn off when the bridge restarts.** Stale commands retained by the MQTT broker were being replayed and executed on reconnect; retained messages on command topics are now ignored — only fresh commands from Home Assistant run.
+- Polling applications you don't use (the cover application when you have no covers, for example) now logs a warning instead of an error, with corrected hint text.
 
 ## [1.4.29] - 2026-03-29
 
 ### Added
-- Real-time C-Bus event log in the label editor: a collapsible "Live Events" panel streams events via SSE (`GET /api/events/stream`), showing address, resolved label, level, and a visual bar; click any row to filter the main table to that device; pause/clear controls; auto-reconnects on disconnect; state persisted in localStorage
-- Stale device detection: tracks last-seen timestamp per device; after `stale_device_threshold_hours` (default 24h) without an update, a HA `sensor` entity (`C-Bus Stale Devices`) shows the count with JSON attributes listing addresses, labels, and hours-since-last-seen; configurable via `stale_device_detection_enabled`, `stale_device_threshold_hours`, `stale_device_check_interval_sec`
+
+- **A live event log in the label editor.** A collapsible panel streams C-Bus events as they happen — address, label, level, and a visual bar — with click-to-filter, pause and clear controls, and automatic reconnect.
+- **Stale device detection.** Devices that stop reporting are counted on a new Home Assistant sensor — with their addresses, labels, and last-seen times in its attributes — after a configurable threshold, 24 hours by default.
 
 ## [1.4.28] - 2026-03-29
 
 ### Added
-- Per-app configurable poll intervals via `getall_app_periods`: override the global `getall_period` per C-Bus application ID (e.g. poll HVAC every 5 min, covers every 1 min, lighting every hour); set `0` to disable polling for a specific app
-- Cover position interpolation during ramps: when a ramp/position command targets a cover group, intermediate position values are published every 500ms so Home Assistant shows smooth blind movement; real C-Gate events always take priority and cancel the interpolation immediately; configurable via `cover_ramp_duration_sec` (default 5s)
+
+- **Per-application poll intervals.** You can now poll different C-Bus applications at different rates — HVAC every five minutes, lighting every hour, say — or disable polling for a specific application.
+- **Smooth cover movement.** During a position command, intermediate positions are published so Home Assistant shows blinds moving smoothly; real events always take priority, and the animation duration is configurable.
 
 ## [1.4.27] - 2026-03-28
 
 ### Added
-- Label editor undo/redo: full history stack (up to 50 steps) with Undo/Redo buttons showing step count, keyboard shortcuts (Cmd/Ctrl+Z, Cmd/Ctrl+Shift+Z), and toast feedback; all mutations are undoable (cell edits, type changes, exclude toggles, bulk operations, auto-fill areas, import)
-- C-Gate project XML export: `GET /api/labels/export.xml` endpoint returns a TreeXML-compatible file grouping devices by network and application; "Export project XML" download button added to the UI
-- C-Bus trigger groups now also published as Home Assistant `scene` entities via MQTT Discovery, enabling scene activation from the HA UI and automations; configurable via `ha_discovery_scene_enabled` (default: true)
 
-### Fixed
-- Jest `testPathIgnorePatterns` restored to `/.claude/` to correctly suppress worktree test files from running in the main test suite
+- **Undo and redo in the label editor** — up to 50 steps, with buttons, keyboard shortcuts, and confirmation toasts. Every edit is undoable, including bulk operations and imports.
+- **Project XML export.** Download your labels as a C-Gate-compatible project file from the web UI.
+- **Trigger groups appear as scenes.** C-Bus trigger groups are now also published as Home Assistant scenes, so they can be fired from the UI and automations (configurable, on by default).
+
+### Changed
+
+- Internal: test configuration fix.
 
 ## [1.4.26] - 2026-03-28
 
 ### Added
-- Cover tilt support: configure a separate C-Bus app ID (`ha_discovery_cover_tilt_app_id`) for venetian/louvre blind tilt control; tilt position publishes to `cbus/read/{n}/{tiltApp}/{g}/tilt` and HA cover entities gain `tilt_status_topic` / `tilt_command_topic`
-- Automatic C-Bus network discovery: on connect the bridge sends `tree //PROJECT` and parses network IDs as a fallback for `getall_networks` and `ha_discovery_networks`; configurable via `auto_discover_networks` (default: true)
-- Label editor pagination: 25/50/100/All per-page selector (persisted in localStorage, default 50) with prev/next controls and "Showing X–Y of Z" count
-- Label export: "Download backup" button downloads the current `labels.json` directly from the browser
-- Auto-area suggestion: `guessArea()` detects room words in device labels (Office, Kitchen, Bedroom, etc.) and shows suggestions as placeholder text; "Auto-fill areas" button batch-applies guesses to unset rows
+
+- **Cover tilt support.** Venetian and louvre blinds on a separate tilt application now get tilt position and control on their cover entities.
+- **Automatic network discovery.** On connect, the bridge asks C-Gate for its networks as a fallback when none are configured (on by default).
+- **Label editor pagination** — 25, 50, 100, or all rows per page, with your choice remembered.
+- **Label backup download** straight from the browser.
+- **Automatic room suggestions.** The editor detects room words in device names and can fill empty room fields in one click.
 
 ### Fixed
-- Cover getall response parsing confirmed end-to-end correct; regression tests added to prevent future regressions (level=0/128/255 → position=0/50/100, state OFF/ON)
+
+- Cover polling responses verified end-to-end, with regression tests to keep positions and states correct.
 
 ## [1.4.25] - 2026-03-28
 
 ### Fixed
-- Area column now visible and editable in the label editor (inline click-to-edit, searches by area name)
+
+- The area column is now visible and editable in the label editor, with click-to-edit and name search.
 
 ## [1.4.24] - 2026-03-28
 
 ### Added
-- Area/room assignment in label editor: set a room name per device (e.g. "Office") and it flows through as `suggested_area` in HA MQTT Discovery — Home Assistant auto-assigns entities to rooms on first discovery
-- Documentation: HVAC (App 201), trigger groups (App 202), PIR, relay, and C-Bus application ID reference table added to DOCS.md
+
+- **Room assignment in the label editor.** Set a room per device and Home Assistant auto-assigns the entity to that area on first discovery.
+- Documentation for HVAC, trigger groups, PIR and relay applications, plus a C-Bus application reference table.
 
 ### Fixed
-- Startup getall now polls all configured app IDs (covers, HVAC, triggers, switches) not just lighting (App 56) — cover positions and HVAC states are now known immediately after bridge restart
-- Background timers now call `.unref()` so Jest tests exit cleanly without "worker process has failed to exit gracefully" warnings
+
+- **Cover positions and HVAC states are known immediately after a restart** — the startup poll now covers all configured applications, not just lighting.
+- Internal: test processes now exit cleanly.
 
 ## [1.4.23] - 2026-03-28
 
 ### Added
-- C-Bus HVAC support (App 201): climate zones exposed as Home Assistant `climate` entities with current temperature, setpoint control, and mode (off/auto/cool/heat/fan_only)
-- C-Bus trigger write-back: each trigger group now also publishes a companion HA `button` entity, allowing Home Assistant automations to fire C-Bus scenes/triggers
-- Trigger groups now visible in the label editor with read-only type badge, editable label/entity-id, and exclude toggle
-- Stale HA discovery cleanup: when a device is excluded or changes type, the old MQTT discovery message is automatically cleared so HA removes the stale entity
-- Event connection keep-alive: periodic pings on the C-Gate event port (20025) detect silent TCP drops; configurable via `connection_keep_alive_interval_sec`
+
+- **HVAC climate zones in Home Assistant**, with current temperature, setpoint control, and mode.
+- **Fire C-Bus scenes from Home Assistant.** Each trigger group gets a companion button entity for use in automations.
+- Trigger groups now appear in the label editor with a read-only type badge, an editable label and entity id, and an exclude toggle.
+- **Automatic cleanup of stale entities.** When a device is excluded or changes type, its old discovery entry is cleared so Home Assistant removes it.
+- **Connection keep-alive.** Periodic pings on the event connection detect silent drops; the interval is configurable.
 
 ### Fixed
-- Trigger groups in label editor are correctly identified and shown with purple badge; type cannot be accidentally changed
+
+- Trigger groups are correctly identified in the label editor, and their type can't be changed accidentally.
 
 ## [1.4.22] - 2026-03-28
 
 ### Added
-- C-Bus trigger group support (App 202): trigger events now published as Home Assistant `event` entities, enabling automations from keypads and scenes
-- Connection pool tuning settings in addon UI: `connection_pool_size`, `connection_health_check_interval_sec`, `connection_keep_alive_interval_sec`
-- Label editor batch operations: multi-select rows with checkboxes, bulk type assignment (light/cover/switch), bulk exclude/include, Shift+click range selection
-- Integration test now validates HA MQTT Discovery message format and required fields
+
+- **Trigger events in Home Assistant.** Trigger group presses now appear as event entities, enabling automations from keypads and scenes.
+- Connection pool tuning options in the add-on UI.
+- **Bulk editing in the label editor** — multi-select with checkboxes, bulk type assignment and exclusion, and shift-click range selection.
 
 ### Fixed
-- Cover entities now use `optimistic: false` in discovery payload so Home Assistant waits for confirmed position feedback before updating UI state
+
+- Cover entities now wait for confirmed position feedback before updating, instead of assuming success.
+
+### Changed
+
+- Internal: the integration test now validates discovery message format.
 
 ## [1.4.21] - 2026-03-28
 
 ### Added
-- MQTT TLS/SSL support for external brokers: `mqtt_use_tls`, `mqtt_ca_file`, and `mqtt_reject_unauthorized` options are now configurable in the add-on UI
-- Supports self-signed CA certificates, standard TLS (port 8883), and optional certificate verification bypass
+
+- **Encrypted MQTT connections.** TLS options for external brokers are now configurable in the add-on UI, including self-signed CA certificates and optional verification bypass.
 
 ## [1.4.20] - 2026-03-28
 
 ### Added
-- C-Gate version shown as a diagnostic entity in Home Assistant (populated automatically from managed-mode install)
-- Runtime status panel in the label editor now shows bridge version, uptime, lifecycle reason, and reconnect counts
+
+- **The C-Gate version appears as a diagnostic entity** in Home Assistant, populated automatically in managed mode.
+- The label editor's status panel now shows bridge version, uptime, and reconnect counts.
 
 ### Fixed
-- Multi-network support: `getall_networks` with more than one network now correctly polls all listed networks on startup and periodically, not just the first
-- Integration test now runs on Linux CI without a podman machine (Linux containers run natively)
+
+- **Multiple networks are all polled.** With more than one network configured, only the first was polled; all are now polled at startup and periodically.
 
 ### Changed
-- CI workflow now includes an integration test job (managed mode, downloads C-Gate) running on push to main
+
+- Internal: the CI pipeline now runs the managed-mode integration test on every push, natively on Linux.
 
 ## [1.4.19] - 2026-03-28
 
 ### Fixed
-- Multi-network support: `getall_networks` with more than one network now correctly polls all listed networks on startup and periodically, not just the first
-- Bridge diagnostic entity names are now published correctly in MQTT discovery payloads
-- Runtime status panel timer is correctly cleared when navigating away from the label editor page
+
+- **Multiple networks are all polled.** With more than one network configured, only the first was polled; all are now polled at startup and periodically.
+- Bridge diagnostic entity names now publish correctly.
+- The status panel's refresh timer is properly cleaned up when you leave the page.
 
 ### Changed
-- CI workflow now includes an integration test job (managed mode, downloads C-Gate) running on push to main
-- Integration test now runs on Linux CI without a podman machine (Linux containers run natively)
+
+- Internal: the CI pipeline now runs the managed-mode integration test on every push, natively on Linux.
 
 ## [1.4.18] - 2026-03-28
 
 ### Fixed
-- Corrected CI coverage threshold for `cgateConnectionPool` to match actual coverage (37.5%)
+
+- Internal: corrected a CI coverage threshold.
 
 ## [1.4.17] - 2026-03-28
 
 ### Fixed
-- Removed no-useless-catch lint error in `lineProcessor`
+
+- Internal: fixed a lint error blocking the build.
 
 ## [1.4.16] - 2026-03-28
 
 ### Fixed
-- Web server now binds to `0.0.0.0` in add-on mode, fixing 502 errors when accessing the label editor via HA Ingress; standalone mode retains `127.0.0.1` default; regression test added
+
+- **The label editor works through the Home Assistant side panel again.** The web server only listened on localhost, which broke side-panel access with a 502 error; it now listens on all interfaces in add-on mode, while standalone mode keeps the localhost default.
 
 ## [1.4.15] - 2026-03-28
 
 ### Added
-- End-to-end integration test (`test-env/integration-test.js`) validating the full managed-mode stack: C-Gate install, C-Gate start, MQTT readiness, C-Gate connectivity, bridge lifecycle, and a 10-second stability window
+
+- Internal: end-to-end integration test covering the full managed-mode stack, from C-Gate install through to a stability check.
 
 ## [1.4.14] - 2026-03-28
 
 ### Fixed
-- Managed mode: correctly handles the Schneider Electric download package (outer zip contains a nested C-Gate zip that must be extracted separately)
-- Managed mode: updated default C-Gate download URL from dead Clipsal CDN to `download.se.com` (V3.3.2, publicly accessible)
-- Better error logging when a C-Gate download fails, including HTTP status code and 404-specific guidance
-- `test-env` updated with Dockerfile, mock HA Supervisor HTTP API, and podman-compose instructions
+
+- **Managed mode handles Schneider's download package correctly** — the download contains a nested archive that must be extracted separately.
+- **The default C-Gate download address works again**, updated from a dead link to Schneider's current server.
+- Clearer errors when a C-Gate download fails, including specific guidance when the file isn't found.
+- Internal: local test environment expanded.
 
 ## [1.4.13] - 2026-03-28
 
-### Fixed
-- Managed mode: corrected C-Gate startup flags (`-s` only, removing invalid `-p`/`-e`/`-nogui` flags that caused an infinite restart loop)
-- `cgate-install.sh` now writes `CommandInterface.port` and `EventInterface.port` into `C-GateConfig.txt` during installation so custom ports take effect
-
 ### Added
-- Local test environment (`test-env/`) with docker-compose, Mosquitto broker config, and options templates (managed-upload, managed-download, remote) for validating managed mode without a real HA Supervisor
+
+- Internal: a local test environment for validating managed mode without a real Home Assistant Supervisor.
+
+### Fixed
+
+- **Managed mode no longer restart-loops C-Gate** — invalid startup flags were removed.
+- Custom C-Gate ports are now written to C-Gate's configuration during install so they take effect.
 
 ## [1.4.12] - 2026-03-10
 
 ### Added
-- Bridge diagnostic entities published to Home Assistant via MQTT Discovery: ready state, lifecycle, MQTT/event connection status, command pool health, queue depth, and reconnect indicator
 
-### Performance
-- Reduced hot-path parsing overhead in line processor
+- **Bridge health entities in Home Assistant** — ready state, lifecycle, connection status, command queue depth, and a reconnect indicator, all discovered automatically.
+
+### Changed
+
+- Internal: faster event-line parsing.
 
 ## [1.4.11] - 2026-03-04
 
 ### Fixed
-- Interactive command priority propagation: explicit interactive queue requests are no longer downgraded to standard priority
 
-### Added
-- Router regression coverage for command priority handling
+- Interactive commands keep their priority instead of being downgraded behind routine traffic.
+
+### Changed
+
+- Internal: test coverage for command priority handling.
 
 ## [1.4.10] - 2026-03-04
 
 ### Changed
-- Version alignment: Home Assistant add-on version synced with application version for phase 1 performance release
+
+- Internal: version alignment only — the add-on version was synced with the application release.
 
 ## [1.4.9] - 2026-03-04
 
 ### Changed
-- Version alignment: Home Assistant add-on version synced with application version for performance improvements release
+
+- Internal: version alignment only — the add-on version was synced with the application release.
 
 ## [1.4.8] - 2026-03-04
 
-### Changed
-- Hardened web API defaults: mutating endpoints now require authentication by default unless explicitly overridden
-- Added configurable CORS allowlist support and explicit unsafe override toggle for unauthenticated writes
-- Improved HA discovery TreeXML handling by isolating queued network context to avoid state bleed between requests
-- Expanded bridge runtime status with lifecycle/readiness state and queue/pool health metrics, plus `/healthz` and `/readyz` endpoints
-- Aligned CI and distribution release quality gates with lint (`--max-warnings=0`) and coverage checks
-
 ### Fixed
-- Consolidated startup validation path to reduce duplicate config validation logic and drift
-- Managed-mode C-Gate install now supports checksum verification and safer default local-only interface access
+
+- Startup validation consolidated, removing duplicated checks that could drift apart.
+- Managed-mode installs now verify download checksums and default to local-only interface access.
+
+### Changed
+
+- **Web API hardened by default.** Endpoints that change things now require authentication unless explicitly overridden, cross-origin requests are restricted to a configurable allowlist, and unauthenticated writes require an explicit unsafe toggle.
+- **New health endpoints and richer runtime status**, including readiness state and queue and connection health.
+- More reliable discovery when several tree requests are queued at once.
 
 ## [1.2.2] - 2026-02-28
 
 ### Fixed
-- **Cover position publishing**: Type-overridden covers on the lighting app now correctly publish to the `position` MQTT topic, fixing non-functional position sliders in Home Assistant for blind/cover entities
+
+- **Cover position sliders now work for type-overridden covers.** Covers on the lighting application published position to the wrong topic, so the slider in Home Assistant did nothing.
 
 ## [1.2.1] - 2026-02-22
 
 ### Fixed
-- **MQTT auth error messaging**: Authentication failures now display a clear, actionable error with environment-specific fix instructions (addon vs standalone) instead of a raw JSON error dump
+
+- **Clearer MQTT login errors.** Authentication failures now show an actionable message with fix steps for your setup — add-on or standalone — instead of a raw error dump.
 
 ## [1.2.0] - 2026-02-22
 
 ### Added
-- **C-Bus label management**: Three-tier label resolution (custom JSON > C-Gate TREEXML > fallback)
-- **Clipsal project file import**: Upload `.cbz`/`.xml` project files to extract device labels
-- **Web-based label editor**: Real-time label editing UI accessible via HA Ingress (panel: "C-Bus Labels")
-- **Type overrides**: Configure groups as `light`, `cover`, or `switch` to control HA entity type
-- **Entity ID hints**: Preserve existing entity IDs during migration from manual YAML configuration
-- **Group exclusion**: Exclude specific groups from HA MQTT Discovery
-- **Hot-reload labels**: File watcher detects `labels.json` changes and republishes discovery
-- **Migration tooling**: CLI tool (`tools/cgate-label-manager.js`) for C-Gate label inventory and management
-- C-Gate mode configuration: `remote` (connect to external C-Gate) or `managed` (run C-Gate locally)
-- MQTT auto-detection from Home Assistant Supervisor API
-- Configuration UI translations for 17 languages
-- s6-overlay process supervision for managed C-Gate mode
 
-### Changed
-- HA Discovery now sets entity-level `name` to `null` to prevent doubled friendly names
-- Stale retained MQTT discovery messages are automatically cleared when type overrides change entity type
-- Discovery supplements from `labels.json` when TREEXML returns incomplete data
+- **Label management.** Give your C-Bus groups custom names, resolved from your labels file first, then C-Gate's project data, then a fallback.
+- **Toolkit project import.** Upload a Toolkit project export to pull in device labels.
+- **A web-based label editor**, available in the Home Assistant side panel.
+- **Type overrides** — mark a group as a light, cover, or switch to control its Home Assistant entity type.
+- **Entity id hints** to keep your existing ids when migrating from manual YAML configuration.
+- **Group exclusion** from discovery.
+- **Live label reloads** — edits to the labels file are picked up and republished automatically.
+- A command-line tool for label inventory and migration.
+- Managed or remote C-Gate modes, automatic MQTT setup from the Supervisor, a 17-language configuration UI, and process supervision for the bundled C-Gate.
 
 ### Fixed
-- Labels-changed listener leak on restart (now properly removed in `stop()`)
-- Label file watcher now starts after haDiscovery initialization
-- Label import preserves existing `type_overrides`, `entity_ids`, and `exclude` sections
+
+- A listener leak on restart, label watching starting at the wrong time, and imports now preserve your existing type overrides, entity ids, and exclusions.
+
+### Changed
+
+- Friendlier entity names in Home Assistant, with no more doubled names.
+- Stale discovery entries are cleared automatically when a type override changes an entity's type.
+- Discovery is supplemented from your labels file when C-Gate's data is incomplete.
 
 ## [1.1.0] - 2026-02-22
 
-### Changed
-- **MQTT publish throughput**: Removed 200ms throttle from MQTT publishing path. Events now publish directly to MQTT instead of queuing, reducing latency from 200-600ms to near-zero per event. "Get all" responses for 100 devices now complete in <1s instead of 40+ seconds.
-- **Connection pool optimization**: Cached healthy connections array to eliminate per-command array allocation during round-robin selection.
-- **Tree XML buffering**: Replaced O(n^2) string concatenation with O(n) array-based accumulation for HA Discovery tree parsing.
-- **Shared loggers**: CBusEvent and CBusCommand now use module-level shared loggers, eliminating per-instance allocation overhead.
-
 ### Fixed
-- **LineProcessor memory leak**: Fixed leak where reconnecting pool connections left orphaned PassThrough stream/readline pairs in the processor Map. Now keys by pool index and cleans up on reconnection.
+
+- A memory leak where reconnecting connections left orphaned stream handlers behind.
+
+### Changed
+
+- **Much faster publishing.** The artificial delay on MQTT publishing is gone: events now reach Home Assistant almost instantly instead of 200–600 ms late, and a full status poll of 100 devices completes in under a second instead of 40-plus seconds.
+- Internal: connection pooling, tree parsing, and logging efficiency improvements.
 
 ## [1.0.0] - TBD
 
 ### Added
-- Initial Home Assistant add-on implementation
-- Automatic configuration from add-on options via ConfigLoader
-- Support for dual installation modes (standalone vs add-on)
-- Home Assistant MQTT Discovery integration
-- Multi-architecture Docker image support (amd64, aarch64, armhf, armv7, i386)
-- Comprehensive configuration validation
-- User-friendly configuration UI in Home Assistant
-- Automatic device discovery for lights, covers, and switches
-- Host network access for C-Gate connectivity
-- Comprehensive documentation and troubleshooting guide
+
+- Initial Home Assistant add-on release.
+- Automatic configuration from add-on options, with validation and a user-friendly configuration UI.
+- Standalone and add-on installation modes.
+- Home Assistant MQTT discovery for lights, covers, and switches.
+- Multi-architecture image support.
+- Network access for C-Gate connectivity.
+- Documentation and troubleshooting guide.
 
 ---
 
