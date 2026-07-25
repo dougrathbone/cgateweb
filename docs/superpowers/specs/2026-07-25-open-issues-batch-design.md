@@ -1,0 +1,426 @@
+# Open Issues Batch: Unit-Type Discovery, Serial Resilience, External C-Gate Access
+
+Date: 2026-07-25
+Issues: #38, #37, #28
+Target release: 1.18.0 (single release, all four items)
+
+## Context
+
+Three issues are open. Two of them turn out to share one mechanism, and one of
+them splits into two unrelated asks:
+
+- **#38** (djagerif): entity type should follow the physical output unit — a
+  dimmer group becomes a light, a relay group becomes something on/off — instead
+  of requiring the installer to hand-classify every group after discovery.
+- **#37** (DewetTDS), first half: C-Bus bus couplers and other input units
+  should appear in Home Assistant so automations can trigger off them.
+- **#37**, second half: expose the C-Bus network so C-Bus Toolkit can reach it
+  over the LAN instead of requiring the USB PC Interface to be unplugged from
+  the Home Assistant host.
+- **#28** (DewetTDS), outstanding follow-up: the configured serial device path
+  moved from `/dev/ttyUSB0` to `/dev/ttyUSB1` after a replug, breaking startup.
+
+#38 and #37's first half are the same underlying capability: classify a group by
+the unit that drives it. They are specified together as Item 1.
+
+## Decisions
+
+| Decision | Choice |
+|---|---|
+| Relay-driven lighting group | `light` entity with brightness omitted, not `switch` |
+| Unit-type classification default | Opt-in, `ha_discovery_type_from_unit` default false |
+| Input-only group | `binary_sensor` |
+| Toolkit access approach | Expose managed C-Gate to external clients; no serial multiplexing or handoff |
+| External access config | Object list of `{address, level}` mirroring `access.txt` |
+| `access.txt` write strategy | Marker-delimited managed block, preserving hand-added lines |
+| Offered levels | `monitor`, `operate`, `program` |
+| Malformed localhost rules | Fixed in the same release, kept localhost-only |
+| Serial path recovery at boot | Remembered USB identity, adopt the new path |
+| Serial path recovery while running | Detect, report, and attempt recovery |
+| Release shape | One release containing all four items |
+
+## Item 1: Unit-type entity classification (#38, #37 first half)
+
+### Where the data comes from
+
+C-Gate's `TREEXML` returns a `<Type>` per `<Unit>` alongside that unit's group
+bindings. `collectUnitGroups` (`src/haDiscoveryTree.js:228`) already walks both
+TREEXML shapes (structured `Application` objects, and the flat `"56, 255"` /
+`Groups "10,11"` form) but flattens groups across units and discards the unit.
+
+Type strings present in the repo's existing test fixtures, which is the only
+inventory of real values available: `DIMDN8`, `RELDN12`, `RELAY2`, `PCLOCAL4`,
+`SENLL`, `SENTEMP`, `PC_CNIED`, `TEXT`. This list is certainly incomplete, which
+is why unknown types must be inert rather than guessed at.
+
+### New module
+
+`src/unitTypeClassifier.js` — pure functions, no I/O:
+
+- `categoriseUnitType(type)` → `'dimmer' | 'relay' | 'input' | 'management' | null`
+- `entityTypeForGroup(groupInfo, settings)` → `'light-dimmable' | 'light-onoff' | 'binary_sensor' | null`
+
+Category table. Patterns are anchored prefixes, matched case-insensitively:
+
+| Pattern | Category | Resulting entity |
+|---|---|---|
+| `^DIM` | dimmer output | `light` with brightness (unchanged from today) |
+| `^REL` | relay output | `light`, brightness fields omitted |
+| `^SEN` | input | `binary_sensor`, only when no output unit drives the group |
+| `^PC_`, `^PCLOCAL`, `^TEXT` | management | no opinion |
+| anything else | unknown | **no opinion — falls through to today's default** |
+
+Unknown types never guess. Every unrecognised type is logged once per discovery
+run at info level with the unit address and the decision made, so a field report
+can extend the table in one round trip.
+
+### Tree indexing
+
+Add `collectUnitTypesByGroup(networkData, targetApps)` to
+`src/haDiscoveryTree.js`, alongside `collectUnitGroups` and sharing its
+shape-handling. Returns:
+
+```js
+Map<"<appId>/<groupId>", {
+    types: Set<string>,   // raw unit type strings driving this group
+    hasOutput: boolean,   // any dimmer or relay unit
+    hasInput: boolean     // any input unit
+}>
+```
+
+### Resolution rules
+
+1. `hasOutput && types` contains a dimmer → `light` with brightness.
+2. `hasOutput && types` contains only relays → `light` without brightness.
+3. `hasInput && !hasOutput` → `binary_sensor`.
+4. Otherwise → `null`, falling through to existing behaviour.
+
+Output wins over input, and dimmer wins over relay, so a group driven by both a
+dimmer and a relay keeps its brightness slider rather than losing it.
+
+### Integration
+
+`_tryCreateTypedEntity` (`src/haDiscoveryPublishers.js:197`) gains a step
+between the two existing ones. Final precedence, highest first:
+
+1. Manual `type_overrides` — explicit user intent always wins.
+2. `typeFromLabelPrefix` (existing, opt-in).
+3. **Unit-type classification (new, opt-in).**
+4. `classifyLightingGroup` name heuristics (existing).
+5. Default dimmable light.
+
+The index is exposed to the publisher as a run-scoped instance property
+(`this._unitTypeIndex`) set at the start of a discovery pass and cleared at the
+end — the same pattern `_labelSnapshot` uses. Not threaded as another positional
+argument; see the `labelSnapshot` note in CLAUDE.md.
+
+The relay case reuses the existing light publishing path with
+`brightness_state_topic`, `brightness_command_topic`, `brightness_scale`,
+`on_command_type` and `brightness_value_template` omitted, and `command_topic`
+pointing at `switch` rather than `ramp`. It stays in the `light` domain, so
+entity ids and existing automations survive.
+
+The `binary_sensor` case reuses the `pir` discovery config shape
+(`src/haDiscoveryConfigs.js`) with no `device_class`, since a coupler is not
+necessarily motion.
+
+### Setting
+
+`ha_discovery_type_from_unit`, default `false`. Schema `"bool?"`, so it is a
+scalar optional and needs no entry in `options` — nothing is written into
+existing users' saved configs on upgrade.
+
+Nested under the existing `ha_discovery_auto_type` master switch: when that is
+explicitly `false`, unit-type classification does not run either, matching how
+`ha_discovery_auto_type_name_heuristics` behaves.
+
+### Known gap
+
+No fixture, log, or issue report in the repo contains the `<Type>` string a
+C-Bus bus coupler reports. Until DewetTDS supplies it, his coupler groups will
+fall through to the default light rather than becoming sensors. The
+unknown-type logging above is what makes his next report actionable. **#37's
+first half must not be described as fixed until he confirms against his own
+hardware.**
+
+## Item 2: Serial device path resolution at boot (#28)
+
+### Problem
+
+`cgate_serial_device` is read independently in three places, each calling
+`bashio::config` and each doing its own `readlink`:
+
+- `_cgateweb_check_serial_device` (`cgate-install.sh:168`) — validates, fails hard when absent
+- `cgate-project-sync.sh:96` — passes the path to the project fixup
+- `cgateweb-serial-diagnostics` — logs it
+
+A replug that renumbers `ttyUSB0` to `ttyUSB1` makes the first of these fail the
+add-on at cont-init, and the user must edit config by hand to recover.
+
+### Design
+
+One resolver, `homeassistant-addon/rootfs/usr/bin/cgateweb-resolve-serial`,
+runs first and writes the effective path to `/run/cgateweb/serial-device`. The
+other three consumers read that file instead of resolving independently, so all
+of them agree on one answer.
+
+Resolution order:
+
+1. Configured path exists → use it. Record its USB identity.
+2. Configured path missing → load the remembered identity and scan for it.
+   Match found → adopt the new path, log loudly at warning level, and print the
+   `/dev/serial/by-id/` path the user should switch to.
+3. No remembered identity, or no match → fail with the device inventory, exactly
+   as today.
+
+Identity is `idVendor`, `idProduct` and `serial` read from `/sys`, persisted to
+`/data/serial-identity.json` on each successful boot. Adoption requires an
+identity match, so a Zigbee or Z-Wave stick on the same host is never adopted by
+accident.
+
+When the configured path is a raw `/dev/ttyUSB*` or `/dev/ttyACM*` and a
+`/dev/serial/by-id/` symlink resolves to the same target, log the stable path as
+a recommendation on every boot, not only on failure.
+
+## Item 3: Serial recovery while running (#28)
+
+### Trigger
+
+`CniNotificationManager.handleReading` (`src/cniNotificationManager.js:27`)
+already fires on the offline transition and already raises an HA persistent
+notification. A new `src/serialDeviceRecovery.js` collaborates with it rather
+than growing that class a second responsibility.
+
+```
+InterfaceState → down
+  ├─ not managed mode, or no serial device configured → report only (today's path)
+  ├─ configured device path still exists              → report only (real bus/CNI fault)
+  └─ device path gone
+       ├─ report: log + status page + HA notification naming the new path
+       └─ recover: re-resolve by identity
+                   → re-run cgateweb-project-serial-fixup.js
+                   → restart the cgate service
+                   → existing pool backoff reconnects
+```
+
+The precondition "the configured device path no longer exists" is what keeps
+this from firing for CNI installs, where `InterfaceState=closed` means a genuine
+network fault and no local device is involved.
+
+Recovery attempts are rate-limited via `src/backoff.js` (`backoffDelay`) so a
+genuinely unplugged PCI does not restart C-Gate in a loop. Reporting happens
+whether or not recovery succeeds, and a failed recovery says so explicitly
+rather than silently retrying.
+
+New tunables, additive with defaults equal to current behaviour:
+
+- `serial_recovery_enabled` (default `true`; recovery only ever engages when a
+  serial device is configured, so this is inert for CNI users)
+- `serial_recovery_max_attempts` (default 3)
+- `serial_recovery_initial_delay_ms` / `serial_recovery_max_delay_ms`
+
+## Item 4: External C-Gate access (#37 second half)
+
+### Why this shape
+
+C-Gate is a multi-client TCP server; cgateweb itself holds three command
+connections plus one event connection concurrently. Toolkit connecting to a
+remote C-Gate is a supported pattern, and Doug's own C-Gate at 192.168.0.22 has
+rules intended for exactly that. So the answer is to let external clients reach
+the managed C-Gate — not to multiplex or hand off the serial port. C-Gate stays
+the single owner of the PCI and arbitrates between clients itself.
+
+Rejected: a socat serial-to-TCP bridge exposing the PCI as a pseudo-CNI.
+Sharing the port means two masters interleaving PCI smart-mode confirmation
+codes, which can corrupt a Toolkit programming operation. An exclusive handoff
+that stops C-Gate for the duration was also rejected once it became clear
+C-Gate can simply serve both clients.
+
+### access.txt grammar (manual §4.10.1)
+
+Three keywords, and only three:
+
+```
+interface <ip> <level>        # the server interface the connection arrives on
+remote    <ip> <level>        # the connecting client's address
+user      <id> <pass> <level>
+```
+
+Levels, each incorporating the previous: `none`, `connect`, `monitor`,
+`operate`, `admin`, `program`, `debug`. Faulty lines are silently ignored.
+Addresses may be hostnames or dotted quads; **an octet of `255` matches any
+value**, so `remote 192.168.1.255 monitor` grants the whole `192.168.1.*`
+network. This is the subnet notation — not CIDR.
+
+Note `program` sits above `admin`, so granting Toolkit what it needs to program
+units necessarily also grants C-Gate shutdown. There is no way to separate
+these, and the option documentation must say so.
+
+### The existing bug
+
+`cgate-install.sh:546-552` currently generates:
+
+```
+interface 127.0.0.1
+program 127.0.0.1
+monitor 127.0.0.1
+```
+
+All three lines are faulty by the documented grammar: the first has no level,
+and the other two use level names as keywords. So every managed install is
+running with an effectively empty access control list, relying on C-Gate's
+built-in default. Combined with `accept-connections-from` defaulting to `all`
+(manual §4.6.4.1, which explicitly says it is *not* the security mechanism and
+that access control should be used instead), this means publishing C-Gate's
+ports without correct rules would expose whatever that default grants.
+
+Fixed in the same release, kept localhost-only and minimal:
+
+```
+remote 127.0.0.1 program
+remote 0:0:0:0:0:0:0:1 program
+```
+
+`program` because managed mode loads and starts projects. This is a real change
+to a security control on every managed install, so it lands as its own commit,
+before the commit that declares the ports.
+
+### Options
+
+```yaml
+cgate_external_clients:
+  - address: 192.168.1.60
+    level: program      # Toolkit
+  - address: 192.168.1.255
+    level: monitor      # whole 192.168.1.* subnet, read-only
+```
+
+Schema:
+
+```yaml
+cgate_external_clients:
+  - address: "str"
+    level: "list(monitor|operate|program)"
+```
+
+Per the config.yaml rules in CLAUDE.md, an object-list schema field cannot be
+optional, so it needs a default in `options`. Default is `[]`, following the
+`getall_app_periods: []` precedent — inert on upgrade, and the generated
+`access.txt` is byte-identical to the localhost-only form when the list is
+empty.
+
+### access.txt writing
+
+A marker-delimited managed block, rewritten on every boot. Lines outside the
+markers are preserved, so a user who hand-edited the file keeps their edits:
+
+```
+# >>> cgateweb managed block - do not edit <<<
+remote 127.0.0.1 program
+remote 0:0:0:0:0:0:0:1 program
+remote 192.168.1.60 program
+remote 192.168.1.255 monitor
+# <<< cgateweb managed block >>>
+```
+
+Rewriting rather than appending means removing an address from the option
+actually revokes its access, which append-only would not.
+
+Addresses are validated at boot: a malformed address or an unknown level fails
+cont-init with a readable error rather than being silently dropped by C-Gate.
+
+### Ports
+
+`config.yaml` declares C-Gate's ports with `null` defaults so publishing stays a
+deliberate act in HA's Network panel, exactly as `8080/tcp` works today:
+
+```yaml
+ports:
+  "8080/tcp": null
+  "20023/tcp": null
+  "20024/tcp": null
+  "20025/tcp": null
+```
+
+`ports_description` states plainly that C-Gate has no authentication on these
+ports and that `cgate_external_clients` must be configured before publishing
+them.
+
+## Testing
+
+Following the existing standards: Jest, `/tests/*.test.js`, Arrange-Act-Assert,
+mocked network and timers, unit tests preferred over integration.
+
+| Area | Coverage |
+|---|---|
+| `unitTypeClassifier` | Each category; unknown types return null; case-insensitivity; every confirmed real type string |
+| `collectUnitTypesByGroup` | Both TREEXML shapes; single vs array `Unit`; mixed dimmer+relay; input-only; management-only |
+| Publisher integration | Precedence order against `type_overrides` and label prefix; relay payload omits every brightness field; `binary_sensor` payload; setting off means byte-identical output to today |
+| Serial resolver | Configured path present; missing with identity match; missing without match; by-id recommendation; the three consumers agreeing |
+| `serialDeviceRecovery` | Each branch of the trigger tree; rate limiting; CNI install never triggers; failed recovery reports |
+| access.txt | Managed block created, updated, and address removal revoking; hand-added lines preserved; empty list produces localhost-only; malformed address and unknown level both fail |
+
+Existing suites that must stay green: `tests/haDiscovery.test.js`,
+`tests/haDiscoveryTree.test.js`, `tests/discoveryE2E.test.js`,
+`tests/cgateInstallScript.test.js`, `tests/cgateProjectSync.test.js`,
+`tests/cgateProjectSerialFixup.test.js`, `tests/cgateSerialDiagnostics.test.js`,
+`tests/validateAddonConfig.test.js`.
+
+## Translations
+
+Two new user-facing option keys: `ha_discovery_type_from_unit` and
+`cgate_external_clients`. Both need `name` and `description` in all 17 files in
+`homeassistant-addon/translations/`, not just `en.yaml`, or the
+`validate:translations` gate fails. Technical terms stay in English: C-Gate,
+C-Bus, Toolkit, access levels (`monitor`/`operate`/`program`), device paths.
+
+The `serial_recovery_*` tunables are runtime settings, not add-on options, so
+they need no translation entries.
+
+## Sequencing
+
+One commit per item, least risky first, per the process in CLAUDE.md:
+
+1. Serial device resolver (Item 2) — self-contained, no new options
+2. Serial recovery (Item 3) — new module, existing hook point
+3. `access.txt` grammar fix (Item 4a) — security control, localhost-only, isolated for independent revert
+4. External clients option and port declarations (Item 4b)
+5. Unit-type classification (Item 1) — largest user-visible surface
+6. `chore: release v1.18.0` — version bump in both `package.json` and `homeassistant-addon/config.yaml`, plus the changelog entry
+
+Gates before pushing: `npm test`, `npm run lint`, `npm run typecheck`,
+`npm run validate:translations`, `npm run validate:addon-config`. Then tag
+`v1.18.0` and push the tag to trigger the HACS distribution workflow, and
+backfill the source-repo GitHub Release.
+
+### Note on the single-release choice
+
+Item 4 opens network ports on a service with no authentication, which argued for
+shipping it alone. Shipping all four together was chosen instead. The risk is
+contained because both of item 4's user-facing defaults are inert: the client
+list defaults to `[]` and the ports default to unpublished, so an upgrading user
+sees no change in exposure unless they act. The `access.txt` grammar fix is the
+one part that changes on every managed install regardless, which is why it is
+isolated as its own commit.
+
+## Verification still required
+
+These are open questions that must be answered during implementation rather than
+assumed:
+
+1. **Bus coupler `<Type>` string** — unknown. Ask DewetTDS on #37 for the
+   unit-type log. #37's first half stays open until he confirms.
+2. **s6 service path for restarting C-Gate** — the base image is
+   `home-assistant/*-base:3.21`, s6-overlay v3 running `/etc/services.d`
+   through the legacy shim. Confirm the real path in a running container instead
+   of guessing `s6-svc -r /run/service/cgate`.
+3. **Whether `Clipsal` is a real C-Gate 3.x access level** — it appears in
+   Doug's working `access.txt` but is absent from the manual's list. If it is
+   undocumented-but-real, the offered level list may warrant revisiting.
+4. **Whether Doug's Pi is dual-homed on 192.168.1.x** — determines whether the
+   `interface` lines in his file do anything, and confirms `remote` is the right
+   keyword. Check with `ip -4 -o addr`.
+5. **The minimum access level cgateweb needs at localhost** — the fix assumes
+   `program` because managed mode loads projects. Worth confirming that
+   `operate` is genuinely insufficient before settling on the more privileged
+   grant.
