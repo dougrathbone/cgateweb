@@ -256,6 +256,21 @@ Note `program` sits above `admin`, so granting Toolkit what it needs to program
 units necessarily also grants C-Gate shutdown. There is no way to separate
 these, and the option documentation must say so.
 
+**The add-on must only ever write `remote` rules, never `interface` rules.**
+Doug's production C-Gate is a live demonstration of why. Its only non-loopback
+interface is `eth0` at `192.168.0.22/16`, and its `access.txt` contains
+`interface 192.168.0.22 Program` alongside `interface 192.168.1.7 Program` and
+`interface 192.168.1.60 Clipsal`. Because `interface` matches the *server*
+interface a connection arrives on, the latter two match nothing — no interface
+holds those addresses — while the first grants `Program` to every client on the
+whole `192.168.0.0/16` LAN. An `interface` rule intended as a per-client grant
+silently becomes a blanket grant for everything arriving on that NIC.
+
+This also settles the level question: Toolkit connects from 192.168.1.60, whose
+own rule is inert, so the level it actually operates at is the `Program` from the
+`eth0` rule. `program` is sufficient for Toolkit, and the undocumented `Clipsal`
+level is not needed.
+
 ### The existing bug
 
 `cgate-install.sh:546-552` currently generates:
@@ -346,6 +361,11 @@ ports:
 ports and that `cgate_external_clients` must be configured before publishing
 them.
 
+Confirmed against the production install: `accept-connections-from=all` and
+`access-control-file=access.txt`, matching the documented defaults. There is no
+IP filter in front of access control, so the `remote` rules are the only thing
+standing between a published port and full control.
+
 ## Testing
 
 Following the existing standards: Jest, `/tests/*.test.js`, Arrange-Act-Assert,
@@ -414,13 +434,16 @@ assumed:
    `home-assistant/*-base:3.21`, s6-overlay v3 running `/etc/services.d`
    through the legacy shim. Confirm the real path in a running container instead
    of guessing `s6-svc -r /run/service/cgate`.
-3. **Whether `Clipsal` is a real C-Gate 3.x access level** — it appears in
-   Doug's working `access.txt` but is absent from the manual's list. If it is
-   undocumented-but-real, the offered level list may warrant revisiting.
-4. **Whether Doug's Pi is dual-homed on 192.168.1.x** — determines whether the
-   `interface` lines in his file do anything, and confirms `remote` is the right
-   keyword. Check with `ip -4 -o addr`.
-5. **The minimum access level cgateweb needs at localhost** — the fix assumes
-   `program` because managed mode loads projects. Worth confirming that
-   `operate` is genuinely insufficient before settling on the more privileged
-   grant.
+3. **The minimum access level cgateweb needs at localhost** — the fix assumes
+   `program` because managed mode loads projects. The production install runs at
+   `program`, which confirms it is sufficient but not that it is necessary.
+   Worth confirming `operate` is genuinely insufficient before settling on the
+   more privileged grant.
+
+Resolved during design:
+
+- **Whether `Clipsal` is a real access level** — moot. Toolkit's effective level
+  in the production install is `program`, so the offered list needs no change.
+- **Whether the production Pi is dual-homed** — no. One `eth0` at
+  `192.168.0.22/16`, which is what makes the `interface` per-client rules inert
+  and confirms `remote` is the correct keyword.
