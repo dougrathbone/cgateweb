@@ -5,6 +5,22 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-07-26
+
+### Added
+
+- **Entity types can now come from your C-Bus hardware instead of your group names.** Turn on the new "Set entity type from C-Bus unit type" option and each lighting group is typed by the unit driving it: a dimmer channel stays a dimmable light, a relay channel becomes a light with no brightness control, and a group driven only by an input unit such as a bus coupler becomes a binary sensor (#38, #37). It is off by default, because switching it on can change the type of entities you already have — a relay-driven group loses its brightness slider, since ramping a relay was never really possible. The entity keeps its identity, so its entity id does not change and your automations and dashboards keep working; only the capability changes. Group names still win over hardware: a relay-driven group named "Patio Blind" stays a cover, because a relay can equally drive a light, a blind or an irrigation valve, so a name that identifies a cover is better evidence than the unit type. Unit types the add-on does not recognise are left exactly as they were, and listed in the log so they can be reported.
+- **C-Bus Toolkit can now reach the C-Gate running inside the add-on.** The new "External C-Gate clients" option lists which addresses are allowed to connect and at what level — monitor, operate, or program, which is the level Toolkit needs to program a network (#37). C-Gate's command, event and status ports are now declared so you can map them in Home Assistant's Network panel; they stay unmapped until you choose to. Read the documentation before enabling this: C-Gate has no authentication on those ports, program level also allows shutting C-Gate down, and a subnet is written as an octet of 255 — so 192.168.1.255 means the entire 192.168.1.x network — which is why listing one specific address is strongly preferred. Managed mode only; in remote mode C-Gate runs elsewhere and this option does nothing.
+
+### Fixed
+
+- **A USB PC Interface that comes back under a different name after a replug now recovers on its own.** Moving the interface to another USB port, or rebooting the host, could leave it named differently from the device you configured — which either failed startup or left the C-Bus network stuck on a port C-Gate could no longer open (#28). The add-on now remembers which interface it was using and finds it again by its identity: at startup it repoints your project at the new name, and while running it re-finds the device, repoints the project and restarts just the internal C-Gate. Choosing a by-id device path rather than a plain ttyUSB name avoids the problem entirely, and the documentation now recommends it.
+
+### Changed
+
+- **The add-on now writes its own C-Gate access rules instead of relying on the ones C-Gate ships with.** C-Gate's own distribution includes an access control file granting local access, and the install has always put that file in place, so nothing was ever left open — but the add-on was depending on a default file it does not control. It now declares its own local access rule explicitly, inside a clearly marked block, and preserves any rules you added by hand outside it.
+- The documentation now spells out the order used to decide an entity's type: a manual type override first, then a group named like a Home Assistant entity id, then cover keywords in the name, then the C-Bus unit type, then the default dimmable light. The previous description listed the wrong order and left out the unit type entirely.
+
 ## [1.17.6] - 2026-07-22
 
 ### Changed
