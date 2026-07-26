@@ -2982,6 +2982,41 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         expect(payloadFor(publish, 'light', 2)).toBeNull();
     });
 
+    it('lets unit-type classification refine a light.-prefixed relay group to on/off', () => {
+        // "light." names the entity domain, not the dim capability, so it must
+        // not pin the group to the dimmable default: a brightness slider that
+        // ramps a relay channel is exactly what the unit-type option exists to
+        // prevent.
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true, ha_discovery_type_from_label_prefix: true },
+            { labels: new Map([['254/56/2', 'light.porch']]) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+        const payload = payloadFor(publish, 'light', 2);
+
+        expect(payload).not.toHaveProperty('brightness_command_topic');
+        expect(payload.command_topic).toBe('cbus/write/254/56/2/switch');
+    });
+
+    it('keeps a light.-prefixed group in the light domain despite a cover name', () => {
+        // The prefix still wins the domain: an explicit "light." is the user
+        // saying this is a light, so neither the cover-name heuristics nor an
+        // input-only unit-type conclusion may move it out of the light domain.
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true, ha_discovery_type_from_label_prefix: true },
+            { labels: new Map([['254/56/4', 'light.patio_blind'], ['254/56/3', 'light.hall']]) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'cover', 4)).toBeNull();
+        expect(payloadFor(publish, 'light', 4)).not.toBeNull();
+        expect(payloadFor(publish, 'binary_sensor', 3)).toBeNull();
+        expect(payloadFor(publish, 'light', 3).brightness_command_topic)
+            .toBe('cbus/write/254/56/3/ramp');
+    });
+
     it('lets the cover-name heuristic beat unit-type classification', () => {
         const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
 

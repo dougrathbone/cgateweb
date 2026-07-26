@@ -293,8 +293,22 @@ class _HaDiscoveryPublishers {
             this._unitTypeIndex ? this._unitTypeIndex.get(`${appId}/${groupId}`) : null,
             this.settings
         );
+
+        // A "light." prefix expresses an entity DOMAIN, not a dim capability, so
+        // it pins the group to the light domain (the cover-name heuristics below
+        // must not retype it) while still letting the unit type choose between a
+        // dimmable and an on/off light. Left as a plain 'light' it short-circuited
+        // the chain, and a relay-driven group named "light.porch" got a brightness
+        // slider that ramps a relay channel. Any other unit-type conclusion
+        // (binary_sensor) is discarded here: the prefix says there is a light.
+        /** @type {'light'|'light-onoff'|'cover'|'switch'|'relay'|'pir'|null} */
+        let prefixType = typeFromLabelPrefix(labelForClassification, this.settings);
+        if (prefixType === 'light') {
+            prefixType = unitType === 'light-onoff' ? 'light-onoff' : 'light';
+        }
+
         const resolvedType = typeOverrides.get(labelKey)
-            || typeFromLabelPrefix(labelForClassification, this.settings)
+            || prefixType
             || classifyLightingGroup(labelForClassification, this.settings)
             || unitType;
 
