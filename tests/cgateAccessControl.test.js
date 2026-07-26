@@ -16,9 +16,10 @@ const itUnlessRoot = isRoot ? it.skip : it;
 
 // Whether jq is on PATH. The real-reader suite below sources bashio::config's
 // actual upstream query logic (github.com/hassio-addons/bashio, lib/config.sh
-// + lib/jq.sh, MIT-licensed), which shells out to jq exactly as it does inside
-// the add-on container. Skipped (not failed) where jq is absent so this file
-// still runs on a bare dev machine; GitHub Actions ubuntu runners ship jq.
+// + lib/jq.sh, MIT-licensed -- vendored under tests/vendor/bashio/, see the
+// README there), which shells out to jq exactly as it does inside the add-on
+// container. Skipped (not failed) where jq is absent so this file still runs
+// on a bare dev machine; GitHub Actions ubuntu runners ship jq.
 function jqAvailable() {
     try {
         execFileSync('jq', ['--version'], { stdio: 'ignore' });
@@ -27,7 +28,19 @@ function jqAvailable() {
         return false;
     }
 }
-const describeJq = (posixBashAvailable() && jqAvailable()) ? describe : describe.skip;
+const jqOk = jqAvailable();
+// MINOR 4: jq ships in the add-on image and on every GitHub Actions runner,
+// so this describe.skip is currently theoretical in CI -- but if a runner
+// image ever drops jq, describe.skip would make three tests vanish while the
+// build stayed green. Fail loudly instead of skipping whenever CI is set.
+if (process.env.CI && !jqOk) {
+    throw new Error(
+        'jq is required in CI to run the real-bashio-reader suite in tests/cgateAccessControl.test.js ' +
+        '(it shells out to jq, matching the add-on container) but was not found on PATH. ' +
+        'Install jq in the CI image rather than letting this suite silently skip.'
+    );
+}
+const describeJq = (posixBashAvailable() && jqOk) ? describe : describe.skip;
 
 const SCRIPT = path.join(
     __dirname, '..', 'homeassistant-addon', 'rootfs', 'etc', 'cont-init.d', 'cgate-install.sh'
@@ -66,18 +79,23 @@ const EXTERNAL_RULES_STUB = `
     }
 `;
 
-// bashio::config's real query logic, copied verbatim (only trimmed of the
-// `bashio::log.trace` call and the extra-jq-args plumbing that this script
-// never uses — the latter also trips a bash 3.2 "unbound variable on an
-// empty array" bug under `set -u`, which is why macOS's system bash can't
-// run the unmodified upstream source) from:
-//   https://github.com/hassio-addons/bashio/blob/main/lib/config.sh
-//   https://github.com/hassio-addons/bashio/blob/main/lib/jq.sh
-// plus a stub for bashio::app.config, the one call real bashio makes out to
-// the Supervisor API. This exercises _cgateweb_external_client_rules's own
-// bashio::config calls (the "key|length" and "key[i].field" jq paths)
-// against bashio's real object-list flattening, rather than the
-// EXTERNAL_RULES_STUB used everywhere else in this file to test validation.
+// MINOR 5: the vendored files under tests/vendor/bashio/ are byte-for-byte
+// copies of bashio::config's real query logic (config.sh + jq.sh, from
+// https://github.com/hassio-addons/bashio, MIT-licensed -- see
+// tests/vendor/bashio/README.md for the exact commit copied and why they're
+// vendored rather than reimplemented inline). This stub supplies only the
+// handful of names those two files reference but don't themselves define
+// (bashio::log.*, bashio::app.config -- the one call real bashio makes out
+// to the Supervisor API -- and bashio's __BASHIO_EXIT_OK/__BASHIO_EXIT_NOK
+// constants), then sources the vendored files. This exercises
+// _cgateweb_external_client_rules's own bashio::config calls (the
+// "key|length" and "key[i].field" jq paths) against bashio's real
+// object-list flattening, rather than the EXTERNAL_RULES_STUB used
+// everywhere else in this file to test validation in isolation.
+const VENDOR_BASHIO_DIR = path.join(__dirname, 'vendor', 'bashio');
+const VENDOR_CONFIG_SH = path.join(VENDOR_BASHIO_DIR, 'config.sh');
+const VENDOR_JQ_SH = path.join(VENDOR_BASHIO_DIR, 'jq.sh');
+
 const REAL_BASHIO_CONFIG_STUB = `
     bashio::log.info()    { :; }
     bashio::log.warning() { :; }
@@ -85,55 +103,10 @@ const REAL_BASHIO_CONFIG_STUB = `
     bashio::log.trace()   { :; }
     bashio::log.debug()   { :; }
     bashio::app.config() { printf '%s' "\${CGW_OPTIONS_JSON}"; }
-    bashio::jq() {
-        local data=\${1}
-        local filter=\${2:-.}
-        if [[ -f "\${data}" ]]; then
-            jq --raw-output -c -M "$filter" "\${data}"
-        else
-            jq --raw-output -c -M "$filter" <<<"\${data}"
-        fi
-    }
-    bashio::config() {
-        local key=\${1}
-        local default_value=\${2:-null}
-        local query
-        local result
-        local options
-
-        read -r -d '' query <<QUERY || true
-            if (.\${key} == null) then
-                null
-            elif (.\${key} | type == "string") then
-                .\${key} // empty
-            elif (.\${key} | type == "boolean") then
-                .\${key} // false
-            elif (.\${key} | type == "array") then
-                if (.\${key} == []) then
-                    empty
-                else
-                    .\${key}[]
-                end
-            elif (.\${key} | type == "object") then
-                if (.\${key} == {}) then
-                    empty
-                else
-                    .\${key}
-                end
-            else
-                .\${key}
-            end
-QUERY
-
-        options=$(bashio::app.config)
-        result=$(bashio::jq "\${options}" "\${query}")
-
-        if [[ "\${result}" == "null" ]]; then
-            echo "\${default_value}"
-        else
-            printf "%s" "\${result}"
-        fi
-    }
+    __BASHIO_EXIT_OK=0
+    __BASHIO_EXIT_NOK=1
+    source "\${CGW_VENDOR_JQ_SH}"
+    source "\${CGW_VENDOR_CONFIG_SH}"
 `;
 
 // Same as BASHIO_STUB but with log output captured (level-prefixed) instead
@@ -333,6 +306,62 @@ describeBash('_cgateweb_write_access_control', () => {
         const { status } = writeAccessControl({
             config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.60' }
         });
+
+        expect(status).not.toBe(0);
+    });
+
+    // Fix round 2, IMPORTANT: an octet of 255 in a `remote` rule matches any
+    // value in that position, so 255.255.255.255 is literally "any address
+    // on the internet" -- there is no legitimate reason to configure it, and
+    // this option exists to narrow access, not remove it.
+    it('rejects 255.255.255.255 outright rather than granting the entire internet', () => {
+        const { status } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 255.255.255.255 program' }
+        });
+
+        expect(status).not.toBe(0);
+    });
+
+    it('states the expanded subnet meaning when an octet is wildcarded, not just the address', () => {
+        const { status, output } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.255 monitor' },
+            withLogs: true
+        });
+
+        expect(status).toBe(0);
+        // Must be unmistakable that this grants a whole /24, not read as an
+        // ordinary single-host address.
+        expect(output).toMatch(/WARNING:.*192\.168\.1\.x/);
+    });
+
+    // Fix round 2, MINOR 1: probed in review with cwd "/" and address "et?",
+    // which the old unquoted `set -- ${line}` silently glob-expanded to
+    // "etc" (a real top-level directory) before validation ever saw the "?"
+    // -- yielding "remote etc monitor" instead of an error.
+    it('rejects an address containing a glob character instead of letting it expand against the filesystem', () => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-access-'));
+        const file = path.join(dir, 'access.txt');
+        const env = {
+            ...process.env,
+            CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+            CGW_INSTALL_SCRIPT: SCRIPT,
+            CGW_ACCESS_FILE: file,
+            CGW_EXTERNAL_RULES: 'remote et? monitor'
+        };
+        const script = `
+            set -u
+            ${BASHIO_STUB}
+            source "$CGW_INSTALL_SCRIPT"
+            ${EXTERNAL_RULES_STUB}
+            _cgateweb_write_access_control "$CGW_ACCESS_FILE"
+        `;
+        let status = 0;
+        try {
+            execFileSync('bash', ['-c', script], { encoding: 'utf8', env, stdio: 'pipe', cwd: '/' });
+        } catch (e) {
+            status = typeof e.status === 'number' ? e.status : 1;
+        }
+        fs.rmSync(dir, { recursive: true, force: true });
 
         expect(status).not.toBe(0);
     });
@@ -544,12 +573,23 @@ describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () =>
             ...process.env,
             CGATEWEB_INSTALL_SOURCE_ONLY: '1',
             CGW_INSTALL_SCRIPT: SCRIPT,
+            CGW_VENDOR_CONFIG_SH: VENDOR_CONFIG_SH,
+            CGW_VENDOR_JQ_SH: VENDOR_JQ_SH,
             CGW_OPTIONS_JSON: JSON.stringify(optionsObj)
         };
         const script = `
             set -u
             ${REAL_BASHIO_CONFIG_STUB}
             source "$CGW_INSTALL_SCRIPT"
+            # bash 3.2 (macOS's system /bin/bash) throws "unbound variable"
+            # expanding an empty array inside the vendored bashio::jq under
+            # set -u -- a real upstream bug, fixed in bash 4.4+. CI's
+            # ubuntu-latest ships a modern bash and is unaffected; relax
+            # nounset here (cgate-install.sh's own "set -uo pipefail" just
+            # re-enabled it via the source above) rather than patch the
+            # vendored file to route around a bash version it was never
+            # written to support.
+            set +u
             _cgateweb_external_client_rules
         `;
         return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
@@ -575,5 +615,29 @@ describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () =>
     it('emits nothing when the option is entirely absent (pre-upgrade config)', () => {
         const output = runExternalClientRules({});
         expect(output.trim()).toBe('');
+    });
+
+    // Fix round 2, MINOR 2: a newline embedded in one option entry's address
+    // (a copy-paste slip) used to split the printf output into two lines,
+    // each independently validated and written as an extra `remote` rule the
+    // user never authored. Must abort loudly instead.
+    it('aborts rather than emitting extra rules when an address contains a newline', () => {
+        expect(() => runExternalClientRules({
+            cgate_external_clients: [
+                { address: '192.168.1.60\n8.8.8.8', level: 'monitor' }
+            ]
+        })).toThrow();
+    });
+
+    // Fix round 2, MINOR 3: unreachable through the HA UI (the schema's
+    // level field is a required list()), but a hand-edited options.json
+    // could still hit this. Must fail loud like every other invalid level
+    // rather than silently downgrading to monitor.
+    it('rejects a missing level instead of silently defaulting to monitor', () => {
+        expect(() => runExternalClientRules({
+            cgate_external_clients: [
+                { address: '192.168.1.60' }
+            ]
+        })).toThrow();
     });
 });

@@ -343,9 +343,52 @@ _cgateweb_external_client_rules() {
         address=$(bashio::config "cgate_external_clients[${i}].address" '')
         level=$(bashio::config "cgate_external_clients[${i}].level" '')
         [[ -z "${address}" || "${address}" == "null" ]] && continue
-        [[ -z "${level}" || "${level}" == "null" ]] && level='monitor'
+
+        # A newline embedded in the option value (a copy-paste slip, say)
+        # would otherwise split the printf below into two lines, each read
+        # and validated independently by the caller as its own `remote`
+        # rule the user never authored. No privilege escalation results --
+        # the emitted keyword is always the literal "remote" regardless of
+        # what a split line parses as -- but it is still an unintended rule.
+        # Reject any whitespace in the address outright instead.
+        if [[ "${address}" =~ [[:space:]] ]]; then
+            bashio::log.error "Invalid address in cgate_external_clients: contains whitespace (check for an embedded newline)"
+            return 1
+        fi
+
+        # Unreachable through the HA UI today (the schema's level field is a
+        # required list()), but a hand-edited options.json could still hit
+        # this. Fail loud like every other invalid level rather than
+        # silently downgrading to monitor.
+        if [[ -z "${level}" || "${level}" == "null" ]]; then
+            bashio::log.error "Missing level for cgate_external_clients address '${address}'; use monitor, operate or program"
+            return 1
+        fi
+
         printf 'remote %s %s\n' "${address}" "${level}"
     done
+}
+
+# Given a dotted-quad IPv4 address, echoes the "meaning" of any wildcard (255)
+# octets with each replaced by 'x' -- e.g. "192.168.1.255" -> "192.168.1.x" --
+# since an octet of 255 in a `remote` rule matches any value in that position
+# (manual 4.10.1). Echoes nothing when the address is not a 4-octet dotted
+# form, or has no 255 octet (nothing to warn about).
+_cgateweb_ipv4_wildcard_meaning() {
+    local address="$1"
+    [[ "${address}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 0
+
+    local o1 o2 o3 o4
+    IFS='.' read -r o1 o2 o3 o4 <<< "${address}"
+
+    local has_wildcard=0
+    [[ "${o1}" == "255" ]] && { o1='x'; has_wildcard=1; }
+    [[ "${o2}" == "255" ]] && { o2='x'; has_wildcard=1; }
+    [[ "${o3}" == "255" ]] && { o3='x'; has_wildcard=1; }
+    [[ "${o4}" == "255" ]] && { o4='x'; has_wildcard=1; }
+    [[ ${has_wildcard} -eq 1 ]] || return 0
+
+    printf '%s.%s.%s.%s' "${o1}" "${o2}" "${o3}" "${o4}"
 }
 
 # Write C-Gate's access control file (manual 4.10.1).
@@ -416,17 +459,36 @@ _cgateweb_write_access_control() {
     # and friends connect to it directly rather than sharing the serial port.
     # Validate here so a typo fails cont-init with a readable error instead of
     # being silently dropped by C-Gate.
-    local line address level
+    #
+    # Captured via command substitution (not process substitution) so this
+    # function's own exit status is visible: _cgateweb_external_client_rules
+    # can now fail (e.g. MINOR 2/3 below) and that failure must abort
+    # cont-init rather than being silently swallowed by a background reader.
+    local external_rules external_rules_status=0
+    external_rules=$(_cgateweb_external_client_rules) || external_rules_status=$?
+    if [[ ${external_rules_status} -ne 0 ]]; then
+        bashio::log.error "Failed to read cgate_external_clients -- see the message above"
+        return 1
+    fi
+
+    local line keyword address level extra wildcard_meaning
     while IFS= read -r line; do
         [[ -z "${line}" ]] && continue
-        # shellcheck disable=SC2086
-        set -- ${line}
-        if [[ $# -ne 3 ]]; then
+        # `read` splits on whitespace without performing pathname expansion,
+        # unlike the unquoted `set -- ${line}` this replaced: that let a glob
+        # character in a hand-typed address (e.g. an address of "et?" with
+        # cwd "/") expand against the filesystem before validation ever saw
+        # it. A 4th field (extra) catches entries with too many words.
+        read -r keyword address level extra <<< "${line}"
+        if [[ -z "${keyword}" || -z "${address}" || -z "${level}" || -n "${extra}" ]]; then
             bashio::log.error "Invalid cgate_external_clients entry: '${line}'"
             return 1
         fi
-        address="$2"
-        level="$3"
+        if [[ "${address}" == "255.255.255.255" ]]; then
+            bashio::log.error "Invalid address in cgate_external_clients: '255.255.255.255'"
+            bashio::log.error "Every octet of 255 matches any value, so this grants every address on the internet -- narrow it to the specific address or subnet you intend to allow."
+            return 1
+        fi
         if [[ ! "${address}" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
             bashio::log.error "Invalid address in cgate_external_clients: '${address}'"
             bashio::log.error "Use an IP address or hostname. An octet of 255 matches any value, e.g. 192.168.1.255 for the whole subnet."
@@ -439,9 +501,13 @@ _cgateweb_write_access_control() {
                 return 1
                 ;;
         esac
+        wildcard_meaning=$(_cgateweb_ipv4_wildcard_meaning "${address}")
+        if [[ -n "${wildcard_meaning}" ]]; then
+            bashio::log.warning "C-Gate address ${address} grants every address on ${wildcard_meaning} (an octet of 255 matches any value)"
+        fi
         rules+=("remote ${address} ${level}")
         bashio::log.warning "C-Gate access granted to ${address} at ${level} level"
-    done < <(_cgateweb_external_client_rules)
+    done <<< "${external_rules}"
 
     if [[ ${#rules[@]} -gt 2 ]]; then
         bashio::log.warning "C-Gate has no authentication on its command ports; only publish them if you need external access"
