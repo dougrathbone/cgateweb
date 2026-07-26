@@ -173,10 +173,19 @@ Resolution order:
 3. No remembered identity, or no match → fail with the device inventory, exactly
    as today.
 
-Identity is `idVendor`, `idProduct` and `serial` read from `/sys`, persisted to
-`/data/serial-identity.json` on each successful boot. Adoption requires an
-identity match, so a Zigbee or Z-Wave stick on the same host is never adopted by
-accident.
+Identity is the basename of the `/dev/serial/by-id/` symlink that resolves to
+the same device, e.g. `usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0`. That name
+already encodes vendor, product and serial number, so it is both the identity and
+the stable path to recommend — no `/sys` parsing needed. Persisted to
+`/data/serial-identity.json` on each successful boot.
+
+Where `/dev/serial/by-id/` is absent (a host without udev populating it), fall
+back to reading `idVendor`, `idProduct` and `serial` from `/sys` by walking up
+from `/sys/class/tty/<name>/device`. If neither source yields an identity, log
+that recovery will not be possible and behave exactly as today.
+
+Adoption requires an identity match, so a Zigbee or Z-Wave stick on the same host
+is never adopted by accident.
 
 When the configured path is a raw `/dev/ttyUSB*` or `/dev/ttyACM*` and a
 `/dev/serial/by-id/` symlink resolves to the same target, log the stable path as
