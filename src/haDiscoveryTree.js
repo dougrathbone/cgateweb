@@ -282,16 +282,22 @@ function collectUnitGroups(unit, groupsByApp, targetApps) {
 //     asymmetric unknown handling (an unrecognised type blocks only the
 //     destructive binary_sensor conclusion) depends on unrecognised types
 //     surviving into this index rather than being filtered out here.
-//   - unknownTypes is unscoped: it reports every unrecognised type anywhere on
-//     the network, including units with no Application at all, for a
-//     once-per-run log line (issue #37). Filtering it by targetApps would hide
-//     unrecognised hardware on apps discovery is not classifying.
+//   - unknownTypes is, by default, restricted to the units that actually fed
+//     the index. The log line it drives asks users to report types so they can
+//     be classified (issue #37), so a type that could never classify anything —
+//     a measurement-only unit, a PC interface, anything bound to no discovered
+//     application — is pure noise on every run, gettree refreshes included, and
+//     invites issues about irrelevant hardware. opts.scopeUnknownTypesToIndex
+//     false restores the whole-network view for the unknownUnitTypes diagnostic
+//     helper below.
 /**
  * @param {any} networkData
  * @param {string[]} targetApps
+ * @param {{ scopeUnknownTypesToIndex?: boolean }} [opts]
  * @returns {{ index: Map<string, { types: Set<string> }>, unknownTypes: string[] }}
  */
-function collectUnitTypeData(networkData, targetApps) {
+function collectUnitTypeData(networkData, targetApps, opts = {}) {
+    const scopeUnknownTypesToIndex = opts.scopeUnknownTypesToIndex !== false;
     /** @type {Map<string, { types: Set<string> }>} */
     const index = new Map();
     const unknownTypes = new Set();
@@ -300,18 +306,18 @@ function collectUnitTypeData(networkData, targetApps) {
     let units = networkData.Unit || [];
     if (!Array.isArray(units)) units = [units];
 
-    const record = (appId, groupId, type) => {
-        const key = `${appId}/${groupId}`;
-        if (!index.has(key)) index.set(key, { types: new Set() });
-        if (type) index.get(key).types.add(type);
-    };
+    // Index every (app, group) this unit drives on a target app; true when it
+    // drove at least one, i.e. when its type is relevant to classification.
+    const indexUnitGroups = (unit, type) => {
+        let indexed = false;
+        const record = (appId, groupId) => {
+            const key = `${appId}/${groupId}`;
+            if (!index.has(key)) index.set(key, { types: new Set() });
+            if (type) index.get(key).types.add(type);
+            indexed = true;
+        };
 
-    units.forEach(unit => {
-        if (!unit) return;
-        const type = (unit.Type !== null && unit.Type !== undefined) ? String(unit.Type).trim() : '';
-        if (type && !categoriseUnitType(type)) unknownTypes.add(type);
-
-        if (!unit.Application) return;
+        if (!unit.Application) return false;
 
         if (typeof unit.Application === 'object') {
             const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
@@ -322,21 +328,31 @@ function collectUnitTypeData(networkData, targetApps) {
                 const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
                 groups.forEach(g => {
                     if (g && g.GroupAddress !== null && g.GroupAddress !== undefined) {
-                        record(appId, String(g.GroupAddress), type);
+                        record(appId, String(g.GroupAddress));
                     }
                 });
             });
-            return;
+            return indexed;
         }
 
         const unitAppIds = String(unit.Application).split(',').map(s => s.trim()).filter(Boolean);
         const groupIds = (unit.Groups && typeof unit.Groups === 'string')
             ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
             : [];
-        if (groupIds.length === 0) return;
+        if (groupIds.length === 0) return false;
         targetApps.filter(t => unitAppIds.includes(t)).forEach(appId => {
-            groupIds.forEach(gid => record(appId, gid, type));
+            groupIds.forEach(gid => record(appId, gid));
         });
+        return indexed;
+    };
+
+    units.forEach(unit => {
+        if (!unit) return;
+        const type = (unit.Type !== null && unit.Type !== undefined) ? String(unit.Type).trim() : '';
+        const indexed = indexUnitGroups(unit, type);
+        if (type && !categoriseUnitType(type) && (indexed || !scopeUnknownTypesToIndex)) {
+            unknownTypes.add(type);
+        }
     });
 
     return { index, unknownTypes: [...unknownTypes] };
@@ -355,16 +371,17 @@ function collectUnitTypesByGroup(networkData, targetApps) {
     return collectUnitTypeData(networkData, targetApps).index;
 }
 
-// Thin wrapper kept for existing callers/tests that only need the
-// unrecognised-type list. unknownTypes does not depend on targetApps, so the
-// scope argument passed here is irrelevant. See collectUnitTypeData for why
-// this cannot simply reuse collectUnitTypesByGroup's result.
+// Whole-network diagnostic view: every unrecognised type anywhere on the
+// network, including units bound to no application at all. Discovery
+// deliberately does NOT use this (see collectUnitTypeData: the log line it feeds
+// is about classifiable hardware only) — it is here for callers that genuinely
+// want an inventory of what the classifier does not know.
 /**
  * @param {any} networkData
  * @returns {string[]}
  */
 function unknownUnitTypes(networkData) {
-    return collectUnitTypeData(networkData, []).unknownTypes;
+    return collectUnitTypeData(networkData, [], { scopeUnknownTypesToIndex: false }).unknownTypes;
 }
 
 module.exports = {

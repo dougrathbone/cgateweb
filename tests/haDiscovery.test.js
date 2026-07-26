@@ -2886,6 +2886,32 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         infoSpy.mockRestore();
     });
 
+    it('does not report unit types that drive no group discovery looks at', () => {
+        // Measurement-only units and interface types can never classify a
+        // Lighting group, so asking users to report them is noise on every run
+        // (gettree refreshes included) and draws issues about irrelevant
+        // hardware.
+        const TREE_WITH_OFF_APP_UNITS = {
+            Network: {
+                NetworkNumber: '254',
+                Unit: [
+                    { UnitAddress: '10', Type: 'DIMDN8', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1', Label: 'Kitchen' }] } },
+                    { UnitAddress: '90', Type: 'MEASURE7', Application: { ApplicationAddress: '228', Group: [{ GroupAddress: '1' }] } },
+                    { UnitAddress: '91', Type: 'GIZMO1' }
+                ]
+            }
+        };
+        const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
+        const infoSpy = jest.spyOn(d.logger, 'info').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', TREE_WITH_OFF_APP_UNITS);
+
+        const messages = infoSpy.mock.calls.map(args => String(args[0]));
+        expect(messages.some(m => m.includes('MEASURE7'))).toBe(false);
+        expect(messages.some(m => m.includes('GIZMO1'))).toBe(false);
+        infoSpy.mockRestore();
+    });
+
     it('does not log unrecognised unit types when the feature is off', () => {
         const { d } = makeDiscovery();
         const infoSpy = jest.spyOn(d.logger, 'info').mockImplementation(() => {});

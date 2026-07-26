@@ -360,6 +360,12 @@ class HaDiscovery {
             const { index, unknownTypes: unknown } = collectUnitTypeData(networkData, targetApps);
             this._unitTypeIndex = index;
 
+            // Only types on units that actually drive a discovered group are
+            // reported: the message asks users to report them so they can be
+            // classified, and a unit bound to no discovered application has
+            // nothing to classify. Logging those was noise on every run
+            // (gettree refreshes included) and drew issue reports about
+            // measurement-only units and interfaces.
             if (unknown.length) {
                 this.logger.info(
                     `Unit types not recognised for classification on network ${networkId}: ${unknown.join(', ')}. ` +

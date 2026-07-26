@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups, collectUnitTypesByGroup, unknownUnitTypes } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups, collectUnitTypesByGroup, unknownUnitTypes, collectUnitTypeData } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -664,6 +664,39 @@ describe('collectUnitTypesByGroup', () => {
 
     it('returns an empty index for missing network data', () => {
         expect(collectUnitTypesByGroup(null, ['56']).size).toBe(0);
+    });
+
+    it('omits unrecognised types on units that drive no discovered group', () => {
+        // A measurement-only unit or an interface type can never classify a
+        // Lighting group, so reporting it invites issues about hardware that is
+        // irrelevant to classification.
+        const network = {
+            Unit: [
+                { UnitAddress: '10', Type: 'WIDGET9000', Application: { ApplicationAddress: '99', Group: [{ GroupAddress: '1' }] } },
+                { UnitAddress: '11', Type: 'GIZMO1' }
+            ]
+        };
+
+        expect(collectUnitTypeData(network, ['56']).unknownTypes).toEqual([]);
+    });
+
+    it('reports an unrecognised type on a unit that does drive a discovered group', () => {
+        const network = {
+            Unit: [
+                { UnitAddress: '10', Type: 'WIDGET9000', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1' }] } },
+                { UnitAddress: '11', Type: 'GIZMO1', Application: { ApplicationAddress: '99', Group: [{ GroupAddress: '2' }] } }
+            ]
+        };
+
+        expect(collectUnitTypeData(network, ['56']).unknownTypes).toEqual(['WIDGET9000']);
+    });
+
+    it('reports an unrecognised type from the flat TREEXML shape too', () => {
+        const network = {
+            Unit: { UnitAddress: '12', Type: 'WIDGET9000', Application: '56, 255', Groups: '5,6' }
+        };
+
+        expect(collectUnitTypeData(network, ['56']).unknownTypes).toEqual(['WIDGET9000']);
     });
 
     it('lists distinct unrecognised unit types', () => {
