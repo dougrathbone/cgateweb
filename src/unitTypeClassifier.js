@@ -98,4 +98,4 @@ function entityTypeForGroup(groupInfo, settings = {}) {
     return null;
 }
 
-module.exports = { categoriseUnitType, entityTypeForGroup, UNIT_TYPE_PATTERNS };
+module.exports = { categoriseUnitType, entityTypeForGroup };
