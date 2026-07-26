@@ -60,6 +60,12 @@ is why unknown types must be inert rather than guessed at.
 - `categoriseUnitType(type)` → `'dimmer' | 'relay' | 'input' | 'management' | null`
 - `entityTypeForGroup(groupInfo, settings)` → `'light-dimmable' | 'light-onoff' | 'binary_sensor' | null`
 
+Those three strings are resolution outcomes internal to this feature, not keys
+into `getDiscoveryConfig`'s table (`cover`, `switch`, `relay`, `pir`, `trigger`,
+`trigger_button`, `hvac`, `scene`). Each gets its own branch in
+`_tryCreateTypedEntity` ahead of that lookup — see Integration below — so none of
+them ever reaches it and trips the "Unknown resolved type" warning.
+
 Category table. Patterns are anchored prefixes, matched case-insensitively:
 
 | Pattern | Category | Resulting entity |
@@ -114,15 +120,39 @@ The index is exposed to the publisher as a run-scoped instance property
 end — the same pattern `_labelSnapshot` uses. Not threaded as another positional
 argument; see the `labelSnapshot` note in CLAUDE.md.
 
+### Dispatching the new resolved types
+
+Today `_tryCreateTypedEntity` returns false for `null` and `'light'` and treats
+every other value as a key into `getDiscoveryConfig`. The three values
+`entityTypeForGroup` can return are not in that table, so they must be dispatched
+before the lookup or they would log "Unknown resolved type" and fall through.
+The new branches sit immediately after the existing `resolvedType` assignment:
+
+- `'light-dimmable'` joins `null` and `'light'` in the early `return false`. A
+  dimmer-driven group is exactly today's default dimmable light, so the right
+  action is to fall through to the existing path rather than publish anything
+  new.
+- `'light-onoff'` calls a new `_createOnOffLightDiscovery` and returns true.
+- `'binary_sensor'` calls a new `_createInputBinarySensorDiscovery`, clears any
+  stale retained light config, and returns true.
+
+Only after these three does control reach the unchanged
+`getDiscoveryConfig(resolvedType)` lookup, which continues to serve the manual
+overrides, label prefixes and name heuristics as it does today. The warning path
+therefore keeps its original meaning: a genuinely unrecognised type.
+
 The relay case reuses the existing light publishing path with
 `brightness_state_topic`, `brightness_command_topic`, `brightness_scale`,
 `on_command_type` and `brightness_value_template` omitted, and `command_topic`
 pointing at `switch` rather than `ramp`. It stays in the `light` domain, so
 entity ids and existing automations survive.
 
-The `binary_sensor` case reuses the `pir` discovery config shape
-(`src/haDiscoveryConfigs.js`) with no `device_class`, since a coupler is not
-necessarily motion.
+The `binary_sensor` case publishes the same payload shape as the `pir` config in
+`src/haDiscoveryConfigs.js` — state topic, `payload_on`/`payload_off`, no command
+topic — but omits `device_class`, since a coupler is not necessarily motion. It
+is written as a dedicated publisher rather than a new entry in the
+`getDiscoveryConfig` table, so that table stays the list of types a user can name
+in `type_overrides`.
 
 ### Setting
 
@@ -384,7 +414,7 @@ mocked network and timers, unit tests preferred over integration.
 |---|---|
 | `unitTypeClassifier` | Each category; unknown types return null; case-insensitivity; every confirmed real type string |
 | `collectUnitTypesByGroup` | Both TREEXML shapes; single vs array `Unit`; mixed dimmer+relay; input-only; management-only |
-| Publisher integration | Precedence order against `type_overrides` and label prefix; relay payload omits every brightness field; `binary_sensor` payload; setting off means byte-identical output to today |
+| Publisher integration | Precedence order against `type_overrides` and label prefix; relay payload omits every brightness field; `binary_sensor` payload; no "Unknown resolved type" warning is logged for any of the three new resolved types; setting off means byte-identical output to today |
 | Serial resolver | Configured path present; missing with identity match; missing without match; by-id recommendation; the three consumers agreeing |
 | `serialDeviceRecovery` | Each branch of the trigger tree; rate limiting; CNI install never triggers; failed recovery reports |
 | access.txt | Managed block created, updated, and address removal revoking; hand-added lines preserved; empty list produces localhost-only; malformed address and unknown level both fail |
