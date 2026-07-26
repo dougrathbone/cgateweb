@@ -75,6 +75,27 @@ class SerialDeviceRecovery {
         return value === undefined || value === null ? defaultSettings[key] : value;
     }
 
+    /**
+     * A numeric setting, clamped the way the rest of src/ clamps them.
+     *
+     * Every number this class reads gates a C-Gate restart, and a bare Number()
+     * of a mistyped option yields NaN, which fails both guards *open*:
+     * `attempts >= NaN` is false, so the cap never trips, and
+     * `now < lastAttemptAt + NaN` is false, so the backoff never waits. A single
+     * typo in one option was therefore enough to reproduce a restart-every-poll
+     * loop. clampSetting falls back to the shipped default for NaN (and for 0,
+     * which is never a sensible value for any of these) and then applies a
+     * floor, so no configuration can produce a value that disables the bound it
+     * is meant to express.
+     *
+     * @param {string} key
+     * @param {number} floor
+     * @returns {number}
+     */
+    _clampedSetting(key, floor) {
+        return clampSetting(this.settings[key], floor, defaultSettings[key]);
+    }
+
     /** @returns {boolean} True only when a local serial PCI is in play at all. */
     _appliesHere() {
         if (!this.settings.cgate_serial_device) return false;
@@ -217,13 +238,13 @@ class SerialDeviceRecovery {
         //   - now - lastAttemptAt >= stableWindowMs: enough time has passed
         //     since that attempt for the recovery to count as having held.
         const now = this.now();
-        const stableWindowMs = Number(this._setting('serialRecoveryStableWindowMs'));
+        const stableWindowMs = this._clampedSetting('serialRecoveryStableWindowMs', 1000);
         const seenUpSinceLastAttempt = state.lastUpAt !== null && state.lastUpAt >= state.lastAttemptAt;
         if (state.attempts > 0 && seenUpSinceLastAttempt && (now - state.lastAttemptAt) >= stableWindowMs) {
             state.attempts = 0;
         }
 
-        const maxAttempts = Number(this._setting('serialRecoveryMaxAttempts'));
+        const maxAttempts = this._clampedSetting('serialRecoveryMaxAttempts', 1);
         if (state.attempts >= maxAttempts) {
             const exhausted = `${message}. Recovery gave up after ${maxAttempts} attempt(s); `
                 + 'reconnect the PC Interface and restart the add-on.';
@@ -236,8 +257,8 @@ class SerialDeviceRecovery {
         // into a restart loop.
         if (state.attempts > 0) {
             const waitMs = backoffDelay(state.attempts - 1, {
-                initialMs: Number(this._setting('serialRecoveryInitialDelayMs')),
-                maxMs: Number(this._setting('serialRecoveryMaxDelayMs')),
+                initialMs: this._clampedSetting('serialRecoveryInitialDelayMs', 1000),
+                maxMs: this._clampedSetting('serialRecoveryMaxDelayMs', 1000),
                 // No jitter: there is one local device, so there is no herd to
                 // spread, and a predictable delay is easier to read in a log.
                 jitter: false
@@ -360,11 +381,7 @@ class SerialDeviceRecovery {
      * @returns {number}
      */
     _timeoutMs() {
-        return clampSetting(
-            this.settings.serialRecoveryTimeoutMs,
-            1000,
-            defaultSettings.serialRecoveryTimeoutMs
-        );
+        return this._clampedSetting('serialRecoveryTimeoutMs', 1000);
     }
 
     /**

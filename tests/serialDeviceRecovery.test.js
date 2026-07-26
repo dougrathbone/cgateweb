@@ -373,6 +373,40 @@ describe('SerialDeviceRecovery', () => {
             expect(execImpl).toHaveBeenCalledTimes(1);
         });
 
+        it('still bounds the restarts when every tunable is mistyped', () => {
+            // NaN fails both guards open - `attempts >= NaN` is false and
+            // `now < lastAttemptAt + NaN` is false - so a single unparseable
+            // option was enough to reproduce a restart on every poll. Clamping
+            // falls back to the shipped defaults instead.
+            const fsImpl = makeFs({ present: ['/dev/ttyUSB0'] });
+            const { recovery, clock, execImpl } = makeRecovery({
+                settings: {
+                    serialRecoveryMaxAttempts: 'three',
+                    serialRecoveryInitialDelayMs: '',
+                    serialRecoveryMaxDelayMs: null,
+                    serialRecoveryStableWindowMs: 'fifteen minutes'
+                },
+                fsImpl
+            });
+
+            recovery.handleInterfaceUp('254');
+            clock.t += 3600000;
+            fsImpl.realpathSync = p => { throw fsError('ENOENT', p); };
+
+            for (let i = 0; i < 12; i++) {
+                clock.t += 600000;
+                recovery.handleInterfaceDown('254');
+            }
+
+            // The shipped default cap, not "unbounded".
+            expect(execImpl).toHaveBeenCalledTimes(defaultSettings.serialRecoveryMaxAttempts);
+        });
+
+        it('keeps a sub-second recovery timeout at the one-second floor', () => {
+            const { recovery } = makeRecovery({ settings: { serialRecoveryTimeoutMs: 5 } });
+            expect(recovery._timeoutMs()).toBe(1000);
+        });
+
         it('tracks each network\'s budget separately', () => {
             const { recovery, execImpl } = makeRecovery({
                 settings: { serialRecoveryMaxAttempts: 1 },
