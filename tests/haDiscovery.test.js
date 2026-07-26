@@ -2918,6 +2918,20 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         expect(rawPayload(on.publish, 'light', 1)).toBe(rawPayload(off.publish, 'light', 1));
     });
 
+    it('does not warn about an unknown resolved type for a dimmer-driven group', () => {
+        const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
+        const warnSpy = jest.spyOn(d.logger, 'warn').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        // light-dimmable is a recognised outcome that falls through to the
+        // default light path deliberately, not a type the lookup table has
+        // never heard of.
+        const warned = warnSpy.mock.calls.some(c => /unknown resolved type/i.test(String(c[0])));
+        expect(warned).toBe(false);
+        warnSpy.mockRestore();
+    });
+
     it('lets a manual type override beat unit-type classification', () => {
         const { d, publish } = makeDiscovery(
             { ha_discovery_type_from_unit: true },
@@ -2992,6 +3006,10 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         d._publishDiscoveryFromTree('254', UNIT_TREE);
         const payload = payloadFor(publish, 'light', 2);
 
+        // Pin the on/off shape itself, not just the label/area/object_id
+        // carry-through, which is identical on the default dimmable light too.
+        expect(payload).not.toHaveProperty('brightness_command_topic');
+        expect(payload.command_topic).toBe('cbus/write/254/56/2/switch');
         expect(payload.device.name).toBe('Garden Taps');
         expect(payload.device.suggested_area).toBe('Garden');
         expect(payload.object_id).toBe('garden_taps');

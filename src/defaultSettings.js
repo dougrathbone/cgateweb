@@ -82,8 +82,12 @@ const defaultSettings = {
     // (issues #38, #37): dimmer channels become dimmable lights, relay channels
     // on/off lights, and groups driven only by an input unit (bus coupler, key
     // input) become binary sensors. Opt-in, because enabling it can change which
-    // entity a group already published as. Manual type_overrides still win, and
-    // unrecognised unit types are left alone.
+    // entity a group already published as. Precedence: manual type_overrides
+    // win first, then the cover-name keyword heuristics, then this unit-type
+    // classification. Cover names outrank unit type because a relay can equally
+    // drive a light, a motorised blind or an irrigation valve — a name that
+    // positively identifies a cover is better evidence than the hardware type.
+    // Unrecognised unit types are left alone.
     ha_discovery_type_from_unit: false,
     ha_discovery_hvac_app_id: null,
     // C-Bus Air Conditioning app ID for native temperature reads (e.g. 172); null disables.
