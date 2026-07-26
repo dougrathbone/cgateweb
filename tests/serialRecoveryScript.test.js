@@ -12,6 +12,18 @@ const SCRIPT = path.join(
     __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-recover-serial'
 );
 
+// The repo copies of the two node helpers. `node` itself is stubbed below, so
+// these are never executed — but the script now checks the resolver is readable
+// before running it (node exits 1 for a missing script too, which the exit-code
+// contract would otherwise read as "the device is absent"), so the default has
+// to be a path that really exists.
+const RESOLVER_JS = path.join(
+    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-resolve-serial.js'
+);
+const FIXUP_JS = path.join(
+    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-project-serial-fixup.js'
+);
+
 // Stand-ins for the three externals the script uses. `node` dispatches on the
 // script it was handed (resolver vs project fixup) and records every call;
 // `kill` is a shell builtin, so it can only be intercepted by a function.
@@ -78,8 +90,8 @@ function runRecover({ env: envOverrides = {}, args = ['/dev/ttyUSB0'], setup = {
         CGW_DIR: dir,
         CGATEWEB_PROC_ROOT: procRoot,
         CGATEWEB_PROJECTS_DIR: projectsDir,
-        CGATEWEB_RESOLVE_SERIAL_JS: '/usr/bin/cgateweb-resolve-serial.js',
-        CGATEWEB_PROJECT_FIXUP_JS: '/usr/bin/cgateweb-project-serial-fixup.js',
+        CGATEWEB_RESOLVE_SERIAL_JS: RESOLVER_JS,
+        CGATEWEB_PROJECT_FIXUP_JS: FIXUP_JS,
         ...envOverrides
     };
     const quoted = args.map(a => `'${a}'`).join(' ');
@@ -143,6 +155,27 @@ describeBash('cgateweb-recover-serial (issue #28)', () => {
             expect(r.status).toBe(1);
             expect(r.stderr).toMatch(/not present/i);
             expect(r.nodeCalls).not.toMatch(/serial-fixup/);
+            expect(r.killCalls).toBe('');
+        } finally {
+            cleanup(r);
+        }
+    });
+
+    it('exits 2, not 1, when the resolver script is missing from the image', () => {
+        // node exits 1 for a missing or unreadable script as well, and the caller
+        // reads 1 as "the device was absent" - which deliberately does NOT charge
+        // the attempt budget, so that the poll loop is still watching whenever the
+        // interface is plugged back in. A broken image reported that way would
+        // therefore re-spawn this helper on every poll for ever, while telling the
+        // user their PC Interface could not be found. It has to be exit 2.
+        const r = runRecover({ env: { CGATEWEB_RESOLVE_SERIAL_JS: '/nonexistent/cgateweb-resolve-serial.js' } });
+        try {
+            expect(r.status).toBe(2);
+            expect(r.stderr).toMatch(/missing or unreadable/);
+            expect(r.stderr).toMatch(/broken add-on image/);
+            // The device was never examined, so nothing may claim it was absent.
+            expect(r.stderr).not.toMatch(/not present/i);
+            expect(r.nodeCalls).toBe('');
             expect(r.killCalls).toBe('');
         } finally {
             cleanup(r);

@@ -49,6 +49,21 @@ if [[ -z "${CONFIGURED}" ]]; then
 fi
 
 # ─── 1. Re-resolve the configured device ─────────────────────────────────────
+# node exits 1 for its own failures too - a missing or unreadable script after a
+# packaging slip, or any uncaught throw - and the exit-code contract below reads
+# 1 as "the device is genuinely absent". That distinction matters more here than
+# at cont-init: the caller deliberately does not charge the attempt budget for an
+# absent device, precisely so it is still watching when the interface is plugged
+# back in. So a broken image reported as an absent device would re-spawn this
+# helper on every poll, for ever, while telling the user their PC Interface could
+# not be found. Check the script up front, the same guard cont-init.d already
+# makes for the same reason.
+if [[ ! -r "${RESOLVE_SERIAL_JS}" ]]; then
+    echo "WARN: the serial device resolver is missing or unreadable: ${RESOLVE_SERIAL_JS}" >&2
+    echo "WARN: this is a broken add-on image, not a missing device — ${CONFIGURED} was not checked at all" >&2
+    exit "${EXIT_OTHER_FAILURE}"
+fi
+
 # The resolver takes the *configured* option (not the path C-Gate was last
 # pointed at) and finds the device by its remembered identity, so a renumber is
 # transparent. Its stderr is left to flow to ours: those INFO:/WARN: lines are
