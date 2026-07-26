@@ -5,6 +5,7 @@ const nodeFs = require('fs');
 const nodePath = require('path');
 const { execFileSync } = require('child_process');
 const { backoffDelay } = require('./backoff');
+const { clampSetting } = require('./utils');
 const { defaultSettings } = require('./defaultSettings');
 
 const DEFAULT_DEVICE_FILE = '/run/cgateweb/serial-device';
@@ -284,6 +285,20 @@ class SerialDeviceRecovery {
     }
 
     /**
+     * How long the helper may run. Clamped because execFileSync reads a timeout of
+     * 0 as "no timeout at all", which would let a wedged helper block the bridge's
+     * event loop for good - the opposite of what this bound is for.
+     * @returns {number}
+     */
+    _timeoutMs() {
+        return clampSetting(
+            this.settings.serialRecoveryTimeoutMs,
+            1000,
+            defaultSettings.serialRecoveryTimeoutMs
+        );
+    }
+
+    /**
      * Default child-process runner. Synchronous on purpose: recovery is a rare,
      * ordered sequence (resolve, repoint, restart) and the bridge has nothing
      * useful to do until C-Gate is back. The timeout is what keeps a wedged
@@ -296,7 +311,7 @@ class SerialDeviceRecovery {
         try {
             const stdout = execFileSync(file, args, {
                 encoding: 'utf8',
-                timeout: Number(this._setting('serialRecoveryTimeoutMs')),
+                timeout: this._timeoutMs(),
                 stdio: ['ignore', 'pipe', 'pipe']
             });
             return { status: 0, stdout, stderr: '' };

@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const SerialDeviceRecovery = require('../src/serialDeviceRecovery');
+const { defaultSettings } = require('../src/defaultSettings');
 const { posixBashAvailable } = require('./helpers/posixBash');
 
 const DEVICE_FILE = '/run/cgateweb/serial-device';
@@ -336,6 +337,40 @@ describe('SerialDeviceRecovery', () => {
             const result = recovery.handleInterfaceDown('254');
             expect(result.action).toBe('recovered');
             expect(result.message).toMatch(/\/dev\/ttyUSB7/);
+        });
+
+        (posixBashAvailable() ? it : it.skip)('gives up on a helper that hangs instead of blocking with it', () => {
+            // The helper runs synchronously on the bridge's event loop, so MQTT
+            // keepalive, LWT and the pool health checks all wait behind it. The
+            // timeout is the only bound on that stall.
+            const script = path.join(dir, 'recover');
+            fs.writeFileSync(script, '#!/usr/bin/env bash\nsleep 5\n', { mode: 0o755 });
+            process.env.CGATEWEB_RECOVER_SCRIPT = script;
+            const recovery = new SerialDeviceRecovery({
+                settings: { ...SETTINGS, serialRecoveryTimeoutMs: 1000 },
+                logger: makeLogger(),
+                fsImpl: makeFs()
+            });
+
+            const startedAt = Date.now();
+            const result = recovery.handleInterfaceDown('254');
+
+            expect(result.action).toBe('failed');
+            expect(result.message).toMatch(/timed out/);
+            expect(Date.now() - startedAt).toBeLessThan(4000);
+        });
+
+        it('will not let a zero timeout mean "wait forever"', () => {
+            // execFileSync reads timeout: 0 as no timeout at all, which would
+            // hand a wedged helper the whole bridge.
+            const zero = new SerialDeviceRecovery({ settings: { ...SETTINGS, serialRecoveryTimeoutMs: 0 } });
+            expect(zero._timeoutMs()).toBe(defaultSettings.serialRecoveryTimeoutMs);
+
+            const tiny = new SerialDeviceRecovery({ settings: { ...SETTINGS, serialRecoveryTimeoutMs: 5 } });
+            expect(tiny._timeoutMs()).toBe(1000);
+
+            const configured = new SerialDeviceRecovery({ settings: { ...SETTINGS, serialRecoveryTimeoutMs: 30000 } });
+            expect(configured._timeoutMs()).toBe(30000);
         });
 
         (posixBashAvailable() ? it : it.skip)('surfaces the stderr of a failing script', () => {

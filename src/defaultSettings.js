@@ -152,9 +152,16 @@ const defaultSettings = {
     // How long the interface must have been back up for the next outage to count
     // as new trouble and get a fresh attempt budget.
     serialRecoveryStableWindowMs: 900000,
-    // Cap on the recovery helper's run time; it runs synchronously, so this is
-    // what stops a wedged helper wedging the bridge.
-    serialRecoveryTimeoutMs: 60000,
+    // Cap on the recovery helper's run time. The helper runs synchronously from
+    // inside C-Gate response processing, so for its whole duration MQTT keepalive
+    // and LWT, the connection-pool health checks and every timer are stalled
+    // behind it - the timeout is the only thing bounding that stall. A real run
+    // costs 2-5s (node startup, the resolver, sql.js per project database, the
+    // signal), so this is a few times the expected cost rather than the minute it
+    // used to be: long enough for a slow disk, short enough that a wedged helper
+    // does not look like a dead bridge. Clamped to a 1s floor, since 0 would mean
+    // "no timeout" to execFileSync and block indefinitely.
+    serialRecoveryTimeoutMs: 15000,
     // Web diagnostics: window (ms) within which a device counts as "active" in
     // the status page's device list. Default 24h.
     web_active_device_window_ms: 24 * 60 * 60 * 1000,
