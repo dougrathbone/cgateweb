@@ -16,6 +16,10 @@ const SCRIPT = path.join(
 );
 
 const BY_ID = 'usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0';
+// An unrelated dongle that can share the ttyUSBn namespace with the PC
+// Interface, and a replacement PC Interface for the deliberate-swap case.
+const ZIGBEE_BY_ID = 'usb-Silicon_Labs_Zigbee_ZZZ-if00-port0';
+const REPLACEMENT_BY_ID = 'usb-FTDI_FT232R_USB_UART_B99999XX-if00-port0';
 const FTDI = { idVendor: '0403', idProduct: '6001', serial: 'A50285BI' };
 // The Linux Foundation's real root-hub vendor:product pair. Present on every
 // device tree, at devices/usb1, one level above the device directories built
@@ -414,6 +418,99 @@ describe('resolveSerialDevice', () => {
 
         expect(result.path).toBeNull();
         expect(messageText(result)).toMatch(/is not present either/i);
+    });
+
+    it('does not adopt a different device that took over the configured path', () => {
+        // Two dongles, one configured path: a Zigbee stick and the PC Interface
+        // both enumerate as ttyUSBn, and the kernel can order them differently
+        // on the next boot. The configured path existing is then not proof it is
+        // still our device — pointing C-Gate at the Zigbee stick opens a C-Bus
+        // network that never comes up, and every TREEXML comes back empty.
+        const file = identityFile();
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(devRoot, 'ttyUSB0');
+        resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        // Reboot with the enumeration order swapped: ttyUSB0 is now the Zigbee
+        // stick and the PC Interface came back as ttyUSB1.
+        const byIdDirPath = path.join(devRoot, 'serial', 'by-id');
+        fs.rmSync(path.join(byIdDirPath, BY_ID));
+        fs.writeFileSync(path.join(devRoot, 'ttyUSB1'), '');
+        fs.symlinkSync(path.join(devRoot, 'ttyUSB1'), path.join(byIdDirPath, BY_ID));
+        fs.symlinkSync(configuredPath, path.join(byIdDirPath, ZIGBEE_BY_ID));
+
+        const result = resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        expect(result.source).toBe('recovered');
+        expect(result.path).toBe(path.join(devRoot, 'ttyUSB1'));
+        expect(messageText(result)).toMatch(/different device than the one recorded/i);
+        expect(messageText(result)).toContain(`instead of the configured ${configuredPath}`);
+    });
+
+    it('does not overwrite the remembered identity with the device now at the configured path', () => {
+        // The other half of the damage: recording the Zigbee stick's identity
+        // over the PC Interface's leaves no boot able to recover either device.
+        const file = identityFile();
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(devRoot, 'ttyUSB0');
+        resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        const byIdDirPath = path.join(devRoot, 'serial', 'by-id');
+        fs.rmSync(path.join(byIdDirPath, BY_ID));
+        fs.writeFileSync(path.join(devRoot, 'ttyUSB1'), '');
+        fs.symlinkSync(path.join(devRoot, 'ttyUSB1'), path.join(byIdDirPath, BY_ID));
+        fs.symlinkSync(configuredPath, path.join(byIdDirPath, ZIGBEE_BY_ID));
+
+        resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        expect(JSON.parse(fs.readFileSync(file, 'utf8')).identity).toBe(BY_ID);
+    });
+
+    it('adopts and re-records a deliberately swapped-in PC Interface at the configured path', () => {
+        // The legitimate case the identity check must not break: the user
+        // replaced the interface, so the remembered device is genuinely gone and
+        // the new one answers at the configured path.
+        const file = identityFile();
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(devRoot, 'ttyUSB0');
+        resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        // New hardware, same path; the old interface is nowhere on the bus.
+        const byIdDirPath = path.join(devRoot, 'serial', 'by-id');
+        fs.rmSync(path.join(byIdDirPath, BY_ID));
+        fs.symlinkSync(configuredPath, path.join(byIdDirPath, REPLACEMENT_BY_ID));
+
+        const result = resolveSerialDevice({ configuredPath, identityFile: file, devRoot });
+
+        expect(result.source).toBe('configured');
+        expect(result.path).toBe(configuredPath);
+        expect(result.identity).toBe(REPLACEMENT_BY_ID);
+        expect(JSON.parse(fs.readFileSync(file, 'utf8')).identity).toBe(REPLACEMENT_BY_ID);
+        expect(messageText(result)).toMatch(/no longer present/i);
+    });
+
+    it('re-records the preferred identity when only its form changed for the same device', () => {
+        // This host had no /dev/serial/by-id links on the first boot, so the
+        // sysfs triple was recorded; udev now provides a by-id name for the very
+        // same device. The identities differ but nothing moved, so this is not a
+        // wrong-device case and must not be reported as one.
+        const file = identityFile();
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
+        const sysfsRoot = makeSysfsRoot({ ttyUSB0: FTDI });
+        const configuredPath = path.join(devRoot, 'ttyUSB0');
+        const first = resolveSerialDevice({ configuredPath, identityFile: file, devRoot, sysfsRoot });
+        expect(first.identity).toBe('0403:6001:A50285BI');
+
+        const byIdDirPath = path.join(devRoot, 'serial', 'by-id');
+        fs.mkdirSync(byIdDirPath, { recursive: true });
+        fs.symlinkSync(configuredPath, path.join(byIdDirPath, BY_ID));
+
+        const result = resolveSerialDevice({ configuredPath, identityFile: file, devRoot, sysfsRoot });
+
+        expect(result.source).toBe('configured');
+        expect(result.path).toBe(configuredPath);
+        expect(JSON.parse(fs.readFileSync(file, 'utf8')).identity).toBe(BY_ID);
+        expect(messageText(result)).not.toMatch(/different device/i);
     });
 
     it('ignores a corrupt remembered identity rather than resolving a traversal', () => {

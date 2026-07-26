@@ -9,6 +9,14 @@
  * "stable" means) on every good boot, and uses it to find the device again
  * after a renumber.
  *
+ * The configured path merely existing is not enough: two USB serial dongles can
+ * trade ttyUSBn names between boots, so when the device at the configured path
+ * has a different identity than the remembered one, the remembered device is
+ * preferred while it is still present (and the memo is never overwritten with
+ * the other device's identity). Only when the remembered device has genuinely
+ * gone — a deliberate PC Interface swap — does the configured path win and get
+ * its new identity recorded.
+ *
  * Adoption requires an identity match: the /dev/serial/by-id link name when
  * udev provides one, or a vendor:product:serial triple read from sysfs when it
  * does not. The sysfs fallback deliberately requires a serial number — many
@@ -268,6 +276,44 @@ function saveRememberedIdentity(identityFile, identity) {
 }
 
 /**
+ * Finish a resolution that adopted a path other than the configured one:
+ * recommend the by-id path when one genuinely resolves to the adopted device,
+ * and explain why there is none when it does not.
+ *
+ * `remembered` is only a by-id link name when the lookup actually went through
+ * /dev/serial/by-id — the same check findDeviceByIdentity's by-id branch made.
+ * When it instead came through the sysfs scan (because this host has no by-id
+ * links at all), `remembered` is a vendor:product:serial triple, and
+ * path.join(byIdDir, remembered) would name a by-id path that cannot exist —
+ * advising a user to switch cgate_serial_device to it would break every future
+ * boot before recovery gets a chance to run. Only recommend the by-id path when
+ * it genuinely resolves back to the device just adopted.
+ *
+ * @param {string} remembered
+ * @param {string} adopted
+ * @param {{ devRoot?: string, sysfsRoot?: string }} opts
+ * @param {Array<{level: 'info'|'warning', text: string}>} messages
+ * @returns {{ path: string, source: 'recovered', identity: string, stablePath: string|null, messages: Array<{level: 'info'|'warning', text: string}> }}
+ */
+function adoptedByIdentityResult(remembered, adopted, opts, messages) {
+    const byIdPath = path.join(byIdDir(opts.devRoot), remembered);
+    const byIdTarget = lexicalRealPathOrNull(byIdPath);
+    const foundViaById = !!byIdTarget && byIdTarget === adopted && TTY_NAME.test(path.basename(byIdTarget));
+
+    let stablePath = null;
+    if (foundViaById) {
+        stablePath = byIdPath;
+        messages.push(info(`Update cgate_serial_device to ${stablePath} so this survives future replugs`));
+    } else {
+        messages.push(info(
+            'This host has no /dev/serial/by-id link for the device, so there is no stable path to switch '
+            + 'cgate_serial_device to; automatic recovery by identity will keep working on future replugs'
+        ));
+    }
+    return { path: adopted, source: 'recovered', identity: remembered, stablePath, messages };
+}
+
+/**
  * @param {object} args
  * @param {string} args.configuredPath
  * @param {string} [args.identityFile]
@@ -289,6 +335,45 @@ function resolveSerialDevice(args) {
         const byIdName = identityFromByIdDir(configuredPath, opts);
         const rawIdentity = byIdName || identityFromSysfs(configuredPath, opts);
         const identity = isUsableIdentity(rawIdentity) ? rawIdentity : null;
+
+        // The configured path existing is NOT proof it is still our device.
+        // Two USB serial dongles (say a Zigbee stick and the PC Interface) can
+        // trade ttyUSBn between boots depending on enumeration order, so
+        // /dev/ttyUSB0 can be the Zigbee stick this boot. Pointing C-Gate at it
+        // opens a C-Bus network that never comes up, and — worse — recording
+        // its identity over the remembered one would destroy the only means of
+        // finding either device again. So when the identity here disagrees with
+        // the remembered one, the remembered device wins if it is still present.
+        const remembered = loadRememberedIdentity(identityFile);
+        if (identity && remembered && identity !== remembered) {
+            const rememberedPath = findDeviceByIdentity(remembered, opts);
+            // Same device, different identity form (e.g. this host gained
+            // /dev/serial/by-id links since the last boot, so the by-id name
+            // now outranks the sysfs triple that was recorded): nothing has
+            // moved, just re-record below under the preferred identity.
+            if (rememberedPath && rememberedPath !== lexicalRealPathOrNull(configuredPath)) {
+                messages.push(warn(
+                    `${configuredPath} exists but is a different device than the one recorded on the last good boot `
+                    + `(expected ${remembered}, found ${identity}) — USB serial devices can trade names between boots`
+                ));
+                messages.push(warn(
+                    `Recovered: the previously-used device is now at ${rememberedPath} — adopting it for this boot `
+                    + `instead of the configured ${configuredPath}`
+                ));
+                return adoptedByIdentityResult(remembered, rememberedPath, opts, messages);
+            }
+            if (!rememberedPath) {
+                // A deliberate hardware swap looks exactly like this: the old
+                // interface is gone for good and its replacement answers at the
+                // configured path. Adopt it and re-record, so recovery keeps
+                // working for the device the user actually has now.
+                messages.push(warn(
+                    `The device recorded on the last good boot (${remembered}) is no longer present; `
+                    + `${configuredPath} now holds a different device (${identity}) — adopting it and recording its identity`
+                ));
+            }
+        }
+
         if (identity) saveRememberedIdentity(identityFile, identity);
         else messages.push(warn(`No stable identity found for ${configuredPath}; automatic recovery after a replug will not be possible`));
 
@@ -317,31 +402,7 @@ function resolveSerialDevice(args) {
     }
 
     messages.push(warn(`Recovered: the previously-used device is now at ${recovered} — adopting it for this boot`));
-
-    // `remembered` is only a by-id link name when recovery actually went
-    // through /dev/serial/by-id — the same check findDeviceByIdentity's by-id
-    // branch made. When recovery instead came through the sysfs scan (because
-    // this host has no by-id links at all), `remembered` is a vendor:product:
-    // serial triple, and path.join(byIdDir, remembered) would name a by-id
-    // path that cannot exist — advising a user to switch cgate_serial_device
-    // to it would break every future boot before recovery gets a chance to
-    // run. Only recommend the by-id path when it genuinely resolves back to
-    // the device we just recovered.
-    const byIdPath = path.join(byIdDir(opts.devRoot), remembered);
-    const byIdTarget = lexicalRealPathOrNull(byIdPath);
-    const recoveredViaById = !!byIdTarget && byIdTarget === recovered && TTY_NAME.test(path.basename(byIdTarget));
-
-    let stablePath = null;
-    if (recoveredViaById) {
-        stablePath = byIdPath;
-        messages.push(info(`Update cgate_serial_device to ${stablePath} so this survives future replugs`));
-    } else {
-        messages.push(info(
-            'This host has no /dev/serial/by-id link for the device, so there is no stable path to switch '
-            + 'cgate_serial_device to; automatic recovery by identity will keep working on future replugs'
-        ));
-    }
-    return { path: recovered, source: 'recovered', identity: remembered, stablePath, messages };
+    return adoptedByIdentityResult(remembered, recovered, opts, messages);
 }
 
 function main() {
