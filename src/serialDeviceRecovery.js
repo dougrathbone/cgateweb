@@ -21,8 +21,11 @@ const EXIT_DEVICE_ABSENT = 1;
  *
  * A replugged PCI can come back on a different ttyUSBn. C-Gate keeps holding the
  * port it opened, the network sits at InterfaceState=closed, and until now only
- * an add-on restart fixed it. NetworkInterfaceMonitor already spots the
- * transition, so recovery hangs off that.
+ * an add-on restart fixed it. NetworkInterfaceMonitor already polls each
+ * network's interface state, so recovery hangs off that - off every offline
+ * reading, not just the transition, because the transition happens while the
+ * PCI is still out and the replug that follows changes nothing the monitor can
+ * report.
  *
  * Two signals distinguish a renumber from a genuine fault:
  *   - the device path C-Gate was pointed at has vanished (a raw /dev/ttyUSBn
@@ -55,8 +58,9 @@ class SerialDeviceRecovery {
         this.exec = execImpl || ((file, args) => this._runScript(file, args));
         this.now = now || Date.now;
         /**
-         * Per-network recovery state.
-         * @type {Map<string, {attempts: number, lastAttemptAt: number, lastUpAt: number|null, portInUse: string|null}>}
+         * Per-network recovery state. `reported` holds the messages already
+         * logged loudly during the current outage (see _reportOnce).
+         * @type {Map<string, {attempts: number, lastAttemptAt: number, lastUpAt: number|null, portInUse: string|null, reported: Set<string>}>}
          */
         this.networks = new Map();
     }
@@ -113,14 +117,36 @@ class SerialDeviceRecovery {
         const id = String(networkId);
         let state = this.networks.get(id);
         if (!state) {
-            state = { attempts: 0, lastAttemptAt: 0, lastUpAt: null, portInUse: null };
+            state = { attempts: 0, lastAttemptAt: 0, lastUpAt: null, portInUse: null, reported: new Set() };
             this.networks.set(id, state);
         }
         return state;
     }
 
     /**
-     * Called when a network's interface transitions down.
+     * Log an outage report at its natural level the first time it is seen, and at
+     * debug if it repeats. handleInterfaceDown runs on every poll while the
+     * interface is down (that is how a replug gets noticed), so a PC Interface
+     * left unplugged would otherwise repeat the same warning every poll for as
+     * long as it stays out. The set is cleared when the interface comes back, so
+     * the next outage says everything again.
+     * @param {{reported: Set<string>}} state
+     * @param {'info'|'warn'|'error'|'debug'} level
+     * @param {string} message
+     */
+    _reportOnce(state, level, message) {
+        const firstTimeThisOutage = !state.reported.has(message);
+        state.reported.add(message);
+        this._log(firstTimeThisOutage ? level : 'debug', message);
+    }
+
+    /**
+     * Called for every reading that shows a network's interface down - not only
+     * the transition. C-Gate reports a closed network as closed on every poll, so
+     * the transition is the one moment the PC Interface is guaranteed still to be
+     * unplugged; the replug that follows produces no transition at all. Repeats
+     * are throttled by the backoff and the attempt cap below, and their reports
+     * are deduplicated by _reportOnce.
      * @param {string} networkId
      * @returns {{action: 'ignored'|'reported'|'recovered'|'failed', message: string|null}}
      */
@@ -146,7 +172,7 @@ class SerialDeviceRecovery {
         const message = vanished
             ? `C-Bus PC Interface ${device} is no longer present (network ${networkId})`
             : `C-Bus PC Interface ${device} now points at ${port} instead of ${state.portInUse} (network ${networkId})`;
-        this._log('warn', message);
+        this._reportOnce(state, 'warn', message);
 
         if (this._setting('serialRecoveryEnabled') === false) {
             return { action: 'reported', message };
@@ -166,7 +192,7 @@ class SerialDeviceRecovery {
         if (state.attempts >= maxAttempts) {
             const exhausted = `${message}. Recovery gave up after ${maxAttempts} attempt(s); `
                 + 'reconnect the PC Interface and restart the add-on.';
-            this._log('error', exhausted);
+            this._reportOnce(state, 'error', exhausted);
             return { action: 'reported', message: exhausted };
         }
 
@@ -185,7 +211,7 @@ class SerialDeviceRecovery {
             if (now < dueAt) {
                 const waiting = `${message}. Waiting ${Math.ceil((dueAt - now) / 1000)}s before the next recovery attempt `
                     + `(${state.attempts} of ${maxAttempts} already tried).`;
-                this._log('warn', waiting);
+                this._reportOnce(state, 'warn', waiting);
                 return { action: 'reported', message: waiting };
             }
         }
@@ -200,7 +226,7 @@ class SerialDeviceRecovery {
 
         if (result.status !== 0) {
             const failed = `${message}. Recovery failed: ${this._failureReason(script, result)}`;
-            this._log('error', failed);
+            this._reportOnce(state, 'error', failed);
             return { action: 'failed', message: failed };
         }
 
@@ -228,6 +254,8 @@ class SerialDeviceRecovery {
         if (!this._appliesHere()) return;
         const state = this._stateFor(networkId);
         state.lastUpAt = this.now();
+        // The outage is over, so its reports may all be said again next time.
+        state.reported.clear();
         state.portInUse = this._portFor(this._effectiveDevicePath());
         if (state.attempts > 0) {
             this._log('info', `C-Bus network ${networkId} interface is back on ${state.portInUse} `

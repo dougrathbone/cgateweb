@@ -267,6 +267,25 @@ describe('SerialDeviceRecovery', () => {
             expect(execImpl).toHaveBeenCalledTimes(2);
         });
 
+        it('says the same thing once per outage, not once per poll', () => {
+            // handleInterfaceDown now runs on every offline poll, so an interface
+            // left unplugged would otherwise repeat the same warning forever.
+            const { recovery, logger } = makeRecovery({
+                settings: { serialRecoveryEnabled: false },
+                fsImpl: makeFs()
+            });
+
+            recovery.handleInterfaceDown('254');
+            recovery.handleInterfaceDown('254');
+            recovery.handleInterfaceDown('254');
+            expect(logger.warn).toHaveBeenCalledTimes(1);
+
+            // A new outage is new news.
+            recovery.handleInterfaceUp('254');
+            recovery.handleInterfaceDown('254');
+            expect(logger.warn).toHaveBeenCalledTimes(2);
+        });
+
         it('does nothing but report when recovery is disabled', () => {
             const { recovery, execImpl } = makeRecovery({
                 settings: { serialRecoveryEnabled: false },

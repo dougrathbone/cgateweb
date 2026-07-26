@@ -193,11 +193,13 @@ database at the new port, and restarts only the internal C-Gate. Expect a short
 outage while C-Gate restarts; the log explains what moved where.
 
 This never runs for CNI (ethernet) installs, which have no
-`cgate_serial_device`, and it does not run for an interface that is simply
-unplugged — there is nothing to reopen until you plug it back in. Repeated
-attempts are spaced out and capped, so a faulty cable cannot put C-Gate into a
-restart loop; if the cap is reached, reconnect the interface and restart the
-add-on.
+`cgate_serial_device`, and it never restarts C-Gate for an interface that is
+simply unplugged — there is nothing to reopen until you plug it back in. It
+keeps looking while the network stays closed, so however long the interface was
+out, recovery happens on the next check (roughly 30 seconds) after you plug it
+back in. Repeated restarts are spaced out and capped, so a faulty cable cannot
+put C-Gate into a restart loop; if the cap is reached, reconnect the interface
+and restart the add-on.
 
 **Known limitations**
 

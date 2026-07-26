@@ -1,6 +1,7 @@
 'use strict';
 
 const CniNotificationManager = require('../src/cniNotificationManager');
+const SerialDeviceRecovery = require('../src/serialDeviceRecovery');
 const haNotifier = require('../src/haNotifier');
 
 jest.mock('../src/haNotifier', () => ({
@@ -166,13 +167,112 @@ describe('CniNotificationManager', () => {
             expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledWith('254');
         });
 
-        it('does not re-trigger recovery on a repeated offline reading', () => {
+        it('re-triggers recovery on a repeated offline reading', () => {
+            // Deliberately not gated on result.changed. A network that is already
+            // closed reports closed on every poll with changed:false, so a
+            // transition-only hand-off would get exactly one attempt -- taken
+            // while the PC Interface is still unplugged. The replug produces no
+            // transition, so recovery has to be offered every offline reading.
             const serialDeviceRecovery = makeRecovery();
             const deps = makeDeps({ serialDeviceRecovery });
             const mgr = new CniNotificationManager(deps);
             mgr.handleReading('254', { interfaceState: 'closed' });
             mgr.handleReading('254', { interfaceState: 'closed' });
-            expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledTimes(1);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledTimes(3);
+        });
+
+        it('still notifies and publishes only once across those repeated readings', () => {
+            // The recovery hand-off moved out of the result.changed block; the
+            // notification and the retained state publish must not follow it.
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(haNotifier.createPersistentNotification).toHaveBeenCalledTimes(1);
+            expect(deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state'))
+                .toHaveLength(1);
+        });
+
+        it('hands an interface that stays up back only on the transition', () => {
+            // handleInterfaceUp stamps "up since now", which is what decides
+            // whether the next outage earns a fresh attempt budget; re-stamping
+            // it every poll would mean no outage ever qualified.
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'running' });
+            mgr.handleReading('254', { interfaceState: 'running' });
+            expect(serialDeviceRecovery.handleInterfaceUp).toHaveBeenCalledTimes(1);
+        });
+
+        it('recovers a replug that finishes after the outage was first seen (issue #28)', () => {
+            // The physical sequence this feature exists for, with the real
+            // collaborator: running, unplug, one failed attempt while the device
+            // is genuinely absent, replug onto a different port, then another
+            // *unchanged* offline poll -- which is all the monitor produces once
+            // the network is closed.
+            const clock = { t: 1000 };
+            const present = new Set(['/dev/ttyUSB0']);
+            const enoent = (p) => {
+                const err = new Error(`ENOENT: ${p}`);
+                /** @type {any} */ (err).code = 'ENOENT';
+                return err;
+            };
+            const fsImpl = {
+                existsSync: (p) => present.has(p),
+                // Not the add-on: no published device file, so the option is used.
+                readFileSync: (p) => { throw enoent(p); },
+                realpathSync: (p) => {
+                    if (!present.has(p)) throw enoent(p);
+                    return p;
+                }
+            };
+            // The helper re-resolves by remembered identity: it fails while
+            // nothing is plugged in and succeeds once the new port appears.
+            const execImpl = jest.fn(() => (present.has('/dev/ttyUSB1')
+                ? { status: 0, stdout: '/dev/ttyUSB1\n', stderr: '' }
+                : { status: 1, stdout: '', stderr: 'WARN: /dev/ttyUSB0 is not present' }));
+            const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+            const serialDeviceRecovery = new SerialDeviceRecovery({
+                settings: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+                logger,
+                fsImpl,
+                execImpl,
+                now: () => clock.t
+            });
+            const mgr = new CniNotificationManager(makeDeps({ serialDeviceRecovery }));
+
+            mgr.handleReading('254', { interfaceState: 'running' });
+            present.delete('/dev/ttyUSB0');
+            clock.t += 30000;
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(execImpl).toHaveBeenCalledTimes(1);
+
+            present.add('/dev/ttyUSB1'); // the user plugs it back in
+            clock.t += 30000;            // the next poll: closed again, changed:false
+            mgr.handleReading('254', { interfaceState: 'closed' });
+
+            expect(execImpl).toHaveBeenCalledTimes(2);
+            expect(logger.warn).toHaveBeenCalledWith(
+                expect.stringMatching(/Re-resolved the PC Interface to \/dev\/ttyUSB1/)
+            );
+        });
+
+        it('never attempts a restart for a CNI install however long it stays offline', () => {
+            // No cgate_serial_device: an ethernet CNI outage is a genuine network
+            // fault, and there is no local device to re-resolve. Feeding every
+            // offline poll to recovery must not change that.
+            const execImpl = jest.fn();
+            const serialDeviceRecovery = new SerialDeviceRecovery({
+                settings: { cgate_mode: 'managed', cgate_serial_device: null },
+                logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+                execImpl
+            });
+            const mgr = new CniNotificationManager(makeDeps({ serialDeviceRecovery }));
+            for (let i = 0; i < 5; i++) mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(execImpl).not.toHaveBeenCalled();
         });
 
         it('works without the collaborator', () => {
