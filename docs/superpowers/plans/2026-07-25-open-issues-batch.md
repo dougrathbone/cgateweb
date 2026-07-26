@@ -58,6 +58,7 @@ Spec: `docs/superpowers/specs/2026-07-25-open-issues-batch-design.md`
 | `src/haDiscovery.js` (modify) | Build the index per run; clear it in the existing `finally`. |
 | `src/haDiscoveryPublishers.js` (modify) | New precedence step; on/off light and binary_sensor payloads. |
 | `src/defaultSettings.js` (modify) | `ha_discovery_type_from_unit: false`. |
+| `src/config/addonOptionMap.js` (modify) | Allowlist row, or the add-on toggle is a silent no-op. |
 | `homeassistant-addon/config.yaml` + 17 translations (modify) | Option surface. |
 
 ---
@@ -2055,7 +2056,15 @@ Expected: PASS. Any pre-existing test that breaks means the default-off guarante
 
 - [ ] **Step 7: Add the option and translations**
 
-`homeassistant-addon/config.yaml` schema, after `ha_discovery_type_from_label_prefix`:
+**First, add the option to the add-on option map** — without this row the toggle is a silent no-op for every HA add-on user, because `ConfigLoader` maps add-on options to runtime settings through an explicit allowlist. In `src/config/addonOptionMap.js`, following the `ha_discovery_type_from_label_prefix` row:
+
+```js
+    { src: 'ha_discovery_type_from_unit', dst: 'ha_discovery_type_from_unit', kind: 'boolDefined', when: 'haDiscovery' },
+```
+
+Add a test asserting the option survives the add-on-options conversion, so the wiring is pinned rather than assumed.
+
+Then `homeassistant-addon/config.yaml` schema, after `ha_discovery_type_from_label_prefix`:
 
 ```yaml
   ha_discovery_type_from_unit: "bool?"
