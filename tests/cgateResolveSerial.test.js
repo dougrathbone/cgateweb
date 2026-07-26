@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const {
     identityFromByIdDir,
@@ -10,8 +11,17 @@ const {
     resolveSerialDevice
 } = require('../homeassistant-addon/rootfs/usr/bin/cgateweb-resolve-serial.js');
 
+const SCRIPT = path.join(
+    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-resolve-serial.js'
+);
+
 const BY_ID = 'usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0';
 const FTDI = { idVendor: '0403', idProduct: '6001', serial: 'A50285BI' };
+// The Linux Foundation's real root-hub vendor:product pair. Present on every
+// device tree, at devices/usb1, one level above the device directories built
+// below — used to prove the sysfs walk stops at the device and never climbs
+// this far.
+const ROOT_HUB = { idVendor: '1d6b', idProduct: '0002', serial: 'HUBROOT' };
 
 const tmpDirs = [];
 
@@ -54,6 +64,16 @@ function makeSysfsRoot(devices = {}) {
     const sysfsRoot = tmpDir('cgw-sys-');
     const classTty = path.join(sysfsRoot, 'class', 'tty');
     fs.mkdirSync(classTty, { recursive: true });
+
+    // Root hub, shared by every device below (devices/usb1/1-N is the device;
+    // devices/usb1 is the hub it hangs off). It carries its own
+    // idVendor/idProduct/serial, exactly like a real root hub does, so tests
+    // can assert the walk in identityFromSysfs never climbs this far.
+    const hubDir = path.join(sysfsRoot, 'devices', 'usb1');
+    fs.mkdirSync(hubDir, { recursive: true });
+    for (const [attr, value] of Object.entries(ROOT_HUB)) {
+        fs.writeFileSync(path.join(hubDir, attr), `${value}\n`);
+    }
 
     let port = 0;
     for (const [tty, attrs] of Object.entries(devices)) {
@@ -116,6 +136,24 @@ describe('identityFromSysfs', () => {
 
         expect(identityFromSysfs('/dev/ttyUSB9', { sysfsRoot })).toBeNull();
     });
+
+    it('stops at the device and does not climb to the root hub for its identity', () => {
+        // The fixture's root hub carries ROOT_HUB's identity one level above
+        // the device directory. If the walk climbed past the device, it would
+        // return the hub's shared identity instead of the device's own.
+        const sysfsRoot = makeSysfsRoot({ ttyUSB0: FTDI });
+
+        expect(identityFromSysfs('/dev/ttyUSB0', { sysfsRoot })).toBe('0403:6001:A50285BI');
+    });
+
+    it('returns null for a serial-less device rather than inheriting the root hub identity', () => {
+        // A CH340 with no serial stops (and returns null) at the device level;
+        // it must not keep climbing to the root hub above, which does have a
+        // full vendor:product:serial identity in this fixture.
+        const sysfsRoot = makeSysfsRoot({ ttyUSB0: { idVendor: '1a86', idProduct: '7523' } });
+
+        expect(identityFromSysfs('/dev/ttyUSB0', { sysfsRoot })).toBeNull();
+    });
 });
 
 describe('readIdentity', () => {
@@ -135,6 +173,20 @@ describe('readIdentity', () => {
         const identity = readIdentity(path.join(devRoot, 'ttyUSB0'), { devRoot, sysfsRoot });
 
         expect(identity).toBe(BY_ID);
+    });
+
+    it('discards an identity containing a path separator rather than returning it as usable', () => {
+        // A USB string descriptor can legally contain '/'. Such an identity
+        // could never be re-read by loadRememberedIdentity's own validation,
+        // so it must be treated as no identity at the point it is produced —
+        // otherwise it gets silently saved and then permanently rejected on
+        // load, losing recovery without ever warning that it was lost.
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
+        const sysfsRoot = makeSysfsRoot({ ttyUSB0: { ...FTDI, serial: 'A50/285BI' } });
+
+        const identity = readIdentity(path.join(devRoot, 'ttyUSB0'), { devRoot, sysfsRoot });
+
+        expect(identity).toBeNull();
     });
 });
 
@@ -222,6 +274,23 @@ describe('resolveSerialDevice', () => {
         expect(result.messages.join('\n')).toMatch(/recovery after a replug will not be possible/i);
     });
 
+    it('treats an identity containing a path separator as no identity and warns honestly', () => {
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
+        const sysfsRoot = makeSysfsRoot({ ttyUSB0: { ...FTDI, serial: 'A50/285BI' } });
+        const file = identityFile();
+
+        const result = resolveSerialDevice({
+            configuredPath: path.join(devRoot, 'ttyUSB0'),
+            identityFile: file,
+            devRoot,
+            sysfsRoot
+        });
+
+        expect(result.identity).toBeNull();
+        expect(result.messages.join('\n')).toMatch(/recovery after a replug will not be possible/i);
+        expect(fs.existsSync(file)).toBe(false);
+    });
+
     it('recovers the new path via remembered identity after a renumber', () => {
         const file = identityFile();
         const before = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
@@ -236,6 +305,51 @@ describe('resolveSerialDevice', () => {
         expect(result.source).toBe('recovered');
         expect(result.path).toBe(path.join(after, 'ttyUSB1'));
         expect(result.messages.join('\n')).toContain('ttyUSB1');
+    });
+
+    it('recommends the by-id path when recovery went through /dev/serial/by-id', () => {
+        const file = identityFile();
+        const before = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(before, 'ttyUSB0');
+        resolveSerialDevice({ configuredPath, identityFile: file, devRoot: before });
+
+        fs.rmSync(configuredPath);
+        const after = makeDevRoot({ ttys: ['ttyUSB1'], byId: { [BY_ID]: 'ttyUSB1' } });
+        const result = resolveSerialDevice({ configuredPath, identityFile: file, devRoot: after });
+
+        expect(result.stablePath).toBe(path.join(after, 'serial', 'by-id', BY_ID));
+        expect(result.messages.join('\n')).toMatch(/Update cgate_serial_device to/);
+    });
+
+    it('does not recommend a nonexistent by-id path when recovery went through sysfs only', () => {
+        // This host has no /dev/serial/by-id directory at all, so the only
+        // route to an identity is the vendor:product:serial sysfs fallback —
+        // recommending a by-id path built from that identity would name a
+        // path that can never exist on this host.
+        const file = identityFile();
+        const before = makeDevRoot({ ttys: ['ttyUSB0'] });
+        const beforeSysfs = makeSysfsRoot({ ttyUSB0: FTDI });
+        const configuredPath = path.join(before, 'ttyUSB0');
+        const recorded = resolveSerialDevice({
+            configuredPath, identityFile: file, devRoot: before, sysfsRoot: beforeSysfs
+        });
+        expect(recorded.identity).toBe('0403:6001:A50285BI');
+
+        // Replug: renumbered, still no by-id links on this host.
+        fs.rmSync(configuredPath);
+        const after = makeDevRoot({ ttys: ['ttyUSB1'] });
+        const afterSysfs = makeSysfsRoot({ ttyUSB1: FTDI });
+        const result = resolveSerialDevice({
+            configuredPath, identityFile: file, devRoot: after, sysfsRoot: afterSysfs
+        });
+
+        expect(result.source).toBe('recovered');
+        expect(result.path).toBe(path.join(after, 'ttyUSB1'));
+        expect(result.stablePath).toBeNull();
+        expect(result.messages.join('\n')).not.toContain(
+            path.join(after, 'serial', 'by-id', '0403:6001:A50285BI')
+        );
+        expect(result.messages.join('\n')).toMatch(/no stable path/i);
     });
 
     it('does not adopt an unrelated device when the identity does not match', () => {
@@ -304,5 +418,53 @@ describe('resolveSerialDevice', () => {
 
         expect(result.path).toBeNull();
         expect(result.messages.join('\n')).toMatch(/not found/i);
+    });
+});
+
+describe('main() (spawned CLI)', () => {
+    it('exits 1 with a usage message when no path argument is given', () => {
+        const result = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(/usage: cgateweb-resolve-serial\.js/);
+    });
+
+    it('exits 1 with messages on stderr when the device cannot be resolved', () => {
+        const identityPath = path.join(tmpDir('cgw-cli-'), 'serial-identity.json');
+
+        const result = spawnSync(
+            'node',
+            [SCRIPT, '/nonexistent/cgateweb-test-device'],
+            { encoding: 'utf8', env: { ...process.env, CGATEWEB_SERIAL_IDENTITY_FILE: identityPath } }
+        );
+
+        expect(result.status).toBe(1);
+        expect(result.stderr).toMatch(/Serial device not found/);
+        expect(result.stderr).toMatch(/No previously-recorded device identity/);
+    });
+
+    it('exits 0 on the happy path and writes the resolved path to CGATEWEB_SERIAL_DEVICE_FILE', () => {
+        const dir = tmpDir('cgw-cli-');
+        const configuredPath = path.join(dir, 'my-device');
+        fs.writeFileSync(configuredPath, '');
+        const identityPath = path.join(dir, 'serial-identity.json');
+        const deviceFile = path.join(dir, 'serial-device');
+
+        const result = spawnSync(
+            'node',
+            [SCRIPT, configuredPath],
+            {
+                encoding: 'utf8',
+                env: {
+                    ...process.env,
+                    CGATEWEB_SERIAL_IDENTITY_FILE: identityPath,
+                    CGATEWEB_SERIAL_DEVICE_FILE: deviceFile
+                }
+            }
+        );
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(configuredPath);
+        expect(fs.readFileSync(deviceFile, 'utf8')).toBe(configuredPath);
     });
 });

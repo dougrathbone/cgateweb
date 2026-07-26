@@ -5,17 +5,23 @@
  *
  * A USB PC Interface that is unplugged and replugged can come back as a
  * different ttyUSBn, which made cont-init fail on a path that no longer
- * existed. This records the device's stable identity (the /dev/serial/by-id
- * link name, which encodes vendor, product and serial) on every good boot, and
- * uses it to find the device again after a renumber.
+ * existed. This records the device's stable identity (see below for what
+ * "stable" means) on every good boot, and uses it to find the device again
+ * after a renumber.
  *
- * Adoption requires an identity match on a per-unit-unique attribute (the by-id
- * link name, or vendor:product:serial from sysfs), so an unrelated dongle
- * (Zigbee, Z-Wave) on the same host is never picked up by accident. A device
- * that exposes no USB serial number has no such identity and is deliberately
- * not remembered: many Zigbee/Z-Wave sticks share the FTDI/CH340/CP2102
- * vendor:product pairs a C-Bus interface uses, so vendor:product alone would
- * be enough to adopt the wrong device.
+ * Adoption requires an identity match: the /dev/serial/by-id link name when
+ * udev provides one, or a vendor:product:serial triple read from sysfs when it
+ * does not. The sysfs fallback deliberately requires a serial number — many
+ * Zigbee/Z-Wave sticks share the FTDI/CH340/CP2102 vendor:product pairs a
+ * C-Bus interface uses, so vendor:product alone would be enough to adopt the
+ * wrong device — and a device with no serial number gets no sysfs identity at
+ * all (see identityFromSysfs).
+ *
+ * The by-id link name is a weaker guarantee: it is whatever udev's ID_SERIAL
+ * populates, which for a serial-less device collapses to just Vendor_Model.
+ * Two identical serial-less sticks of the same model then share the same
+ * by-id name — the OS cannot tell them apart either, so this is not something
+ * the resolver can fix.
  *
  * Usage: cgateweb-resolve-serial.js <configured-device-path>
  * Writes the effective path to CGATEWEB_SERIAL_DEVICE_FILE
@@ -149,12 +155,20 @@ function identityFromSysfs(devicePath, opts = {}) {
 
 /**
  * Stable identity for a device: by-id link name preferred, sysfs as fallback.
+ * Validated with isUsableIdentity before being returned — a USB string
+ * descriptor can legally contain a `/`, so identityFromByIdDir/identityFromSysfs
+ * can produce a non-null identity that would later be permanently rejected by
+ * the load-side validation. Filtering it out here, at the point the identity
+ * is produced, means callers see plain "no identity" and the caller's warning
+ * about recovery being unavailable fires honestly instead of being silently
+ * suppressed by a value that looks truthy but was never persistable.
  * @param {string} devicePath
  * @param {{ devRoot?: string, sysfsRoot?: string }} [opts]
  * @returns {string|null}
  */
 function readIdentity(devicePath, opts = {}) {
-    return identityFromByIdDir(devicePath, opts) || identityFromSysfs(devicePath, opts);
+    const identity = identityFromByIdDir(devicePath, opts) || identityFromSysfs(devicePath, opts);
+    return isUsableIdentity(identity) ? identity : null;
 }
 
 /**
@@ -217,6 +231,10 @@ function loadRememberedIdentity(identityFile) {
 }
 
 function saveRememberedIdentity(identityFile, identity) {
+    // Defense in depth: readIdentity already filters unusable identities out
+    // before calling this, but guard here too rather than trusting every
+    // present and future caller to have validated first.
+    if (!isUsableIdentity(identity)) return;
     try {
         fs.mkdirSync(path.dirname(identityFile), { recursive: true });
         fs.writeFileSync(identityFile, JSON.stringify({ identity }, null, 2));
@@ -269,9 +287,31 @@ function resolveSerialDevice(args) {
         return { path: null, source: 'configured', identity: remembered, stablePath: null, messages };
     }
 
-    const stablePath = path.join(byIdDir(opts.devRoot), remembered);
     messages.push(`Recovered: the previously-used device is now at ${recovered} — adopting it for this boot`);
-    messages.push(`Update cgate_serial_device to ${stablePath} so this survives future replugs`);
+
+    // `remembered` is only a by-id link name when recovery actually went
+    // through /dev/serial/by-id — the same check findDeviceByIdentity's by-id
+    // branch made. When recovery instead came through the sysfs scan (because
+    // this host has no by-id links at all), `remembered` is a vendor:product:
+    // serial triple, and path.join(byIdDir, remembered) would name a by-id
+    // path that cannot exist — advising a user to switch cgate_serial_device
+    // to it would break every future boot before recovery gets a chance to
+    // run. Only recommend the by-id path when it genuinely resolves back to
+    // the device we just recovered.
+    const byIdPath = path.join(byIdDir(opts.devRoot), remembered);
+    const byIdTarget = lexicalRealPathOrNull(byIdPath);
+    const recoveredViaById = !!byIdTarget && byIdTarget === recovered && TTY_NAME.test(path.basename(byIdTarget));
+
+    let stablePath = null;
+    if (recoveredViaById) {
+        stablePath = byIdPath;
+        messages.push(`Update cgate_serial_device to ${stablePath} so this survives future replugs`);
+    } else {
+        messages.push(
+            'This host has no /dev/serial/by-id link for the device, so there is no stable path to switch '
+            + 'cgate_serial_device to; automatic recovery by identity will keep working on future replugs'
+        );
+    }
     return { path: recovered, source: 'recovered', identity: remembered, stablePath, messages };
 }
 
