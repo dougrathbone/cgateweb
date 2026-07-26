@@ -1288,7 +1288,7 @@ user maps them."
 - Consumes: nothing.
 - Produces:
   - `categoriseUnitType(type)` → `'dimmer' | 'relay' | 'input' | 'management' | null`
-  - `entityTypeForGroup(groupInfo, settings)` → `'light-dimmable' | 'light-onoff' | 'binary_sensor' | null`, where `groupInfo` is `{ types: Set<string>|string[], hasOutput: boolean, hasInput: boolean }`
+  - `entityTypeForGroup(groupInfo, settings)` → `'light-dimmable' | 'light-onoff' | 'binary_sensor' | null`. **Superseded during implementation:** `groupInfo` is `{ types }` only. Review removed `hasOutput`/`hasInput` as derivable-and-therefore-desyncable, and added asymmetric unknown handling. See Task 6's Interfaces block for the live contract.
   - `UNKNOWN_TYPE_MARKER` — the string `'unknown'`, used by Task 6's logging.
 
 - [ ] **Step 1: Write the failing test**
@@ -1527,7 +1527,17 @@ has seen. Not yet wired into discovery."
 
 **Interfaces:**
 - Consumes: nothing from Task 5 (kept independent so it is testable alone).
-- Produces: `collectUnitTypesByGroup(networkData, targetApps)` → `Map<string, { types: Set<string>, hasOutput: boolean, hasInput: boolean }>` keyed `"<appId>/<groupId>"`, plus `unknownUnitTypes(networkData)` → `string[]` of distinct unrecognised type strings for logging. Task 7 consumes both.
+- Produces: `collectUnitTypesByGroup(networkData, targetApps)` → `Map<string, { types: Set<string> }>` keyed `"<appId>/<groupId>"`, plus `unknownUnitTypes(networkData)` → `string[]` of distinct unrecognised type strings for logging. Task 7 consumes both.
+
+**Contract note from Task 5's review:** the classifier's signature is now
+`entityTypeForGroup({ types }, settings)`. It derives dimmer/relay/input/unrecognised
+from `types` alone, and applies asymmetric unknown handling — a recognised dimmer
+or relay still wins even alongside an unrecognised type, but the `binary_sensor`
+conclusion requires that no unrecognised type is present, because it is the only
+destructive outcome (it removes the command topic and clears the retained light
+config). So `collectUnitTypesByGroup` must record **every** non-blank type it
+encounters, including unrecognised ones — dropping them would silently re-enable
+the misclassification that review caught.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1554,7 +1564,6 @@ describe('collectUnitTypesByGroup', () => {
         const index = collectUnitTypesByGroup(network, ['56']);
 
         expect([...index.get('56/1').types]).toEqual(['DIMDN8']);
-        expect(index.get('56/1').hasOutput).toBe(true);
         expect([...index.get('56/2').types]).toEqual(['RELDN12']);
     });
 
@@ -1579,9 +1588,9 @@ describe('collectUnitTypesByGroup', () => {
 
         const entry = collectUnitTypesByGroup(network, ['56']).get('56/7');
 
+        // Every driving unit's type is recorded, recognised or not. The
+        // classifier derives the categories; the index must not pre-judge.
         expect([...entry.types].sort()).toEqual(['DIMDN8', 'SENLL']);
-        expect(entry.hasOutput).toBe(true);
-        expect(entry.hasInput).toBe(true);
     });
 
     it('marks an input-only group as input with no output', () => {
@@ -1591,8 +1600,7 @@ describe('collectUnitTypesByGroup', () => {
 
         const entry = collectUnitTypesByGroup(network, ['56']).get('56/40');
 
-        expect(entry.hasInput).toBe(true);
-        expect(entry.hasOutput).toBe(false);
+        expect([...entry.types]).toEqual(['SENLL']);
     });
 
     it('ignores applications outside the target list', () => {
@@ -1638,7 +1646,7 @@ const { categoriseUnitType } = require('./unitTypeClassifier');
 // collectUnitGroups' handling of both TREEXML shapes, but keeps the unit type
 // that collectUnitGroups discards.
 function collectUnitTypesByGroup(networkData, targetApps) {
-    /** @type {Map<string, { types: Set<string>, hasOutput: boolean, hasInput: boolean }>} */
+    /** @type {Map<string, { types: Set<string> }>} */
     const index = new Map();
     if (!networkData) return index;
 
@@ -1647,14 +1655,8 @@ function collectUnitTypesByGroup(networkData, targetApps) {
 
     const record = (appId, groupId, type) => {
         const key = `${appId}/${groupId}`;
-        if (!index.has(key)) {
-            index.set(key, { types: new Set(), hasOutput: false, hasInput: false });
-        }
-        const entry = index.get(key);
-        if (type) entry.types.add(type);
-        const category = categoriseUnitType(type);
-        if (category === 'dimmer' || category === 'relay') entry.hasOutput = true;
-        if (category === 'input') entry.hasInput = true;
+        if (!index.has(key)) index.set(key, { types: new Set() });
+        if (type) index.get(key).types.add(type);
     };
 
     units.forEach(unit => {
@@ -1908,7 +1910,7 @@ Also declare the field alongside `_labelSnapshot` in `src/haDiscoveryPublishers.
     /**
      * Per-run map of "<appId>/<groupId>" to the unit types driving that group,
      * installed by _publishDiscoveryFromTree (null outside a run).
-     * @type {Map<string, { types: Set<string>, hasOutput: boolean, hasInput: boolean }> | null}
+     * @type {Map<string, { types: Set<string> }> | null}
      */
     _unitTypeIndex;
 ```
