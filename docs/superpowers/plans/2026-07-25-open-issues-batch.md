@@ -2505,26 +2505,34 @@ for db in "${PROJECTS_DIR}"/*/*.db; do
 done
 shopt -u nullglob
 
-# The base image is home-assistant/*-base:3.21, i.e. s6-overlay v3 running the
-# legacy /etc/services.d tree through its compatibility shim. The service
-# directory path differs between s6 versions, so probe rather than hardcode.
-for dir in /run/service/cgate /run/service/legacy-services-cgate /var/run/s6/services/cgate; do
-    if [[ -d "${dir}" ]]; then
-        s6-svc -r "${dir}"
-        echo "${RESOLVED}"
-        exit 0
-    fi
-done
+# Restart C-Gate by terminating the supervised process and letting s6 bring it
+# back. services.d/cgate/run ends in `exec java ... -jar cgate.jar`, so the
+# supervised process IS the JVM, and services.d/cgate/finish already logs
+# "will restart" - restart-on-exit is the established contract here.
+#
+# This deliberately avoids `s6-svc -r <servicedir>`: the service directory path
+# differs between s6-overlay versions and the legacy-service shim, and nothing
+# in this repo pins it. Signalling the process depends only on POSIX signals
+# plus the supervision contract, both of which are already proven in-tree.
+#
+# SIGTERM (not SIGKILL) so the JVM runs its shutdown hooks and C-Gate closes
+# its project database cleanly.
+CGATE_PID=$(pgrep -f 'java .*cgate\.jar' | head -1)
+if [[ -z "${CGATE_PID}" ]]; then
+    echo "C-Gate process not found; nothing to restart" >&2
+    exit 1
+fi
 
-echo "could not locate the cgate s6 service directory" >&2
-exit 1
+kill -TERM "${CGATE_PID}"
+echo "${RESOLVED}"
+exit 0
 ```
 
 Make it executable (`chmod +x`) and confirm the Dockerfile's rootfs copy preserves the mode, matching how `cgateweb-serial-diagnostics` is handled.
 
 The project fixup is best-effort (`|| true`) for the same reason it is at cont-init: a fixup failure must not block the restart, since C-Gate may still open correctly if the project already named the right port.
 
-**Verification required here:** the s6 service directory is a probe across three candidates. Confirm the real one with `ls /run/service` in a live add-on container before trusting recovery end to end. Also confirm `CGATEWEB_PROJECTS_DIR`'s default matches where `cgate-project-sync.sh` actually writes project databases.
+**Resolved during implementation:** the original design probed three candidate s6 service directories, which was the batch's one unverified assumption. It is no longer needed — `services.d/cgate/run` ends in `exec java ... -jar cgate.jar`, so signalling that process and letting s6 restart it relies only on the supervision contract that `services.d/cgate/finish` already documents. Still confirm `CGATEWEB_PROJECTS_DIR`'s default matches where `cgate-project-sync.sh` writes project databases.
 
 - [ ] **Step 8: Run every gate**
 
