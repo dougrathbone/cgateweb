@@ -337,55 +337,141 @@ CGATEWEB_ACCESS_END='# <<< cgateweb managed block >>>'
 # client's address), and user. Levels, increasing, are none, connect, monitor,
 # operate, admin, program, debug. Faulty lines are silently ignored.
 #
-# Earlier versions of this script wrote `interface 127.0.0.1` with no level plus
-# `program 127.0.0.1` and `monitor 127.0.0.1`, using level names as keywords.
-# All three are faulty, so managed installs were running with an effectively
-# empty access list and relying on C-Gate's built-in default. Combined with
-# accept-connections-from defaulting to all, that is not something to publish
-# ports on top of.
+# The C-Gate distribution zip ships its own config/access.txt, and the install
+# step above (`cp -r "${EXTRACTED_DIR}"/* "${CGATE_DIR}/"`) always copies it
+# onto disk, so managed installs have never actually run with an empty access
+# list. The stock file grants `interface`-level Program to the IPv4 and IPv6
+# loopback NICs:
+#   interface 0:0:0:0:0:0:0:1 Program
+#   interface 127.0.0.1 Program
+#   interface localhost Program
+# (An earlier version of this comment claimed a "only if the file is missing"
+# guard left managed installs relying on a malformed, effectively-empty access
+# list. That guard — `if [[ ! -f "${ACCESS_FILE}" ]]` — was always false
+# because the stock file above already existed by the time it ran, so the
+# malformed heredoc it guarded never actually executed. That claim was wrong
+# and is corrected here.)
 #
-# Only `remote` rules are ever written. An `interface` rule matches every
-# connection arriving on that NIC, so one intended as a per-client grant
-# silently becomes a blanket grant for the whole LAN.
+# This function adds an explicit, correctly-formed `remote` block scoped to
+# the add-on's own loopback connection on top of — not instead of — that
+# stock grant; the stock lines are preserved untouched outside the managed
+# block below. It deliberately never emits an `interface` rule itself: unlike
+# `remote`, an interface rule matches every connection arriving on the NIC it
+# names, so one intended as a per-client grant silently becomes a blanket
+# grant for everything on that NIC. The three awk patterns below that strip
+# bare `interface 127.0.0.1` / `program 127.0.0.1` / `monitor 127.0.0.1`
+# lines (level names used as keywords, which C-Gate silently ignores) are
+# defensive cleanup for any C-Gate release whose zip omits the stock
+# access.txt, or an install this script mis-wrote before this fix — not the
+# common case.
 _cgateweb_write_access_control() {
     local access_file="$1"
     local dir
     dir=$(dirname "${access_file}")
-    mkdir -p "${dir}"
+
+    if ! mkdir -p "${dir}" 2>/dev/null; then
+        bashio::log.error "Could not create directory for C-Gate access control file: ${dir}"
+        return 1
+    fi
+
+    if [[ -d "${access_file}" ]]; then
+        bashio::log.error "C-Gate access control path is a directory, not a file: ${access_file}"
+        return 1
+    fi
 
     # cgateweb and managed C-Gate share this container, so the bridge connects
-    # from loopback. program level because managed mode loads and starts projects.
+    # from loopback. `program` is not required by anything cgateweb itself
+    # does: C-Gate loads and starts the project from project.start in
+    # C-GateConfig.txt, not over an access-controlled client connection.
+    # cgateweb's own traffic (TREEXML, GET, ON/OFF/RAMP, EVENT ON, LOGIN) only
+    # ever needs `operate` (`monitor` is enough on the event port). `program`
+    # is kept here because it matches the stock access.txt's own loopback
+    # grant (see the block comment above) rather than narrowing it — the
+    # container runs with host_network: false, so the blast radius of that
+    # extra headroom is nil.
     local -a rules=(
         "remote 127.0.0.1 program"
         "remote 0:0:0:0:0:0:0:1 program"
     )
 
+    # Cleaned up on every return from this function (success or failure) via
+    # the RETURN trap below, so a failed rewrite never leaves a stray .tmp or
+    # awk-stderr file behind. The trap clears itself (`trap - RETURN`) as its
+    # last act: a RETURN trap set inside a function also fires again when an
+    # enclosing `source` of this whole script finishes (a real bash quirk,
+    # not just a function-to-function call) — at which point the local
+    # variables it references no longer exist. Self-clearing means it only
+    # ever fires once, for this function's own return.
+    local tmp_file="${access_file}.tmp"
+    local awk_err_file="${access_file}.awkerr.$$"
+    trap 'rm -f "${tmp_file}" "${awk_err_file}"; trap - RETURN' RETURN
+
     local preserved=""
     if [[ -f "${access_file}" ]]; then
+        if [[ ! -r "${access_file}" ]]; then
+            bashio::log.error "Cannot read existing C-Gate access control file: ${access_file}"
+            return 1
+        fi
+
         # Keep everything outside our markers; drop the old block and any
-        # pre-marker lines this script previously generated.
-        preserved=$(awk -v b="${CGATEWEB_ACCESS_BEGIN}" -v e="${CGATEWEB_ACCESS_END}" '
-            $0 == b { inblock = 1; next }
-            $0 == e { inblock = 0; next }
-            inblock { next }
+        # pre-marker lines this script previously generated. Marker
+        # comparison trims trailing whitespace and a trailing \r before
+        # comparing, so a hand-edited or Windows-saved file (CRLF endings)
+        # still resolves to a single managed block instead of growing a
+        # second, stale one that stays live because C-Gate's Java readLine()
+        # strips \r but awk's exact-match comparison would not. An orphaned
+        # begin marker (no matching end — a hand-mangled file) preserves
+        # everything after it instead of silently deleting it; a warning is
+        # logged below when that happens.
+        if ! preserved=$(awk -v b="${CGATEWEB_ACCESS_BEGIN}" -v e="${CGATEWEB_ACCESS_END}" '
+            function norm(s) { sub(/\r$/, "", s); sub(/[ \t]+$/, "", s); return s }
+            {
+                marker = norm($0)
+            }
+            inblock && marker == e { inblock = 0; buffered = 0; next }
+            marker == b { inblock = 1; buffered = 0; next }
+            inblock {
+                buffered++
+                buf[buffered] = $0
+                next
+            }
             /^interface 127\.0\.0\.1$/ { next }
             /^program 127\.0\.0\.1$/   { next }
             /^monitor 127\.0\.0\.1$/   { next }
             { print }
-        ' "${access_file}")
+            END {
+                if (inblock) {
+                    for (i = 1; i <= buffered; i++) print buf[i]
+                    print "orphaned begin marker" > "/dev/stderr"
+                }
+            }
+        ' "${access_file}" 2>"${awk_err_file}"); then
+            bashio::log.error "Failed to parse existing C-Gate access control file: ${access_file}"
+            return 1
+        fi
+        if [[ -s "${awk_err_file}" ]]; then
+            bashio::log.warning "C-Gate access control file ${access_file} had an orphaned managed-block begin marker with no matching end — preserving the content after it instead of discarding it"
+        fi
     else
         preserved="# C-Gate Access Control
 # Lines outside the cgateweb block below are preserved across restarts."
     fi
 
-    {
+    if ! {
         printf '%s\n' "${preserved}"
         printf '%s\n' "${CGATEWEB_ACCESS_BEGIN}"
         local rule
         for rule in "${rules[@]}"; do printf '%s\n' "${rule}"; done
         printf '%s\n' "${CGATEWEB_ACCESS_END}"
-    } > "${access_file}.tmp"
-    mv "${access_file}.tmp" "${access_file}"
+    } > "${tmp_file}"; then
+        bashio::log.error "Failed to write C-Gate access control file: ${tmp_file}"
+        return 1
+    fi
+
+    if ! mv "${tmp_file}" "${access_file}"; then
+        bashio::log.error "Failed to install C-Gate access control file: ${access_file}"
+        return 1
+    fi
 
     bashio::log.info "Wrote C-Gate access control (${#rules[@]} rule(s))"
     return 0
@@ -413,7 +499,11 @@ if [[ "${CGATE_MODE}" != "managed" ]]; then
     exit 0
 fi
 
-CGATE_DIR="/data/cgate"
+# Overridable so tests can point the whole install flow at a temp dir instead
+# of the real /data/cgate, the same test-seam pattern used by
+# CGATEWEB_SERIAL_DEVICE_FILE above. Unset in production, so this always
+# resolves to /data/cgate there.
+CGATE_DIR="${CGATE_DIR:-/data/cgate}"
 CGATE_JAR="${CGATE_DIR}/cgate.jar"
 INSTALL_SOURCE=$(bashio::config 'cgate_install_source' 'download')
 DOWNLOAD_SHA256=$(_cgateweb_resolve_download_sha256)

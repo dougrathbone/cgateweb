@@ -1,0 +1,8 @@
+##C-Gate Server Access Control File
+## This file was written automatically by a command issued to the server
+## Created:Tue Oct 05 16:22:26 CST 2004
+## File name: C:\ProgramData\Schneider Electric\C-Gate 3\config\access.txt
+interface 0:0:0:0:0:0:0:1 Program
+interface 127.0.0.1 Program
+interface localhost Program
+## End of access control file
