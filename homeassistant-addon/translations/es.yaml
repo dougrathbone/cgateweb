@@ -340,5 +340,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Tipo por tipo de unidad C-Bus
     description: >-
-      Determinar el tipo de cada entidad a partir de la unidad C-Bus que controla el grupo en lugar de su nombre. Los canales de dimmer se convierten en luces regulables, los canales de relé en luces de encendido/apagado, y los grupos controlados solo por una unidad de entrada como un bus coupler en sensores binarios. Las entradas manuales en type_overrides siguen teniendo prioridad y los grupos con tipos de unidad no reconocidos quedan sin cambios. Activarlo puede cambiar el tipo de entidades que ya tienes.
+      Determinar el tipo de cada entidad a partir de la unidad C-Bus que controla el grupo, para los grupos cuyo nombre no identifique ya una persiana. Los canales de dimmer se convierten en luces regulables, los canales de relé en luces de encendido/apagado, y los grupos controlados solo por una unidad de entrada como un bus coupler en sensores binarios. Las entradas manuales en type_overrides y un nombre que identifique una persiana (p. ej. blind, shutter) siguen teniendo prioridad, ya que un relé puede controlar igualmente una luz, una persiana o una válvula. Los grupos con tipos de unidad no reconocidos quedan sin cambios. Activarlo puede cambiar el tipo de entidades que ya tienes.
 

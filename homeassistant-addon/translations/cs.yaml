@@ -328,5 +328,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Typ z typu jednotky C-Bus
     description: >-
-      Určit typ každé entity podle jednotky C-Bus, která skupinu ovládá, místo podle jejího názvu. Kanály stmívače se stanou stmívatelnými světly, kanály relé světly zap/vyp a skupiny ovládané pouze vstupní jednotkou, například bus coupler, se stanou binárními senzory. Ruční záznam type_overrides má stále přednost a skupiny ovládané nerozpoznanými typy jednotek zůstanou nezměněné. Zapnutí může změnit typ entit, které již máte.
+      Určit typ každé entity podle jednotky C-Bus, která skupinu ovládá, u skupin, jejichž název sám o sobě neurčuje roletu. Kanály stmívače se stanou stmívatelnými světly, kanály relé světly zap/vyp a skupiny ovládané pouze vstupní jednotkou, například bus coupler, se stanou binárními senzory. Ruční záznam type_overrides i název určující roletu (např. blind, shutter) mají stále přednost, protože relé může stejně dobře ovládat světlo, roletu nebo ventil. Skupiny ovládané nerozpoznanými typy jednotek zůstanou nezměněné. Zapnutí může změnit typ entit, které již máte.
 

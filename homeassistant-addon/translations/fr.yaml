@@ -346,5 +346,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Type selon le type d'unité C-Bus
     description: >-
-      Déterminer le type de chaque entité d'après l'unité C-Bus qui pilote le groupe plutôt que d'après son nom. Les canaux de variateur deviennent des lumières variables, les canaux de relais des lumières marche/arrêt, et les groupes pilotés uniquement par une unité d'entrée telle qu'un bus coupler des capteurs binaires. Une entrée manuelle type_overrides reste prioritaire et les groupes pilotés par des types d'unité non reconnus restent inchangés. L'activer peut changer le type d'entités déjà existantes.
+      Déterminer le type de chaque entité d'après l'unité C-Bus qui pilote le groupe, pour les groupes dont le nom n'identifie pas déjà un volet. Les canaux de variateur deviennent des lumières variables, les canaux de relais des lumières marche/arrêt, et les groupes pilotés uniquement par une unité d'entrée telle qu'un bus coupler des capteurs binaires. Une entrée manuelle type_overrides et un nom identifiant un volet (par ex. blind, shutter) restent prioritaires, car un relais peut tout aussi bien piloter une lumière, un volet ou une vanne. Les groupes pilotés par des types d'unité non reconnus restent inchangés. L'activer peut changer le type d'entités déjà existantes.
 

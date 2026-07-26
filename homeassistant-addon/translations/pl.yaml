@@ -330,5 +330,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Typ z typu jednostki C-Bus
     description: >-
-      Ustal typ każdej encji na podstawie jednostki C-Bus, która steruje grupą, a nie na podstawie jej nazwy. Kanały ściemniacza stają się ściemnialnymi światłami, kanały przekaźnika światłami wł/wył, a grupy sterowane wyłącznie przez jednostkę wejściową, taką jak bus coupler, stają się sensorami binarnymi. Ręczny wpis type_overrides nadal ma pierwszeństwo, a grupy sterowane przez nierozpoznane typy jednostek pozostają bez zmian. Włączenie tej opcji może zmienić typ już istniejących encji.
+      Ustal typ każdej encji na podstawie jednostki C-Bus, która steruje grupą, dla grup, których nazwa nie wskazuje już na roletę. Kanały ściemniacza stają się ściemnialnymi światłami, kanały przekaźnika światłami wł/wył, a grupy sterowane wyłącznie przez jednostkę wejściową, taką jak bus coupler, stają się sensorami binarnymi. Ręczny wpis type_overrides oraz nazwa wskazująca na roletę (np. blind, shutter) nadal mają pierwszeństwo, ponieważ przekaźnik może równie dobrze sterować światłem, roletą lub zaworem. Grupy sterowane przez nierozpoznane typy jednostek pozostają bez zmian. Włączenie tej opcji może zmienić typ już istniejących encji.
 

@@ -336,5 +336,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Tipo pelo tipo de unidade C-Bus
     description: >-
-      Determinar o tipo de cada entidade a partir da unidade C-Bus que comanda o grupo em vez do seu nome. Canais de dimmer tornam-se luzes reguláveis, canais de relé luzes de ligar/desligar e grupos comandados apenas por uma unidade de entrada como um bus coupler tornam-se sensores binários. Uma entrada manual em type_overrides continua a ter prioridade e os grupos com tipos de unidade não reconhecidos ficam inalterados. Ativar isto pode alterar o tipo de entidades que já existem.
+      Determinar o tipo de cada entidade a partir da unidade C-Bus que comanda o grupo, para grupos cujo nome ainda não identifique um estore. Canais de dimmer tornam-se luzes reguláveis, canais de relé luzes de ligar/desligar e grupos comandados apenas por uma unidade de entrada como um bus coupler tornam-se sensores binários. Uma entrada manual em type_overrides e um nome que identifique um estore (por ex. blind, shutter) continuam a ter prioridade, já que um relé pode igualmente comandar uma luz, um estore ou uma válvula. Os grupos com tipos de unidade não reconhecidos ficam inalterados. Ativar isto pode alterar o tipo de entidades que já existem.
 

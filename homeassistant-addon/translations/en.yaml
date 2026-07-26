@@ -324,5 +324,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Set entity type from C-Bus unit type
     description: >-
-      Decide each entity's type from the C-Bus unit that drives the group rather than from its name. Dimmer channels become dimmable lights, relay channels become on/off lights, and groups driven only by an input unit such as a bus coupler become binary sensors. Manual type overrides still take priority, and groups driven by unrecognised unit types are left unchanged. Turning this on can change the type of entities you already have.
+      Decide each entity's type from the C-Bus unit that drives the group, for groups whose name does not already identify a cover. Dimmer channels become dimmable lights, relay channels become on/off lights, and groups driven only by an input unit such as a bus coupler become binary sensors. Manual type overrides and a cover-identifying name (e.g. blind, shutter) still take priority, since a relay can equally drive a light, a blind or a valve. Groups driven by unrecognised unit types are left unchanged. Turning this on can change the type of entities you already have.
 

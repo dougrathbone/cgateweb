@@ -333,5 +333,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Type fra C-Bus-enhedstype
     description: >-
-      Bestem hver entitets type ud fra den C-Bus-enhed, der styrer gruppen, i stedet for ud fra navnet. Dæmperkanaler bliver dæmpbare lys, relækanaler bliver tænd/sluk-lys, og grupper der kun styres af en indgangsenhed som en bus coupler bliver binære sensorer. En manuel type_overrides-post vinder stadig, og grupper med ukendte enhedstyper forbliver uændrede. At slå dette til kan ændre typen på entiteter, du allerede har.
+      Bestem hver entitets type ud fra den C-Bus-enhed, der styrer gruppen, for grupper hvis navn ikke allerede identificerer en persienne. Dæmperkanaler bliver dæmpbare lys, relækanaler bliver tænd/sluk-lys, og grupper der kun styres af en indgangsenhed som en bus coupler bliver binære sensorer. En manuel type_overrides-post og et persienne-identificerende navn (f.eks. blind, shutter) vinder stadig, da et relæ lige så godt kan styre et lys, en persienne eller en ventil. Grupper med ukendte enhedstyper forbliver uændrede. At slå dette til kan ændre typen på entiteter, du allerede har.
 

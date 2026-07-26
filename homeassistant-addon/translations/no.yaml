@@ -328,5 +328,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Type fra C-Bus-enhetstype
     description: >-
-      Bestem typen til hver entitet ut fra C-Bus-enheten som styrer gruppen i stedet for navnet. Dimmerkanaler blir dimbare lys, relékanaler blir av/på-lys, og grupper som bare styres av en inngangsenhet som en bus coupler blir binære sensorer. En manuell type_overrides-oppføring vinner fortsatt, og grupper med ukjente enhetstyper forblir uendret. Å slå dette på kan endre typen på entiteter du allerede har.
+      Bestem typen til hver entitet ut fra C-Bus-enheten som styrer gruppen, for grupper der navnet ikke allerede identifiserer en persienne. Dimmerkanaler blir dimbare lys, relékanaler blir av/på-lys, og grupper som bare styres av en inngangsenhet som en bus coupler blir binære sensorer. En manuell type_overrides-oppføring og et navn som identifiserer en persienne (f.eks. blind, shutter) vinner fortsatt, siden et relé like gjerne kan styre et lys, en persienne eller en ventil. Grupper med ukjente enhetstyper forblir uendret. Å slå dette på kan endre typen på entiteter du allerede har.
 

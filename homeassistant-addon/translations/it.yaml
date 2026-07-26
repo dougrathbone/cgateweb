@@ -340,5 +340,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Tipo dal tipo di unità C-Bus
     description: >-
-      Determina il tipo di ogni entità dall'unità C-Bus che comanda il gruppo invece che dal suo nome. I canali dimmer diventano luci dimmerabili, i canali relè luci on/off e i gruppi comandati solo da un'unità di ingresso come un bus coupler diventano sensori binari. Le voci manuali type_overrides hanno ancora la precedenza e i gruppi comandati da tipi di unità non riconosciuti restano invariati. Attivarlo può cambiare il tipo di entità già esistenti.
+      Determina il tipo di ogni entità dall'unità C-Bus che comanda il gruppo, per i gruppi il cui nome non identifica già una tapparella. I canali dimmer diventano luci dimmerabili, i canali relè luci on/off e i gruppi comandati solo da un'unità di ingresso come un bus coupler diventano sensori binari. Le voci manuali type_overrides e un nome che identifica una tapparella (es. blind, shutter) hanno ancora la precedenza, poiché un relè può comandare altrettanto bene una luce, una tapparella o una valvola. I gruppi comandati da tipi di unità non riconosciuti restano invariati. Attivarlo può cambiare il tipo di entità già esistenti.
 

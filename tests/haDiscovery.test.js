@@ -2785,16 +2785,16 @@ describe('HaDiscovery — label domain-prefix types (issue #35)', () => {
 });
 
 describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', () => {
-    // One lighting group per unit kind: a dimmer channel, a relay channel, a
-    // relay channel whose label would otherwise trip the cover keyword
-    // heuristics, an input-only bus coupler, and a unit type the classifier
-    // has never seen.
+    // One lighting group per unit kind: a dimmer channel, a relay channel with
+    // a name that says nothing about being a cover, a relay channel whose
+    // label positively identifies a cover, an input-only bus coupler, and a
+    // unit type the classifier has never seen.
     const UNIT_TREE = {
         Network: {
             NetworkNumber: '254',
             Unit: [
                 { UnitAddress: '10', Type: 'DIMDN8', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1', Label: 'Kitchen' }] } },
-                { UnitAddress: '11', Type: 'RELDN12', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '2', Label: 'Irrigation' }, { GroupAddress: '4', Label: 'Patio Blind' }] } },
+                { UnitAddress: '11', Type: 'RELDN12', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '2', Label: 'Irrigation' }, { GroupAddress: '4', Label: 'Patio Blind' }, { GroupAddress: '6', Label: 'Kitchen' }] } },
                 { UnitAddress: '12', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '3', Label: 'Hall Coupler' }] } },
                 { UnitAddress: '13', Type: 'WIDGETRON9', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '5', Label: 'Study' }] } }
             ]
@@ -2942,14 +2942,28 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         expect(payloadFor(publish, 'light', 2)).toBeNull();
     });
 
-    it('lets unit-type classification beat the name-keyword heuristics', () => {
+    it('lets the cover-name heuristic beat unit-type classification', () => {
         const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
 
         d._publishDiscoveryFromTree('254', UNIT_TREE);
 
-        // "Patio Blind" would classify as a cover by name; the relay driving it wins.
-        expect(payloadFor(publish, 'cover', 4)).toBeNull();
-        expect(payloadFor(publish, 'light', 4)).not.toHaveProperty('brightness_command_topic');
+        // "Patio Blind" is driven by a relay, but a relay can equally drive a
+        // light or an irrigation valve — the name positively identifies a
+        // cover, which is better evidence than the hardware type, so it wins.
+        expect(payloadFor(publish, 'cover', 4)).not.toBeNull();
+        expect(payloadFor(publish, 'light', 4)).toBeNull();
+    });
+
+    it('still lets unit-type classification apply when the name says nothing about being a cover', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+        const payload = payloadFor(publish, 'light', 6);
+
+        // "Kitchen" claims no cover keyword, so the relay driving it still
+        // resolves to an on/off light rather than the default dimmable light.
+        expect(payload).not.toHaveProperty('brightness_command_topic');
+        expect(payload.command_topic).toBe('cbus/write/254/56/6/switch');
     });
 
     it('still classifies by name when no unit drives the group', () => {

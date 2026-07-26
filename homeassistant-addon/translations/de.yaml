@@ -335,5 +335,5 @@ configuration:
   ha_discovery_type_from_unit:
     name: Typ aus C-Bus-Gerätetyp
     description: >-
-      Den Typ jeder Entität aus dem C-Bus-Gerät bestimmen, das die Gruppe ansteuert, statt aus ihrem Namen. Dimmer-Kanäle werden dimmbare Lichter, Relais-Kanäle werden Ein/Aus-Lichter, und Gruppen, die nur von einem Eingangsgerät wie einem Bus Coupler angesteuert werden, werden Binärsensoren. Manuelle type_overrides-Einträge haben weiterhin Vorrang, und Gruppen mit unbekanntem Gerätetyp bleiben unverändert. Das Aktivieren kann den Typ bereits vorhandener Entitäten ändern.
+      Den Typ jeder Entität aus dem C-Bus-Gerät bestimmen, das die Gruppe ansteuert, sofern der Name der Gruppe nicht bereits eine Jalousie erkennen lässt. Dimmer-Kanäle werden dimmbare Lichter, Relais-Kanäle werden Ein/Aus-Lichter, und Gruppen, die nur von einem Eingangsgerät wie einem Bus Coupler angesteuert werden, werden Binärsensoren. Manuelle type_overrides-Einträge und ein Name, der eine Jalousie erkennen lässt (z. B. blind, shutter), haben weiterhin Vorrang, da ein Relais ebenso ein Licht, eine Jalousie oder ein Ventil ansteuern kann. Gruppen mit unbekanntem Gerätetyp bleiben unverändert. Das Aktivieren kann den Typ bereits vorhandener Entitäten ändern.
 

@@ -280,19 +280,23 @@ class _HaDiscoveryPublishers {
         const labelForClassification = labelMap.get(labelKey) || group.Label || '';
 
         // Precedence: manual type_overrides, then an explicit entity-id domain
-        // prefix in the label (issue #35), then the type of the unit driving the
-        // group (issues #38, #37), then the label keyword heuristics. Hardware
-        // beats keywords deliberately: the unit that drives a group is evidence,
-        // whereas its name is a guess — a user who wants the name to win leaves
-        // ha_discovery_type_from_unit off or adds a type_overrides entry.
+        // prefix in the label (issue #35), then the cover-name keyword heuristics,
+        // then the type of the unit driving the group (issues #38, #37). A relay
+        // output can drive a light, a motorised blind or an irrigation valve —
+        // the hardware alone cannot tell those apart. A name that positively
+        // identifies a cover (e.g. "Patio Blind") is better evidence than the
+        // unit type, so it must win before the unit type gets a say; groups
+        // whose name says nothing about being a cover still fall through to
+        // unit-type classification, which is where most of the feature's value
+        // comes from.
         const unitType = entityTypeForGroup(
             this._unitTypeIndex ? this._unitTypeIndex.get(`${appId}/${groupId}`) : null,
             this.settings
         );
         const resolvedType = typeOverrides.get(labelKey)
             || typeFromLabelPrefix(labelForClassification, this.settings)
-            || unitType
-            || classifyLightingGroup(labelForClassification, this.settings);
+            || classifyLightingGroup(labelForClassification, this.settings)
+            || unitType;
 
         // A dimmer-driven group resolves to the default dimmable light, so there
         // is nothing to do here beyond falling through to it unchanged.
