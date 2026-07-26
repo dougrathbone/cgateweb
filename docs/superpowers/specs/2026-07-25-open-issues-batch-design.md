@@ -111,9 +111,21 @@ between the two existing ones. Final precedence, highest first:
 
 1. Manual `type_overrides` — explicit user intent always wins.
 2. `typeFromLabelPrefix` (existing, opt-in).
-3. **Unit-type classification (new, opt-in).**
-4. `classifyLightingGroup` name heuristics (existing).
+3. `classifyLightingGroup` name heuristics (existing).
+4. **Unit-type classification (new, opt-in).**
 5. Default dimmable light.
+
+**Corrected during implementation.** This originally put unit-type
+classification at step 3, ahead of the name heuristics. That was wrong: a
+relay-driven blind is the standard C-Bus wiring for a motorised cover, so a
+group named `Patio Blind` on a `RELDN12` would have been retyped from `cover` to
+an on/off light the moment the option was enabled — retyping exactly the
+entities the cover heuristics exist to catch. A relay can drive a light, a blind
+or an irrigation valve (issue #38's author makes this point himself), so the
+hardware type cannot distinguish them while a name that positively identifies a
+cover can. Nothing is lost by the reorder: `classifyLightingGroup` returns only
+`'cover'` or `null`, so every group whose name makes no cover claim still reaches
+unit-type classification.
 
 The index is exposed to the publisher as a run-scoped instance property
 (`this._unitTypeIndex`) set at the start of a discovery pass and cleared at the
