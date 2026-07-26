@@ -64,7 +64,15 @@ exit 1
 // and ncStub selects which nc stand-in is put first on PATH.
 function runDiagnostics({ config = {}, extraEnv = {}, ncStub = null, stripNc = false } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgw-serial-diag-'));
-    const env = { ...process.env, CGW_DIAG_SCRIPT: SCRIPT, CGW_NC_DIR: dir };
+    const env = {
+        ...process.env,
+        CGW_DIAG_SCRIPT: SCRIPT,
+        CGW_NC_DIR: dir,
+        // Default the resolved-device file into the test's own temp dir so no
+        // test reads the host's real /run/cgateweb copy; the tests that cover
+        // the resolved path create it explicitly.
+        CGATEWEB_SERIAL_DEVICE_FILE: path.join(dir, 'serial-device')
+    };
     for (const [k, v] of Object.entries(config)) {
         env[`CGW_TEST_${k}`] = v;
     }
@@ -157,6 +165,66 @@ describeBash('cgateweb-serial-diagnostics (alpha USB-serial PCI, #28)', () => {
             const args = fs.readFileSync(path.join(r.dir, 'nc-args.txt'), 'utf8');
             expect(args).toContain('-w 10 127.0.0.1 20023');
         } finally {
+            cleanup(r);
+        }
+    });
+
+    test('reports the device cont-init resolved, not the stale option (issue #28)', () => {
+        // cont-init published /dev/null after the configured ttyUSB0 renumbered.
+        // The diagnostics must describe what C-Gate was actually pointed at,
+        // while still naming the configured value so the mismatch is visible.
+        const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgw-serial-state-'));
+        const deviceFile = path.join(stateDir, 'serial-device');
+        fs.writeFileSync(deviceFile, '/dev/null');
+        const r = runDiagnostics({
+            config: { cgate_serial_device: '/dev/ttyUSB0', cgate_mode: 'managed' },
+            extraEnv: { CGATEWEB_SERIAL_DEVICE_FILE: deviceFile },
+            ncStub: NC_STUB_SUCCESS
+        });
+        try {
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/cgate_serial_device = \/dev\/ttyUSB0/);
+            expect(r.output).toMatch(/Resolved at startup to a different device: \/dev\/null/);
+            expect(r.output).toMatch(/resolves to \/dev\/null/);
+        } finally {
+            fs.rmSync(stateDir, { recursive: true, force: true });
+            cleanup(r);
+        }
+    });
+
+    test('falls back to the configured device when the published file is empty', () => {
+        const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgw-serial-state-'));
+        const deviceFile = path.join(stateDir, 'serial-device');
+        fs.writeFileSync(deviceFile, '');
+        const r = runDiagnostics({
+            config: { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
+            extraEnv: { CGATEWEB_SERIAL_DEVICE_FILE: deviceFile },
+            ncStub: NC_STUB_SUCCESS
+        });
+        try {
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/cgate_serial_device = \/dev\/null/);
+            expect(r.output).not.toMatch(/Resolved at startup to a different device/);
+        } finally {
+            fs.rmSync(stateDir, { recursive: true, force: true });
+            cleanup(r);
+        }
+    });
+
+    test('stays a no-op when the option is unset even if a stale device file exists', () => {
+        const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgw-serial-state-'));
+        const deviceFile = path.join(stateDir, 'serial-device');
+        fs.writeFileSync(deviceFile, '/dev/null');
+        const r = runDiagnostics({
+            config: { cgate_mode: 'managed' },
+            extraEnv: { CGATEWEB_SERIAL_DEVICE_FILE: deviceFile },
+            ncStub: NC_STUB_SUCCESS
+        });
+        try {
+            expect(r.status).toBe(0);
+            expect(r.output.trim()).toBe('');
+        } finally {
+            fs.rmSync(stateDir, { recursive: true, force: true });
             cleanup(r);
         }
     });

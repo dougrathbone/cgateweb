@@ -13,13 +13,27 @@
 set -euo pipefail
 
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
-SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
+CONFIGURED_DEVICE=$(bashio::config 'cgate_serial_device' '')
 
 # Silent no-op unless the alpha serial passthrough is enabled AND C-Gate runs
 # inside this add-on. bashio::config yields the literal string "null" for
-# unset optional fields — treat that as unset too.
-if [[ "${CGATE_MODE}" != "managed" || -z "${SERIAL_DEVICE}" || "${SERIAL_DEVICE}" == "null" ]]; then
+# unset optional fields — treat that as unset too. The opt-in is decided by the
+# configured option alone, so a leftover resolved-device file can never switch
+# these diagnostics on for a user who never asked for them.
+if [[ "${CGATE_MODE}" != "managed" || -z "${CONFIGURED_DEVICE}" || "${CONFIGURED_DEVICE}" == "null" ]]; then
     exit 0
+fi
+
+# Report on the device C-Gate was actually pointed at: cont-init's resolver may
+# have adopted a different path after a replug renumbered the PC Interface
+# (issue #28). Fall back to the configured option when it published nothing.
+SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
+SERIAL_DEVICE=""
+if [[ -r "${SERIAL_DEVICE_FILE}" ]]; then
+    SERIAL_DEVICE=$(cat "${SERIAL_DEVICE_FILE}")
+fi
+if [[ -z "${SERIAL_DEVICE}" ]]; then
+    SERIAL_DEVICE="${CONFIGURED_DEVICE}"
 fi
 
 # Test hooks: point the query at a fake C-Gate listener. Default to the
@@ -32,8 +46,12 @@ else
 fi
 
 # Re-log the configured device and its real target so this block is
-# self-contained when pasted into an issue report.
-bashio::log.info "cgate_serial_device = ${SERIAL_DEVICE}"
+# self-contained when pasted into an issue report. When the two differ, saying
+# so is the fastest way for a reader to spot a renumbered interface.
+bashio::log.info "cgate_serial_device = ${CONFIGURED_DEVICE}"
+if [[ "${SERIAL_DEVICE}" != "${CONFIGURED_DEVICE}" ]]; then
+    bashio::log.info "Resolved at startup to a different device: ${SERIAL_DEVICE} (the configured path renumbered)"
+fi
 RESOLVED=$(readlink -f "${SERIAL_DEVICE}" 2>/dev/null || printf '%s' "${SERIAL_DEVICE}")
 bashio::log.info "Serial device ${SERIAL_DEVICE} resolves to ${RESOLVED}"
 

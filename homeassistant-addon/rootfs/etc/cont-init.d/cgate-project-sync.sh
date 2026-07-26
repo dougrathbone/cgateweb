@@ -93,8 +93,26 @@ fi
 # addresses to the resolved cgate_serial_device port name BEFORE C-Gate loads
 # the project. Runs every boot (idempotent) so a re-synced Windows project is
 # fixed again. Only meaningful in managed mode with the alpha opt-in set.
-SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
-if [[ -n "${SERIAL_DEVICE}" && "${SERIAL_DEVICE}" != "null" ]]; then
+#
+# Use the path cont-init's resolver already agreed on rather than resolving
+# cgate_serial_device again here: a PC Interface that renumbered still has its
+# old path in the option, and rewriting the project to a device that no longer
+# exists leaves the network closed. The file is missing or empty only when the
+# resolver could not run (no node) or could not publish, so fall back to the
+# option there.
+SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
+CONFIGURED_SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
+SERIAL_DEVICE=""
+if [[ -r "${SERIAL_DEVICE_FILE}" ]]; then
+    SERIAL_DEVICE=$(cat "${SERIAL_DEVICE_FILE}")
+fi
+if [[ -z "${SERIAL_DEVICE}" ]]; then
+    SERIAL_DEVICE="${CONFIGURED_SERIAL_DEVICE}"
+fi
+# The opt-in is the configured option and nothing else: a resolved-device file
+# left behind by a boot where it *was* set must never re-enable the rewrite for
+# a user who has since cleared the option.
+if [[ -n "${CONFIGURED_SERIAL_DEVICE}" && "${CONFIGURED_SERIAL_DEVICE}" != "null" ]]; then
     if command -v node >/dev/null 2>&1; then
         shopt -s nullglob
         for db in "${PROJECTS_DIR}"/*/*.db; do

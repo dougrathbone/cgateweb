@@ -16,6 +16,15 @@ CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_
 # hatch if Schneider re-releases the zip and this pin goes stale.
 CGATEWEB_DEFAULT_DOWNLOAD_SHA256="b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c"
 
+# The identity-aware serial resolver (issue #28) and the file it publishes its
+# answer to. Both are overridable so the unit tests can run the repo copy of
+# the resolver and keep its bookkeeping out of /run.
+CGATEWEB_RESOLVE_SERIAL_JS="${CGATEWEB_RESOLVE_SERIAL_JS:-/usr/bin/cgateweb-resolve-serial.js}"
+# Exported so the resolver child process writes the very file this script (and
+# the boot scripts after it) reads back, rather than each falling back to its
+# own default independently.
+export CGATEWEB_SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
+
 # bashio::config returns the literal string "null" for unset optional fields,
 # even when an empty default is passed (upstream bashio's `${2:-null}` rewrites
 # an empty default to "null"). Treat both empty and "null" as unset.
@@ -158,6 +167,15 @@ _cgateweb_upload_zip_is_newer() {
     if [[ ! -e "${marker}" || "${zip}" -nt "${marker}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# The dead end both serial-resolution paths share: the configured device is
+# not there and nothing could stand in for it. Says where to find the real
+# path rather than just naming the one that failed.
+_cgateweb_serial_device_not_found() {
+    bashio::log.error "Serial device not found: $1"
+    bashio::log.error "Find the real path in Home Assistant: Settings > System > Hardware > ⋮ (top right) > All hardware"
+    bashio::log.error "Look for /dev/ttyUSB* or /dev/ttyACM*; prefer the stable /dev/serial/by-id/ path"
+}
+
 # ─── ALPHA: USB-serial PCI passthrough (issue #28) ─────────────────────────
 # Validate the opt-in cgate_serial_device option. The option is deliberately
 # absent from `options` in config.yaml, so it is unset for every existing user
@@ -201,22 +219,62 @@ _cgateweb_check_serial_device() {
         bashio::log.info "No /dev/ttyUSB* or /dev/ttyACM* devices found and no /dev/serial/by-id/ directory — is the PCI plugged in?"
     fi
 
-    if [[ ! -e "${device}" ]]; then
-        bashio::log.error "Serial device not found: ${device}"
-        bashio::log.error "Find the real path in Home Assistant: Settings > System > Hardware > ⋮ (top right) > All hardware"
-        bashio::log.error "Look for /dev/ttyUSB* or /dev/ttyACM*; prefer the stable /dev/serial/by-id/ path"
-        return 1
+    # Turn the configured path into a live one. A PC Interface that is
+    # unplugged and replugged can come back as a different ttyUSBn (issue #28),
+    # so the resolver falls back to the identity recorded on the last good boot
+    # instead of failing on a path that no longer exists. It prints the chosen
+    # path on stdout and its diagnostics on stderr; the two streams are captured
+    # separately so the answer never depends on how Node happened to interleave
+    # them, and the diagnostics are replayed through bashio so they reach the
+    # add-on log with a level prefix.
+    local resolved
+    if command -v node >/dev/null 2>&1; then
+        # Kept in the temp dir rather than beside the device file: a device
+        # file the add-on cannot write is a warning below, not a reason to lose
+        # the resolver's diagnostics or fail startup.
+        local err_file="${TMPDIR:-/tmp}/cgateweb-resolve-serial.$$.err" resolver_status=0
+        resolved=$(node "${CGATEWEB_RESOLVE_SERIAL_JS}" "${device}" 2>"${err_file}") || resolver_status=$?
+        while IFS= read -r line; do
+            if [[ -n "${line}" ]]; then bashio::log.warning "${line}"; fi
+        done < "${err_file}"
+        rm -f "${err_file}"
+        if [[ ${resolver_status} -ne 0 ]]; then
+            _cgateweb_serial_device_not_found "${device}"
+            return 1
+        fi
+    else
+        # No node means no resolver and no recovery from a renumber; fall back
+        # to the plain existence check used before issue #28, which is correct
+        # whenever the device has not moved.
+        bashio::log.warning "node is unavailable — checking ${device} directly, without identity-based recovery"
+        if [[ ! -e "${device}" ]]; then
+            _cgateweb_serial_device_not_found "${device}"
+            return 1
+        fi
+        resolved="${device}"
+    fi
+
+    # Publish the agreed path. cgate-project-sync.sh and the serial diagnostics
+    # read this file instead of re-resolving cgate_serial_device themselves: a
+    # second resolution can disagree with this one if the device renumbers in
+    # between, which is how the install check could pass while the project
+    # fixup wrote a port name that no longer existed. The resolver already
+    # wrote the file on its success path; writing it again covers the node-less
+    # fallback and keeps the file identical to what is logged below.
+    mkdir -p "${CGATEWEB_SERIAL_DEVICE_FILE%/*}" 2>/dev/null
+    if ! { printf '%s' "${resolved}" > "${CGATEWEB_SERIAL_DEVICE_FILE}"; } 2>/dev/null; then
+        bashio::log.warning "Could not record the resolved serial device in ${CGATEWEB_SERIAL_DEVICE_FILE} — later steps will re-read cgate_serial_device"
     fi
 
     # Show the selected device's details and resolve symlinks so a
     # /dev/serial/by-id/ path also logs its real target (e.g. ../../ttyUSB0).
-    bashio::log.info "Selected device: $(ls -l "${device}" 2>/dev/null)"
-    local resolved
-    resolved=$(readlink -f "${device}" 2>/dev/null || printf '%s' "${device}")
-    bashio::log.info "Serial device ${device} resolves to ${resolved}"
+    bashio::log.info "Selected device: $(ls -l "${resolved}" 2>/dev/null)"
+    local target
+    target=$(readlink -f "${resolved}" 2>/dev/null || printf '%s' "${resolved}")
+    bashio::log.info "Serial device ${device} resolves to ${target}"
 
-    if [[ ! -c "${device}" ]]; then
-        bashio::log.warning "${device} exists but is not a character device — C-Gate may fail to open it"
+    if [[ ! -c "${resolved}" ]]; then
+        bashio::log.warning "${resolved} exists but is not a character device — C-Gate may fail to open it"
     fi
 
     # A local serial device is only meaningful when C-Gate runs inside this

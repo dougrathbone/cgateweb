@@ -138,14 +138,55 @@ const BASHIO_STUB_WITH_LOGS = `
     }
 `;
 
+// The identity-aware resolver the serial check shells out to (issue #28).
+// Installed at /usr/bin in the add-on image; the tests point the script at the
+// repo copy through CGATEWEB_RESOLVE_SERIAL_JS.
+const RESOLVER = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'bin',
+    'cgateweb-resolve-serial.js'
+);
+
+// Temp dirs handed out to serial tests, removed once the suite finishes.
+const serialTmpDirs = [];
+function makeSerialTmpDir() {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-serial-'));
+    serialTmpDirs.push(dir);
+    return dir;
+}
+afterAll(() => {
+    for (const dir of serialTmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
 // Run _cgateweb_check_serial_device with the given config and capture both
 // the exit status and everything it logged. execFileSync throws on non-zero
 // exit, so status/output are recovered from the thrown error.
-function checkSerialDevice(configObject) {
-    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1', CGW_INSTALL_SCRIPT: SCRIPT };
+//
+// The resolver's two bookkeeping files are redirected into a per-call temp dir
+// so no test ever reads or writes the real /run/cgateweb/serial-device or
+// /data/serial-identity.json. `dir` reuses a caller-made temp dir (needed when
+// the test also has to build a stub-binary dir inside it), extraEnv layers on
+// top (PATH surgery), and bashCmd allows an absolute bash when PATH is
+// stripped down.
+function checkSerialDevice(configObject, { dir = null, extraEnv = {}, bashCmd = 'bash' } = {}) {
+    const tmp = dir || makeSerialTmpDir();
+    const deviceFile = path.join(tmp, 'serial-device');
+    const env = {
+        ...process.env,
+        CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+        CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_RESOLVE_SERIAL_JS: RESOLVER,
+        CGATEWEB_SERIAL_DEVICE_FILE: deviceFile,
+        CGATEWEB_SERIAL_IDENTITY_FILE: path.join(tmp, 'serial-identity.json')
+    };
     for (const [k, v] of Object.entries(configObject || {})) {
         env[`CGW_TEST_${k}`] = v;
     }
+    Object.assign(env, extraEnv);
     const script = `
         set -u
         ${BASHIO_STUB_WITH_LOGS}
@@ -153,11 +194,27 @@ function checkSerialDevice(configObject) {
         _cgateweb_check_serial_device
     `;
     try {
-        const output = execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
-        return { status: 0, output };
+        const output = execFileSync(bashCmd, ['-c', script], { encoding: 'utf8', env });
+        return { status: 0, output, deviceFile, dir: tmp };
     } catch (err) {
-        return { status: err.status, output: `${err.stdout || ''}${err.stderr || ''}` };
+        return {
+            status: err.status,
+            output: `${err.stdout || ''}${err.stderr || ''}`,
+            deviceFile,
+            dir: tmp
+        };
     }
+}
+
+// A bin dir containing only the listed system tools, for tests that strip PATH
+// down to prove a "tool is missing" branch really fires.
+function makeStubBinDir(tmp, tools) {
+    const binDir = path.join(tmp, 'bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    for (const tool of tools) {
+        fs.symlinkSync(fs.realpathSync(`/bin/${tool}`), path.join(binDir, tool));
+    }
+    return binDir;
 }
 
 describeBash('cgate-install.sh helpers', () => {
@@ -499,6 +556,123 @@ describeBash('cgate-install.sh helpers', () => {
             expect(r.status).toBe(0);
             expect(r.output).toMatch(/Selected device: .*\/dev\/null/);
             expect(r.output).toMatch(/resolves to \/dev\/null/);
+        });
+    });
+
+    describe('_cgateweb_check_serial_device resolver wiring (#28)', () => {
+        // A stand-in resolver that answers the way the real one does after a
+        // replug: the chosen path on stdout, diagnostics on stderr. stdout is
+        // written FIRST so a caller that merged the two streams and took the
+        // last line would pick the message instead of the path.
+        const NODE_STUB_RECOVERED = `#!/usr/bin/env bash
+printf '/dev/ttyUSB7\\n'
+printf 'Recovered: the previously-used device is now at /dev/ttyUSB7\\n' >&2
+exit 0
+`;
+        // A resolver that succeeds without writing the device file, so the
+        // publishing done by the shell script is what the test observes.
+        const NODE_STUB_SILENT = `#!/usr/bin/env bash
+printf '/dev/null\\n'
+exit 0
+`;
+
+        function withNodeStub(body) {
+            const dir = makeSerialTmpDir();
+            const binDir = path.join(dir, 'bin');
+            fs.mkdirSync(binDir, { recursive: true });
+            fs.writeFileSync(path.join(binDir, 'node'), body, { mode: 0o755 });
+            return { dir, binDir };
+        }
+
+        test('publishes the resolved path so the later boot scripts agree on it', () => {
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(fs.readFileSync(r.deviceFile, 'utf8')).toBe('/dev/null');
+        });
+
+        test('surfaces the resolver messages through the add-on log', () => {
+            // /dev/null has no /dev/serial/by-id link and no sysfs USB parent
+            // on any host these tests run on, so the real resolver reports
+            // that identity-based recovery will not be possible.
+            const r = checkSerialDevice({ cgate_serial_device: '/dev/null', cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/WARNING: No stable identity found for \/dev\/null/);
+        });
+
+        test('adopts the path the resolver printed, not the configured one', () => {
+            const { dir, binDir } = withNodeStub(NODE_STUB_RECOVERED);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/ttyUSB0', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }
+            );
+            expect(r.status).toBe(0);
+            expect(fs.readFileSync(r.deviceFile, 'utf8')).toBe('/dev/ttyUSB7');
+            expect(r.output).toMatch(/WARNING: Recovered: .*\/dev\/ttyUSB7/);
+        });
+
+        test('fails when the resolver cannot resolve the device', () => {
+            const r = checkSerialDevice({
+                cgate_serial_device: '/dev/cgw-no-such-serial-device', cgate_mode: 'managed'
+            });
+            expect(r.status).toBe(1);
+            // The resolver's own diagnosis, plus the script's guidance.
+            expect(r.output).toMatch(/No previously-recorded device identity/);
+            expect(r.output).toMatch(/ERROR: Serial device not found/);
+            expect(fs.existsSync(r.deviceFile)).toBe(false);
+        });
+
+        test('leaves the device file untouched when cgate_serial_device is unset', () => {
+            const r = checkSerialDevice({ cgate_mode: 'managed' });
+            expect(r.status).toBe(0);
+            expect(fs.existsSync(r.deviceFile)).toBe(false);
+        });
+
+        test('falls back to a plain existence check when node is unavailable', () => {
+            // PATH is cut down to the handful of externals the fallback path
+            // uses, so `command -v node` fails the way it would in an image
+            // without node rather than being faked.
+            const dir = makeSerialTmpDir();
+            const binDir = makeStubBinDir(dir, ['ls', 'mkdir', 'rm']);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: binDir }, bashCmd: '/bin/bash' }
+            );
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/WARNING: node is unavailable/);
+            expect(fs.readFileSync(r.deviceFile, 'utf8')).toBe('/dev/null');
+        });
+
+        test('still fails on a missing device when node is unavailable', () => {
+            const dir = makeSerialTmpDir();
+            const binDir = makeStubBinDir(dir, ['ls', 'mkdir', 'rm']);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/cgw-no-such-serial-device', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: binDir }, bashCmd: '/bin/bash' }
+            );
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/ERROR: Serial device not found/);
+            expect(fs.existsSync(r.deviceFile)).toBe(false);
+        });
+
+        test('warns and continues when the resolved path cannot be recorded', () => {
+            // Device file inside a path whose parent is a regular file: the
+            // publish cannot succeed. Startup must not fail for it — the
+            // consumers just fall back to reading the raw option.
+            const { dir, binDir } = withNodeStub(NODE_STUB_SILENT);
+            const blocker = path.join(dir, 'blocker');
+            fs.writeFileSync(blocker, '');
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
+                {
+                    dir,
+                    extraEnv: {
+                        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
+                        CGATEWEB_SERIAL_DEVICE_FILE: path.join(blocker, 'serial-device')
+                    }
+                }
+            );
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/WARNING: Could not record the resolved serial device/);
         });
     });
 });

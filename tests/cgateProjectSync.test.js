@@ -63,6 +63,10 @@ function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} })
         // into the bash -c command text, so the absolute path is never part of
         // the executed command string.
         CGW_SYNC_SCRIPT: SCRIPT,
+        // Default the resolved-device file to a path inside the test's own
+        // tree so a test never reads the host's real /run/cgateweb copy; tests
+        // that exercise the resolved path create it explicitly.
+        CGATEWEB_SERIAL_DEVICE_FILE: path.join(dataCgate, 'serial-device'),
         ...extraEnv
     };
     for (const [k, v] of Object.entries(configObject)) {
@@ -242,6 +246,75 @@ describeBash('cgate-project-sync.sh', () => {
         expect(calls).toContain('cgateweb-project-serial-fixup.js');
         expect(calls).toContain('/dev/ttyUSB0');
         expect(calls).toContain('HOME.db');
+        fs.rmSync(binDir, { recursive: true, force: true });
+    });
+
+    test('fixes up with the path cont-init resolved, not the configured one (issue #28)', () => {
+        // The PCI renumbered since the user typed the option: cont-init
+        // resolved it to ttyUSB9 and published that. Writing ttyUSB0 into the
+        // project would point C-Gate at a device that no longer exists.
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        fs.writeFileSync(path.join(dirs.dataCgate, 'serial-device'), '/dev/ttyUSB9');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        const calls = fs.readFileSync(nodeCalls, 'utf8');
+        expect(calls).toContain('/dev/ttyUSB9');
+        expect(calls).not.toContain('/dev/ttyUSB0');
+        fs.rmSync(binDir, { recursive: true, force: true });
+    });
+
+    test('falls back to the configured device when the published file is empty', () => {
+        // A publish that failed half-way must not hand the fixup an empty
+        // device argument.
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        fs.writeFileSync(path.join(dirs.dataCgate, 'serial-device'), '');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        expect(fs.readFileSync(nodeCalls, 'utf8')).toContain('/dev/ttyUSB0');
+        fs.rmSync(binDir, { recursive: true, force: true });
+    });
+
+    test('skips the fixup once the option is cleared, even with a device file left over', () => {
+        // /run is a tmpfs so this is unlikely, but the opt-in must come from
+        // the option alone — never from a file a previous boot published.
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        fs.writeFileSync(path.join(dirs.dataCgate, 'serial-device'), '/dev/ttyUSB9');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        expect(fs.existsSync(nodeCalls)).toBe(false);
         fs.rmSync(binDir, { recursive: true, force: true });
     });
 
