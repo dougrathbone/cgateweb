@@ -8,7 +8,7 @@ MQTT bridge for Clipsal C-Bus lighting systems, written in Node.js. Available as
 
 Connects to C-Gate over TCP, publishes C-Bus events to an MQTT broker, and supports Home Assistant MQTT Discovery for automatic device configuration. Control your C-Bus lights, covers, switches, and sensors from Home Assistant or any MQTT-compatible platform.
 
-**USB-serial PC Interface (5500PC/5500PCU)?** Run C-Gate yourself on any Windows/Linux machine with the dongle attached and connect in remote mode — or try the Home Assistant add-on's alpha managed-mode serial passthrough. See [DOCS.md](homeassistant-addon/DOCS.md#alpha-usb-serial-pci-support).
+**USB-serial PC Interface (5500PC/5500PCU)?** Run C-Gate yourself on any Windows/Linux machine with the dongle attached and connect in remote mode — or try the Home Assistant add-on's beta managed-mode serial passthrough. See [DOCS.md](homeassistant-addon/DOCS.md#usb-serial-pci-support).
 
 ### Home Assistant Add-on Repositories
 
@@ -191,7 +191,7 @@ The crucial step is setting the correct `ha_discovery_*_app_id` values to match 
 **Important Notes:**
 
 *   Discovery for Covers, Switches, Relays, PIRs, and HVAC is **disabled by default** (`null`). Only the Lighting application (56) is discovered automatically, and **every** Lighting group is published as a `light`. You *must* set the corresponding `ha_discovery_*_app_id` in `settings.js` to the correct C-Bus Application ID to enable the other types.
-*   **Devices that live on the Lighting application (56) but are not lights** — e.g. shutter-relay units (blinds use lighting group addresses) or a thermostat exposed on app 56 — are classified by Application ID and so default to `light`. Motorised covers whose label contains a cover keyword are now auto-detected (see *Automatic cover detection* below). For anything auto-detection can't infer, add a per-group `type_overrides` entry in your labels file (`"<net>/<app>/<group>": "cover" | "switch" | "relay" | "pir" | "hvac"`) or via the web UI; an override always wins.
+*   **Devices that live on the Lighting application (56) but are not lights** — e.g. shutter-relay units (blinds use lighting group addresses) or a thermostat exposed on app 56 — are classified by Application ID and so default to `light`. Motorised covers whose label contains a cover keyword are now auto-detected (see *Automatic cover detection* below). For anything auto-detection can't infer, add a per-group `type_overrides` entry in your labels file (`"<net>/<app>/<group>": "cover" | "switch" | "relay" | "pir" | "hvac"`) or via the web UI; an override always wins. Two further override values, `light-onoff` (a light with no brightness control) and `binary_sensor` (a read-only sensor with no command topic), are accepted **only when `ha_discovery_type_from_unit` is enabled** — with that setting off they are unrecognised and the group falls back to a dimmable light with a warning. See *Type from C-Bus unit type (opt-in)* below.
 *   If multiple discovery types (e.g., Cover and Switch) are configured with the *same* Application ID, `cgateweb` prioritizes discovery in this order: Cover > Switch > Relay > PIR. Only the first matching type will be discovered for a given C-Bus group using that Application ID.
 *   For more technical details, see `docs/project-homeassistant-discovery.md`.
 
@@ -199,13 +199,42 @@ The crucial step is setting the correct `ha_discovery_*_app_id` values to match 
 
 Groups on the Lighting application (56) whose label contains a cover keyword (`blind`, `shutter`, `shade`, `awning`, `curtain`, `roller`, `garage door`) are published as Home Assistant `cover` entities instead of `light`. This is on by default (`ha_discovery_auto_type: true`).
 
-Precedence: a manual `type_overrides` entry always wins, then application-id mappings, then this automatic detection, then the default `light`. To disable auto-detection set `ha_discovery_auto_type: false`; to keep it on but turn off keyword matching set `ha_discovery_auto_type_name_heuristics: false`. Customise the keyword list with `ha_discovery_auto_type_cover_keywords` (matching is case-insensitive and catches plurals).
+To disable auto-detection set `ha_discovery_auto_type: false`; to keep it on but turn off keyword matching set `ha_discovery_auto_type_name_heuristics: false`. Customise the keyword list with `ha_discovery_auto_type_cover_keywords` (matching is case-insensitive and catches plurals).
+
+#### Classification precedence
+
+For groups on the Lighting application (56), the entity type is decided by the first rule below that produces an answer. Groups on the other `ha_discovery_*_app_id` applications are typed by their application-id mapping instead and never enter this chain.
+
+1. **A manual `type_overrides` entry** in your labels file (or set via the web UI). Always wins.
+2. **An entity-id-style label prefix** (e.g. `cover.bedroom_shutter`), when `ha_discovery_type_from_label_prefix` is enabled.
+3. **The cover name heuristics** — a label containing a cover keyword such as `blind` or `shutter`, when `ha_discovery_auto_type` is on.
+4. **The C-Bus unit type driving the group**, when `ha_discovery_type_from_unit` is enabled.
+5. **The default**: a dimmable `light`.
+
+Cover *names* deliberately outrank the unit type (rule 3 before rule 4). A relay channel can equally drive a light, a motorised blind or an irrigation valve, so the hardware alone cannot tell them apart — whereas a name that positively identifies a cover is good evidence. A group named "Patio Blind" on a relay unit therefore stays a `cover`. Groups whose names say nothing about being a cover still fall through to unit-type classification, which is where most of that feature's value is.
 
 Note: a shutter relay with a non-descriptive name still appears as a light — add a `type_overrides` entry (e.g. `"254/56/15": "cover"`) for those.
 
 #### Type from label prefix (opt-in)
 
-If you name your C-Bus groups with their intended Home Assistant entity id (e.g. `cover.bedroom_shutter`, `switch.porch_light`, `light.bedroom_downlights`), set `ha_discovery_type_from_label_prefix: true` and the domain prefix becomes the group's discovery type. Supported prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` (anything else, e.g. `lock.`, is ignored). Precedence matches the other rules: a manual `type_overrides` entry wins, then the label prefix, then keyword detection, then the default `light`.
+If you name your C-Bus groups with their intended Home Assistant entity id (e.g. `cover.bedroom_shutter`, `switch.porch_light`, `light.bedroom_downlights`), set `ha_discovery_type_from_label_prefix: true` and the domain prefix becomes the group's discovery type. Supported prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` (anything else, e.g. `lock.`, is ignored). See *Classification precedence* above — only a manual `type_overrides` entry outranks the prefix. A `light.` prefix pins the group to the light domain without pinning its dim capability, so with `ha_discovery_type_from_unit` also enabled a relay-driven `light.porch` becomes an on/off light rather than getting a brightness slider that ramps a relay channel.
+
+#### Type from C-Bus unit type (opt-in)
+
+Set `ha_discovery_type_from_unit: true` and each Lighting-application group's entity type comes from the C-Bus **unit hardware** driving it, rather than from its name:
+
+*   A group driven by a **dimmer** channel stays a dimmable `light`.
+*   A group driven by a **relay** channel becomes a `light` **with no brightness control**. It stays in the `light` domain — the entity id and `unique_id` are unchanged, so existing automations, scripts and dashboards keep working — but the brightness slider goes away, because ramping a relay channel was never real.
+*   A group driven **only by an input unit** (a sensor or key-input unit, such as a bus coupler) becomes a `binary_sensor`. There is no load on the group to control, so the entity is read-only, and any previously published `light` config for it is retracted. This one *does* move domain, so the entity id changes from `light.*` to `binary_sensor.*` — the only case here that does.
+*   If a group is driven by both a dimmer and a relay, the dimmer wins and the group keeps its brightness slider.
+
+**This is off by default because turning it on can change the type of entities you already have.** A group you currently see as a dimmable light may become an on/off light or a binary sensor. Review your automations for brightness commands against relay-driven groups before enabling it.
+
+Unit types cgateweb does not recognise are **left alone** — the group keeps whatever type the rest of the chain gave it (normally the default dimmable light) — and each unrecognised type that drives a discovered group is logged once per network at info level, asking you to report it on [GitHub issue #37](https://github.com/dougrathbone/cgateweb/issues/37) so it can be classified. An unrecognised type sharing a group with an input unit also suppresses the `binary_sensor` conclusion, since that unknown unit might itself be an output.
+
+Precedence is covered under *Classification precedence* above: manual overrides, label prefixes and cover names all outrank the unit type. Setting `ha_discovery_auto_type: false` disables unit-type classification along with the name heuristics.
+
+With this setting enabled, `light-onoff` and `binary_sensor` also become valid `type_overrides` values, for forcing those shapes on a group whose hardware cgateweb cannot see or classify. (An override of `light` or `light-dimmable` is always valid and pins a group to the default dimmable light, which is how you exempt one group from all of the automatic rules.)
 
 #### Source unit per group
 
@@ -217,6 +246,34 @@ Two ways to use a C-Bus USB PC Interface (5500PC native USB, or 5500PC via a USB
 
 - **Remote mode (recommended for most):** run C-Gate on any Windows or Linux machine with the interface attached, and point cgateweb at it (`cbusip` / `cgate_host`).
 - **Managed mode (Home Assistant add-on):** the add-on can run C-Gate with the interface plugged into the HA host itself. Set `cgate_serial_device` (a dropdown of detected serial devices — prefer a stable `/dev/serial/by-id/...` path), keep `cgate_mode: managed`, and install your Toolkit project `.db` into `/share/cgate/tag/`. Projects saved on Windows reference a `COMx` port that cannot exist on Linux — the add-on rewrites those interface addresses to your serial device automatically on each startup. Field-tested with both interface types; report problems on [GitHub issue #28](https://github.com/dougrathbone/cgateweb/issues/28).
+
+**If the interface renumbers across a replug:** a USB PC Interface unplugged and plugged back in — into another port, or after a host reboot — can come back on a different `/dev/ttyUSB*` name, which used to leave the network stuck at `InterfaceState=closed` (or fail startup outright). The add-on now recovers in both cases. It records the device's identity on each good boot, so **at startup** it re-resolves the configured path to the interface it actually remembers and repoints your project at it; and **while running**, if a network's interface goes down and its device has vanished or a `/dev/serial/by-id/...` path now points somewhere else, it re-resolves the device, repoints the project database and restarts only the internal C-Gate (a short outage, explained in the log). Restarts are spaced out and capped so a faulty cable cannot cause a restart loop.
+
+The reliable fix is to **configure a `/dev/serial/by-id/...` path** rather than a bare `/dev/ttyUSB0`: that alias is derived from the device's own identity, so it survives replugging into a different USB port and the problem does not arise in the first place.
+
+### Exposing managed C-Gate to external clients (Home Assistant add-on)
+
+In the add-on's managed mode, C-Gate runs inside the add-on container and is reachable only from the add-on itself. C-Gate is a multi-client server, so tools such as **C-Bus Toolkit** can connect to that same instance over the LAN — useful when the PC Interface is physically attached to the Home Assistant host. Set `cgate_external_clients` to the list of addresses allowed in, each with an access level:
+
+```yaml
+cgate_external_clients:
+  - address: "192.168.1.50"
+    level: program
+```
+
+`level` is one of `monitor` (read-only), `operate` (control loads) or `program` (reprogram C-Bus units — what Toolkit needs). Each entry becomes a `remote <address> <level>` rule in C-Gate's access control file.
+
+Read these before enabling it:
+
+*   **C-Gate has no authentication on these ports.** Any client whose address matches a rule gets that level, with no username or password. Only expose C-Gate if you actually need to.
+*   **`program` also grants the ability to shut C-Gate down.** In C-Gate's level hierarchy (`none`, `connect`, `monitor`, `operate`, `admin`, `program`, `debug`) `program` sits *above* `admin`, so granting Toolkit the level it needs necessarily grants the administrative commands too. There is no way to separate them.
+*   **Subnets are written as an octet of `255`, not CIDR.** `192.168.1.255` means every address on `192.168.1.x`. Prefer listing a single address; a subnet grant is much wider than it looks, and `255.255.255.255` (every address on the internet) is rejected outright.
+*   **You must also map C-Gate's ports in Home Assistant's Network panel** (20023 command, 20024 event, 20025 status change). They are declared by the add-on but unmapped by default. Because Home Assistant can only map ports the add-on declares, exposing C-Gate requires leaving `cgate_port` at its default **20023** — a custom `cgate_port` cannot be mapped.
+*   **It is a no-op in remote mode.** With `cgate_mode: remote` C-Gate runs on another machine, so this add-on does not own its access control file; grant access in that C-Gate's own `access.txt`.
+
+**If a client is refused despite being listed:** when C-Gate refuses a connection it logs the peer address it actually saw. Compare that with the address you configured — they can differ. The add-on runs with `host_network: false`, so incoming connections traverse Docker's bridge network; a LAN client's source address is expected to be preserved through the port mapping, but this has not been confirmed on real Home Assistant OS hardware. If C-Gate reports a different address (for example a Docker gateway address), that is what the rule needs to match, and it is worth reporting on [GitHub issue #37](https://github.com/dougrathbone/cgateweb/issues/37).
+
+See [DOCS.md](homeassistant-addon/DOCS.md) for the add-on walkthrough.
 
 ### Testing
 

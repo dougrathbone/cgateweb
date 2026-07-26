@@ -38,7 +38,7 @@ The add-on supports two modes:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `cgate_host` | string | (empty) | IP address of the C-Gate server (ignored in managed mode) |
-| `cgate_port` | integer | `20023` | C-Gate command port |
+| `cgate_port` | integer | `20023` | C-Gate command port. Leave at `20023` if you intend to expose managed C-Gate to external clients — Home Assistant can only map ports the add-on declares, and the declared port is `20023/tcp`. |
 | `cgate_event_port` | integer | `20025` | C-Gate event port for real-time device updates |
 | `cgate_project` | string | `HOME` | C-Gate project name |
 
@@ -52,7 +52,8 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Downloads from the built-in default URL are verified against a checksum pinned in the install script; setting this overrides that pin (the escape hatch if Clipsal re-releases the zip). Required for a custom `cgate_download_url`; uploads without it proceed with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
-| `cgate_serial_device` | device | (empty) | **BETA — opt-in, field-tested with 5500PC and 5500PCU.** Dropdown of the serial devices detected on the HA host (e.g. `/dev/ttyUSB0` or a `/dev/serial/by-id/...` alias). Hidden optional field; leave empty to disable. See "USB-serial PCI support" below. |
+| `cgate_serial_device` | device | (empty) | **BETA — opt-in, field-tested with 5500PC and 5500PCU.** Dropdown of the serial devices detected on the HA host. Prefer a `/dev/serial/by-id/...` alias over a bare `/dev/ttyUSB0`: it survives replugging into another USB port. Hidden optional field; leave empty to disable. See "USB-serial PCI support" below. |
+| `cgate_external_clients` | list of objects | `[]` | Addresses allowed to connect to the managed C-Gate (for tools such as C-Bus Toolkit), each with an `address` and a `level` of `monitor`, `operate` or `program`. Empty means the add-on itself only. **C-Gate has no authentication on its ports** — see "Letting external clients reach managed C-Gate" below before using this. |
 
 #### Uploading C-Gate manually
 
@@ -137,7 +138,7 @@ devices into the container automatically — no manual device mapping is needed.
 **Enabling**
 
 1. In the add-on's **Configuration** tab, click **Show unused optional
-   configuration options** and find **Serial PCI Device (Alpha)**. The field
+   configuration options** and find **Serial PCI Device (Beta)**. The field
    renders as a dropdown listing the serial devices the Supervisor detects on
    your host (`/dev/ttyUSB*`, `/dev/ttyACM*`, and their stable
    `/dev/serial/by-id/...` aliases). Prefer a `/dev/serial/by-id/...` entry —
@@ -181,16 +182,34 @@ restart the add-on and copy its full startup log (**Settings → Add-ons →
 C-Gate Web Bridge → Log**) into your report — the diagnostics block is
 clearly marked with a banner so you can see exactly what to include.
 
-**If you unplug and replug the interface while the add-on is running**
+**If the interface renumbers across a replug**
 
-A replugged PC Interface can come back on a different `/dev/ttyUSB*` name. C-Gate
-keeps holding the port it opened, so the network stays at
-`InterfaceState=closed`. The add-on now recovers from this by itself: when a
-network's interface goes down and the device it was using has vanished (or a
-`/dev/serial/by-id/...` path now points at a different port), it re-finds the
-device by the identity recorded on the last good boot, repoints your project
-database at the new port, and restarts only the internal C-Gate. Expect a short
-outage while C-Gate restarts; the log explains what moved where.
+Linux hands out `/dev/ttyUSB*` names in the order devices appear, so a PC
+Interface unplugged and plugged back in — into another port, or across a host
+reboot — can come back under a different name than the one you configured. The
+add-on now recovers from this in both places it can happen.
+
+> **The reliable fix is to configure a `/dev/serial/by-id/...` path** rather
+> than a bare `/dev/ttyUSB0`. That alias is derived from the device's own
+> identity (vendor, product, serial number), so it follows the interface
+> between USB ports and the problem never arises. Everything below is the
+> safety net for when it does.
+
+*At startup*, the add-on remembers the identity of the serial device it used on
+the last good boot. If the configured path has gone missing, or now resolves to
+a *different* device than the one remembered, startup re-finds the remembered
+interface by its identity, repoints your project database at its new port, and
+carries on — instead of failing startup or, worse, quietly driving whatever
+unrelated device happens to have taken over that path.
+
+*While running*, C-Gate keeps holding the port it opened, so the network stays
+at `InterfaceState=closed` even after you plug the interface back in. The add-on
+now recovers from this by itself too: when a network's interface goes down and
+the device it was using has vanished (or a `/dev/serial/by-id/...` path now
+points at a different port), it re-finds the device by the identity recorded on
+the last good boot, repoints your project database at the new port, and restarts
+only the internal C-Gate. Expect a short outage while C-Gate restarts; the log
+explains what moved where.
 
 This never runs for CNI (ethernet) installs, which have no
 `cgate_serial_device`, and it never restarts C-Gate for an interface that is
@@ -214,11 +233,11 @@ and restart the add-on.
   (`NET LIST_ALL`) show the project's `interfaceType`/`interfaceAddress` so you
   can tell them apart.
 - **Untested on ARM** (aarch64/armhf/armv7) and only lightly tested on
-  amd64 — which is why this ships as an opt-in alpha.
+  amd64 — which is why this ships as an opt-in beta.
 - Whether a given dongle/USB chipset works depends on C-Gate's bundled serial
   support; not every combination may function.
 
-If the alpha does not work for your setup, the remote-mode arrangement
+If this does not work for your setup, the remote-mode arrangement
 described under "C-Gate Mode" above (C-Gate on any machine with the dongle)
 remains the stable path for USB PC Interfaces.
 
@@ -313,8 +332,9 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional). Leave empty to disable switch discovery. |
 | `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity, a companion `button` entity, and (when `ha_discovery_scene_enabled` is `true`) a `scene` entity. Leave empty to disable. |
 | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity for each C-Bus trigger group in addition to the `event` and `button` entities. Set to `false` to suppress scene entities. |
-| `ha_discovery_auto_type` | boolean | `true` | Auto-detect device types for Lighting-application (56) groups. Currently detects motorised covers (blinds/shutters) from the group label. A manual `type_overrides` entry and application-id mappings always take precedence; auto-detection only upgrades the default `light`. |
+| `ha_discovery_auto_type` | boolean | `true` | Auto-detect device types for Lighting-application (56) groups. Detects motorised covers (blinds/shutters) from the group label. A manual `type_overrides` entry and a label prefix always take precedence; auto-detection only upgrades the default `light`. Setting this to `false` also disables `ha_discovery_type_from_unit`. Groups on the other `ha_discovery_*_app_id` applications are typed by their application-id mapping and are not classified here at all. |
 | `ha_discovery_type_from_label_prefix` | boolean | `false` | Treat a group label starting with an entity-domain prefix as that device type for discovery (e.g. `cover.bedroom_shutter` → cover, `switch.porch_light` → switch). Supported prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` A manual `type_overrides` entry always wins. |
+| `ha_discovery_type_from_unit` | boolean | `false` | Decide each Lighting-application group's entity type from the **C-Bus unit hardware** driving it instead of from its name: a dimmer channel stays a dimmable `light`, a relay channel becomes a `light` with **no brightness control**, and a group driven only by an input unit (sensor/key input, e.g. a bus coupler) becomes a `binary_sensor`. Unit types the add-on does not recognise are left alone and logged so they can be reported. **Off by default because enabling it can change the type of entities you already have.** A manual `type_overrides` entry, a label prefix, and a cover-identifying name all still win. See "Entity type from C-Bus unit type" below. |
 | `ha_discovery_auto_type_name_heuristics` | boolean | `true` | When `ha_discovery_auto_type` is on, classify covers by matching the group label against the cover keyword list. Set to `false` to turn keyword matching off. |
 | `ha_discovery_auto_type_cover_keywords` | list | `[blind, shutter, shade, awning, curtain, roller, garage door]` | Keywords that mark a Lighting group as a cover. Matching is case-insensitive and catches plurals. |
 | `ha_discovery_hvac_app_id` | integer | (null) | C-Bus app ID for a **lighting-compatible** HVAC group (PAC/touchscreen-exposed). This is NOT the native Air Conditioning application (172) — use it only for groups mirrored onto a lighting-style app by a PAC or touchscreen. Each group is exposed as an HA `climate` entity. Leave empty to disable. |
@@ -323,6 +343,69 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `cbus_aircon_control_enabled` | boolean | `false` | Opt-in to **control** of native Air Conditioning thermostats (writes to live heating/cooling): enables `cbus/write/{network}/172/{sourceUnit}/setpoint` (°C), `/hvacmode` (`off`/`heat`/`cool`/`auto`/`fan_only`), and `/fanmode` (`automatic`/`continuous`), and adds command topics to the discovered climate entity. Setpoint writes are debounced (3s) per the protocol's echo guidance; flags, per-mode setpoints, and fan state learned from the thermostat are echoed on writes. Also sends `AIRCON REFRESH` when a zone group is first seen. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
+
+### How a group's entity type is decided
+
+For groups on the **Lighting application (56)**, the entity type is decided by the first rule below that produces an answer:
+
+1. **A manual `type_overrides` entry** in your labels file, or set from the label editor UI. Always wins.
+2. **An entity-id-style label prefix** (e.g. a group named `cover.bedroom_shutter`), when `ha_discovery_type_from_label_prefix` is on.
+3. **The cover name heuristics** — a label containing a cover keyword such as `blind` or `shutter` — when `ha_discovery_auto_type` is on.
+4. **The C-Bus unit type driving the group**, when `ha_discovery_type_from_unit` is on.
+5. **The default**: a dimmable `light`.
+
+Cover *names* deliberately outrank the unit type (rule 3 before rule 4). A relay channel can equally drive a light, a motorised blind or an irrigation valve, so the hardware alone cannot tell them apart, while a name that positively identifies a cover is good evidence. A group named "Patio Blind" driven by a relay therefore stays a `cover`.
+
+Groups on the other `ha_discovery_*_app_id` applications (cover, switch, relay, PIR, trigger, HVAC) are typed by their **application-id mapping** and do not enter this chain at all — none of the four rules above applies to them.
+
+Accepted `type_overrides` values are `cover`, `switch`, `relay`, `pir` and `hvac`, plus `light` (or `light-dimmable`) to pin a group to the default dimmable light and so exempt it from all automatic classification. When `ha_discovery_type_from_unit` is enabled, `light-onoff` and `binary_sensor` are also accepted. With that setting **off** those two are unrecognised: the group falls back to a dimmable light and a warning is logged — deliberately, so a mistyped override cannot silently strip a load of its command topic.
+
+### Entity type from C-Bus unit type
+
+`ha_discovery_type_from_unit` (default `false`) decides a Lighting-application group's entity type from the **C-Bus unit hardware** driving it, rather than from its name:
+
+- A group driven by a **dimmer** channel (unit types beginning `DIM`, e.g. `DIMDN8`) stays a dimmable `light`.
+- A group driven by a **relay** channel (unit types beginning `REL`, e.g. `RELDN12`) becomes a `light` **with no brightness control**. It stays in the `light` domain, and its `unique_id` and entity id are unchanged, so existing automations, scripts and dashboards keep working — but the brightness slider disappears, because ramping a relay channel was never real.
+- A group driven **only by an input unit** (unit types beginning `SEN`, e.g. a key-input or sensor unit such as a bus coupler) becomes a `binary_sensor`. There is no load on the group to control, so the entity is read-only and any `light` config previously published for it is retracted. This is the one case that changes domain, so its entity id changes from `light.*` to `binary_sensor.*`.
+- A group driven by **both** a dimmer and a relay keeps its brightness slider — the dimmer wins.
+
+**This is off by default because enabling it can change the type of entities you already have.** Before turning it on, check whether any automation sends a brightness or ramp command to a group that is actually relay-driven.
+
+Unit types the add-on does not recognise are **left alone**: the group keeps whatever type the rest of the chain gave it, normally the default dimmable light. Each unrecognised type that drives a discovered group is logged once per network per discovery run, at info level, asking you to report it on [GitHub issue #37](https://github.com/dougrathbone/cgateweb/issues/37) so it can be classified. An unrecognised type sharing a group with an input unit also suppresses the `binary_sensor` conclusion, since that unknown unit might itself be an output — the add-on will not make a group read-only on a guess.
+
+Setting `ha_discovery_auto_type: false` disables this along with the cover name heuristics. The setting works in both `managed` and `remote` mode.
+
+### Letting external clients reach managed C-Gate
+
+In managed mode C-Gate runs inside the add-on container, reachable only from the add-on itself. C-Gate is a multi-client server, so tools such as **C-Bus Toolkit** can connect to that same instance over your LAN — which is what you need when the PC Interface is physically attached to the Home Assistant host. Use `cgate_external_clients` to list the addresses allowed in, each with an access level:
+
+```yaml
+cgate_external_clients:
+  - address: "192.168.1.50"
+    level: program
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cgate_external_clients` | list of objects | `[]` (empty — add-on only) | Addresses allowed to connect to the managed C-Gate. Each entry has an `address` (IP address or hostname) and a `level` of `monitor`, `operate` or `program`. Each becomes a `remote <address> <level>` rule in C-Gate's access control file. Managed mode only. |
+
+The levels are:
+
+- **`monitor`** — read-only: watch C-Bus events, no control.
+- **`operate`** — control loads (switch and ramp groups).
+- **`program`** — reprogram C-Bus units. This is the level C-Bus Toolkit needs to program a network.
+
+Read all of the following before enabling this:
+
+- **C-Gate has no authentication on these ports.** Any client whose address matches a rule gets that level, with no username and no password. Only expose C-Gate if you actually need to.
+- **`program` also grants the ability to shut C-Gate down.** C-Gate's access levels, increasing, are `none`, `connect`, `monitor`, `operate`, `admin`, `program`, `debug` — so `program` sits *above* `admin`. Granting Toolkit the level it needs necessarily grants the administrative commands, including shutdown. There is no way to separate them.
+- **Subnets use an octet of `255`, not CIDR notation.** `192.168.1.255` means every address on `192.168.1.x`. Prefer listing a single, specific address: a subnet grant is far wider than it looks. The add-on logs a warning for any wildcard octet, and rejects `255.255.255.255` (every address on the internet) outright.
+- **You must also map C-Gate's ports in Home Assistant's Network panel.** The add-on declares `20023/tcp` (command), `20024/tcp` (event) and `20025/tcp` (status change), all **unmapped by default**. Home Assistant can only map ports an add-on declares, so exposing C-Gate requires leaving `cgate_port` at its default **20023** — a custom `cgate_port` cannot be mapped here.
+- **It is a no-op in remote mode.** With `cgate_mode: remote`, C-Gate runs on another machine and this add-on does not own its access control file. Grant access in that C-Gate's own `access.txt` instead.
+
+The add-on rewrites only its own clearly marked block in `/data/cgate/config/access.txt` on every start; any rules you added by hand outside that block are preserved. The add-on writes `remote` rules only, never `interface` rules — an `interface` rule matches *every* connection arriving on the network interface it names, which silently turns an intended per-client grant into a blanket grant.
+
+**If a client is refused even though it is listed:** when C-Gate refuses a connection it logs the peer address it actually saw. Compare that with the address you configured — they can differ. This add-on runs with `host_network: false`, so incoming connections traverse Docker's bridge network. A LAN client's source address is expected to be preserved through the port mapping, but this has not been confirmed on real Home Assistant OS hardware. If C-Gate reports some other address (a Docker gateway address, say), that is the address your rule has to match — and please report it on [GitHub issue #37](https://github.com/dougrathbone/cgateweb/issues/37).
 
 ## Finding Your C-Bus Network ID
 
@@ -547,6 +630,7 @@ This add-on runs with `host_network: false`.
 
 - Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (the Supervisor injects an `X-Ingress-Path` header), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`. At startup the add-on discovers its ingress entry path from the Supervisor API (`/addons/self/info`) and trusts requests carrying it; if that lookup fails, ingress API access stays denied (401) and a warning is logged — set `web_api_key` as a fallback.
 - Port `8080/tcp` is exposed by the add-on for direct access if needed.
+- Ports `20023/tcp`, `20024/tcp` and `20025/tcp` are declared so managed C-Gate can be reached by external tools such as C-Bus Toolkit. They are **unmapped by default** — map them in the Network panel only if you need external access, and list the permitted clients in `cgate_external_clients` first. C-Gate has **no authentication** on these ports. See "Letting external clients reach managed C-Gate" above.
 - Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
 
 If you expose `8080` for direct (non-Ingress) access, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`. Direct requests never carry the Ingress header, so they always require the key.
