@@ -113,6 +113,15 @@ class _HaDiscoveryPublishers {
      */
     _unitTypeIndex;
 
+    /**
+     * True when this run's tree still had units whose <Groups> had not synced,
+     * so a group can look input-only purely because the load unit's binding has
+     * not arrived yet. Installed by _publishDiscoveryFromTree alongside
+     * _unitTypeIndex; suppresses the destructive binary_sensor conclusion.
+     * @type {boolean}
+     */
+    _treeIncomplete;
+
     _processLightingGroups(networkId, appId, groups) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
         for (const group of groupArray) {
@@ -165,6 +174,11 @@ class _HaDiscoveryPublishers {
                 brightness_value_template: '{{ value }}'
             })
         });
+
+        // It is a light, so retract any binary_sensor config an earlier run
+        // published for it — including one published by a run that classified
+        // the group input-only before this group's load unit reported a type.
+        this._clearStaleInputBinarySensorConfig(networkId, appId, groupId);
     }
 
     /**
@@ -291,7 +305,8 @@ class _HaDiscoveryPublishers {
         // comes from.
         const unitType = entityTypeForGroup(
             this._unitTypeIndex ? this._unitTypeIndex.get(`${appId}/${groupId}`) : null,
-            this.settings
+            this.settings,
+            { treeIncomplete: this._treeIncomplete === true }
         );
 
         // A "light." prefix expresses an entity DOMAIN, not a dim capability, so
@@ -334,6 +349,9 @@ class _HaDiscoveryPublishers {
         if (typeFromUnitEnabled && resolvedType === 'light-onoff') {
             this.logger.debug(`Resolved type: ${labelKey} -> light (on/off, relay-driven)`);
             this._createOnOffLightDiscovery(networkId, appId, groupId, group, labelKey);
+            // It is a light, so retract any binary_sensor config an earlier run
+            // published for it.
+            this._clearStaleInputBinarySensorConfig(networkId, appId, groupId);
             return true;
         }
 
@@ -373,6 +391,28 @@ class _HaDiscoveryPublishers {
     _clearStaleLightConfig(networkId, appId, groupId) {
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
         const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.delete(staleTopic);
+    }
+
+    /**
+     * The inverse: a lighting group that is being published as a light must not
+     * keep a retained binary_sensor config from a run that classified it
+     * input-only. Without this the read-only entity survives for ever as a
+     * duplicate of the light — HA has already loaded it, and the end-of-run
+     * stale-topic sweep only knows the topics published in the current process,
+     * so it cannot help once the add-on has restarted (which is exactly what
+     * changing an add-on option does).
+     *
+     * Gated on ha_discovery_type_from_unit so a user who has never enabled the
+     * feature — who therefore can never have one of these — sees no extra
+     * traffic and byte-identical output.
+     * @private
+     */
+    _clearStaleInputBinarySensorConfig(networkId, appId, groupId) {
+        if (this.settings.ha_discovery_type_from_unit !== true) return;
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const staleTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
         this._publish(staleTopic, '', MQTT_RETAINED_STATE_OPTIONS);
         this._publishedTopics.delete(staleTopic);
     }

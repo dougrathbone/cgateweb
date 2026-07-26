@@ -3145,6 +3145,101 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
             .toBe('cbus/write/254/56/1/ramp');
     });
 
+    it('keeps a load with a blank unit type switchable rather than making it a binary sensor', () => {
+        // A driving unit whose TREEXML <Type> is absent used to register the
+        // group but contribute no type string, so the classifier saw only the
+        // key input's SENLL, concluded binary_sensor, and retracted the light
+        // config — the load became unswitchable from Home Assistant. A blank
+        // type is an unrecognised type, and an unrecognised type already
+        // suppresses this conclusion.
+        const TREE_BLANK_TYPE = {
+            Network: {
+                NetworkNumber: '254',
+                Unit: [
+                    // The load, with no <Type> at all.
+                    { UnitAddress: '20', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '7', Label: 'Laundry' }] } },
+                    { UnitAddress: '21', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '7', Label: 'Laundry' }] } }
+                ]
+            }
+        };
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', TREE_BLANK_TYPE);
+
+        expect(payloadFor(publish, 'binary_sensor', 7)).toBeNull();
+        expect(payloadFor(publish, 'light', 7).command_topic).toBe('cbus/write/254/56/7/ramp');
+        // And the light config is not retracted.
+        expect(publish.mock.calls.some(
+            ([topic, payload]) => topic === 'testhomeassistant/light/cgateweb_254_56_7/config' && payload === ''
+        )).toBe(false);
+    });
+
+    it('holds back the binary sensor conclusion while the tree is still syncing', () => {
+        // Mid-sync: the key input's <Groups> has arrived but the dimmer's has
+        // not. Discovery publishes before the caller's unsynced-units check, so
+        // this tree really is classified. Concluding input-only here retracts a
+        // real load's light config.
+        const TREE_MID_SYNC = {
+            Network: {
+                NetworkNumber: '254',
+                Unit: [
+                    { UnitAddress: '30', Type: 'DIMDN8', Application: '56', Groups: '' },
+                    { UnitAddress: '31', Type: 'SENLL', Application: '56', Groups: '8' }
+                ]
+            }
+        };
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', TREE_MID_SYNC);
+
+        expect(payloadFor(publish, 'binary_sensor', 8)).toBeNull();
+        expect(publish.mock.calls.some(
+            ([topic, payload]) => topic === 'testhomeassistant/light/cgateweb_254_56_8/config' && payload === ''
+        )).toBe(false);
+    });
+
+    it('retracts a binary_sensor config for a group that is now published as a light', () => {
+        // The ghost: a run that classified the group input-only left a retained
+        // binary_sensor config. Publishing the light again does not remove it, and
+        // the end-of-run stale sweep only knows this process's own topics — so
+        // after the restart that applying an add-on option change causes, the
+        // read-only entity would survive for ever beside the light.
+        const TREE_ONE_DIMMER = {
+            Network: {
+                NetworkNumber: '254',
+                Unit: [
+                    { UnitAddress: '10', Type: 'DIMDN8', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1', Label: 'Kitchen' }] } }
+                ]
+            }
+        };
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', TREE_ONE_DIMMER);
+
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/binary_sensor/cgateweb_254_56_1/config',
+            '',
+            { retain: true, qos: 0 }
+        );
+        // The light itself is untouched.
+        expect(payloadFor(publish, 'light', 1).brightness_command_topic)
+            .toBe('cbus/write/254/56/1/ramp');
+    });
+
+    it('touches no binary_sensor topic at all when the feature is off', () => {
+        // The whole feature, the new retraction included, must be inert by
+        // default. Nothing may be published to a binary_sensor topic for a
+        // lighting group - neither a config nor a retraction - so a user who
+        // never enabled this sees byte-identical output. (The cover group's
+        // light retraction in this tree is pre-existing 1.17.x behaviour from
+        // the name heuristics, not from this feature.)
+        const off = makeDiscovery();
+        off.d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        const binarySensorCalls = off.publish.mock.calls.filter(([topic]) => topic.includes('/binary_sensor/'));
+        expect(binarySensorCalls).toEqual([]);
+    });
+
     it('clears the per-run index after the run', () => {
         const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
 

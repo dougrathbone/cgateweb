@@ -277,11 +277,19 @@ function collectUnitGroups(unit, groupsByApp, targetApps) {
 //   - index is scoped to targetApps, since it exists to classify groups on the
 //     apps discovery actually cares about (issues #38, #37). Mirrors
 //     collectUnitGroups' handling of both TREEXML shapes, but keeps the unit
-//     type that collectUnitGroups discards. Records every non-blank type it
-//     encounters for a matching group, recognised or not: entityTypeForGroup's
-//     asymmetric unknown handling (an unrecognised type blocks only the
-//     destructive binary_sensor conclusion) depends on unrecognised types
-//     surviving into this index rather than being filtered out here.
+//     type that collectUnitGroups discards. Records every type it encounters
+//     for a matching group, recognised or not: entityTypeForGroup's asymmetric
+//     unknown handling (an unrecognised type blocks only the destructive
+//     binary_sensor conclusion) depends on unrecognised types surviving into
+//     this index rather than being filtered out here.
+//
+//     That includes the blank type a unit with an absent or empty <Type> gets.
+//     Dropping those used to let a driving unit register its group while
+//     contributing nothing to it, so a load sharing a group with a key input
+//     looked input-only, was published as a read-only binary_sensor, and had
+//     its light config retracted — an unswitchable load. A blank type is
+//     precisely "a unit we cannot classify", which is what the unrecognised
+//     path is for, so it belongs in the set.
 //   - unknownTypes is, by default, restricted to the units that actually fed
 //     the index. The log line it drives asks users to report types so they can
 //     be classified (issue #37), so a type that could never classify anything —
@@ -313,7 +321,10 @@ function collectUnitTypeData(networkData, targetApps, opts = {}) {
         const record = (appId, groupId) => {
             const key = `${appId}/${groupId}`;
             if (!index.has(key)) index.set(key, { types: new Set() });
-            if (type) index.get(key).types.add(type);
+            // Added even when blank: see the scope note above. A unit that
+            // drives the group must contribute to its classification, and "we
+            // could not read a type for it" is information, not absence.
+            index.get(key).types.add(type);
             indexed = true;
         };
 

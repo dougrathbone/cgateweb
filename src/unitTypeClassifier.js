@@ -64,17 +64,28 @@ function categoriseUnitType(type) {
  * unrecognised type alongside an input suppresses it, because that
  * unrecognised type might itself be a real output this module doesn't know
  * about yet, and wrongly concluding binary_sensor would strip the group of
- * its command topic. 'management' types (PC_, PCLOCAL, TEXT) are
- * known-not-output, so they never count as unrecognised and never block this
- * conclusion.
+ * its command topic. A blank type — a unit whose TREEXML <Type> was empty or
+ * absent — counts as unrecognised for exactly the same reason: it is a unit
+ * driving the group whose capability we cannot establish, and a driving unit
+ * is far more likely to be a load than not. 'management' types (PC_, PCLOCAL,
+ * TEXT) are known-not-output, so they never count as unrecognised and never
+ * block this conclusion.
+ *
+ * opts.treeIncomplete suppresses binary_sensor outright. A tree whose units
+ * have not all synced their <Groups> yet can show an input unit's binding
+ * before the load unit's, which looks input-only through no fault of the
+ * hardware. Discovery runs before the caller's unsynced-units check, so this
+ * is reachable in normal operation, and the cost of being wrong is a retracted
+ * light config on a real load.
  *
  * @param {{ types: Set<string>|string[] }|null} groupInfo
  * @param {Object} settings
  * @param {boolean} [settings.ha_discovery_type_from_unit]
  * @param {boolean} [settings.ha_discovery_auto_type]
+ * @param {{ treeIncomplete?: boolean }} [opts]
  * @returns {'light-dimmable'|'light-onoff'|'binary_sensor'|null}
  */
-function entityTypeForGroup(groupInfo, settings = {}) {
+function entityTypeForGroup(groupInfo, settings = {}, opts = {}) {
     if (settings.ha_discovery_type_from_unit !== true) return null;
     if (settings.ha_discovery_auto_type === false) return null;
     if (!groupInfo || !groupInfo.types) return null;
@@ -89,12 +100,15 @@ function entityTypeForGroup(groupInfo, settings = {}) {
         if (category === 'dimmer') hasDimmer = true;
         else if (category === 'relay') hasRelay = true;
         else if (category === 'input') hasInput = true;
-        else if (category === null && typeof type === 'string' && type.trim()) hasUnrecognised = true;
+        // Anything the catalogue does not place, blank included. Only the four
+        // recognised categories above are evidence; everything else is a unit
+        // driving this group whose capability we cannot establish.
+        else if (category === null) hasUnrecognised = true;
     }
 
     if (hasDimmer) return 'light-dimmable';
     if (hasRelay) return 'light-onoff';
-    if (hasInput && !hasUnrecognised) return 'binary_sensor';
+    if (hasInput && !hasUnrecognised && opts.treeIncomplete !== true) return 'binary_sensor';
     return null;
 }
 
