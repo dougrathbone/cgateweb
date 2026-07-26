@@ -3044,6 +3044,46 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         expect(payloadFor(publish, 'binary_sensor', 3)).toBeNull();
     });
 
+    it('keeps a binary_sensor type override inert while the feature is off', () => {
+        // type_overrides values are unvalidated strings from the user's label
+        // file, so resolvedType can be 'binary_sensor' with the feature off. It
+        // must still land on the "Unknown resolved type" fallback (a dimmable
+        // light) rather than silently publishing a read-only entity and
+        // retracting the light config, which would leave the user unable to
+        // control the load at all.
+        const { d, publish } = makeDiscovery(
+            {},
+            { typeOverrides: new Map([['254/56/1', 'binary_sensor']]) }
+        );
+        const warnSpy = jest.spyOn(d.logger, 'warn').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(warnSpy.mock.calls.some(c => /unknown resolved type/i.test(String(c[0])))).toBe(true);
+        warnSpy.mockRestore();
+        expect(payloadFor(publish, 'light', 1).brightness_command_topic)
+            .toBe('cbus/write/254/56/1/ramp');
+        expect(payloadFor(publish, 'binary_sensor', 1)).toBeNull();
+        // No retraction of the light config either.
+        expect(publish.mock.calls.some(
+            ([topic, payload]) => topic === 'testhomeassistant/light/cgateweb_254_56_1/config' && payload === ''
+        )).toBe(false);
+    });
+
+    it('keeps a light-onoff type override inert while the feature is off', () => {
+        const { d, publish } = makeDiscovery(
+            {},
+            { typeOverrides: new Map([['254/56/1', 'light-onoff']]) }
+        );
+        const warnSpy = jest.spyOn(d.logger, 'warn').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        warnSpy.mockRestore();
+        expect(payloadFor(publish, 'light', 1).brightness_command_topic)
+            .toBe('cbus/write/254/56/1/ramp');
+    });
+
     it('clears the per-run index after the run', () => {
         const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
 

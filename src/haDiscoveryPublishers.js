@@ -307,13 +307,23 @@ class _HaDiscoveryPublishers {
         // The unit-type outcomes below are payload shapes, not entries in the
         // getDiscoveryConfig table, so they must be dispatched before the lookup
         // — which keeps its original meaning of "a type nobody recognises".
-        if (resolvedType === 'light-onoff') {
+        //
+        // Gated on the feature flag, because resolvedType does not only come
+        // from entityTypeForGroup: type_overrides are unvalidated arbitrary
+        // strings read from the user's label file. A user who guessed
+        // "binary_sensor" instead of the documented "pir" previously got a light
+        // plus an "Unknown resolved type" warning; without the gate they would
+        // instead silently lose control of the load (a read-only entity with no
+        // command_topic, and the light config retracted) with the feature off.
+        const typeFromUnitEnabled = this.settings.ha_discovery_type_from_unit === true;
+
+        if (typeFromUnitEnabled && resolvedType === 'light-onoff') {
             this.logger.debug(`Resolved type: ${labelKey} -> light (on/off, relay-driven)`);
             this._createOnOffLightDiscovery(networkId, appId, groupId, group, labelKey);
             return true;
         }
 
-        if (resolvedType === 'binary_sensor') {
+        if (typeFromUnitEnabled && resolvedType === 'binary_sensor') {
             this.logger.debug(`Resolved type: ${labelKey} -> binary_sensor (input-only)`);
             this._createInputBinarySensorDiscovery(networkId, appId, groupId, group, labelKey);
             // It moved out of the light domain, so retract any light config a
