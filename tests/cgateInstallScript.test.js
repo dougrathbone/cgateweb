@@ -706,6 +706,21 @@ exit 0
             expect(r.output).toMatch(/WARNING: Could not record the resolved serial device/);
         });
 
+        test('blames a broken image, not the device, when the resolver script is absent', () => {
+            // node exits 1 for a missing script, and the exit-code contract
+            // reads 1 as "the configured device is not present" — so a
+            // packaging slip used to send users hunting for a device that was
+            // plugged in the whole time.
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
+                { extraEnv: { CGATEWEB_RESOLVE_SERIAL_JS: '/nonexistent/cgateweb-resolve-serial.js' } }
+            );
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/ERROR: The serial device resolver is missing or unreadable/);
+            expect(r.output).toMatch(/broken add-on image, not a missing device/);
+            expect(r.output).not.toMatch(/Serial device not found/);
+        });
+
         test('reports a resolver failure other than a missing device accurately', () => {
             // Exit 2 means the resolver found the device but could not agree on
             // it with the later boot steps. Reporting that as "Serial device

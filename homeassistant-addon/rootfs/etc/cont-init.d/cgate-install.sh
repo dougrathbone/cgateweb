@@ -235,6 +235,18 @@ _cgateweb_check_serial_device() {
     # add-on log with a level prefix.
     local resolved
     if command -v node >/dev/null 2>&1; then
+        # Node exits 1 for its own failures too — a missing or unreadable
+        # script after a packaging slip, or a module load error — and the
+        # exit-code contract below reads 1 as "the device is not there". Check
+        # the script up front so a broken image is named as a broken image
+        # instead of sending the user hunting for hardware that never moved.
+        if [[ ! -r "${CGATEWEB_RESOLVE_SERIAL_JS}" ]]; then
+            bashio::log.error "The serial device resolver is missing or unreadable: ${CGATEWEB_RESOLVE_SERIAL_JS}"
+            bashio::log.error "This is a broken add-on image, not a missing device — your ${device} was not checked at all"
+            bashio::log.error "Reinstall or update the add-on; if it persists, report it on https://github.com/dougrathbone/cgateweb/issues/28"
+            return 1
+        fi
+
         # Kept in the temp dir rather than beside the device file: a device
         # file the add-on cannot write is a warning below, not a reason to lose
         # the resolver's diagnostics or fail startup.
@@ -258,7 +270,8 @@ _cgateweb_check_serial_device() {
         # the resolver failed for its own reasons (it exits 2 when it recovered
         # a new path but could not publish it). Reporting both as "device not
         # found" sent users hunting for a device that was plugged in the whole
-        # time.
+        # time. The readability check above covers the other way node itself
+        # produces a 1 — a missing or unreadable script.
         if [[ ${resolver_status} -eq 1 ]]; then
             _cgateweb_serial_device_not_found "${device}"
             return 1
