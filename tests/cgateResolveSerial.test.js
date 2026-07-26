@@ -96,6 +96,16 @@ function identityFile() {
     return path.join(tmpDir('cgw-data-'), 'serial-identity.json');
 }
 
+// Diagnostics are {level, text} so the caller can log advice as advice; most
+// assertions only care about the text.
+function messageText(result) {
+    return result.messages.map(m => m.text).join('\n');
+}
+
+function messageAt(result, pattern) {
+    return result.messages.find(m => pattern.test(m.text));
+}
+
 describe('identityFromByIdDir', () => {
     it('returns the by-id link name that resolves to the device', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
@@ -258,6 +268,21 @@ describe('resolveSerialDevice', () => {
         expect(result.stablePath).toBe(path.join(devRoot, 'serial', 'by-id', BY_ID));
     });
 
+    it('tags the stable-path recommendation as advice, not a warning', () => {
+        // Nothing is wrong when a raw tty path resolves: suggesting a better
+        // path is advice. Logging it as a warning trains users to ignore the
+        // warnings that do mean something.
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+
+        const result = resolveSerialDevice({
+            configuredPath: path.join(devRoot, 'ttyUSB0'),
+            identityFile: identityFile(),
+            devRoot
+        });
+
+        expect(messageAt(result, /Prefer the stable path/).level).toBe('info');
+    });
+
     it('warns that recovery is impossible when the device has no stable identity', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
         const sysfsRoot = makeSysfsRoot({ ttyUSB0: { idVendor: '1a86', idProduct: '7523' } });
@@ -271,7 +296,7 @@ describe('resolveSerialDevice', () => {
 
         expect(result.path).toBe(path.join(devRoot, 'ttyUSB0'));
         expect(result.identity).toBeNull();
-        expect(result.messages.join('\n')).toMatch(/recovery after a replug will not be possible/i);
+        expect(messageAt(result, /recovery after a replug will not be possible/i).level).toBe('warning');
     });
 
     it('treats an identity containing a path separator as no identity and warns honestly', () => {
@@ -287,7 +312,7 @@ describe('resolveSerialDevice', () => {
         });
 
         expect(result.identity).toBeNull();
-        expect(result.messages.join('\n')).toMatch(/recovery after a replug will not be possible/i);
+        expect(messageText(result)).toMatch(/recovery after a replug will not be possible/i);
         expect(fs.existsSync(file)).toBe(false);
     });
 
@@ -304,7 +329,7 @@ describe('resolveSerialDevice', () => {
 
         expect(result.source).toBe('recovered');
         expect(result.path).toBe(path.join(after, 'ttyUSB1'));
-        expect(result.messages.join('\n')).toContain('ttyUSB1');
+        expect(messageText(result)).toContain('ttyUSB1');
     });
 
     it('recommends the by-id path when recovery went through /dev/serial/by-id', () => {
@@ -318,7 +343,7 @@ describe('resolveSerialDevice', () => {
         const result = resolveSerialDevice({ configuredPath, identityFile: file, devRoot: after });
 
         expect(result.stablePath).toBe(path.join(after, 'serial', 'by-id', BY_ID));
-        expect(result.messages.join('\n')).toMatch(/Update cgate_serial_device to/);
+        expect(messageText(result)).toMatch(/Update cgate_serial_device to/);
     });
 
     it('does not recommend a nonexistent by-id path when recovery went through sysfs only', () => {
@@ -346,10 +371,10 @@ describe('resolveSerialDevice', () => {
         expect(result.source).toBe('recovered');
         expect(result.path).toBe(path.join(after, 'ttyUSB1'));
         expect(result.stablePath).toBeNull();
-        expect(result.messages.join('\n')).not.toContain(
+        expect(messageText(result)).not.toContain(
             path.join(after, 'serial', 'by-id', '0403:6001:A50285BI')
         );
-        expect(result.messages.join('\n')).toMatch(/no stable path/i);
+        expect(messageText(result)).toMatch(/no stable path/i);
     });
 
     it('does not adopt an unrelated device when the identity does not match', () => {
@@ -388,7 +413,7 @@ describe('resolveSerialDevice', () => {
         });
 
         expect(result.path).toBeNull();
-        expect(result.messages.join('\n')).toMatch(/is not present either/i);
+        expect(messageText(result)).toMatch(/is not present either/i);
     });
 
     it('ignores a corrupt remembered identity rather than resolving a traversal', () => {
@@ -404,7 +429,7 @@ describe('resolveSerialDevice', () => {
         });
 
         expect(result.path).toBeNull();
-        expect(result.messages.join('\n')).toMatch(/No previously-recorded device identity/i);
+        expect(messageText(result)).toMatch(/No previously-recorded device identity/i);
     });
 
     it('returns null with a message when nothing is resolvable', () => {
@@ -417,16 +442,46 @@ describe('resolveSerialDevice', () => {
         });
 
         expect(result.path).toBeNull();
-        expect(result.messages.join('\n')).toMatch(/not found/i);
+        expect(messageText(result)).toMatch(/not found/i);
     });
 });
 
 describe('main() (spawned CLI)', () => {
-    it('exits 1 with a usage message when no path argument is given', () => {
+    // Every diagnostic line is tagged so cont-init can log advice as info and
+    // problems as warnings; strip the tags when asserting on the text.
+    function untag(stderr) {
+        return stderr.replace(/^(INFO|WARN): /gm, '');
+    }
+
+    it('exits 2 with a usage message when no path argument is given', () => {
+        // Not exit 1: cont-init reads 1 as "the configured device is missing"
+        // and prints device-hunting advice, which a usage bug is not.
         const result = spawnSync('node', [SCRIPT], { encoding: 'utf8' });
 
-        expect(result.status).toBe(1);
-        expect(result.stderr).toMatch(/usage: cgateweb-resolve-serial\.js/);
+        expect(result.status).toBe(2);
+        expect(untag(result.stderr)).toMatch(/usage: cgateweb-resolve-serial\.js/);
+    });
+
+    it('tags every diagnostic line with a level cont-init can route on', () => {
+        const dir = tmpDir('cgw-cli-');
+        const devRoot = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+
+        const result = spawnSync('node', [SCRIPT, path.join(devRoot, 'ttyUSB0')], {
+            encoding: 'utf8',
+            env: {
+                ...process.env,
+                CGATEWEB_SERIAL_IDENTITY_FILE: path.join(dir, 'serial-identity.json'),
+                CGATEWEB_SERIAL_DEVICE_FILE: path.join(dir, 'serial-device'),
+                CGATEWEB_SERIAL_DEV_ROOT: devRoot,
+                CGATEWEB_SERIAL_SYSFS_ROOT: makeSysfsRoot({})
+            }
+        });
+
+        expect(result.status).toBe(0);
+        const lines = result.stderr.split('\n').filter(Boolean);
+        expect(lines.length).toBeGreaterThan(0);
+        for (const line of lines) expect(line).toMatch(/^(INFO|WARN): /);
+        expect(result.stderr).toMatch(/^INFO: Prefer the stable path/m);
     });
 
     it('exits 1 with messages on stderr when the device cannot be resolved', () => {
@@ -466,5 +521,141 @@ describe('main() (spawned CLI)', () => {
         expect(result.status).toBe(0);
         expect(result.stdout.trim()).toBe(configuredPath);
         expect(fs.readFileSync(deviceFile, 'utf8')).toBe(configuredPath);
+    });
+
+    it('still succeeds when the device file cannot be written and the path is unchanged', () => {
+        // An unwritable /run must not abort add-on startup: the consumers fall
+        // back to reading cgate_serial_device, which is this very path, so
+        // nothing downstream can end up pointed at the wrong port.
+        const dir = tmpDir('cgw-cli-');
+        const configuredPath = path.join(dir, 'my-device');
+        fs.writeFileSync(configuredPath, '');
+        const blocker = path.join(dir, 'blocker');
+        fs.writeFileSync(blocker, '');
+
+        const result = spawnSync('node', [SCRIPT, configuredPath], {
+            encoding: 'utf8',
+            env: {
+                ...process.env,
+                CGATEWEB_SERIAL_IDENTITY_FILE: path.join(dir, 'serial-identity.json'),
+                CGATEWEB_SERIAL_DEVICE_FILE: path.join(blocker, 'serial-device')
+            }
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(configuredPath);
+        expect(untag(result.stderr)).toMatch(/Could not write .*serial-device/);
+        expect(untag(result.stderr)).toMatch(/same path .* so this is not fatal/);
+    });
+
+    it('fails naming the write when a recovered path cannot be published', () => {
+        // The dangerous half of the case above: the resolver adopted a
+        // different device, so the consumers' fallback to cgate_serial_device
+        // would rewrite the project to the stale, now-absent port. Failing
+        // loudly beats booting C-Gate onto the wrong device.
+        const dir = tmpDir('cgw-cli-');
+        const identityPath = path.join(dir, 'serial-identity.json');
+        const sysfsRoot = makeSysfsRoot({});
+        const before = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(before, 'ttyUSB0');
+        const baseEnv = {
+            ...process.env,
+            CGATEWEB_SERIAL_IDENTITY_FILE: identityPath,
+            CGATEWEB_SERIAL_SYSFS_ROOT: sysfsRoot
+        };
+
+        // First boot records the identity through the real CLI.
+        const recorded = spawnSync('node', [SCRIPT, configuredPath], {
+            encoding: 'utf8',
+            env: {
+                ...baseEnv,
+                CGATEWEB_SERIAL_DEVICE_FILE: path.join(dir, 'serial-device'),
+                CGATEWEB_SERIAL_DEV_ROOT: before
+            }
+        });
+        expect(recorded.status).toBe(0);
+
+        // Replug: the device renumbered, and /run is unwritable this time.
+        fs.rmSync(configuredPath);
+        const after = makeDevRoot({ ttys: ['ttyUSB1'], byId: { [BY_ID]: 'ttyUSB1' } });
+        const blocker = path.join(dir, 'blocker');
+        fs.writeFileSync(blocker, '');
+
+        const result = spawnSync('node', [SCRIPT, configuredPath], {
+            encoding: 'utf8',
+            env: {
+                ...baseEnv,
+                CGATEWEB_SERIAL_DEVICE_FILE: path.join(blocker, 'serial-device'),
+                CGATEWEB_SERIAL_DEV_ROOT: after
+            }
+        });
+
+        expect(result.status).toBe(2);
+        expect(untag(result.stderr)).toMatch(/Could not write .*serial-device/);
+        expect(untag(result.stderr)).toMatch(
+            new RegExp(`recovered at ${path.join(after, 'ttyUSB1')}`)
+        );
+    });
+
+    it('publishes the recovered path when the device renumbered', () => {
+        const dir = tmpDir('cgw-cli-');
+        const identityPath = path.join(dir, 'serial-identity.json');
+        const deviceFile = path.join(dir, 'serial-device');
+        const sysfsRoot = makeSysfsRoot({});
+        const before = makeDevRoot({ ttys: ['ttyUSB0'], byId: { [BY_ID]: 'ttyUSB0' } });
+        const configuredPath = path.join(before, 'ttyUSB0');
+        const env = {
+            ...process.env,
+            CGATEWEB_SERIAL_IDENTITY_FILE: identityPath,
+            CGATEWEB_SERIAL_DEVICE_FILE: deviceFile,
+            CGATEWEB_SERIAL_SYSFS_ROOT: sysfsRoot
+        };
+
+        spawnSync('node', [SCRIPT, configuredPath], {
+            encoding: 'utf8',
+            env: { ...env, CGATEWEB_SERIAL_DEV_ROOT: before }
+        });
+        fs.rmSync(configuredPath);
+        const after = makeDevRoot({ ttys: ['ttyUSB1'], byId: { [BY_ID]: 'ttyUSB1' } });
+
+        const result = spawnSync('node', [SCRIPT, configuredPath], {
+            encoding: 'utf8',
+            env: { ...env, CGATEWEB_SERIAL_DEV_ROOT: after }
+        });
+
+        expect(result.status).toBe(0);
+        expect(result.stdout.trim()).toBe(path.join(after, 'ttyUSB1'));
+        expect(fs.readFileSync(deviceFile, 'utf8')).toBe(path.join(after, 'ttyUSB1'));
+    });
+});
+
+describe('the default serial-device file path', () => {
+    // cont-init publishes the resolved device here and three other scripts read
+    // it back, each with its own inlined default. A typo in any one of them
+    // would not fail anything loudly: the reader would just silently fall back
+    // to the raw cgate_serial_device option — the exact disagreement this file
+    // exists to remove. Every test overrides the env var, so only a literal
+    // comparison catches it.
+    const ROOT = path.join(__dirname, '..', 'homeassistant-addon', 'rootfs');
+    const SOURCES = [
+        [path.join(ROOT, 'usr', 'bin', 'cgateweb-resolve-serial.js'), /DEFAULT_DEVICE_FILE = '([^']+)'/],
+        [path.join(ROOT, 'etc', 'cont-init.d', 'cgate-install.sh'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/],
+        [path.join(ROOT, 'etc', 'cont-init.d', 'cgate-project-sync.sh'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/],
+        [path.join(ROOT, 'usr', 'bin', 'cgateweb-serial-diagnostics'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/]
+    ];
+
+    it('is spelled identically in the publisher and all three readers', () => {
+        const found = SOURCES.map(([file, pattern]) => {
+            const match = fs.readFileSync(file, 'utf8').match(pattern);
+            expect(match).not.toBeNull();
+            return [path.basename(file), match[1]];
+        });
+
+        expect(Object.fromEntries(found)).toEqual({
+            'cgateweb-resolve-serial.js': '/run/cgateweb/serial-device',
+            'cgate-install.sh': '/run/cgateweb/serial-device',
+            'cgate-project-sync.sh': '/run/cgateweb/serial-device',
+            'cgateweb-serial-diagnostics': '/run/cgateweb/serial-device'
+        });
     });
 });

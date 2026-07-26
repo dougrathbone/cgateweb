@@ -24,8 +24,20 @@
  * the resolver can fix.
  *
  * Usage: cgateweb-resolve-serial.js <configured-device-path>
- * Writes the effective path to CGATEWEB_SERIAL_DEVICE_FILE
- * (default /run/cgateweb/serial-device). Exit 0 on success, 1 when unresolvable.
+ * Prints the effective path on stdout and writes it to
+ * CGATEWEB_SERIAL_DEVICE_FILE (default /run/cgateweb/serial-device) so the
+ * later boot scripts use the same answer. Diagnostics go to stderr, one per
+ * line, tagged "INFO: " or "WARN: " so the caller can log each at the level it
+ * deserves.
+ *
+ * Exit codes:
+ *   0  resolved (path on stdout)
+ *   1  the configured device is not present and could not be recovered
+ *   2  any other failure: bad usage, or a recovered path that could not be
+ *      published (see main() for why only the recovered case is fatal)
+ *
+ * CGATEWEB_SERIAL_DEV_ROOT / CGATEWEB_SERIAL_SYSFS_ROOT relocate /dev and /sys
+ * so the tests can drive the CLI against a fabricated device tree.
  */
 
 const fs = require('fs');
@@ -33,6 +45,18 @@ const path = require('path');
 
 const DEFAULT_DEVICE_FILE = '/run/cgateweb/serial-device';
 const DEFAULT_IDENTITY_FILE = '/data/serial-identity.json';
+
+const EXIT_UNRESOLVED = 1;
+const EXIT_OTHER_FAILURE = 2;
+
+// Diagnostics carry a level so the caller does not have to guess: "the device
+// vanished" and "here is a nicer path you could configure" are both stderr
+// lines, but only one of them is a warning.
+/** @param {string} text @returns {{level: 'info'|'warning', text: string}} */
+const info = text => ({ level: 'info', text });
+/** @param {string} text @returns {{level: 'info'|'warning', text: string}} */
+const warn = text => ({ level: 'warning', text });
+const LEVEL_TAG = { info: 'INFO', warning: 'WARN' };
 
 function byIdDir(devRoot) {
     return path.join(devRoot, 'serial', 'by-id');
@@ -249,7 +273,7 @@ function saveRememberedIdentity(identityFile, identity) {
  * @param {string} [args.identityFile]
  * @param {string} [args.devRoot]
  * @param {string} [args.sysfsRoot]
- * @returns {{ path: string|null, source: 'configured'|'recovered', identity: string|null, stablePath: string|null, messages: string[] }}
+ * @returns {{ path: string|null, source: 'configured'|'recovered', identity: string|null, stablePath: string|null, messages: Array<{level: 'info'|'warning', text: string}> }}
  */
 function resolveSerialDevice(args) {
     const { configuredPath } = args;
@@ -260,7 +284,7 @@ function resolveSerialDevice(args) {
     if (fs.existsSync(configuredPath)) {
         const identity = readIdentity(configuredPath, opts);
         if (identity) saveRememberedIdentity(identityFile, identity);
-        else messages.push(`No stable identity found for ${configuredPath}; automatic recovery after a replug will not be possible`);
+        else messages.push(warn(`No stable identity found for ${configuredPath}; automatic recovery after a replug will not be possible`));
 
         // Recommend the stable path whenever a raw tty path was configured.
         let stablePath = null;
@@ -268,26 +292,26 @@ function resolveSerialDevice(args) {
         if (byIdName) {
             stablePath = path.join(byIdDir(opts.devRoot), byIdName);
             if (path.resolve(configuredPath) !== stablePath) {
-                messages.push(`Prefer the stable path: set cgate_serial_device to ${stablePath}`);
+                messages.push(info(`Prefer the stable path: set cgate_serial_device to ${stablePath}`));
             }
         }
         return { path: configuredPath, source: 'configured', identity, stablePath, messages };
     }
 
-    messages.push(`Serial device not found: ${configuredPath}`);
+    messages.push(warn(`Serial device not found: ${configuredPath}`));
     const remembered = loadRememberedIdentity(identityFile);
     if (!remembered) {
-        messages.push('No previously-recorded device identity, so the new path cannot be identified automatically');
+        messages.push(warn('No previously-recorded device identity, so the new path cannot be identified automatically'));
         return { path: null, source: 'configured', identity: null, stablePath: null, messages };
     }
 
     const recovered = findDeviceByIdentity(remembered, opts);
     if (!recovered) {
-        messages.push(`Previously-used device (${remembered}) is not present either; is the PC Interface plugged in?`);
+        messages.push(warn(`Previously-used device (${remembered}) is not present either; is the PC Interface plugged in?`));
         return { path: null, source: 'configured', identity: remembered, stablePath: null, messages };
     }
 
-    messages.push(`Recovered: the previously-used device is now at ${recovered} — adopting it for this boot`);
+    messages.push(warn(`Recovered: the previously-used device is now at ${recovered} — adopting it for this boot`));
 
     // `remembered` is only a by-id link name when recovery actually went
     // through /dev/serial/by-id — the same check findDeviceByIdentity's by-id
@@ -305,12 +329,12 @@ function resolveSerialDevice(args) {
     let stablePath = null;
     if (recoveredViaById) {
         stablePath = byIdPath;
-        messages.push(`Update cgate_serial_device to ${stablePath} so this survives future replugs`);
+        messages.push(info(`Update cgate_serial_device to ${stablePath} so this survives future replugs`));
     } else {
-        messages.push(
+        messages.push(info(
             'This host has no /dev/serial/by-id link for the device, so there is no stable path to switch '
             + 'cgate_serial_device to; automatic recovery by identity will keep working on future replugs'
-        );
+        ));
     }
     return { path: recovered, source: 'recovered', identity: remembered, stablePath, messages };
 }
@@ -318,25 +342,50 @@ function resolveSerialDevice(args) {
 function main() {
     const configuredPath = process.argv[2];
     if (!configuredPath) {
-        console.error('usage: cgateweb-resolve-serial.js <configured-device-path>');
-        process.exit(1);
+        console.error(`${LEVEL_TAG.warning}: usage: cgateweb-resolve-serial.js <configured-device-path>`);
+        process.exit(EXIT_OTHER_FAILURE);
     }
 
     const result = resolveSerialDevice({
         configuredPath,
-        identityFile: process.env.CGATEWEB_SERIAL_IDENTITY_FILE || DEFAULT_IDENTITY_FILE
+        identityFile: process.env.CGATEWEB_SERIAL_IDENTITY_FILE || DEFAULT_IDENTITY_FILE,
+        devRoot: process.env.CGATEWEB_SERIAL_DEV_ROOT || '/dev',
+        sysfsRoot: process.env.CGATEWEB_SERIAL_SYSFS_ROOT || '/sys'
     });
-    for (const message of result.messages) console.error(message);
+    for (const message of result.messages) {
+        console.error(`${LEVEL_TAG[message.level]}: ${message.text}`);
+    }
 
-    if (!result.path) process.exit(1);
+    if (!result.path) process.exit(EXIT_UNRESOLVED);
 
     const deviceFile = process.env.CGATEWEB_SERIAL_DEVICE_FILE || DEFAULT_DEVICE_FILE;
     try {
         fs.mkdirSync(path.dirname(deviceFile), { recursive: true });
         fs.writeFileSync(deviceFile, result.path);
     } catch (e) {
-        console.error(`Could not write ${deviceFile}: ${e.message}`);
-        process.exit(1);
+        // Whether an unpublished answer matters depends entirely on whether we
+        // changed it. The consumers (cgate-project-sync.sh, the serial
+        // diagnostics) fall back to reading cgate_serial_device when this file
+        // is missing, so:
+        //   - path unchanged: their fallback lands on exactly this path anyway.
+        //     Warn and carry on; aborting add-on startup over a /run that could
+        //     not be written would be a self-inflicted outage.
+        //   - path recovered: their fallback lands on the stale configured path
+        //     and the project rewrite would point C-Gate at a port that no
+        //     longer exists. That silent misconfiguration is worse than a loud
+        //     failure, so fail — naming the write, not the device.
+        console.error(`${LEVEL_TAG.warning}: Could not write ${deviceFile}: ${e.message}`);
+        if (result.path !== configuredPath) {
+            console.error(
+                `${LEVEL_TAG.warning}: The device was recovered at ${result.path}, but that could not be shared `
+                + `with the later boot steps, which would fall back to the stale ${configuredPath}`
+            );
+            process.exit(EXIT_OTHER_FAILURE);
+        }
+        console.error(
+            `${LEVEL_TAG.warning}: Later boot steps will fall back to cgate_serial_device, which is the same `
+            + `path (${result.path}), so this is not fatal`
+        );
     }
     console.log(result.path);
 }

@@ -232,14 +232,32 @@ _cgateweb_check_serial_device() {
         # Kept in the temp dir rather than beside the device file: a device
         # file the add-on cannot write is a warning below, not a reason to lose
         # the resolver's diagnostics or fail startup.
-        local err_file="${TMPDIR:-/tmp}/cgateweb-resolve-serial.$$.err" resolver_status=0
+        local err_file resolver_status=0
+        err_file=$(mktemp "${TMPDIR:-/tmp}/cgateweb-resolve-serial.XXXXXX")
         resolved=$(node "${CGATEWEB_RESOLVE_SERIAL_JS}" "${device}" 2>"${err_file}") || resolver_status=$?
-        while IFS= read -r line; do
-            if [[ -n "${line}" ]]; then bashio::log.warning "${line}"; fi
+        # The resolver tags each diagnostic with the level it deserves: advice
+        # ("prefer the stable by-id path") is not a warning. Anything untagged
+        # is unexpected output — a node crash, say — so it warns.
+        # `|| [[ -n ... ]]` keeps a final line with no trailing newline.
+        while IFS= read -r line || [[ -n "${line}" ]]; do
+            case "${line}" in
+                '')       ;;
+                'INFO: '*) bashio::log.info "${line#INFO: }" ;;
+                'WARN: '*) bashio::log.warning "${line#WARN: }" ;;
+                *)        bashio::log.warning "${line}" ;;
+            esac
         done < "${err_file}"
         rm -f "${err_file}"
-        if [[ ${resolver_status} -ne 0 ]]; then
+        # Exit 1 means the device genuinely is not there; anything else means
+        # the resolver failed for its own reasons (it exits 2 when it recovered
+        # a new path but could not publish it). Reporting both as "device not
+        # found" sent users hunting for a device that was plugged in the whole
+        # time.
+        if [[ ${resolver_status} -eq 1 ]]; then
             _cgateweb_serial_device_not_found "${device}"
+            return 1
+        elif [[ ${resolver_status} -ne 0 ]]; then
+            bashio::log.error "Could not determine which serial device to use (resolver exited ${resolver_status}) — see the messages above"
             return 1
         fi
     else
@@ -258,20 +276,34 @@ _cgateweb_check_serial_device() {
     # read this file instead of re-resolving cgate_serial_device themselves: a
     # second resolution can disagree with this one if the device renumbers in
     # between, which is how the install check could pass while the project
-    # fixup wrote a port name that no longer existed. The resolver already
-    # wrote the file on its success path; writing it again covers the node-less
-    # fallback and keeps the file identical to what is logged below.
+    # fixup wrote a port name that no longer existed.
+    #
+    # The resolver already wrote the file whenever it could, so this write
+    # covers the node-less fallback above and re-affirms the file otherwise.
+    # It can still fail: the resolver returns success (rather than aborting
+    # startup) when the file is unwritable but the path it resolved is the
+    # configured one, because the consumers' fallback to cgate_serial_device
+    # then yields exactly the same answer. That is the only way to reach the
+    # warning below with node present — a resolved path that *differs* from the
+    # configured one and cannot be published has already exited non-zero above.
     mkdir -p "${CGATEWEB_SERIAL_DEVICE_FILE%/*}" 2>/dev/null
     if ! { printf '%s' "${resolved}" > "${CGATEWEB_SERIAL_DEVICE_FILE}"; } 2>/dev/null; then
-        bashio::log.warning "Could not record the resolved serial device in ${CGATEWEB_SERIAL_DEVICE_FILE} — later steps will re-read cgate_serial_device"
+        bashio::log.warning "Could not record the resolved serial device in ${CGATEWEB_SERIAL_DEVICE_FILE} — later steps will re-read cgate_serial_device (${device}), which is the same path"
     fi
 
     # Show the selected device's details and resolve symlinks so a
     # /dev/serial/by-id/ path also logs its real target (e.g. ../../ttyUSB0).
     bashio::log.info "Selected device: $(ls -l "${resolved}" 2>/dev/null)"
+    # Only the configured path and the resolved path are related by
+    # configuration; the readlink target belongs to the resolved path alone.
+    # Pairing "${device} resolves to ${target}" after a recovery read as a
+    # symlink relationship that does not exist.
+    if [[ "${resolved}" != "${device}" ]]; then
+        bashio::log.info "Resolved to a different device: ${resolved} (the configured ${device} renumbered)"
+    fi
     local target
     target=$(readlink -f "${resolved}" 2>/dev/null || printf '%s' "${resolved}")
-    bashio::log.info "Serial device ${device} resolves to ${target}"
+    bashio::log.info "Serial device ${resolved} resolves to ${target}"
 
     if [[ ! -c "${resolved}" ]]; then
         bashio::log.warning "${resolved} exists but is not a character device — C-Gate may fail to open it"

@@ -566,14 +566,19 @@ describeBash('cgate-install.sh helpers', () => {
         // last line would pick the message instead of the path.
         const NODE_STUB_RECOVERED = `#!/usr/bin/env bash
 printf '/dev/ttyUSB7\\n'
-printf 'Recovered: the previously-used device is now at /dev/ttyUSB7\\n' >&2
+printf 'WARN: Recovered: the previously-used device is now at /dev/ttyUSB7\\n' >&2
+printf 'INFO: Update cgate_serial_device to /dev/serial/by-id/usb-x so this survives future replugs\\n' >&2
 exit 0
 `;
-        // A resolver that succeeds without writing the device file, so the
-        // publishing done by the shell script is what the test observes.
-        const NODE_STUB_SILENT = `#!/usr/bin/env bash
-printf '/dev/null\\n'
-exit 0
+        // A resolver that resolved a device but could not publish it (exit 2).
+        // Only the exit-status mapping is stubbed here; that the real resolver
+        // exits 2 in this situation is proven end-to-end in
+        // cgateResolveSerial.test.js ("fails naming the write when a recovered
+        // path cannot be published").
+        const NODE_STUB_PUBLISH_FAILED = `#!/usr/bin/env bash
+printf 'WARN: Could not write /run/cgateweb/serial-device: EROFS\\n' >&2
+printf 'WARN: The device was recovered at /dev/ttyUSB7, but that could not be shared\\n' >&2
+exit 2
 `;
 
         function withNodeStub(body) {
@@ -608,6 +613,50 @@ exit 0
             expect(r.status).toBe(0);
             expect(fs.readFileSync(r.deviceFile, 'utf8')).toBe('/dev/ttyUSB7');
             expect(r.output).toMatch(/WARNING: Recovered: .*\/dev\/ttyUSB7/);
+        });
+
+        test('logs the configured and resolved paths as separate facts after a recovery', () => {
+            // "/dev/ttyUSB0 resolves to /dev/ttyUSB7" reads as a symlink
+            // relationship that does not exist; the readlink target belongs to
+            // the resolved path alone.
+            const { dir, binDir } = withNodeStub(NODE_STUB_RECOVERED);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/ttyUSB0', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }
+            );
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(
+                /Resolved to a different device: \/dev\/ttyUSB7 \(the configured \/dev\/ttyUSB0 renumbered\)/
+            );
+            expect(r.output).not.toMatch(/Serial device \/dev\/ttyUSB0 resolves to/);
+        });
+
+        test('logs resolver advice as info rather than as a warning', () => {
+            // All resolver stderr used to become a warning, including "here is
+            // a nicer path you could configure" — noise that teaches users to
+            // ignore the warnings that matter.
+            const { dir, binDir } = withNodeStub(NODE_STUB_RECOVERED);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/ttyUSB0', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }
+            );
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/INFO: Update cgate_serial_device to/);
+            expect(r.output).not.toMatch(/WARNING: Update cgate_serial_device to/);
+        });
+
+        test('replays a final resolver line that has no trailing newline', () => {
+            const { dir, binDir } = withNodeStub(`#!/usr/bin/env bash
+printf '/dev/null\\n'
+printf 'WARN: truncated last line' >&2
+exit 0
+`);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }
+            );
+            expect(r.status).toBe(0);
+            expect(r.output).toMatch(/WARNING: truncated last line/);
         });
 
         test('fails when the resolver cannot resolve the device', () => {
@@ -655,24 +704,41 @@ exit 0
         });
 
         test('warns and continues when the resolved path cannot be recorded', () => {
-            // Device file inside a path whose parent is a regular file: the
-            // publish cannot succeed. Startup must not fail for it — the
-            // consumers just fall back to reading the raw option.
-            const { dir, binDir } = withNodeStub(NODE_STUB_SILENT);
+            // Device file inside a path whose parent is a regular file: neither
+            // the real resolver nor this script can publish there. Startup must
+            // not fail — the configured path was not changed, so the consumers'
+            // fallback to cgate_serial_device lands on the same device. This
+            // runs the REAL resolver: the previous version of this test used a
+            // stub that never wrote the file, hiding the fact that the resolver
+            // used to hard-exit on exactly this condition.
+            const dir = makeSerialTmpDir();
             const blocker = path.join(dir, 'blocker');
             fs.writeFileSync(blocker, '');
             const r = checkSerialDevice(
                 { cgate_serial_device: '/dev/null', cgate_mode: 'managed' },
                 {
                     dir,
-                    extraEnv: {
-                        PATH: `${binDir}${path.delimiter}${process.env.PATH}`,
-                        CGATEWEB_SERIAL_DEVICE_FILE: path.join(blocker, 'serial-device')
-                    }
+                    extraEnv: { CGATEWEB_SERIAL_DEVICE_FILE: path.join(blocker, 'serial-device') }
                 }
             );
             expect(r.status).toBe(0);
+            // The resolver's own non-fatal verdict, then the script's.
+            expect(r.output).toMatch(/WARNING: Could not write .*serial-device/);
             expect(r.output).toMatch(/WARNING: Could not record the resolved serial device/);
+        });
+
+        test('reports a resolver failure other than a missing device accurately', () => {
+            // Exit 2 means the resolver found the device but could not agree on
+            // it with the later boot steps. Reporting that as "Serial device
+            // not found" sent users hunting for hardware that was plugged in.
+            const { dir, binDir } = withNodeStub(NODE_STUB_PUBLISH_FAILED);
+            const r = checkSerialDevice(
+                { cgate_serial_device: '/dev/ttyUSB0', cgate_mode: 'managed' },
+                { dir, extraEnv: { PATH: `${binDir}${path.delimiter}${process.env.PATH}` } }
+            );
+            expect(r.status).toBe(1);
+            expect(r.output).toMatch(/ERROR: Could not determine which serial device to use \(resolver exited 2\)/);
+            expect(r.output).not.toMatch(/Serial device not found/);
         });
     });
 });
