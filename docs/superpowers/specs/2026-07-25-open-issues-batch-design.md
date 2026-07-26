@@ -310,23 +310,47 @@ own rule is inert, so the level it actually operates at is the `Program` from th
 `eth0` rule. `program` is sufficient for Toolkit, and the undocumented `Clipsal`
 level is not needed.
 
-### The existing bug
+### What the generated access.txt actually does
 
-`cgate-install.sh:546-552` currently generates:
+**Corrected during implementation.** The original premise here was that the
+add-on generates malformed rules and therefore every managed install runs with
+an effectively empty access control list. That was wrong, and the correction
+matters for the release notes.
+
+`cgate-install.sh` did contain a malformed heredoc — `interface 127.0.0.1` with
+no level, plus `program 127.0.0.1` and `monitor 127.0.0.1`, all three faulty by
+the grammar above. But it was guarded by `if [[ ! -f "${ACCESS_FILE}" ]]`, and
+the C-Gate distribution zip **ships its own `config/access.txt`**, which the
+install copies to disk wholesale. So the guard was always false and the heredoc
+never ran.
+
+What every managed install actually has is C-Gate's stock file, carrying three
+*valid* loopback grants:
 
 ```
-interface 127.0.0.1
-program 127.0.0.1
-monitor 127.0.0.1
+## Created:Tue Oct 05 16:22:26 CST 2004
+interface 0:0:0:0:0:0:0:1 Program
+interface 127.0.0.1 Program
+interface localhost Program
 ```
 
-All three lines are faulty by the documented grammar: the first has no level,
-and the other two use level names as keywords. So every managed install is
-running with an effectively empty access control list, relying on C-Gate's
-built-in default. Combined with `accept-connections-from` defaulting to `all`
-(manual §4.6.4.1, which explicitly says it is *not* the security mechanism and
-that access control should be used instead), this means publishing C-Gate's
-ports without correct rules would expose whatever that default grants.
+Verified against a real captured install (`test-env/volumes/data/cgate/config/access.txt`,
+mtime matching the zip extraction). So there was **no security exposure** to fix
+and the changelog must not claim one. Note also that this stock file is what
+taught the `interface` idiom to anyone who has hand-edited their own
+`access.txt` — which is why per-client `interface` rules are a common and
+ineffective pattern in the wild.
+
+Two things remain worth doing, and are what shipped:
+
+1. The add-on should state its own access explicitly and correctly, rather than
+   depending on a vendor default file it does not control.
+2. A managed block is the prerequisite for Task 4's external clients.
+
+The stock `interface` rules are preserved outside the managed block, unchanged.
+They are loopback-only, so they neither widen access nor conflict with the
+`remote` rules the add-on writes. The malformed-line strip patterns are retained
+as defensive cleanup, in case some C-Gate version's zip omits the stock file.
 
 Fixed in the same release, kept localhost-only and minimal:
 

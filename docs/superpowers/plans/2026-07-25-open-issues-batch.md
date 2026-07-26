@@ -748,7 +748,7 @@ boot instead of failing cont-init, and the log names the stable
 
 ## Task 3: Correct the access.txt grammar
 
-The generated file is malformed by the documented grammar, so managed installs run with an effectively empty access control list. This is a prerequisite for Task 4 — publishing ports before this lands would expose whatever C-Gate's built-in default grants.
+The generated file is malformed by the documented grammar. **Corrected during implementation:** the malformed heredoc was guarded by `if [[ ! -f ]]` and the C-Gate zip ships its own valid `config/access.txt`, so the heredoc never ran and there was no exposure. The task still stands — the add-on should declare its own access explicitly, and the managed block is Task 4's prerequisite — but see the spec's "What the generated access.txt actually does" for the accurate narrative. Do not repeat the empty-access-list claim in release notes.
 
 **Files:**
 - Modify: `homeassistant-addon/rootfs/etc/cont-init.d/cgate-install.sh:542-554`
