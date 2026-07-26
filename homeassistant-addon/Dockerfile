@@ -65,7 +65,8 @@ RUN chmod a+x /run.sh && \
     chmod a+x /etc/cont-init.d/*.sh && \
     chmod a+x /etc/services.d/*/run && \
     chmod a+x /etc/services.d/*/finish && \
-    chmod a+x /usr/bin/cgateweb-serial-diagnostics
+    chmod a+x /usr/bin/cgateweb-serial-diagnostics && \
+    chmod a+x /usr/bin/cgateweb-recover-serial
 
 ARG BUILD_ARCH
 ARG BUILD_DATE

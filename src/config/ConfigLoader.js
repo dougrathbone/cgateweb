@@ -152,6 +152,13 @@ class ConfigLoader {
         if (config.cgate_mode === 'managed') {
             config.cgate_install_source = options.cgate_install_source || 'download';
             config.cgate_download_url = options.cgate_download_url || '';
+            // The local USB PC Interface (issue #28). Carried into the runtime
+            // settings so SerialDeviceRecovery can tell a renumbered PCI from a
+            // genuine network fault; only meaningful in managed mode, where
+            // C-Gate runs in this container and holds the port itself.
+            if (options.cgate_serial_device) {
+                config.cgate_serial_device = options.cgate_serial_device;
+            }
         }
 
         // MQTT settings

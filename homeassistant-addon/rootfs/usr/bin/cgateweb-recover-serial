@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Recover a renumbered USB PC Interface without an add-on restart (issue #28).
+#
+# A PCI that is unplugged and replugged while the add-on is running can come
+# back on a different ttyUSBn. C-Gate keeps holding the port that no longer
+# exists, the network sits at InterfaceState=closed, and until now only an
+# add-on restart fixed it. SerialDeviceRecovery (src/serialDeviceRecovery.js)
+# detects that case and runs this script:
+#
+#   1. Re-resolve the configured device to its current path, by the identity
+#      recorded on the last good boot (cgateweb-resolve-serial.js), which also
+#      republishes the answer for the rest of the add-on.
+#   2. Repoint every synced project database at the resolved port name.
+#   3. Restart managed C-Gate so it reopens the network on that port.
+#
+# Step 2 is essential: restarting the cgate service re-runs
+# /etc/services.d/cgate/run but NOT cont-init.d, so without it the project still
+# names the old ttyUSBn and C-Gate reopens straight onto a closed interface.
+#
+# Prints the resolved device path on the last stdout line. Progress and failure
+# detail go to stderr, tagged INFO:/WARN: as the resolver does.
+#
+# Exit codes (deliberately the resolver's, so the caller can tell the cases apart):
+#   0  recovered: project repointed and C-Gate signalled to restart
+#   1  the configured device is absent and could not be found under another
+#      name — nothing was changed and C-Gate was left alone
+#   2  any other failure: bad usage, resolver failure, or no C-Gate to restart
+#
+# CGATEWEB_RESOLVE_SERIAL_JS / CGATEWEB_PROJECT_FIXUP_JS / CGATEWEB_PROJECTS_DIR
+# / CGATEWEB_PROC_ROOT are overridable so the tests can drive this without a
+# real device, a real project or a real signal.
+# ==============================================================================
+set -euo pipefail
+
+EXIT_DEVICE_ABSENT=1
+EXIT_OTHER_FAILURE=2
+
+RESOLVE_SERIAL_JS="${CGATEWEB_RESOLVE_SERIAL_JS:-/usr/bin/cgateweb-resolve-serial.js}"
+PROJECT_FIXUP_JS="${CGATEWEB_PROJECT_FIXUP_JS:-/usr/bin/cgateweb-project-serial-fixup.js}"
+# Where cgate-project-sync.sh puts each project: /data/cgate/Projects/<NAME>/<NAME>.db
+PROJECTS_DIR="${CGATEWEB_PROJECTS_DIR:-/data/cgate/Projects}"
+PROC_ROOT="${CGATEWEB_PROC_ROOT:-/proc}"
+
+CONFIGURED="${1:-}"
+if [[ -z "${CONFIGURED}" ]]; then
+    echo "WARN: usage: cgateweb-recover-serial <configured-device-path>" >&2
+    exit "${EXIT_OTHER_FAILURE}"
+fi
+
+# ─── 1. Re-resolve the configured device ─────────────────────────────────────
+# The resolver takes the *configured* option (not the path C-Gate was last
+# pointed at) and finds the device by its remembered identity, so a renumber is
+# transparent. Its stderr is left to flow to ours: those INFO:/WARN: lines are
+# the explanation of what moved where.
+RESOLVER_STATUS=0
+RESOLVED=$(node "${RESOLVE_SERIAL_JS}" "${CONFIGURED}" | tail -n 1) || RESOLVER_STATUS=$?
+
+if [[ ${RESOLVER_STATUS} -eq ${EXIT_DEVICE_ABSENT} ]]; then
+    # Genuinely unplugged. Repointing the project at nothing and bouncing C-Gate
+    # would only churn, so stop here and let the caller report it.
+    echo "WARN: ${CONFIGURED} is not present and no previously-used device could be found; leaving C-Gate alone" >&2
+    exit "${EXIT_DEVICE_ABSENT}"
+fi
+if [[ ${RESOLVER_STATUS} -ne 0 || -z "${RESOLVED}" ]]; then
+    echo "WARN: could not re-resolve ${CONFIGURED} (resolver exited ${RESOLVER_STATUS})" >&2
+    exit "${EXIT_OTHER_FAILURE}"
+fi
+
+# ─── 2. Repoint every project at the resolved port ───────────────────────────
+# --repoint-stale-serial because the project already names a *Linux* port here:
+# the ttyUSBn that just vanished. cont-init's COMx-only rewrite would leave it.
+# Best-effort, as at cont-init: C-Gate may still open correctly (the project
+# could already name the right port), so a fixup failure must not block the
+# restart that is the whole point of this script.
+shopt -s nullglob
+for db in "${PROJECTS_DIR}"/*/*.db; do
+    if FIXUP_OUT=$(node "${PROJECT_FIXUP_JS}" "${db}" "${RESOLVED}" --repoint-stale-serial 2>&1); then
+        if [[ "${FIXUP_OUT}" == *"rewrote project interface"* ]]; then
+            echo "INFO: ${db}: ${FIXUP_OUT}" >&2
+        fi
+    else
+        echo "WARN: project serial fixup failed for ${db}: ${FIXUP_OUT}" >&2
+    fi
+done
+shopt -u nullglob
+
+# ─── 3. Restart C-Gate ───────────────────────────────────────────────────────
+# /etc/services.d/cgate/run ends in `exec java ... -jar cgate.jar`, so the
+# supervised process IS the JVM and s6 restarts it on exit —
+# services.d/cgate/finish already logs "will restart". That makes signalling the
+# process the whole restart mechanism, and it avoids `s6-svc -r <servicedir>`,
+# whose path differs between s6-overlay versions and is pinned nowhere here.
+#
+# The pid is found by scanning /proc rather than with pgrep for the same reason:
+# pgrep is a busybox applet that need not be enabled in the base image, while
+# /proc and the signal are guaranteed.
+_cgateweb_find_cgate_pid() {
+    local entry cmdline
+    for entry in "${PROC_ROOT}"/[0-9]*; do
+        [[ -r "${entry}/cmdline" ]] || continue
+        cmdline=$(tr '\0' ' ' < "${entry}/cmdline") || continue
+        if [[ "${cmdline}" == *java* && "${cmdline}" == *cgate.jar* ]]; then
+            printf '%s' "${entry##*/}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+CGATE_PID=$(_cgateweb_find_cgate_pid) || CGATE_PID=""
+if [[ -z "${CGATE_PID}" ]]; then
+    echo "WARN: no managed C-Gate process found, so there is nothing to restart" >&2
+    exit "${EXIT_OTHER_FAILURE}"
+fi
+
+# SIGTERM, never SIGKILL: the JVM must run its shutdown hooks so C-Gate closes
+# its project database cleanly.
+if ! kill -TERM "${CGATE_PID}"; then
+    echo "WARN: could not signal C-Gate (pid ${CGATE_PID}) to restart" >&2
+    exit "${EXIT_OTHER_FAILURE}"
+fi
+echo "INFO: sent SIGTERM to C-Gate (pid ${CGATE_PID}); s6 will restart it on ${RESOLVED}" >&2
+
+printf '%s\n' "${RESOLVED}"

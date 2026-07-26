@@ -131,6 +131,57 @@ describe('CniNotificationManager', () => {
         expect(ensureNetworkConnectivityDiscovery).toHaveBeenCalledWith('254');
     });
 
+    describe('serial device recovery hand-off (issue #28)', () => {
+        function makeRecovery() {
+            return {
+                handleInterfaceDown: jest.fn(() => ({ action: 'ignored', message: null })),
+                handleInterfaceUp: jest.fn()
+            };
+        }
+
+        it('hands an offline transition to the recovery collaborator', () => {
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledWith('254');
+            expect(serialDeviceRecovery.handleInterfaceUp).not.toHaveBeenCalled();
+        });
+
+        it('hands a recovery back to it so the attempt budget can reset', () => {
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            mgr.handleReading('254', { interfaceState: 'running' });
+            expect(serialDeviceRecovery.handleInterfaceUp).toHaveBeenCalledWith('254');
+        });
+
+        it('recovers regardless of the cni_offline_notification setting', () => {
+            // Recovery is not a notification feature; it must not be gated on one.
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery, settings: { cni_offline_notification: false } });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledWith('254');
+        });
+
+        it('does not re-trigger recovery on a repeated offline reading', () => {
+            const serialDeviceRecovery = makeRecovery();
+            const deps = makeDeps({ serialDeviceRecovery });
+            const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            mgr.handleReading('254', { interfaceState: 'closed' });
+            expect(serialDeviceRecovery.handleInterfaceDown).toHaveBeenCalledTimes(1);
+        });
+
+        it('works without the collaborator', () => {
+            const deps = makeDeps();
+            const mgr = new CniNotificationManager(deps);
+            expect(() => mgr.handleReading('254', { interfaceState: 'closed' })).not.toThrow();
+        });
+    });
+
     it('does not publish or notify for a transitional (online === null) reading', () => {
         // An interfaceState that is neither 'running' nor 'closed' maps to online:null
         // (unknown/transitional). The result.online !== null guard must skip it.

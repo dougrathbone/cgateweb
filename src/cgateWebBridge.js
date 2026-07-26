@@ -18,6 +18,7 @@ const StaleDeviceDetector = require('./staleDeviceDetector');
 const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
 const { AirconControlRegistry } = require('./airconControlRegistry');
 const CniNotificationManager = require('./cniNotificationManager');
+const SerialDeviceRecovery = require('./serialDeviceRecovery');
 const BridgeReadiness = require('./bridgeReadiness');
 const { discoverIngressEntry } = require('./ingressDiscovery');
 const { createLogger } = require('./logger');
@@ -232,6 +233,14 @@ class CgateWebBridge {
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
         this.networkInterfaceMonitor = new NetworkInterfaceMonitor({ logger: this.logger });
 
+        // Recovers a USB PC Interface that renumbered while running (issue #28).
+        // Inert unless managed mode has a cgate_serial_device configured, so CNI
+        // installs never see it.
+        this.serialDeviceRecovery = new SerialDeviceRecovery({
+            settings: this.settings,
+            logger: this.logger
+        });
+
         // CNI online/offline state machine: publishes connectivity state and
         // raises/dismisses HA persistent notifications on transitions.
         this.cniNotificationManager = new CniNotificationManager({
@@ -240,7 +249,8 @@ class CgateWebBridge {
             getHaDiscovery: this._getHaDiscovery,
             logger: this.logger,
             settings: this.settings,
-            mqttOptions: this._mqttOptions
+            mqttOptions: this._mqttOptions,
+            serialDeviceRecovery: this.serialDeviceRecovery
         });
 
         // Command response processor for handling C-Gate command responses

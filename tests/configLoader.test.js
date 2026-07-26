@@ -121,4 +121,38 @@ describe('ConfigLoader', () => {
             expect(config.ha_discovery_type_from_unit).toBeUndefined();
         });
     });
+
+    describe('add-on serial PC Interface option (issue #28)', () => {
+        const newLoader = () => new ConfigLoader({
+            environmentDetector: {
+                detect: () => ({ type: 'addon', isAddon: true, optionsPath: '/data/options.json' })
+            }
+        });
+
+        // Without this, SerialDeviceRecovery never sees a serial device and the
+        // in-flight replug recovery is dead code in the add-on.
+        it('carries cgate_serial_device through in managed mode', () => {
+            const config = newLoader()._convertAddonOptionsToSettings({
+                cgate_mode: 'managed',
+                cgate_serial_device: '/dev/serial/by-id/usb-pci'
+            });
+
+            expect(config.cgate_serial_device).toBe('/dev/serial/by-id/usb-pci');
+        });
+
+        it('ignores it in remote mode, where C-Gate runs on another machine', () => {
+            const config = newLoader()._convertAddonOptionsToSettings({
+                cgate_host: '192.168.1.100',
+                cgate_serial_device: '/dev/ttyUSB0'
+            });
+
+            expect(config.cgate_serial_device).toBeUndefined();
+        });
+
+        it('leaves it unset when the option is absent', () => {
+            const config = newLoader()._convertAddonOptionsToSettings({ cgate_mode: 'managed' });
+
+            expect(config.cgate_serial_device).toBeUndefined();
+        });
+    });
 });

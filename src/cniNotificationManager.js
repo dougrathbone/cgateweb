@@ -13,7 +13,7 @@ const { MQTT_TOPIC_PREFIX_READ, MQTT_STATE_ON, MQTT_STATE_OFF } = require('./con
  * original CgateWebBridge implementation.
  */
 class CniNotificationManager {
-    constructor({ networkInterfaceMonitor, mqttManager, getHaDiscovery, logger, settings, mqttOptions }) {
+    constructor({ networkInterfaceMonitor, mqttManager, getHaDiscovery, logger, settings, mqttOptions, serialDeviceRecovery }) {
         this.networkInterfaceMonitor = networkInterfaceMonitor;
         this.mqttManager = mqttManager;
         // haDiscovery is initialized after the bridge constructor runs, so read it
@@ -22,6 +22,10 @@ class CniNotificationManager {
         this.logger = logger;
         this.settings = settings;
         this.mqttOptions = mqttOptions;
+        // Optional: recovers a USB PC Interface that renumbered while running
+        // (issue #28). Absent in tests that do not need it; inert unless a
+        // serial device is configured in managed mode.
+        this.serialDeviceRecovery = serialDeviceRecovery || null;
     }
 
     handleReading(networkId, reading) {
@@ -39,6 +43,17 @@ class CniNotificationManager {
                 result.online ? MQTT_STATE_ON : MQTT_STATE_OFF,
                 { ...this.mqttOptions, retain: true }
             );
+
+            // Before the notification handling, and deliberately not gated on
+            // cni_offline_notification: recovering the interface is not a
+            // notification feature.
+            if (this.serialDeviceRecovery) {
+                if (result.online === false) {
+                    this.serialDeviceRecovery.handleInterfaceDown(networkId);
+                } else {
+                    this.serialDeviceRecovery.handleInterfaceUp(networkId);
+                }
+            }
 
             if (this.settings.cni_offline_notification) {
                 if (result.online === false) {

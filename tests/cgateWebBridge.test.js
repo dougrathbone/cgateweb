@@ -263,6 +263,29 @@ describe('CgateWebBridge', () => {
             publishSpy.mockRestore();
         });
 
+        it('routes interface transitions to serial device recovery (issue #28)', () => {
+            // The wiring, not the recovery logic: without it the whole
+            // renumber-recovery feature is unreachable from a live bridge.
+            const downSpy = jest.spyOn(bridge.serialDeviceRecovery, 'handleInterfaceDown');
+            const upSpy = jest.spyOn(bridge.serialDeviceRecovery, 'handleInterfaceUp');
+
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' });
+            expect(downSpy).toHaveBeenCalledWith('254');
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
+            expect(upSpy).toHaveBeenCalledWith('254');
+
+            downSpy.mockRestore();
+            upSpy.mockRestore();
+        });
+
+        it('is inert without a configured serial device', () => {
+            // Every CNI install: no cgate_serial_device, so a genuine network
+            // dropout must never reach the recovery script.
+            expect(bridge.settings.cgate_serial_device).toBeFalsy();
+            const result = bridge.serialDeviceRecovery.handleInterfaceDown('254');
+            expect(result.action).toBe('ignored');
+        });
+
         it('does not throw raising a CNI notification when SUPERVISOR_TOKEN is absent', () => {
             const prev = process.env.SUPERVISOR_TOKEN;
             delete process.env.SUPERVISOR_TOKEN;

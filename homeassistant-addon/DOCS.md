@@ -181,6 +181,24 @@ restart the add-on and copy its full startup log (**Settings → Add-ons →
 C-Gate Web Bridge → Log**) into your report — the diagnostics block is
 clearly marked with a banner so you can see exactly what to include.
 
+**If you unplug and replug the interface while the add-on is running**
+
+A replugged PC Interface can come back on a different `/dev/ttyUSB*` name. C-Gate
+keeps holding the port it opened, so the network stays at
+`InterfaceState=closed`. The add-on now recovers from this by itself: when a
+network's interface goes down and the device it was using has vanished (or a
+`/dev/serial/by-id/...` path now points at a different port), it re-finds the
+device by the identity recorded on the last good boot, repoints your project
+database at the new port, and restarts only the internal C-Gate. Expect a short
+outage while C-Gate restarts; the log explains what moved where.
+
+This never runs for CNI (ethernet) installs, which have no
+`cgate_serial_device`, and it does not run for an interface that is simply
+unplugged — there is nothing to reopen until you plug it back in. Repeated
+attempts are spaced out and capped, so a faulty cable cannot put C-Gate into a
+restart loop; if the cap is reached, reconnect the interface and restart the
+add-on.
+
 **Known limitations**
 
 - **Projects saved on Windows reference `COMx` ports** — which cannot exist on

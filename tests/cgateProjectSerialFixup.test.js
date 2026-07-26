@@ -71,6 +71,91 @@ describe('cgateweb-project-serial-fixup (issue #28)', () => {
         expect(await readInterface(dbPath)).toEqual([['serial', '/dev/ttyUSB9']]);
     });
 
+    describe('repointStaleSerial (in-flight recovery, issue #28)', () => {
+        // Recovery after a replug has to fix a project that already names a
+        // *Linux* port — the old ttyUSBn — which the default COMx-only rule
+        // deliberately leaves alone. Without this the restart reopens the
+        // network on the port that just disappeared.
+        it('repoints a stale serial port name at the resolved device', async () => {
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = 'ttyUSB0' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual(['network 254: serial/ttyUSB0 -> serial/ttyUSB1']);
+            expect(await readInterface(dbPath)).toEqual([['serial', 'ttyUSB1']]);
+        });
+
+        it('repoints a stale /dev/ path too', async () => {
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = '/dev/ttyUSB9' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual(['network 254: serial//dev/ttyUSB9 -> serial/ttyUSB1']);
+            expect(await readInterface(dbPath)).toEqual([['serial', 'ttyUSB1']]);
+        });
+
+        it('leaves a CNI/IP interface alone even when repointing', async () => {
+            // A project can mix a serial PCI on one network with a CNI on
+            // another; repointing an IP interface at a serial port would take
+            // a working network down.
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'ip', interface_address = '192.168.0.2:10001' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual([]);
+            expect(await readInterface(dbPath)).toEqual([['ip', '192.168.0.2:10001']]);
+        });
+
+        it('is idempotent when the project already names the resolved port', async () => {
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = 'ttyUSB1' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual([]);
+        });
+
+        it('leaves a stale serial port name alone without the flag (cont-init behaviour)', async () => {
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = 'ttyUSB0' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1');
+            expect(changes).toEqual([]);
+            expect(await readInterface(dbPath)).toEqual([['serial', 'ttyUSB0']]);
+        });
+
+        it('accepts --repoint-stale-serial on the command line', async () => {
+            // A stale *Linux* port, so only the flag can produce a rewrite —
+            // a COMx address would be rewritten either way and would not prove
+            // the flag was parsed.
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = 'ttyUSB0' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const out = execFileSync('node', [SCRIPT, dbPath, '/dev/ttyUSB1', '--repoint-stale-serial'], { encoding: 'utf8' });
+            expect(out).toMatch(/rewrote project interface network 254: serial\/ttyUSB0 -> serial\/ttyUSB1/);
+            // Second run: the address is now the resolved port, so nothing changes.
+            const out2 = execFileSync('node', [SCRIPT, dbPath, '/dev/ttyUSB1', '--repoint-stale-serial'], { encoding: 'utf8' });
+            expect(out2).toMatch(/nothing to change/);
+        });
+    });
+
     it('prints a warning and exits 0 on a corrupt db (never breaks startup)', () => {
         fs.writeFileSync(dbPath, 'not a sqlite database');
         const { spawnSync } = require('child_process');

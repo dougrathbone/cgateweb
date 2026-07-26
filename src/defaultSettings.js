@@ -131,6 +131,30 @@ const defaultSettings = {
     // Supervisor API) if a C-Bus network's CNI/PCI goes offline, and dismiss it
     // on recovery. Requires the add-on environment (SUPERVISOR_TOKEN).
     cni_offline_notification: false,
+    // Local USB PC Interface (managed mode only, issue #28). Set from the
+    // add-on's cgate_serial_device option; null means a CNI/network interface,
+    // which is what makes all the serialRecovery* handling below inert.
+    cgate_serial_device: null,
+    // Recover from a USB PC Interface that renumbered while running (issue #28).
+    // Only engages in managed mode with cgate_serial_device set AND the device
+    // path either gone or now pointing at a different port, so a CNI dropout
+    // never triggers it. Recovery re-resolves the device by its remembered
+    // identity, repoints the project database, and restarts managed C-Gate.
+    serialRecoveryEnabled: true,
+    // Restarts per outage before giving up and telling the user to reconnect the
+    // interface and restart the add-on.
+    serialRecoveryMaxAttempts: 3,
+    // Backoff between attempts within one outage (exponential from the initial
+    // delay, capped at the max), so a flapping interface cannot turn into a
+    // C-Gate restart loop.
+    serialRecoveryInitialDelayMs: 5000,
+    serialRecoveryMaxDelayMs: 300000,
+    // How long the interface must have been back up for the next outage to count
+    // as new trouble and get a fresh attempt budget.
+    serialRecoveryStableWindowMs: 900000,
+    // Cap on the recovery helper's run time; it runs synchronously, so this is
+    // what stops a wedged helper wedging the bridge.
+    serialRecoveryTimeoutMs: 60000,
     // Web diagnostics: window (ms) within which a device counts as "active" in
     // the status page's device list. Default 24h.
     web_active_device_window_ms: 24 * 60 * 60 * 1000,
