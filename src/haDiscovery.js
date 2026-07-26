@@ -1,6 +1,6 @@
 // @ts-check
 const { createLogger } = require('./logger');
-const { findNetworkData, collectUnitGroups } = require('./haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, collectUnitTypesByGroup, unknownUnitTypes } = require('./haDiscoveryTree');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
@@ -313,6 +313,7 @@ class HaDiscovery {
         } finally {
             this._labelSnapshot = null;
             this._currentRunTopics = null;
+            this._unitTypeIndex = null;
         }
     }
 
@@ -349,6 +350,24 @@ class HaDiscovery {
             if (!unit) return;
             collectUnitGroups(unit, groupsByApp, targetApps);
         });
+
+        // Which unit types drive each group, so a group can be classified by its
+        // hardware instead of by its name (issues #38, #37). Run-scoped instance
+        // state, cleared in _publishDiscoveryFromTree's finally like
+        // _labelSnapshot. Only built when the feature is on — it is pure cost
+        // otherwise, and with it off the classifier ignores the index anyway.
+        if (this.settings.ha_discovery_type_from_unit) {
+            this._unitTypeIndex = collectUnitTypesByGroup(networkData, targetApps);
+
+            const unknown = unknownUnitTypes(networkData);
+            if (unknown.length) {
+                this.logger.info(
+                    `Unit types not recognised for classification on network ${networkId}: ${unknown.join(', ')}. ` +
+                    'Groups driven only by these units keep their default type. ' +
+                    'Please report them on https://github.com/dougrathbone/cgateweb/issues/37'
+                );
+            }
+        }
 
         for (const [appId, groupMap] of groupsByApp) {
             const groups = Array.from(groupMap.values());

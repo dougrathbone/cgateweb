@@ -325,3 +325,8 @@ configuration:
     description: >-
       Považovat štítek skupiny začínající prefixem domény entity za tento typ zařízení (např. cover.rolety_loznice se stane krytem, switch.svetlo_veranda spínačem). Podporované prefixy: light., cover., switch., relay., pir. Ruční záznam type_overrides má vždy přednost. Ve výchozím stavu vypnuto.
 
+  ha_discovery_type_from_unit:
+    name: Typ z typu jednotky C-Bus
+    description: >-
+      Určit typ každé entity podle jednotky C-Bus, která skupinu ovládá, místo podle jejího názvu. Kanály stmívače se stanou stmívatelnými světly, kanály relé světly zap/vyp a skupiny ovládané pouze vstupní jednotkou, například bus coupler, se stanou binárními senzory. Ruční záznam type_overrides má stále přednost a skupiny ovládané nerozpoznanými typy jednotek zůstanou nezměněné. Zapnutí může změnit typ entit, které již máte.
+

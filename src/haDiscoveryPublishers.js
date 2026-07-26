@@ -1,6 +1,7 @@
 // @ts-check
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
 const { classifyLightingGroup, typeFromLabelPrefix } = require('./deviceTypeClassifier');
+const { entityTypeForGroup } = require('./unitTypeClassifier');
 const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
 const {
     MQTT_TOPIC_PREFIX_READ,
@@ -104,6 +105,14 @@ class _HaDiscoveryPublishers {
      */
     _labelSnapshot;
 
+    /**
+     * Per-run map of "<appId>/<groupId>" to the unit types driving that group,
+     * installed by _publishDiscoveryFromTree (null outside a run, and left null
+     * when ha_discovery_type_from_unit is off).
+     * @type {Map<string, { types: Set<string> }> | null}
+     */
+    _unitTypeIndex;
+
     _processLightingGroups(networkId, appId, groups) {
         const groupArray = Array.isArray(groups) ? groups : [groups];
         for (const group of groupArray) {
@@ -118,7 +127,7 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _processOneLightingGroup(networkId, appId, group) {
-        const { labelMap, entityIds, exclude, areas } = this._labelSnapshot;
+        const { exclude } = this._labelSnapshot;
 
         const groupId = group.GroupAddress;
         if (groupId === undefined || groupId === null || groupId === '') {
@@ -140,9 +149,47 @@ class _HaDiscoveryPublishers {
         }
 
         // Default: a dimmable light entity.
+        this._publishLightingGroupEntity(networkId, appId, groupId, group, labelKey, {
+            component: HA_COMPONENT_LIGHT,
+            fallbackLabel: `CBus Light ${networkId}/${appId}/${groupId}`,
+            fields: ({ read, write }) => ({
+                state_topic: `${read}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                command_topic: `${write}/${MQTT_CMD_TYPE_RAMP}`,
+                brightness_state_topic: `${read}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
+                brightness_command_topic: `${write}/${MQTT_CMD_TYPE_RAMP}`,
+                brightness_scale: 100,
+                on_command_type: 'brightness',
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF,
+                state_value_template: '{{ value }}',
+                brightness_value_template: '{{ value }}'
+            })
+        });
+    }
+
+    /**
+     * Publish one Lighting-application group as a single HA entity.
+     *
+     * The three shapes a lighting group can take — dimmable light, relay-driven
+     * on/off light, input-only binary sensor — differ only in their HA component
+     * and in the block of topic/payload keys between `unique_id` and `qos`.
+     * Label resolution (custom → TREEXML → fallback, with its stats), unique id,
+     * entity-id hint, area lookup, device block and per-run bookkeeping are
+     * identical, so they live here once rather than three times.
+     *
+     * @param {Object} spec
+     * @param {string} spec.component - HA component: light, binary_sensor, …
+     * @param {string} spec.fallbackLabel - Label used when neither a custom nor a TREEXML label exists.
+     * @param {(bases: { read: string, write: string }) => Object} spec.fields -
+     *   Component-specific payload keys, given the group's read/write topic bases.
+     * @private
+     */
+    _publishLightingGroupEntity(networkId, appId, groupId, group, labelKey, spec) {
+        const { labelMap, entityIds, areas } = this._labelSnapshot;
+
         const customLabel = labelMap.get(labelKey);
         const groupLabel = group.Label;
-        const finalLabel = customLabel || groupLabel || `CBus Light ${networkId}/${appId}/${groupId}`;
+        const finalLabel = customLabel || groupLabel || spec.fallbackLabel;
         if (customLabel) this.labelStats.custom++;
         else if (groupLabel) this.labelStats.treexml++;
         else this.labelStats.fallback++;
@@ -150,22 +197,16 @@ class _HaDiscoveryPublishers {
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
         const entityId = entityIds.get(labelKey);
         const area = areas && areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_LIGHT}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${spec.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
 
         const payload = {
             name: null,
             unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_LIGHT, entityId)),
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
-            brightness_state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
-            brightness_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_RAMP}`,
-            brightness_scale: 100,
-            on_command_type: 'brightness',
-            payload_on: MQTT_STATE_ON,
-            payload_off: MQTT_STATE_OFF,
-            state_value_template: '{{ value }}',
-            brightness_value_template: '{{ value }}',
+            ...(entityId && entityIdFields(spec.component, entityId)),
+            ...spec.fields({
+                read: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}`,
+                write: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}`
+            }),
             qos: 0,
             // command topics must NOT be retained: a retained command replays to
             // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
@@ -184,6 +225,46 @@ class _HaDiscoveryPublishers {
     }
 
     /**
+     * A relay-driven lighting group: still a light (it is wired onto the
+     * Lighting application and switches a light group), but with no dim slider.
+     * Staying in the light domain keeps entity ids and existing automations
+     * working, which moving it to `switch` would break (issue #38).
+     * @private
+     */
+    _createOnOffLightDiscovery(networkId, appId, groupId, group, labelKey) {
+        this._publishLightingGroupEntity(networkId, appId, groupId, group, labelKey, {
+            component: HA_COMPONENT_LIGHT,
+            fallbackLabel: `CBus Light ${networkId}/${appId}/${groupId}`,
+            fields: ({ read, write }) => ({
+                state_topic: `${read}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                command_topic: `${write}/${MQTT_CMD_TYPE_SWITCH}`,
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF,
+                state_value_template: '{{ value }}'
+            })
+        });
+    }
+
+    /**
+     * A group driven only by input units (bus coupler, key input, sensor) with
+     * no output unit on it: there is no load to control, so publish a binary
+     * sensor to trigger automations from (issue #37). No device_class — a
+     * coupler is not necessarily motion.
+     * @private
+     */
+    _createInputBinarySensorDiscovery(networkId, appId, groupId, group, labelKey) {
+        this._publishLightingGroupEntity(networkId, appId, groupId, group, labelKey, {
+            component: HA_COMPONENT_BINARY_SENSOR,
+            fallbackLabel: `CBus Input ${networkId}/${appId}/${groupId}`,
+            fields: ({ read }) => ({
+                state_topic: `${read}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF
+            })
+        });
+    }
+
+    /**
      * If the group's resolved type (manual override first, else
      * auto-classification) is a non-light type, publish that entity, clear any
      * stale retained light config, and return true. Returns false to fall
@@ -197,14 +278,44 @@ class _HaDiscoveryPublishers {
     _tryCreateTypedEntity(networkId, appId, groupId, group, labelKey) {
         const { labelMap, typeOverrides } = this._labelSnapshot;
         const labelForClassification = labelMap.get(labelKey) || group.Label || '';
+
         // Precedence: manual type_overrides, then an explicit entity-id domain
-        // prefix in the label (issue #35), then the keyword heuristics.
+        // prefix in the label (issue #35), then the type of the unit driving the
+        // group (issues #38, #37), then the label keyword heuristics. Hardware
+        // beats keywords deliberately: the unit that drives a group is evidence,
+        // whereas its name is a guess — a user who wants the name to win leaves
+        // ha_discovery_type_from_unit off or adds a type_overrides entry.
+        const unitType = entityTypeForGroup(
+            this._unitTypeIndex ? this._unitTypeIndex.get(`${appId}/${groupId}`) : null,
+            this.settings
+        );
         const resolvedType = typeOverrides.get(labelKey)
             || typeFromLabelPrefix(labelForClassification, this.settings)
+            || unitType
             || classifyLightingGroup(labelForClassification, this.settings);
 
-        if (!resolvedType || resolvedType === 'light') {
+        // A dimmer-driven group resolves to the default dimmable light, so there
+        // is nothing to do here beyond falling through to it unchanged.
+        if (!resolvedType || resolvedType === 'light' || resolvedType === 'light-dimmable') {
             return false;
+        }
+
+        // The unit-type outcomes below are payload shapes, not entries in the
+        // getDiscoveryConfig table, so they must be dispatched before the lookup
+        // — which keeps its original meaning of "a type nobody recognises".
+        if (resolvedType === 'light-onoff') {
+            this.logger.debug(`Resolved type: ${labelKey} -> light (on/off, relay-driven)`);
+            this._createOnOffLightDiscovery(networkId, appId, groupId, group, labelKey);
+            return true;
+        }
+
+        if (resolvedType === 'binary_sensor') {
+            this.logger.debug(`Resolved type: ${labelKey} -> binary_sensor (input-only)`);
+            this._createInputBinarySensorDiscovery(networkId, appId, groupId, group, labelKey);
+            // It moved out of the light domain, so retract any light config a
+            // previous run published for it.
+            this._clearStaleLightConfig(networkId, appId, groupId);
+            return true;
         }
 
         const config = getDiscoveryConfig(resolvedType);

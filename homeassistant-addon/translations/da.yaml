@@ -330,3 +330,8 @@ configuration:
     description: >-
       Behandl en gruppelabel, der starter med et entitetsdomæne-præfiks, som den enhedstype (f.eks. cover.sovevaerelse_persienne bliver en cover, switch.have_lys en switch). Understøttede præfikser: light., cover., switch., relay., pir. En manuel type_overrides-post vinder altid. Fra som standard.
 
+  ha_discovery_type_from_unit:
+    name: Type fra C-Bus-enhedstype
+    description: >-
+      Bestem hver entitets type ud fra den C-Bus-enhed, der styrer gruppen, i stedet for ud fra navnet. Dæmperkanaler bliver dæmpbare lys, relækanaler bliver tænd/sluk-lys, og grupper der kun styres af en indgangsenhed som en bus coupler bliver binære sensorer. En manuel type_overrides-post vinder stadig, og grupper med ukendte enhedstyper forbliver uændrede. At slå dette til kan ændre typen på entiteter, du allerede har.
+

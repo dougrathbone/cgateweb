@@ -295,3 +295,8 @@ configuration:
     description: >-
       将以实体域前缀开头的组标签识别为对应设备类型(例如 cover.bedroom_shutter 识别为窗帘,switch.porch_light 识别为开关)。支持的前缀:light.、cover.、switch.、relay.、pir.。手动 type_overrides 条目始终优先。默认关闭。
 
+  ha_discovery_type_from_unit:
+    name: 从 C-Bus 单元类型识别类型
+    description: >-
+      根据驱动该组的 C-Bus 单元类型而非组名称来决定每个实体的类型。调光器通道识别为可调光灯,继电器通道识别为开关式灯,仅由输入单元(例如 bus coupler)驱动的组识别为二元传感器。手动 type_overrides 条目仍然优先,由无法识别的单元类型驱动的组保持不变。开启此项可能会改变现有实体的类型。
+

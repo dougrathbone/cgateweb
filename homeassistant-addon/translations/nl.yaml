@@ -333,3 +333,8 @@ configuration:
     description: >-
       Behandel een groepslabel dat begint met een entiteitsdomein-prefix als dat apparaattype (bijv. cover.slaapkamer_luik wordt een cover, switch.verandalamp een schakelaar). Ondersteunde prefixes: light., cover., switch., relay., pir. Een handmatige type_overrides-vermelding gaat altijd voor. Standaard uit.
 
+  ha_discovery_type_from_unit:
+    name: Type uit C-Bus-unittype
+    description: >-
+      Bepaal het type van elke entiteit op basis van de C-Bus-unit die de groep aanstuurt in plaats van op basis van de naam. Dimmerkanalen worden dimbare lampen, relaiskanalen aan/uit-lampen, en groepen die alleen door een invoerunit zoals een bus coupler worden aangestuurd worden binaire sensoren. Een handmatige type_overrides-vermelding gaat nog steeds voor en groepen met niet-herkende unittypes blijven onveranderd. Dit aanzetten kan het type van bestaande entiteiten wijzigen.
+

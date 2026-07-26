@@ -2783,3 +2783,250 @@ describe('HaDiscovery — label domain-prefix types (issue #35)', () => {
         );
     });
 });
+
+describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', () => {
+    // One lighting group per unit kind: a dimmer channel, a relay channel, a
+    // relay channel whose label would otherwise trip the cover keyword
+    // heuristics, an input-only bus coupler, and a unit type the classifier
+    // has never seen.
+    const UNIT_TREE = {
+        Network: {
+            NetworkNumber: '254',
+            Unit: [
+                { UnitAddress: '10', Type: 'DIMDN8', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1', Label: 'Kitchen' }] } },
+                { UnitAddress: '11', Type: 'RELDN12', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '2', Label: 'Irrigation' }, { GroupAddress: '4', Label: 'Patio Blind' }] } },
+                { UnitAddress: '12', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '3', Label: 'Hall Coupler' }] } },
+                { UnitAddress: '13', Type: 'WIDGETRON9', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '5', Label: 'Study' }] } }
+            ]
+        }
+    };
+
+    function makeDiscovery(settings = {}, labelData = null) {
+        const publish = jest.fn();
+        const d = new HaDiscovery(
+            { ha_discovery_enabled: true, ha_discovery_prefix: 'testhomeassistant', ha_discovery_networks: ['254'], ...settings },
+            publish,
+            jest.fn(),
+            labelData
+        );
+        return { d, publish };
+    }
+
+    // The raw published payload string, so byte-for-byte comparisons are possible.
+    function rawPayload(publish, component, group) {
+        const topic = `testhomeassistant/${component}/cgateweb_254_56_${group}/config`;
+        const call = publish.mock.calls.find(([t, payload]) => t === topic && payload);
+        return call ? call[1] : null;
+    }
+
+    function payloadFor(publish, component, group) {
+        const raw = rawPayload(publish, component, group);
+        return raw ? JSON.parse(raw) : null;
+    }
+
+    it('publishes a dimmer-driven group as a light with brightness', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'light', 1).brightness_command_topic)
+            .toBe('cbus/write/254/56/1/ramp');
+    });
+
+    it('publishes a relay-driven group as a light with no brightness fields', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+        const payload = payloadFor(publish, 'light', 2);
+
+        expect(payload).not.toHaveProperty('brightness_command_topic');
+        expect(payload).not.toHaveProperty('brightness_state_topic');
+        expect(payload).not.toHaveProperty('brightness_scale');
+        expect(payload).not.toHaveProperty('on_command_type');
+        expect(payload.command_topic).toBe('cbus/write/254/56/2/switch');
+        expect(payload.state_topic).toBe('cbus/read/254/56/2/state');
+    });
+
+    it('publishes an input-only group as a binary sensor and retracts its light config', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'binary_sensor', 3).state_topic)
+            .toBe('cbus/read/254/56/3/state');
+        // An input-only group has no load to command.
+        expect(payloadFor(publish, 'binary_sensor', 3)).not.toHaveProperty('command_topic');
+        // Any light config published for it on an earlier run is cleared.
+        expect(publish).toHaveBeenCalledWith(
+            'testhomeassistant/light/cgateweb_254_56_3/config',
+            '',
+            { retain: true, qos: 0 }
+        );
+    });
+
+    it('leaves a group driven by an unrecognised unit type as a dimmable light', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'light', 5).brightness_command_topic)
+            .toBe('cbus/write/254/56/5/ramp');
+    });
+
+    it('logs unrecognised unit types once per run so they can be reported', () => {
+        const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
+        const infoSpy = jest.spyOn(d.logger, 'info').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        const messages = infoSpy.mock.calls.map(args => String(args[0]));
+        expect(messages.some(m => m.includes('WIDGETRON9'))).toBe(true);
+        // Recognised types are not reported as unknown.
+        expect(messages.some(m => m.includes('DIMDN8'))).toBe(false);
+        infoSpy.mockRestore();
+    });
+
+    it('does not log unrecognised unit types when the feature is off', () => {
+        const { d } = makeDiscovery();
+        const infoSpy = jest.spyOn(d.logger, 'info').mockImplementation(() => {});
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(infoSpy.mock.calls.map(args => String(args[0])).some(m => m.includes('WIDGETRON9'))).toBe(false);
+        infoSpy.mockRestore();
+    });
+
+    it('leaves every group a dimmable light when the setting is off', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: false });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'light', 2).brightness_command_topic)
+            .toBe('cbus/write/254/56/2/ramp');
+        expect(payloadFor(publish, 'binary_sensor', 3)).toBeNull();
+    });
+
+    it('publishes a dimmer-driven group byte-identically to the feature being off', () => {
+        const on = makeDiscovery({ ha_discovery_type_from_unit: true });
+        const off = makeDiscovery();
+
+        on.d._publishDiscoveryFromTree('254', UNIT_TREE);
+        off.d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        // light-dimmable must fall through to the untouched default path, not to
+        // a re-implementation of it (key order included).
+        expect(rawPayload(on.publish, 'light', 1)).toBe(rawPayload(off.publish, 'light', 1));
+    });
+
+    it('lets a manual type override beat unit-type classification', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true },
+            { typeOverrides: new Map([['254/56/2', 'cover']]) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'cover', 2)).not.toBeNull();
+        expect(payloadFor(publish, 'light', 2)).toBeNull();
+    });
+
+    it('lets a label domain prefix beat unit-type classification', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true, ha_discovery_type_from_label_prefix: true },
+            { labels: new Map([['254/56/2', 'switch.irrigation']]) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'switch', 2)).not.toBeNull();
+        expect(payloadFor(publish, 'light', 2)).toBeNull();
+    });
+
+    it('lets unit-type classification beat the name-keyword heuristics', () => {
+        const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        // "Patio Blind" would classify as a cover by name; the relay driving it wins.
+        expect(payloadFor(publish, 'cover', 4)).toBeNull();
+        expect(payloadFor(publish, 'light', 4)).not.toHaveProperty('brightness_command_topic');
+    });
+
+    it('still classifies by name when no unit drives the group', () => {
+        // Group 99 exists only in the label data, so the tree carries no unit
+        // type for it — the name heuristics must still apply.
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true },
+            { labels: new Map([['254/56/99', 'Lounge Blind']]) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'cover', 99)).not.toBeNull();
+    });
+
+    it('carries the label, entity id and area onto a relay-driven light', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true },
+            {
+                labels: new Map([['254/56/2', 'Garden Taps']]),
+                entityIds: new Map([['254/56/2', 'garden_taps']]),
+                areas: new Map([['254/56/2', 'Garden']])
+            }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+        const payload = payloadFor(publish, 'light', 2);
+
+        expect(payload.device.name).toBe('Garden Taps');
+        expect(payload.device.suggested_area).toBe('Garden');
+        expect(payload.object_id).toBe('garden_taps');
+    });
+
+    it('carries the label, entity id and area onto an input binary sensor', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true },
+            {
+                labels: new Map([['254/56/3', 'Hall Button']]),
+                entityIds: new Map([['254/56/3', 'hall_button']]),
+                areas: new Map([['254/56/3', 'Hallway']])
+            }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+        const payload = payloadFor(publish, 'binary_sensor', 3);
+
+        expect(payload.device.name).toBe('Hall Button');
+        expect(payload.device.suggested_area).toBe('Hallway');
+        expect(payload.object_id).toBe('hall_button');
+    });
+
+    it('honours exclusions for a group the unit types would retype', () => {
+        const { d, publish } = makeDiscovery(
+            { ha_discovery_type_from_unit: true },
+            { exclude: new Set(['254/56/3']) }
+        );
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(payloadFor(publish, 'binary_sensor', 3)).toBeNull();
+    });
+
+    it('clears the per-run index after the run', () => {
+        const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
+
+        d._publishDiscoveryFromTree('254', UNIT_TREE);
+
+        expect(d._unitTypeIndex).toBeNull();
+    });
+
+    it('clears the per-run index even when the run throws', () => {
+        const { d } = makeDiscovery({ ha_discovery_type_from_unit: true });
+        jest.spyOn(d, '_supplementFromLabels').mockImplementation(() => {
+            throw new Error('boom');
+        });
+
+        expect(() => d._publishDiscoveryFromTree('254', UNIT_TREE)).toThrow('boom');
+        expect(d._unitTypeIndex).toBeNull();
+    });
+});

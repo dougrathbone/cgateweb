@@ -333,3 +333,8 @@ configuration:
     description: >-
       Tratar uma etiqueta de grupo que comece com um prefixo de domínio de entidade como esse tipo de dispositivo (ex.: cover.estore_quarto torna-se uma cobertura, switch.luz_alpendre um interruptor). Prefixos suportados: light., cover., switch., relay., pir. Uma entrada manual em type_overrides tem sempre prioridade. Desativado por predefinição.
 
+  ha_discovery_type_from_unit:
+    name: Tipo pelo tipo de unidade C-Bus
+    description: >-
+      Determinar o tipo de cada entidade a partir da unidade C-Bus que comanda o grupo em vez do seu nome. Canais de dimmer tornam-se luzes reguláveis, canais de relé luzes de ligar/desligar e grupos comandados apenas por uma unidade de entrada como um bus coupler tornam-se sensores binários. Uma entrada manual em type_overrides continua a ter prioridade e os grupos com tipos de unidade não reconhecidos ficam inalterados. Ativar isto pode alterar o tipo de entidades que já existem.
+

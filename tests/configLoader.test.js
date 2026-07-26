@@ -83,4 +83,42 @@ describe('ConfigLoader', () => {
             expect(config.cbus_aircon_control_enabled).toBe(true);
         });
     });
+
+    describe('add-on options for unit-type classification (issues #38, #37)', () => {
+        const newLoader = () => new ConfigLoader({
+            environmentDetector: {
+                detect: () => ({ type: 'addon', isAddon: true, optionsPath: '/data/options.json' })
+            }
+        });
+
+        const addonOptions = (extra) => ({
+            cgate_host: '192.168.1.100',
+            ha_discovery_enabled: true,
+            ...extra
+        });
+
+        // Without an ADDON_OPTION_MAP row the toggle renders in the add-on UI and
+        // silently does nothing, so pin the mapping rather than assume it.
+        it('carries ha_discovery_type_from_unit through the add-on conversion', () => {
+            const config = newLoader()._convertAddonOptionsToSettings(
+                addonOptions({ ha_discovery_type_from_unit: true })
+            );
+
+            expect(config.ha_discovery_type_from_unit).toBe(true);
+        });
+
+        it('maps an explicit false through as false', () => {
+            const config = newLoader()._convertAddonOptionsToSettings(
+                addonOptions({ ha_discovery_type_from_unit: false })
+            );
+
+            expect(config.ha_discovery_type_from_unit).toBe(false);
+        });
+
+        it('leaves the setting unset when the add-on option is absent', () => {
+            const config = newLoader()._convertAddonOptionsToSettings(addonOptions());
+
+            expect(config.ha_discovery_type_from_unit).toBeUndefined();
+        });
+    });
 });

@@ -321,3 +321,8 @@ configuration:
     description: >-
       Treat a group label that starts with an entity-domain prefix as that device type for discovery (e.g. cover.bedroom_shutter becomes a cover, switch.porch_light a switch). Supported prefixes: light., cover., switch., relay., pir. A manual type_overrides entry always wins. Off by default.
 
+  ha_discovery_type_from_unit:
+    name: Set entity type from C-Bus unit type
+    description: >-
+      Decide each entity's type from the C-Bus unit that drives the group rather than from its name. Dimmer channels become dimmable lights, relay channels become on/off lights, and groups driven only by an input unit such as a bus coupler become binary sensors. Manual type overrides still take priority, and groups driven by unrecognised unit types are left unchanged. Turning this on can change the type of entities you already have.
+

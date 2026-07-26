@@ -332,3 +332,8 @@ configuration:
     description: >-
       Eine Gruppenbezeichnung mit Entitäts-Domain-Präfix als diesen Gerätetyp erkennen (z. B. wird cover.schlafzimmer_rollo zu einer Abdeckung, switch.terassen_licht zu einem Schalter). Unterstützte Präfixe: light., cover., switch., relay., pir. Ein manueller type_overrides-Eintrag hat immer Vorrang. Standardmäßig deaktiviert.
 
+  ha_discovery_type_from_unit:
+    name: Typ aus C-Bus-Gerätetyp
+    description: >-
+      Den Typ jeder Entität aus dem C-Bus-Gerät bestimmen, das die Gruppe ansteuert, statt aus ihrem Namen. Dimmer-Kanäle werden dimmbare Lichter, Relais-Kanäle werden Ein/Aus-Lichter, und Gruppen, die nur von einem Eingangsgerät wie einem Bus Coupler angesteuert werden, werden Binärsensoren. Manuelle type_overrides-Einträge haben weiterhin Vorrang, und Gruppen mit unbekanntem Gerätetyp bleiben unverändert. Das Aktivieren kann den Typ bereits vorhandener Entitäten ändern.
+

@@ -337,3 +337,8 @@ configuration:
     description: >-
       Tratar una etiqueta de grupo que empiece con un prefijo de dominio de entidad como ese tipo de dispositivo (p. ej. cover.persiana_dormitorio se convierte en cubierta, switch.luz_porche en interruptor). Prefijos soportados: light., cover., switch., relay., pir. Una entrada manual en type_overrides siempre tiene prioridad. Desactivado por defecto.
 
+  ha_discovery_type_from_unit:
+    name: Tipo por tipo de unidad C-Bus
+    description: >-
+      Determinar el tipo de cada entidad a partir de la unidad C-Bus que controla el grupo en lugar de su nombre. Los canales de dimmer se convierten en luces regulables, los canales de relé en luces de encendido/apagado, y los grupos controlados solo por una unidad de entrada como un bus coupler en sensores binarios. Las entradas manuales en type_overrides siguen teniendo prioridad y los grupos con tipos de unidad no reconocidos quedan sin cambios. Activarlo puede cambiar el tipo de entidades que ya tienes.
+

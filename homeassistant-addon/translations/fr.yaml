@@ -343,3 +343,8 @@ configuration:
     description: >-
       Traiter une étiquette de groupe commençant par un préfixe de domaine d'entité comme ce type d'appareil (p. ex. cover.volet_chambre devient une couverture, switch.lumiere_porche un interrupteur). Préfixes pris en charge : light., cover., switch., relay., pir. Une entrée manuelle type_overrides est toujours prioritaire. Désactivé par défaut.
 
+  ha_discovery_type_from_unit:
+    name: Type selon le type d'unité C-Bus
+    description: >-
+      Déterminer le type de chaque entité d'après l'unité C-Bus qui pilote le groupe plutôt que d'après son nom. Les canaux de variateur deviennent des lumières variables, les canaux de relais des lumières marche/arrêt, et les groupes pilotés uniquement par une unité d'entrée telle qu'un bus coupler des capteurs binaires. Une entrée manuelle type_overrides reste prioritaire et les groupes pilotés par des types d'unité non reconnus restent inchangés. L'activer peut changer le type d'entités déjà existantes.
+

@@ -325,3 +325,8 @@ configuration:
     description: >-
       エンティティドメインプレフィックスで始まるグループラベルを、そのデバイスタイプとして検出します(例:cover.bedroom_shutter はカバー、switch.porch_light はスイッチ)。対応プレフィックス: light.、cover.、switch.、relay.、pir.。手動の type_overrides エントリが常に優先されます。デフォルトはオフです。
 
+  ha_discovery_type_from_unit:
+    name: C-Bus ユニットタイプからタイプを判定
+    description: >-
+      各エンティティのタイプを、グループ名ではなくそのグループを駆動する C-Bus ユニットから判定します。調光器チャンネルは調光可能なライト、リレーチャンネルはオン/オフのライト、bus coupler などの入力ユニットのみが接続されたグループはバイナリセンサーになります。手動の type_overrides エントリが引き続き優先され、認識できないユニットタイプのグループは変更されません。これを有効にすると、既存のエンティティのタイプが変わる場合があります。
+

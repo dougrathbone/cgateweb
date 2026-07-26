@@ -323,3 +323,8 @@ configuration:
     description: >-
       Behandla en gruppetikett som börjar med ett entitetsdomänprefix som den enhetstypen (t.ex. cover.sovrum_persienn blir en cover, switch.altan_ljus en switch). Prefix som stöds: light., cover., switch., relay., pir. En manuell type_overrides-post vinner alltid. Av som standard.
 
+  ha_discovery_type_from_unit:
+    name: Typ från C-Bus-enhetstyp
+    description: >-
+      Bestäm varje entitets typ utifrån den C-Bus-enhet som styr gruppen i stället för utifrån dess namn. Dimmerkanaler blir dimbara lampor, reläkanaler blir på/av-lampor och grupper som bara styrs av en ingångsenhet som en bus coupler blir binära sensorer. En manuell type_overrides-post vinner fortfarande och grupper med okända enhetstyper lämnas oförändrade. Att slå på detta kan ändra typen på entiteter du redan har.
+
