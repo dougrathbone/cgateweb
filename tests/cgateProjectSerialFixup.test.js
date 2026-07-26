@@ -115,6 +115,36 @@ describe('cgateweb-project-serial-fixup (issue #28)', () => {
             expect(await readInterface(dbPath)).toEqual([['ip', '192.168.0.2:10001']]);
         });
 
+        it('leaves a host:port address alone even on a row labelled serial', async () => {
+            // The other half of the CNI guard: the row type says serial but the
+            // address is a network host. Types in a hand-edited or converted
+            // project cannot be trusted on their own, and repointing a CNI at a
+            // tty takes that network off the air, so the address shape has to
+            // agree before anything is rewritten. Without the shape test this
+            // row would be rewritten to serial/ttyUSB1.
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = '192.168.0.2:10001' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual([]);
+            expect(await readInterface(dbPath)).toEqual([['serial', '192.168.0.2:10001']]);
+        });
+
+        it('leaves a hostname address alone even on a row labelled serial', async () => {
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            db.run("UPDATE interface SET interface_type = 'serial', interface_address = 'cni.local:10001' WHERE id = 1");
+            fs.writeFileSync(dbPath, Buffer.from(db.export()));
+            db.close();
+
+            const changes = await fixupProjectSerialInterface(dbPath, '/dev/ttyUSB1', { repointStaleSerial: true });
+            expect(changes).toEqual([]);
+            expect(await readInterface(dbPath)).toEqual([['serial', 'cni.local:10001']]);
+        });
+
         it('is idempotent when the project already names the resolved port', async () => {
             const SQL = await initSqlJs();
             const db = new SQL.Database(fs.readFileSync(dbPath));
