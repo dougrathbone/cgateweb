@@ -200,9 +200,26 @@ class SerialDeviceRecovery {
         // the same trouble as the last one, so it gets a fresh budget. A rapid
         // flap does not, which is what stops a loose connector restarting C-Gate
         // indefinitely.
+        //
+        // Both conditions are measured against the last *attempt*, not against
+        // lastUpAt on its own. lastUpAt is stamped only when the interface comes
+        // up, so during an outage `now - lastUpAt` grows without bound and any
+        // interface that had been up longer than the stable window before it
+        // failed - which is every real install - would satisfy the window from
+        // the second poll onwards. That reset spent nothing and reset
+        // everything: attempts keys both the cap and the backoff, so zeroing it
+        // every poll disabled both and turned a single outage into one C-Gate
+        // restart per poll, indefinitely.
+        //
+        //   - lastUpAt >= lastAttemptAt: the interface has actually been seen up
+        //     since we last touched it. During a sustained outage it never is,
+        //     so the budget stays spent and the cap really is a cap.
+        //   - now - lastAttemptAt >= stableWindowMs: enough time has passed
+        //     since that attempt for the recovery to count as having held.
         const now = this.now();
         const stableWindowMs = Number(this._setting('serialRecoveryStableWindowMs'));
-        if (state.attempts > 0 && state.lastUpAt !== null && (now - state.lastUpAt) >= stableWindowMs) {
+        const seenUpSinceLastAttempt = state.lastUpAt !== null && state.lastUpAt >= state.lastAttemptAt;
+        if (state.attempts > 0 && seenUpSinceLastAttempt && (now - state.lastAttemptAt) >= stableWindowMs) {
             state.attempts = 0;
         }
 
@@ -260,6 +277,16 @@ class SerialDeviceRecovery {
         for (const line of String(result.stderr || '').split('\n')) {
             if (line.trim()) this._log('debug', `cgateweb-recover-serial: ${line.trim()}`);
         }
+
+        // C-Gate is now on the port the helper just resolved, so that becomes the
+        // baseline the next "moved" test is measured against. Without this the
+        // baseline stayed at the pre-renumber port, the by-id target still looked
+        // moved on the following poll, and a C-Gate that needs longer than one
+        // poll interval to reload its project got killed again before it could
+        // finish - a self-sustaining restart loop for as long as the outage
+        // lasted. Re-resolving (rather than trusting the helper's stdout) also
+        // picks up the path the resolver has just published.
+        state.portInUse = this._resolvePort(this._effectiveDevicePath()).port;
 
         const newPath = String(result.stdout || '').trim().split('\n').pop();
         const recovered = `Re-resolved the PC Interface to ${newPath}, repointed the project and restarted C-Gate `

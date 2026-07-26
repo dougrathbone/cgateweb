@@ -216,9 +216,12 @@ This never runs for CNI (ethernet) installs, which have no
 simply unplugged — there is nothing to reopen until you plug it back in. It
 keeps looking while the network stays closed, so however long the interface was
 out, recovery happens on the next check (roughly 30 seconds) after you plug it
-back in. Repeated restarts are spaced out and capped, so a faulty cable cannot
-put C-Gate into a restart loop; if the cap is reached, reconnect the interface
-and restart the add-on.
+back in. Within one outage, repeated restarts are spaced out by a growing delay
+and capped (three by default), so a faulty cable cannot put C-Gate into a
+restart loop; if the cap is reached, recovery stops and says so, and you should
+reconnect the interface and restart the add-on. The cap is only refreshed once
+the interface has come back up and stayed up for a while, so a long outage
+cannot quietly earn itself more restarts.
 
 **Known limitations**
 

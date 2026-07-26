@@ -293,6 +293,86 @@ describe('SerialDeviceRecovery', () => {
             expect(execImpl).toHaveBeenCalledTimes(1);
         });
 
+        it('does not exceed the budget while a single outage keeps being polled', () => {
+            // The regression that made this necessary: the stable-window reset was
+            // measured from lastUpAt, which is stamped only on an interface *up*.
+            // During an outage that gap grows for ever, so any interface that had
+            // been up longer than the window before it failed - every real install
+            // - got its budget zeroed on every poll. attempts keys both the cap
+            // and the backoff, so both were disabled and each poll produced
+            // another C-Gate SIGTERM. Polls here are spaced well past the maximum
+            // backoff so the cap, not the backoff, is what has to stop it.
+            const fsImpl = makeFs({ present: ['/dev/ttyUSB0'] });
+            const { recovery, clock, execImpl } = makeRecovery({
+                settings: { serialRecoveryMaxAttempts: 3 },
+                fsImpl
+            });
+
+            // A normal install: the interface was up and healthy for a long while
+            // before it failed.
+            recovery.handleInterfaceUp('254');
+            clock.t += 3600000;
+            fsImpl.realpathSync = p => { throw fsError('ENOENT', p); };
+
+            const actions = [];
+            for (let i = 0; i < 12; i++) {
+                clock.t += 600000; // past serialRecoveryMaxDelayMs
+                actions.push(recovery.handleInterfaceDown('254').action);
+            }
+
+            expect(execImpl).toHaveBeenCalledTimes(3);
+            expect(actions.filter(a => a === 'recovered')).toHaveLength(3);
+            expect(actions[actions.length - 1]).toBe('reported');
+        });
+
+        it('makes consecutive attempts in one outage wait out the backoff', () => {
+            // The same reset also defeated the backoff, because a zeroed attempts
+            // count skips the wait entirely. Polling inside the initial 5s backoff
+            // must not buy a second restart.
+            const fsImpl = makeFs({ present: ['/dev/ttyUSB0'] });
+            const { recovery, clock, execImpl } = makeRecovery({ fsImpl });
+
+            recovery.handleInterfaceUp('254');
+            clock.t += 3600000;
+            fsImpl.realpathSync = p => { throw fsError('ENOENT', p); };
+
+            expect(recovery.handleInterfaceDown('254').action).toBe('recovered');
+            for (let i = 0; i < 3; i++) {
+                clock.t += 1000; // still inside the 5s initial backoff
+                const next = recovery.handleInterfaceDown('254');
+                expect(next.action).toBe('reported');
+                expect(next.message).toMatch(/before the next recovery attempt/);
+            }
+            expect(execImpl).toHaveBeenCalledTimes(1);
+        });
+
+        it('rebaselines the port in use after a successful recovery', () => {
+            // C-Gate is now on the port the helper resolved. Leaving the baseline
+            // at the old port left the by-id target looking permanently "moved",
+            // so a C-Gate still reloading its project got restarted again on the
+            // next poll - and again, for as long as the outage lasted.
+            const fsImpl = makeFs({
+                present: ['/dev/serial/by-id/usb-pci'],
+                links: { '/dev/serial/by-id/usb-pci': '/dev/ttyUSB0' }
+            });
+            const { recovery, clock, execImpl } = makeRecovery({
+                settings: { cgate_serial_device: '/dev/serial/by-id/usb-pci' },
+                fsImpl
+            });
+
+            recovery.handleInterfaceUp('254'); // baseline: ttyUSB0
+            clock.t += 3600000;
+            fsImpl.realpathSync = () => '/dev/ttyUSB1'; // the renumber
+
+            expect(recovery.handleInterfaceDown('254').action).toBe('recovered');
+
+            // C-Gate has not finished reloading, so the network is still reported
+            // down on the next poll - well past the backoff.
+            clock.t += 600000;
+            expect(recovery.handleInterfaceDown('254').action).toBe('reported');
+            expect(execImpl).toHaveBeenCalledTimes(1);
+        });
+
         it('tracks each network\'s budget separately', () => {
             const { recovery, execImpl } = makeRecovery({
                 settings: { serialRecoveryMaxAttempts: 1 },
