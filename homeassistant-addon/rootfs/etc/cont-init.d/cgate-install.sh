@@ -324,6 +324,73 @@ _cgateweb_check_serial_device() {
     return 0
 }
 
+# ─── C-Gate access control ─────────────────────────────────────────────────
+# Markers delimiting the block this script owns. Anything outside them is the
+# user's and is preserved across boots.
+CGATEWEB_ACCESS_BEGIN='# >>> cgateweb managed block - do not edit <<<'
+CGATEWEB_ACCESS_END='# <<< cgateweb managed block >>>'
+
+# Write C-Gate's access control file (manual 4.10.1).
+#
+# The grammar is `<keyword> <address> <level>` with exactly three keywords:
+# interface (the server NIC a connection arrives on), remote (the connecting
+# client's address), and user. Levels, increasing, are none, connect, monitor,
+# operate, admin, program, debug. Faulty lines are silently ignored.
+#
+# Earlier versions of this script wrote `interface 127.0.0.1` with no level plus
+# `program 127.0.0.1` and `monitor 127.0.0.1`, using level names as keywords.
+# All three are faulty, so managed installs were running with an effectively
+# empty access list and relying on C-Gate's built-in default. Combined with
+# accept-connections-from defaulting to all, that is not something to publish
+# ports on top of.
+#
+# Only `remote` rules are ever written. An `interface` rule matches every
+# connection arriving on that NIC, so one intended as a per-client grant
+# silently becomes a blanket grant for the whole LAN.
+_cgateweb_write_access_control() {
+    local access_file="$1"
+    local dir
+    dir=$(dirname "${access_file}")
+    mkdir -p "${dir}"
+
+    # cgateweb and managed C-Gate share this container, so the bridge connects
+    # from loopback. program level because managed mode loads and starts projects.
+    local -a rules=(
+        "remote 127.0.0.1 program"
+        "remote 0:0:0:0:0:0:0:1 program"
+    )
+
+    local preserved=""
+    if [[ -f "${access_file}" ]]; then
+        # Keep everything outside our markers; drop the old block and any
+        # pre-marker lines this script previously generated.
+        preserved=$(awk -v b="${CGATEWEB_ACCESS_BEGIN}" -v e="${CGATEWEB_ACCESS_END}" '
+            $0 == b { inblock = 1; next }
+            $0 == e { inblock = 0; next }
+            inblock { next }
+            /^interface 127\.0\.0\.1$/ { next }
+            /^program 127\.0\.0\.1$/   { next }
+            /^monitor 127\.0\.0\.1$/   { next }
+            { print }
+        ' "${access_file}")
+    else
+        preserved="# C-Gate Access Control
+# Lines outside the cgateweb block below are preserved across restarts."
+    fi
+
+    {
+        printf '%s\n' "${preserved}"
+        printf '%s\n' "${CGATEWEB_ACCESS_BEGIN}"
+        local rule
+        for rule in "${rules[@]}"; do printf '%s\n' "${rule}"; done
+        printf '%s\n' "${CGATEWEB_ACCESS_END}"
+    } > "${access_file}.tmp"
+    mv "${access_file}.tmp" "${access_file}"
+
+    bashio::log.info "Wrote C-Gate access control (${#rules[@]} rule(s))"
+    return 0
+}
+
 # Allow tests to source this script for unit testing the helpers above without
 # running the install flow.
 if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
@@ -629,18 +696,12 @@ fi
 
 fi  # end NEED_INSTALL
 
-# Configure access.txt to allow local connections
+# Configure access.txt. Runs on every boot, not only when the file is absent,
+# so the grammar fix and any configured external clients reach existing installs.
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"
-if [[ ! -f "${ACCESS_FILE}" ]]; then
-    mkdir -p "${CGATE_DIR}/config"
-    cat > "${ACCESS_FILE}" << 'ACCESSEOF'
-# C-Gate Access Control
-# Allow local connections from the addon
-interface 127.0.0.1
-program 127.0.0.1
-monitor 127.0.0.1
-ACCESSEOF
-    bashio::log.info "Created default access.txt"
+if ! _cgateweb_write_access_control "${ACCESS_FILE}"; then
+    bashio::log.error "Failed to write C-Gate access control file"
+    exit 1
 fi
 
 # Set the project name and port configuration in C-Gate config. This runs on
