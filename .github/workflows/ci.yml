@@ -73,12 +73,18 @@ jobs:
     - name: ShellCheck add-on scripts
       # shellcheck is preinstalled on ubuntu-latest. SC1008 is excluded because
       # the s6-overlay scripts use the '#!/usr/bin/with-contenv bashio' shebang.
+      # rootfs/usr/bin holds both shell helpers (extensionless) and node
+      # scripts, so extglob excludes *.js rather than listing each helper --
+      # that way a new shell helper is linted without editing this workflow.
       run: |
+        shopt -s extglob
         shellcheck --shell=bash --severity=warning --exclude=SC1008 \
           homeassistant-addon/run.sh \
           homeassistant-addon/rootfs/etc/cont-init.d/*.sh \
           homeassistant-addon/rootfs/etc/services.d/*/run \
-          homeassistant-addon/rootfs/etc/services.d/*/finish
+          homeassistant-addon/rootfs/etc/services.d/*/finish \
+          homeassistant-addon/rootfs/usr/bin/!(*.js) \
+          homeassistant-addon/rootfs/usr/lib/cgateweb/*.sh
 
     - name: actionlint
       run: |

@@ -24,7 +24,10 @@ CGATEWEB_RESOLVE_SERIAL_JS="${CGATEWEB_RESOLVE_SERIAL_JS:-/usr/bin/cgateweb-reso
 # sourced by cgate-project-sync.sh and cgateweb-serial-diagnostics, so all
 # three boot scripts agree on it without each inlining their own copy.
 CGATEWEB_SERIAL_DEVICE_LIB="${CGATEWEB_SERIAL_DEVICE_LIB:-/usr/lib/cgateweb/serial-device.sh}"
-# shellcheck disable=SC1091
+# The path is a variable so tests can point at the repo copy, so this is
+# SC1090 ("can't follow non-constant source"), not SC1091 ("file not found").
+# The helper is linted directly by CI, so nothing is lost by not following it.
+# shellcheck disable=SC1090
 source "${CGATEWEB_SERIAL_DEVICE_LIB}"
 # Exported so the resolver child process writes the very file this script (and
 # the boot scripts after it) reads back, rather than each falling back to its

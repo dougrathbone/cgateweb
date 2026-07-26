@@ -113,7 +113,9 @@ fi
 # the configured option" logic (see the helper for why this can't just be an
 # exported variable).
 CGATEWEB_SERIAL_DEVICE_LIB="${CGATEWEB_SERIAL_DEVICE_LIB:-/usr/lib/cgateweb/serial-device.sh}"
-# shellcheck disable=SC1091
+# Non-constant path, so this is SC1090 ("can't follow non-constant source"),
+# not SC1091 ("file not found"). The helper is linted directly by CI.
+# shellcheck disable=SC1090
 source "${CGATEWEB_SERIAL_DEVICE_LIB}"
 CONFIGURED_SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
 SERIAL_DEVICE=$(cgateweb_effective_serial_device "${CONFIGURED_SERIAL_DEVICE}")
