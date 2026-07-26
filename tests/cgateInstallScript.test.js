@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
+const { BASHIO_STUB, BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
 
 // These tests source the Linux rootfs shell script via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
@@ -36,31 +37,6 @@ const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_L
 // CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
 // script's constant fails the unit tests.
 const DEFAULT_DOWNLOAD_SHA256 = 'b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c';
-
-// Real bashio's bashio::config returns the literal string "null" when a key
-// is unset, even when the caller passes an empty string as the default
-// (because upstream bashio uses `local default_value=${2:-null}`, which
-// substitutes "null" for both unset AND empty defaults).
-//
-// This stub mirrors that behavior. Test config is passed via env vars named
-// CGW_TEST_<key>; the stub returns the env value when set or the default
-// otherwise — matching real bashio's behavior including the "null" quirk.
-const BASHIO_STUB = `
-    bashio::log.info()    { :; }
-    bashio::log.warning() { :; }
-    bashio::log.error()   { :; }
-    bashio::log.trace()   { :; }
-    bashio::config() {
-        local key="$1"
-        local default_value="\${2:-null}"
-        local var_name="CGW_TEST_\${key}"
-        if declare -p "$var_name" &>/dev/null; then
-            printf '%s' "\${!var_name}"
-        else
-            printf '%s' "$default_value"
-        fi
-    }
-`;
 
 function callHelper(helperName, configObject) {
     const env = {
@@ -139,28 +115,6 @@ function runHelperWithArgs(helperName, args = [], configObject = {}) {
     `;
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
 }
-
-// The serial-check tests assert on log output (the banner is part of
-// the contract), so this variant of the stub prints log lines with a level
-// prefix instead of swallowing them. bashio::config mirrors BASHIO_STUB,
-// including the "null"-for-unset quirk.
-const BASHIO_STUB_WITH_LOGS = `
-    bashio::log.info()    { printf 'INFO: %s\\n' "$*"; }
-    bashio::log.warning() { printf 'WARNING: %s\\n' "$*"; }
-    bashio::log.error()   { printf 'ERROR: %s\\n' "$*"; }
-    bashio::log.debug()   { printf 'DEBUG: %s\\n' "$*"; }
-    bashio::log.trace()   { :; }
-    bashio::config() {
-        local key="$1"
-        local default_value="\${2:-null}"
-        local var_name="CGW_TEST_\${key}"
-        if declare -p "$var_name" &>/dev/null; then
-            printf '%s' "\${!var_name}"
-        else
-            printf '%s' "$default_value"
-        fi
-    }
-`;
 
 // The identity-aware resolver the serial check shells out to (issue #28).
 // Installed at /usr/bin in the add-on image; the tests point the script at the

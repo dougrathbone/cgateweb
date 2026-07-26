@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
+const { BASHIO_STUB, BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
 
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
@@ -56,24 +57,6 @@ const FIXTURE_STOCK_ACCESS = fs.readFileSync(
     path.join(__dirname, 'fixtures', 'access-stock-cgate-3.3.2.txt'), 'utf8'
 );
 
-const BASHIO_STUB = `
-    bashio::log.info()    { :; }
-    bashio::log.warning() { :; }
-    bashio::log.error()   { :; }
-    bashio::log.trace()   { :; }
-    bashio::log.debug()   { :; }
-    bashio::config() {
-        local key="$1"
-        local default_value="\${2:-null}"
-        local var_name="CGW_TEST_\${key}"
-        if declare -p "$var_name" &>/dev/null; then
-            printf '%s' "\${!var_name}"
-        else
-            printf '%s' "$default_value"
-        fi
-    }
-`;
-
 // Overrides the real _cgateweb_external_client_rules so tests can feed rules in
 // directly instead of reimplementing bashio's object-list flattening. Must be
 // sourced AFTER the script, so it wins.
@@ -113,27 +96,6 @@ const REAL_BASHIO_CONFIG_STUB = `
     __BASHIO_EXIT_NOK=1
     source "\${CGW_VENDOR_JQ_SH}"
     source "\${CGW_VENDOR_CONFIG_SH}"
-`;
-
-// Same as BASHIO_STUB but with log output captured (level-prefixed) instead
-// of swallowed, so tests can assert on warnings (e.g. the orphaned-marker
-// warning) without changing the production log call sites.
-const BASHIO_STUB_WITH_LOGS = `
-    bashio::log.info()    { printf 'INFO: %s\\n' "$*"; }
-    bashio::log.warning() { printf 'WARNING: %s\\n' "$*"; }
-    bashio::log.error()   { printf 'ERROR: %s\\n' "$*"; }
-    bashio::log.trace()   { :; }
-    bashio::log.debug()   { :; }
-    bashio::config() {
-        local key="$1"
-        local default_value="\${2:-null}"
-        local var_name="CGW_TEST_\${key}"
-        if declare -p "$var_name" &>/dev/null; then
-            printf '%s' "\${!var_name}"
-        else
-            printf '%s' "$default_value"
-        fi
-    }
 `;
 
 // Run _cgateweb_write_access_control against an already-prepared access file
