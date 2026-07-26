@@ -540,7 +540,7 @@ describeBash('cgate-install.sh call site (MINOR 2)', () => {
 // config correctly. See REAL_BASHIO_CONFIG_STUB for what's faithful-copy vs.
 // simplified from upstream bashio.
 describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () => {
-    function runExternalClientRules(optionsObj) {
+    function runExternalClientRules(optionsObj, { withLogs = false } = {}) {
         const env = {
             ...process.env,
             CGATEWEB_INSTALL_SOURCE_ONLY: '1',
@@ -550,10 +550,17 @@ describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () =>
             CGW_VENDOR_JQ_SH: VENDOR_JQ_SH,
             CGW_OPTIONS_JSON: JSON.stringify(optionsObj)
         };
+        // The vendored bashio needs the log functions defined before it is
+        // sourced, so surfacing them is a redefinition afterwards rather than a
+        // different stub.
+        const logCapture = withLogs
+            ? `bashio::log.error() { printf 'ERROR: %s\\n' "$*"; }`
+            : '';
         const script = `
             set -u
             ${REAL_BASHIO_CONFIG_STUB}
             source "$CGW_INSTALL_SCRIPT"
+            ${logCapture}
             # bash 3.2 (macOS's system /bin/bash) throws "unbound variable"
             # expanding an empty array inside the vendored bashio::jq under
             # set -u -- a real upstream bug, fixed in bash 4.4+. CI's
@@ -600,6 +607,45 @@ describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () =>
                 { address: '192.168.1.60\n8.8.8.8', level: 'monitor' }
             ]
         })).toThrow();
+    });
+
+    // A blank address was skipped with a bare `continue`, so a user who added
+    // a row and left the address empty got no rule and no message -- and would
+    // believe external access had been granted. Must fail like the level check.
+    it('rejects a blank address instead of silently skipping the entry', () => {
+        expect(() => runExternalClientRules({
+            cgate_external_clients: [
+                { address: '', level: 'monitor' }
+            ]
+        })).toThrow();
+    });
+
+    it('rejects an entirely missing address instead of silently skipping the entry', () => {
+        expect(() => runExternalClientRules({
+            cgate_external_clients: [
+                { level: 'monitor' }
+            ]
+        })).toThrow();
+    });
+
+    it('names the offending entry index when an address is blank', () => {
+        // The user has to know WHICH row to fix; the rules reader logs nothing
+        // else identifying about the entry.
+        let output = '';
+        try {
+            runExternalClientRules(
+                {
+                    cgate_external_clients: [
+                        { address: '192.168.1.60', level: 'monitor' },
+                        { address: '', level: 'monitor' }
+                    ]
+                },
+                { withLogs: true }
+            );
+        } catch (err) {
+            output = `${err.stdout || ''}${err.stderr || ''}`;
+        }
+        expect(output).toMatch(/ERROR: Missing address for cgate_external_clients entry 1/);
     });
 
     // Fix round 2, MINOR 3: unreachable through the HA UI (the schema's

@@ -361,7 +361,15 @@ _cgateweb_external_client_rules() {
     for ((i = 0; i < count; i++)); do
         address=$(bashio::config "cgate_external_clients[${i}].address" '')
         level=$(bashio::config "cgate_external_clients[${i}].level" '')
-        [[ -z "${address}" || "${address}" == "null" ]] && continue
+
+        # A blank address used to be skipped silently, so a user who added a row
+        # and left the address empty got no rule and no message, and would
+        # believe external access had been granted. Fail like the level check
+        # below does, naming which entry is at fault.
+        if [[ -z "${address}" || "${address}" == "null" ]]; then
+            bashio::log.error "Missing address for cgate_external_clients entry ${i} (the first entry is 0); set the client's IP address or hostname, or remove the entry"
+            return 1
+        fi
 
         # A newline embedded in the option value (a copy-paste slip, say)
         # would otherwise split the printf below into two lines, each read
