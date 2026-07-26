@@ -13,6 +13,13 @@ function makeLogger() {
     return { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 }
 
+/** An fs error with the errno code real fs errors carry. */
+function fsError(code, p) {
+    const err = new Error(`${code}: ${p}`);
+    /** @type {any} */ (err).code = code;
+    return err;
+}
+
 /**
  * Minimal fs stand-in. `present` is the set of paths that exist; `contents`
  * maps a path to what readFileSync returns; `links` maps a path to its
@@ -23,14 +30,11 @@ function makeFs({ present = [], contents = {}, links = {} } = {}) {
     return {
         existsSync: p => set.has(p),
         readFileSync: p => {
-            if (!(p in contents)) {
-                const err = new Error(`ENOENT: ${p}`);
-                throw err;
-            }
+            if (!(p in contents)) throw fsError('ENOENT', p);
             return contents[p];
         },
         realpathSync: p => {
-            if (!set.has(p)) throw new Error(`ENOENT: ${p}`);
+            if (!set.has(p)) throw fsError('ENOENT', p);
             return links[p] || p;
         }
     };
@@ -139,6 +143,38 @@ describe('SerialDeviceRecovery', () => {
                 expect.stringContaining('cgateweb-recover-serial'),
                 ['/dev/serial/by-id/usb-pci']
             );
+        });
+
+        it('reports rather than restarts when the device path cannot be examined', () => {
+            // Only ENOENT says the device is gone. EACCES, ELOOP or an I/O error
+            // say we could not look - which is no evidence of a replug, and this
+            // decision restarts a service.
+            const fsImpl = makeFs();
+            fsImpl.realpathSync = () => { throw fsError('EACCES', '/dev/ttyUSB0'); };
+            const { recovery, execImpl, logger } = makeRecovery({ fsImpl });
+
+            const result = recovery.handleInterfaceDown('254');
+
+            expect(result.action).toBe('reported');
+            expect(result.message).toMatch(/could not be examined/);
+            expect(result.message).toMatch(/EACCES/);
+            expect(execImpl).not.toHaveBeenCalled();
+            expect(logger.warn).toHaveBeenCalled();
+        });
+
+        it('does not treat an unreadable path as a moved by-id link either', () => {
+            // The baseline port is unknown when it could not be read, so the
+            // "moved" comparison must decline instead of comparing against null.
+            const fsImpl = makeFs();
+            fsImpl.realpathSync = () => { throw fsError('ELOOP', '/dev/serial/by-id/usb-pci'); };
+            const { recovery, execImpl } = makeRecovery({
+                settings: { cgate_serial_device: '/dev/serial/by-id/usb-pci' },
+                fsImpl
+            });
+
+            recovery.handleInterfaceUp('254');
+            expect(recovery.handleInterfaceDown('254').action).toBe('reported');
+            expect(execImpl).not.toHaveBeenCalled();
         });
 
         it('does not recover on a by-id path whose target has not moved', () => {

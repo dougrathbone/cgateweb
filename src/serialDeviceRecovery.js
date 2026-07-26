@@ -100,16 +100,22 @@ class SerialDeviceRecovery {
     }
 
     /**
-     * The port a device path currently resolves to (its realpath), or null when
-     * the path is gone. Used to notice a by-id link whose target moved.
+     * What a device path currently resolves to. Three answers, not two, because
+     * this gates a C-Gate restart and so has to fail closed: only ENOENT means the
+     * device is genuinely gone. ELOOP, EACCES, EIO or anything else means we
+     * cannot tell, which is not evidence of a replug and must not buy a restart.
      * @param {string} devicePath
-     * @returns {string|null}
+     * @returns {{port: string|null, absent: boolean, reason: string|null}}
+     *          port set when it resolved; absent when it is definitely gone;
+     *          otherwise unresolved with the reason we could not look.
      */
-    _portFor(devicePath) {
+    _resolvePort(devicePath) {
         try {
-            return String(this.fs.realpathSync(devicePath));
-        } catch {
-            return null;
+            return { port: String(this.fs.realpathSync(devicePath)), absent: false, reason: null };
+        } catch (e) {
+            const err = /** @type {any} */ (e);
+            if (err && err.code === 'ENOENT') return { port: null, absent: true, reason: null };
+            return { port: null, absent: false, reason: (err && err.message) || String(err) };
         }
     }
 
@@ -158,8 +164,19 @@ class SerialDeviceRecovery {
 
         const device = this._effectiveDevicePath();
         const state = this._stateFor(networkId);
-        const port = this._portFor(device);
-        const vanished = port === null;
+        const { port, absent, reason } = this._resolvePort(device);
+
+        if (port === null && !absent) {
+            // We could not read the device path at all, so we have no evidence of
+            // a renumber - and restarting C-Gate on a guess would be worse than
+            // the outage. Say so and leave it alone.
+            const unknown = `C-Bus network ${networkId} interface went down and ${device} could not be examined `
+                + `(${reason}); not treating this as a PC Interface renumber.`;
+            this._reportOnce(state, 'warn', unknown);
+            return { action: 'reported', message: unknown };
+        }
+
+        const vanished = absent;
         // A by-id path survives a replug, so only its target moving betrays the
         // renumber. portInUse is unknown until the interface has been seen up,
         // in which case stay conservative and treat this as a genuine fault.
@@ -257,7 +274,9 @@ class SerialDeviceRecovery {
         state.lastUpAt = this.now();
         // The outage is over, so its reports may all be said again next time.
         state.reported.clear();
-        state.portInUse = this._portFor(this._effectiveDevicePath());
+        // null (gone, or unreadable) leaves portInUse unknown, which is what makes
+        // the "moved" check below decline rather than guess.
+        state.portInUse = this._resolvePort(this._effectiveDevicePath()).port;
         if (state.attempts > 0) {
             this._log('info', `C-Bus network ${networkId} interface is back on ${state.portInUse} `
                 + `after ${state.attempts} recovery attempt(s).`);
