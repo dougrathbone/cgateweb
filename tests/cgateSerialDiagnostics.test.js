@@ -18,6 +18,19 @@ const SCRIPT = path.join(
     'cgateweb-serial-diagnostics'
 );
 
+// The shared serial-device helper the script sources (issue #28). Points at
+// the repo copy so the test never depends on the add-on's real install path.
+const SERIAL_DEVICE_LIB = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'lib',
+    'cgateweb',
+    'serial-device.sh'
+);
+
 // Mirrors the stub in cgateInstallScript.test.js: logs are printed with a
 // level prefix so tests can assert on them, and bashio::config reproduces
 // real bashio's "null"-for-unset quirk. Test config arrives via CGW_TEST_*
@@ -68,6 +81,9 @@ function runDiagnostics({ config = {}, extraEnv = {}, ncStub = null, stripNc = f
         ...process.env,
         CGW_DIAG_SCRIPT: SCRIPT,
         CGW_NC_DIR: dir,
+        // Point the script at the repo copy of the shared serial-device
+        // helper it sources, rather than the add-on's real install path.
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
         // Default the resolved-device file into the test's own temp dir so no
         // test reads the host's real /run/cgateweb copy; the tests that cover
         // the resolved path create it explicitly.

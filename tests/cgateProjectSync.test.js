@@ -18,6 +18,19 @@ const SCRIPT = path.join(
     'cgate-project-sync.sh'
 );
 
+// The shared serial-device helper the script sources (issue #28). Points at
+// the repo copy so the test never depends on the add-on's real install path.
+const SERIAL_DEVICE_LIB = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'lib',
+    'cgateweb',
+    'serial-device.sh'
+);
+
 // Stub bashio: config keys come from env vars CGW_TEST_<key>. Warnings are
 // echoed so tests can assert on them (info/error stay silent).
 const BASHIO_STUB = `
@@ -63,6 +76,9 @@ function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} })
         // into the bash -c command text, so the absolute path is never part of
         // the executed command string.
         CGW_SYNC_SCRIPT: SCRIPT,
+        // Point the script at the repo copy of the shared serial-device
+        // helper it sources, rather than the add-on's real install path.
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
         // Default the resolved-device file to a path inside the test's own
         // tree so a test never reads the host's real /run/cgateweb copy; tests
         // that exercise the resolved path create it explicitly.

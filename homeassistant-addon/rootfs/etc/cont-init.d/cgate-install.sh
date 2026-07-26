@@ -20,10 +20,16 @@ CGATEWEB_DEFAULT_DOWNLOAD_SHA256="b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d997
 # answer to. Both are overridable so the unit tests can run the repo copy of
 # the resolver and keep its bookkeeping out of /run.
 CGATEWEB_RESOLVE_SERIAL_JS="${CGATEWEB_RESOLVE_SERIAL_JS:-/usr/bin/cgateweb-resolve-serial.js}"
+# The default device-file path is defined once in the shared helper also
+# sourced by cgate-project-sync.sh and cgateweb-serial-diagnostics, so all
+# three boot scripts agree on it without each inlining their own copy.
+CGATEWEB_SERIAL_DEVICE_LIB="${CGATEWEB_SERIAL_DEVICE_LIB:-/usr/lib/cgateweb/serial-device.sh}"
+# shellcheck disable=SC1091
+source "${CGATEWEB_SERIAL_DEVICE_LIB}"
 # Exported so the resolver child process writes the very file this script (and
 # the boot scripts after it) reads back, rather than each falling back to its
 # own default independently.
-export CGATEWEB_SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
+export CGATEWEB_SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-${CGATEWEB_SERIAL_DEVICE_DEFAULT_FILE}}"
 
 # bashio::config returns the literal string "null" for unset optional fields,
 # even when an empty default is passed (upstream bashio's `${2:-null}` rewrites

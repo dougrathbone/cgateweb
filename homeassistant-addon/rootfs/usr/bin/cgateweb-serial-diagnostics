@@ -27,14 +27,14 @@ fi
 # Report on the device C-Gate was actually pointed at: cont-init's resolver may
 # have adopted a different path after a replug renumbered the PC Interface
 # (issue #28). Fall back to the configured option when it published nothing.
-SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
-SERIAL_DEVICE=""
-if [[ -r "${SERIAL_DEVICE_FILE}" ]]; then
-    SERIAL_DEVICE=$(cat "${SERIAL_DEVICE_FILE}")
-fi
-if [[ -z "${SERIAL_DEVICE}" ]]; then
-    SERIAL_DEVICE="${CONFIGURED_DEVICE}"
-fi
+# Shared with cgate-install.sh and cgate-project-sync.sh: one definition of
+# the default file path and the "read the resolver's answer, fall back to the
+# configured option" logic (see the helper for why this can't just be an
+# exported variable).
+CGATEWEB_SERIAL_DEVICE_LIB="${CGATEWEB_SERIAL_DEVICE_LIB:-/usr/lib/cgateweb/serial-device.sh}"
+# shellcheck disable=SC1091
+source "${CGATEWEB_SERIAL_DEVICE_LIB}"
+SERIAL_DEVICE=$(cgateweb_effective_serial_device "${CONFIGURED_DEVICE}")
 
 # Test hooks: point the query at a fake C-Gate listener. Default to the
 # in-container C-Gate on the configured command port.

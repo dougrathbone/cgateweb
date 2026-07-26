@@ -100,15 +100,15 @@ fi
 # exists leaves the network closed. The file is missing or empty only when the
 # resolver could not run (no node) or could not publish, so fall back to the
 # option there.
-SERIAL_DEVICE_FILE="${CGATEWEB_SERIAL_DEVICE_FILE:-/run/cgateweb/serial-device}"
+# Shared with cgate-install.sh and cgateweb-serial-diagnostics: one definition
+# of the default file path and the "read the resolver's answer, fall back to
+# the configured option" logic (see the helper for why this can't just be an
+# exported variable).
+CGATEWEB_SERIAL_DEVICE_LIB="${CGATEWEB_SERIAL_DEVICE_LIB:-/usr/lib/cgateweb/serial-device.sh}"
+# shellcheck disable=SC1091
+source "${CGATEWEB_SERIAL_DEVICE_LIB}"
 CONFIGURED_SERIAL_DEVICE=$(bashio::config 'cgate_serial_device' '')
-SERIAL_DEVICE=""
-if [[ -r "${SERIAL_DEVICE_FILE}" ]]; then
-    SERIAL_DEVICE=$(cat "${SERIAL_DEVICE_FILE}")
-fi
-if [[ -z "${SERIAL_DEVICE}" ]]; then
-    SERIAL_DEVICE="${CONFIGURED_SERIAL_DEVICE}"
-fi
+SERIAL_DEVICE=$(cgateweb_effective_serial_device "${CONFIGURED_SERIAL_DEVICE}")
 # The opt-in is the configured option and nothing else: a resolved-device file
 # left behind by a boot where it *was* set must never re-enable the rewrite for
 # a user who has since cleared the option.

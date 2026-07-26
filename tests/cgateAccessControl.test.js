@@ -46,6 +46,12 @@ const SCRIPT = path.join(
     __dirname, '..', 'homeassistant-addon', 'rootfs', 'etc', 'cont-init.d', 'cgate-install.sh'
 );
 
+// The shared serial-device helper the script sources (issue #28). Points at
+// the repo copy so the test never depends on the add-on's real install path.
+const SERIAL_DEVICE_LIB = path.join(
+    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'lib', 'cgateweb', 'serial-device.sh'
+);
+
 const FIXTURE_STOCK_ACCESS = fs.readFileSync(
     path.join(__dirname, 'fixtures', 'access-stock-cgate-3.3.2.txt'), 'utf8'
 );
@@ -140,6 +146,7 @@ function runAccessControlOn(file, { config = {}, withLogs = false } = {}) {
         ...process.env,
         CGATEWEB_INSTALL_SOURCE_ONLY: '1',
         CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
         CGW_ACCESS_FILE: file
     };
     for (const [k, v] of Object.entries(config)) {
@@ -211,6 +218,7 @@ describeBash('_cgateweb_write_access_control', () => {
             ...process.env,
             CGATEWEB_INSTALL_SOURCE_ONLY: '1',
             CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
             CGW_ACCESS_FILE: file
         };
         execFileSync('bash', ['-c', `
@@ -345,6 +353,7 @@ describeBash('_cgateweb_write_access_control', () => {
             ...process.env,
             CGATEWEB_INSTALL_SOURCE_ONLY: '1',
             CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
             CGW_ACCESS_FILE: file,
             CGW_EXTERNAL_RULES: 'remote et? monitor'
         };
@@ -543,6 +552,7 @@ describeBash('cgate-install.sh call site (MINOR 2)', () => {
         const env = {
             ...process.env,
             CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
             CGATE_DIR: cgateDir,
             CGW_TEST_cgate_mode: 'managed'
         };
@@ -573,6 +583,7 @@ describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () =>
             ...process.env,
             CGATEWEB_INSTALL_SOURCE_ONLY: '1',
             CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
             CGW_VENDOR_CONFIG_SH: VENDOR_CONFIG_SH,
             CGW_VENDOR_JQ_SH: VENDOR_JQ_SH,
             CGW_OPTIONS_JSON: JSON.stringify(optionsObj)

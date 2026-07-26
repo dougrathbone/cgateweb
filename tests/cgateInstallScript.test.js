@@ -18,6 +18,19 @@ const SCRIPT = path.join(
     'cgate-install.sh'
 );
 
+// The shared serial-device helper the script sources (issue #28). Points at
+// the repo copy so the test never depends on the add-on's real install path.
+const SERIAL_DEVICE_LIB = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'lib',
+    'cgateweb',
+    'serial-device.sh'
+);
+
 const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2';
 // sha256 of the zip the default URL serves, pinned in cgate-install.sh as
 // CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
@@ -50,7 +63,12 @@ const BASHIO_STUB = `
 `;
 
 function callHelper(helperName, configObject) {
-    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1', CGW_INSTALL_SCRIPT: SCRIPT };
+    const env = {
+        ...process.env,
+        CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+        CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB
+    };
     for (const [k, v] of Object.entries(configObject || {})) {
         env[`CGW_TEST_${k}`] = v;
     }
@@ -79,6 +97,7 @@ function applyCgateConfig({ initialConfig, project, commandPort }) {
         ...process.env,
         CGATEWEB_INSTALL_SOURCE_ONLY: '1',
         CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
         CGW_CFG_FILE: cfg,
         CGW_CFG_PROJECT: project,
         CGW_CFG_CMD_PORT: String(commandPort)
@@ -101,7 +120,12 @@ function applyCgateConfig({ initialConfig, project, commandPort }) {
 // so absolute paths are never interpolated into the executed command string —
 // matching the no-interpolation philosophy of callHelper/applyCgateConfig.
 function runHelperWithArgs(helperName, args = [], configObject = {}) {
-    const env = { ...process.env, CGATEWEB_INSTALL_SOURCE_ONLY: '1', CGW_INSTALL_SCRIPT: SCRIPT };
+    const env = {
+        ...process.env,
+        CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+        CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB
+    };
     for (const [k, v] of Object.entries(configObject)) {
         env[`CGW_TEST_${k}`] = v;
     }
@@ -179,6 +203,7 @@ function checkSerialDevice(configObject, { dir = null, extraEnv = {}, bashCmd = 
         ...process.env,
         CGATEWEB_INSTALL_SOURCE_ONLY: '1',
         CGW_INSTALL_SCRIPT: SCRIPT,
+        CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
         CGATEWEB_RESOLVE_SERIAL_JS: RESOLVER,
         CGATEWEB_SERIAL_DEVICE_FILE: deviceFile,
         CGATEWEB_SERIAL_IDENTITY_FILE: path.join(tmp, 'serial-identity.json')

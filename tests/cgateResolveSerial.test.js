@@ -630,32 +630,41 @@ describe('main() (spawned CLI)', () => {
 });
 
 describe('the default serial-device file path', () => {
-    // cont-init publishes the resolved device here and three other scripts read
-    // it back, each with its own inlined default. A typo in any one of them
-    // would not fail anything loudly: the reader would just silently fall back
-    // to the raw cgate_serial_device option — the exact disagreement this file
-    // exists to remove. Every test overrides the env var, so only a literal
-    // comparison catches it.
+    // cont-init publishes the resolved device here. The JS resolver has its
+    // own inlined default (a different language and process, per
+    // cgateweb-resolve-serial.js's own comment); the three bash boot scripts
+    // (cgate-install.sh, cgate-project-sync.sh, cgateweb-serial-diagnostics)
+    // instead all source the shared
+    // homeassistant-addon/rootfs/usr/lib/cgateweb/serial-device.sh, so they
+    // can only ever agree with each other. What can still drift is the JS
+    // constant vs. the shared bash default, and a consumer quietly going back
+    // to inlining its own literal instead of sourcing the shared file — both
+    // are checked here rather than by a single literal comparison.
     const ROOT = path.join(__dirname, '..', 'homeassistant-addon', 'rootfs');
-    const SOURCES = [
-        [path.join(ROOT, 'usr', 'bin', 'cgateweb-resolve-serial.js'), /DEFAULT_DEVICE_FILE = '([^']+)'/],
-        [path.join(ROOT, 'etc', 'cont-init.d', 'cgate-install.sh'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/],
-        [path.join(ROOT, 'etc', 'cont-init.d', 'cgate-project-sync.sh'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/],
-        [path.join(ROOT, 'usr', 'bin', 'cgateweb-serial-diagnostics'), /CGATEWEB_SERIAL_DEVICE_FILE:-([^}"]+)}/]
+    const LIB_FILE = path.join(ROOT, 'usr', 'lib', 'cgateweb', 'serial-device.sh');
+    const CONSUMERS = [
+        path.join(ROOT, 'etc', 'cont-init.d', 'cgate-install.sh'),
+        path.join(ROOT, 'etc', 'cont-init.d', 'cgate-project-sync.sh'),
+        path.join(ROOT, 'usr', 'bin', 'cgateweb-serial-diagnostics')
     ];
 
-    it('is spelled identically in the publisher and all three readers', () => {
-        const found = SOURCES.map(([file, pattern]) => {
-            const match = fs.readFileSync(file, 'utf8').match(pattern);
-            expect(match).not.toBeNull();
-            return [path.basename(file), match[1]];
-        });
+    it('is spelled identically in the JS resolver and the shared bash helper', () => {
+        const jsMatch = fs.readFileSync(path.join(ROOT, 'usr', 'bin', 'cgateweb-resolve-serial.js'), 'utf8')
+            .match(/DEFAULT_DEVICE_FILE = '([^']+)'/);
+        const libMatch = fs.readFileSync(LIB_FILE, 'utf8')
+            .match(/CGATEWEB_SERIAL_DEVICE_DEFAULT_FILE="([^"]+)"/);
 
-        expect(Object.fromEntries(found)).toEqual({
-            'cgateweb-resolve-serial.js': '/run/cgateweb/serial-device',
-            'cgate-install.sh': '/run/cgateweb/serial-device',
-            'cgate-project-sync.sh': '/run/cgateweb/serial-device',
-            'cgateweb-serial-diagnostics': '/run/cgateweb/serial-device'
+        expect(jsMatch).not.toBeNull();
+        expect(libMatch).not.toBeNull();
+        expect(jsMatch[1]).toBe('/run/cgateweb/serial-device');
+        expect(libMatch[1]).toBe('/run/cgateweb/serial-device');
+    });
+
+    it('is sourced by all three bash consumers rather than re-inlined', () => {
+        CONSUMERS.forEach(file => {
+            const contents = fs.readFileSync(file, 'utf8');
+            expect(contents).toMatch(/CGATEWEB_SERIAL_DEVICE_LIB:-\/usr\/lib\/cgateweb\/serial-device\.sh/);
+            expect(contents).not.toContain('/run/cgateweb/serial-device');
         });
     });
 });
