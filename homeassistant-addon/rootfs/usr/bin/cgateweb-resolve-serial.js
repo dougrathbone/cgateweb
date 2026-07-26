@@ -9,8 +9,13 @@
  * link name, which encodes vendor, product and serial) on every good boot, and
  * uses it to find the device again after a renumber.
  *
- * Adoption requires an identity match, so an unrelated dongle (Zigbee, Z-Wave)
- * on the same host is never picked up by accident.
+ * Adoption requires an identity match on a per-unit-unique attribute (the by-id
+ * link name, or vendor:product:serial from sysfs), so an unrelated dongle
+ * (Zigbee, Z-Wave) on the same host is never picked up by accident. A device
+ * that exposes no USB serial number has no such identity and is deliberately
+ * not remembered: many Zigbee/Z-Wave sticks share the FTDI/CH340/CP2102
+ * vendor:product pairs a C-Bus interface uses, so vendor:product alone would
+ * be enough to adopt the wrong device.
  *
  * Usage: cgateweb-resolve-serial.js <configured-device-path>
  * Writes the effective path to CGATEWEB_SERIAL_DEVICE_FILE
@@ -27,24 +32,29 @@ function byIdDir(devRoot) {
     return path.join(devRoot, 'serial', 'by-id');
 }
 
+const TTY_NAME = /^tty(USB|ACM)\d+$/;
+
 /**
- * Resolve p to the path it ultimately points at, following symlink chains
- * (needed for /dev/serial/by-id links). Deliberately does not use
- * fs.realpathSync: that canonicalizes every ancestor directory component too,
- * so if /dev (or a test's tmpdir) is itself reached through a symlink — e.g.
- * macOS's /var -> /private/var — the returned path silently changes prefix
- * even though the device path itself was never a symlink. We only want to
- * follow the terminal symlink chain of p, not rewrite its ancestry.
+ * Follow the terminal symlink chain of p within /dev, without canonicalizing
+ * p's ancestor directories. Used purely to compare two /dev paths for
+ * identity: a /dev/serial/by-id link and the tty it points at are both under
+ * the same devRoot, so ancestry never needs rewriting, and leaving it alone
+ * keeps the comparison stable when /dev itself is reached through a symlink
+ * (e.g. macOS's /var -> /private/var under a test tmpdir).
+ *
+ * Not suitable for sysfs, where ancestor components are themselves symlinks
+ * and link targets are relative to the canonical ancestry — use
+ * canonicalPathOrNull there.
  * @param {string} p
  * @param {number} [depth]
  * @returns {string|null}
  */
-function realPathOrNull(p, depth = 0) {
+function lexicalRealPathOrNull(p, depth = 0) {
     if (depth > 20) return null; // guard against symlink loops
     let stat;
     try {
         stat = fs.lstatSync(p);
-    } catch (e) {
+    } catch {
         return null;
     }
     if (!stat.isSymbolicLink()) return path.normalize(p);
@@ -52,11 +62,27 @@ function realPathOrNull(p, depth = 0) {
     let target;
     try {
         target = fs.readlinkSync(p);
-    } catch (e) {
+    } catch {
         return null;
     }
     const resolved = path.isAbsolute(target) ? target : path.join(path.dirname(p), target);
-    return realPathOrNull(resolved, depth + 1);
+    return lexicalRealPathOrNull(resolved, depth + 1);
+}
+
+/**
+ * Fully canonical path (every ancestor component resolved), or null if p does
+ * not exist. Required for sysfs: /sys/class/tty/<name> is itself a symlink
+ * into /sys/devices/..., and the "device" link inside it is relative to that
+ * canonical location, so lexical resolution lands on a path that never exists.
+ * @param {string} p
+ * @returns {string|null}
+ */
+function canonicalPathOrNull(p) {
+    try {
+        return fs.realpathSync(p);
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -67,44 +93,53 @@ function realPathOrNull(p, depth = 0) {
  */
 function identityFromByIdDir(devicePath, opts = {}) {
     const devRoot = opts.devRoot || '/dev';
-    const target = realPathOrNull(devicePath);
+    const target = lexicalRealPathOrNull(devicePath);
     if (!target) return null;
 
     let entries;
     try {
         entries = fs.readdirSync(byIdDir(devRoot));
-    } catch (e) {
+    } catch {
         return null; // no udev by-id links on this host
     }
 
     for (const entry of entries) {
-        if (realPathOrNull(path.join(byIdDir(devRoot), entry)) === target) return entry;
+        if (lexicalRealPathOrNull(path.join(byIdDir(devRoot), entry)) === target) return entry;
     }
     return null;
 }
 
 /**
  * Fallback identity for hosts without /dev/serial/by-id: walk up from
- * /sys/class/tty/<name>/device looking for a USB device directory carrying
- * idVendor, idProduct and serial.
+ * /sys/class/tty/<name>/device to the nearest USB device directory (the first
+ * ancestor carrying idVendor and idProduct) and build vendor:product:serial.
+ *
+ * Returns null when that device exposes no serial number. vendor:product on
+ * its own is not an identity — FTDI/CH340/CP2102 pairs are shared with a large
+ * share of Zigbee and Z-Wave sticks — and adopting on it would mean grabbing
+ * whichever same-model device happened to enumerate. Stopping at the nearest
+ * USB device (rather than continuing up) matters for the same reason: the root
+ * hub above it also has idVendor/idProduct/serial, and those are common to
+ * every device on the bus.
  * @param {string} devicePath
  * @param {{ sysfsRoot?: string }} [opts]
  * @returns {string|null}
  */
 function identityFromSysfs(devicePath, opts = {}) {
     const sysfsRoot = opts.sysfsRoot || '/sys';
-    const name = path.basename(realPathOrNull(devicePath) || devicePath);
-    let dir = realPathOrNull(path.join(sysfsRoot, 'class', 'tty', name, 'device'));
+    const name = path.basename(lexicalRealPathOrNull(devicePath) || devicePath);
+    let dir = canonicalPathOrNull(path.join(sysfsRoot, 'class', 'tty', name, 'device'));
 
     for (let depth = 0; dir && depth < 8; depth++) {
-        const parts = ['idVendor', 'idProduct', 'serial'].map(f => {
+        const attrDir = dir;
+        const [vendor, product, serial] = ['idVendor', 'idProduct', 'serial'].map(f => {
             try {
-                return fs.readFileSync(path.join(dir, f), 'utf8').trim();
-            } catch (e) {
+                return fs.readFileSync(path.join(attrDir, f), 'utf8').trim();
+            } catch {
                 return '';
             }
         });
-        if (parts[0] && parts[1]) return parts.join(':');
+        if (vendor && product) return serial ? `${vendor}:${product}:${serial}` : null;
         const parent = path.dirname(dir);
         if (parent === dir) break;
         dir = parent;
@@ -123,6 +158,24 @@ function readIdentity(devicePath, opts = {}) {
 }
 
 /**
+ * Whether value is usable as a remembered identity. It is joined into
+ * /dev/serial/by-id as a single path component, so a corrupt or tampered
+ * /data/serial-identity.json (say `../../ttyUSB7`) must not be able to point
+ * us at an arbitrary path. Fail closed: anything with a separator, a control
+ * character, a leading dot, or an implausible length is rejected outright.
+ * @param {unknown} value
+ * @returns {value is string}
+ */
+function isUsableIdentity(value) {
+    return typeof value === 'string'
+        && value.length > 0
+        && value.length <= 255
+        && !value.startsWith('.')
+        // eslint-disable-next-line no-control-regex
+        && !/[/\u0000-\u001f\u007f]/.test(value);
+}
+
+/**
  * Live device path for a remembered identity, or null if absent.
  * @param {string} identity
  * @param {{ devRoot?: string, sysfsRoot?: string }} [opts]
@@ -130,22 +183,24 @@ function readIdentity(devicePath, opts = {}) {
  */
 function findDeviceByIdentity(identity, opts = {}) {
     const devRoot = opts.devRoot || '/dev';
-    if (!identity) return null;
+    if (!isUsableIdentity(identity)) return null;
 
-    // by-id identity: the link itself is the lookup.
+    // by-id identity: the link itself is the lookup. Only adopt it if it lands
+    // on something that looks like a serial tty, so a stray non-device file in
+    // by-id can never become the resolved device path.
     const link = path.join(byIdDir(devRoot), identity);
-    const viaLink = realPathOrNull(link);
-    if (viaLink) return viaLink;
+    const viaLink = lexicalRealPathOrNull(link);
+    if (viaLink && TTY_NAME.test(path.basename(viaLink))) return viaLink;
 
     // sysfs identity: scan candidate ttys for a matching identity.
     let entries;
     try {
         entries = fs.readdirSync(devRoot);
-    } catch (e) {
+    } catch {
         return null;
     }
     for (const entry of entries) {
-        if (!/^tty(USB|ACM)\d+$/.test(entry)) continue;
+        if (!TTY_NAME.test(entry)) continue;
         const candidate = path.join(devRoot, entry);
         if (identityFromSysfs(candidate, opts) === identity) return candidate;
     }
@@ -155,8 +210,8 @@ function findDeviceByIdentity(identity, opts = {}) {
 function loadRememberedIdentity(identityFile) {
     try {
         const parsed = JSON.parse(fs.readFileSync(identityFile, 'utf8'));
-        return typeof parsed.identity === 'string' ? parsed.identity : null;
-    } catch (e) {
+        return isUsableIdentity(parsed.identity) ? parsed.identity : null;
+    } catch {
         return null;
     }
 }
@@ -165,25 +220,9 @@ function saveRememberedIdentity(identityFile, identity) {
     try {
         fs.mkdirSync(path.dirname(identityFile), { recursive: true });
         fs.writeFileSync(identityFile, JSON.stringify({ identity }, null, 2));
-    } catch (e) {
+    } catch {
         // Losing the memo only costs us recovery next boot; never fail startup.
     }
-}
-
-/**
- * Whether p resolves to somewhere inside root. configuredPath and devRoot are
- * both meant to describe the same filesystem view (normally /dev); a
- * configuredPath that isn't reachable through the current devRoot refers to a
- * different view (e.g. a stale path from before a container remount) and
- * must not be treated as "present" just because its inode happens to still
- * exist on disk elsewhere.
- * @param {string} p
- * @param {string} root
- * @returns {boolean}
- */
-function isWithinRoot(p, root) {
-    const relative = path.relative(path.resolve(root), path.resolve(p));
-    return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 /**
@@ -200,7 +239,7 @@ function resolveSerialDevice(args) {
     const opts = { devRoot: args.devRoot || '/dev', sysfsRoot: args.sysfsRoot || '/sys' };
     const messages = [];
 
-    if (isWithinRoot(configuredPath, opts.devRoot) && fs.existsSync(configuredPath)) {
+    if (fs.existsSync(configuredPath)) {
         const identity = readIdentity(configuredPath, opts);
         if (identity) saveRememberedIdentity(identityFile, identity);
         else messages.push(`No stable identity found for ${configuredPath}; automatic recovery after a replug will not be possible`);
