@@ -282,13 +282,18 @@ function resolveSerialDevice(args) {
     const messages = [];
 
     if (fs.existsSync(configuredPath)) {
-        const identity = readIdentity(configuredPath, opts);
+        // Computed once and reused below for the stable-path hint, rather than
+        // calling identityFromByIdDir(configuredPath, opts) again — it walks the
+        // symlink chain and scans /dev/serial/by-id, both synchronous, on every
+        // boot. Mirrors readIdentity's own by-id-then-sysfs precedence.
+        const byIdName = identityFromByIdDir(configuredPath, opts);
+        const rawIdentity = byIdName || identityFromSysfs(configuredPath, opts);
+        const identity = isUsableIdentity(rawIdentity) ? rawIdentity : null;
         if (identity) saveRememberedIdentity(identityFile, identity);
         else messages.push(warn(`No stable identity found for ${configuredPath}; automatic recovery after a replug will not be possible`));
 
         // Recommend the stable path whenever a raw tty path was configured.
         let stablePath = null;
-        const byIdName = identityFromByIdDir(configuredPath, opts);
         if (byIdName) {
             stablePath = path.join(byIdDir(opts.devRoot), byIdName);
             if (path.resolve(configuredPath) !== stablePath) {
