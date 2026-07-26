@@ -69,6 +69,15 @@ configuration:
     name: Serial PCI Device (Beta)
     description: >-
       BETA: USB-serial PC Interface (5500PC/5500PCU) support — field-tested with both interfaces. Select a detected serial device from the dropdown; prefer /dev/serial/by-id/ paths. To enter a custom path, switch the config editor to YAML mode. Requires managed mode and a C-Bus Toolkit project configured for a serial PC Interface. Report issues on GitHub (issue #28).
+  cgate_external_clients:
+    name: External C-Gate clients
+    description: >-
+      Addresses allowed to connect to the managed C-Gate, for tools such as
+      C-Bus Toolkit. Leave empty to allow only this add-on. C-Gate has no
+      authentication, and program level allows reprogramming C-Bus units, so
+      list specific addresses rather than a whole subnet. An octet of 255
+      matches any value, so 192.168.1.255 means the entire 192.168.1.x
+      network. You must also publish C-Gate's ports in the Network panel.
   # ── MQTT (usually auto-detected) ──
   mqtt_host:
     name: MQTT Broker Host

@@ -69,6 +69,10 @@ configuration:
     name: Serieel PCI-apparaat (beta)
     description: >-
       BETA: ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU) — getest met beide interfaces. Selecteer een gedetecteerd serieel apparaat in de vervolgkeuzelijst; gebruik bij voorkeur paden onder /dev/serial/by-id/. Om een aangepast pad in te voeren, schakelt u de configuratie-editor over naar de YAML-modus. Vereist de managed-modus en een C-Bus Toolkit-project dat is geconfigureerd voor een seriële pc-interface. Meld problemen op GitHub (issue #28).
+  cgate_external_clients:
+    name: Externe C-Gate-clients
+    description: >-
+      Adressen die verbinding mogen maken met de beheerde C-Gate, voor tools zoals C-Bus Toolkit. Laat leeg om alleen deze add-on toe te staan. C-Gate heeft geen authenticatie, en het niveau program staat herprogrammering van C-Bus-eenheden toe, dus geef specifieke adressen op in plaats van een heel subnet. Een octet met de waarde 255 komt overeen met elke waarde, dus 192.168.1.255 betekent het hele netwerk 192.168.1.x. U moet ook de poorten van C-Gate publiceren in het netwerkpaneel.
   # ── MQTT (meestal automatisch gedetecteerd) ──
   mqtt_host:
     name: MQTT Broker Host

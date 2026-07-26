@@ -69,6 +69,10 @@ configuration:
     name: Serielles PCI-Gerät (Beta)
     description: >-
       BETA: Unterstützung für USB-serielle PC-Schnittstellen (5500PC/5500PCU) — mit beiden Schnittstellen getestet. Wählen Sie ein erkanntes serielles Gerät aus der Dropdown-Liste; Pfade unter /dev/serial/by-id/ bevorzugen. Um einen benutzerdefinierten Pfad einzugeben, wechseln Sie den Konfigurationseditor in den YAML-Modus. Erfordert den Managed-Modus und ein C-Bus-Toolkit-Projekt mit konfigurierter serieller PC-Schnittstelle. Probleme bitte auf GitHub melden (Issue #28).
+  cgate_external_clients:
+    name: Externe C-Gate-Clients
+    description: >-
+      Adressen, die eine Verbindung zum verwalteten C-Gate herstellen dürfen, für Werkzeuge wie C-Bus Toolkit. Leer lassen, um nur dieses Add-on zuzulassen. C-Gate hat keine Authentifizierung, und die Berechtigungsstufe program erlaubt das Neuprogrammieren von C-Bus-Geräten, also geben Sie konkrete Adressen an statt eines ganzen Subnetzes. Ein Oktett mit dem Wert 255 entspricht jedem Wert, sodass 192.168.1.255 das gesamte Netzwerk 192.168.1.x bedeutet. Sie müssen außerdem die Ports von C-Gate im Netzwerk-Panel veröffentlichen.
   # ── MQTT (wird normalerweise automatisch erkannt) ──
   mqtt_host:
     name: MQTT Broker Host

@@ -69,6 +69,10 @@ configuration:
     name: Dispositivo PCI série (beta)
     description: >-
       BETA: suporte a interfaces PC USB-série (5500PC/5500PCU) — testado com ambas as interfaces. Selecione um dispositivo série detetado na lista pendente; prefira caminhos /dev/serial/by-id/. Para introduzir um caminho personalizado, mude o editor de configuração para o modo YAML. Requer o modo gerido e um projeto C-Bus Toolkit configurado para uma interface PC série. Reporte problemas no GitHub (issue #28).
+  cgate_external_clients:
+    name: Clientes C-Gate externos
+    description: >-
+      Endereços autorizados a ligar-se ao C-Gate gerido, para ferramentas como o C-Bus Toolkit. Deixe vazio para permitir apenas este add-on. O C-Gate não tem autenticação, e o nível program permite reprogramar unidades C-Bus, por isso indique endereços específicos em vez de uma sub-rede inteira. Um octeto com o valor 255 corresponde a qualquer valor, pelo que 192.168.1.255 significa toda a rede 192.168.1.x. Também tem de publicar as portas do C-Gate no painel de Rede.
   # ── MQTT (geralmente detetado automaticamente) ──
   mqtt_host:
     name: Host do Broker MQTT

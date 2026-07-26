@@ -330,6 +330,24 @@ _cgateweb_check_serial_device() {
 CGATEWEB_ACCESS_BEGIN='# >>> cgateweb managed block - do not edit <<<'
 CGATEWEB_ACCESS_END='# <<< cgateweb managed block >>>'
 
+# One "remote <address> <level>" line per configured external client, or
+# nothing when the list is empty. Split out so it can be stubbed in tests
+# without depending on bashio's list flattening.
+_cgateweb_external_client_rules() {
+    local count
+    count=$(bashio::config 'cgate_external_clients|length' '0')
+    [[ "${count}" =~ ^[0-9]+$ ]] || count=0
+
+    local i address level
+    for ((i = 0; i < count; i++)); do
+        address=$(bashio::config "cgate_external_clients[${i}].address" '')
+        level=$(bashio::config "cgate_external_clients[${i}].level" '')
+        [[ -z "${address}" || "${address}" == "null" ]] && continue
+        [[ -z "${level}" || "${level}" == "null" ]] && level='monitor'
+        printf 'remote %s %s\n' "${address}" "${level}"
+    done
+}
+
 # Write C-Gate's access control file (manual 4.10.1).
 #
 # The grammar is `<keyword> <address> <level>` with exactly three keywords:
@@ -393,6 +411,41 @@ _cgateweb_write_access_control() {
         "remote 127.0.0.1 program"
         "remote 0:0:0:0:0:0:0:1 program"
     )
+
+    # External clients (issue #37): C-Gate is a multi-client server, so Toolkit
+    # and friends connect to it directly rather than sharing the serial port.
+    # Validate here so a typo fails cont-init with a readable error instead of
+    # being silently dropped by C-Gate.
+    local line address level
+    while IFS= read -r line; do
+        [[ -z "${line}" ]] && continue
+        # shellcheck disable=SC2086
+        set -- ${line}
+        if [[ $# -ne 3 ]]; then
+            bashio::log.error "Invalid cgate_external_clients entry: '${line}'"
+            return 1
+        fi
+        address="$2"
+        level="$3"
+        if [[ ! "${address}" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+            bashio::log.error "Invalid address in cgate_external_clients: '${address}'"
+            bashio::log.error "Use an IP address or hostname. An octet of 255 matches any value, e.g. 192.168.1.255 for the whole subnet."
+            return 1
+        fi
+        case "${level}" in
+            monitor|operate|program) ;;
+            *)
+                bashio::log.error "Invalid level '${level}' for ${address}; use monitor, operate or program"
+                return 1
+                ;;
+        esac
+        rules+=("remote ${address} ${level}")
+        bashio::log.warning "C-Gate access granted to ${address} at ${level} level"
+    done < <(_cgateweb_external_client_rules)
+
+    if [[ ${#rules[@]} -gt 2 ]]; then
+        bashio::log.warning "C-Gate has no authentication on its command ports; only publish them if you need external access"
+    fi
 
     # Cleaned up on every return from this function (success or failure) via
     # the RETURN trap below, so a failed rewrite never leaves a stray .tmp or

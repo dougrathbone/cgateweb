@@ -68,6 +68,10 @@ configuration:
     name: Seriel PCI-enhed (beta)
     description: >-
       BETA: understøttelse af USB-serielle PC-interfaces (5500PC/5500PCU) — testet med begge interfaces. Vælg en registreret seriel enhed i rullemenuen; foretræk stier under /dev/serial/by-id/. For at angive en brugerdefineret sti skifter du konfigurationseditoren til YAML-tilstand. Kræver administreret tilstand og et C-Bus Toolkit-projekt konfigureret til et serielt PC-interface. Rapportér problemer på GitHub (issue #28).
+  cgate_external_clients:
+    name: Eksterne C-Gate-klienter
+    description: >-
+      Adresser, der har tilladelse til at oprette forbindelse til den administrerede C-Gate, til værktøjer som C-Bus Toolkit. Lad stå tomt for kun at tillade denne add-on. C-Gate har ingen autentificering, og niveauet program tillader omprogrammering af C-Bus-enheder, så angiv specifikke adresser i stedet for et helt undernet. En oktet med værdien 255 matcher enhver værdi, så 192.168.1.255 betyder hele netværket 192.168.1.x. Du skal også udgive C-Gates porte i netværkspanelet.
   # ── MQTT (registreres normalt automatisk) ──
   mqtt_host:
     name: MQTT Broker vært

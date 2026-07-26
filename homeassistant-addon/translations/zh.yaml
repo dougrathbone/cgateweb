@@ -62,6 +62,10 @@ configuration:
     name: 串口 PCI 设备（Beta）
     description: >-
       BETA: USB 串口 PC 接口（5500PC/5500PCU）支持——已在两种接口上实测。从下拉列表中选择检测到的串口设备；建议使用 /dev/serial/by-id/ 路径。如需输入自定义路径，请将配置编辑器切换为 YAML 模式。需要托管模式，并且 C-Bus Toolkit 项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
+  cgate_external_clients:
+    name: 外部 C-Gate 客户端
+    description: >-
+      允许连接到受管理 C-Gate 的地址，供 C-Bus Toolkit 等工具使用。留空则仅允许此附加组件访问。C-Gate 没有身份验证，且 program 级别允许重新编程 C-Bus 单元，因此请列出具体地址而非整个子网。字节值为 255 时匹配任意值，例如 192.168.1.255 表示整个 192.168.1.x 网络。您还必须在网络面板中发布 C-Gate 的端口。
   # ── MQTT（通常自动检测）──
   mqtt_host:
     name: MQTT 代理主机

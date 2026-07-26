@@ -14,6 +14,21 @@ const describeBash = posixBashAvailable() ? describe : describe.skip;
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
 const itUnlessRoot = isRoot ? it.skip : it;
 
+// Whether jq is on PATH. The real-reader suite below sources bashio::config's
+// actual upstream query logic (github.com/hassio-addons/bashio, lib/config.sh
+// + lib/jq.sh, MIT-licensed), which shells out to jq exactly as it does inside
+// the add-on container. Skipped (not failed) where jq is absent so this file
+// still runs on a bare dev machine; GitHub Actions ubuntu runners ship jq.
+function jqAvailable() {
+    try {
+        execFileSync('jq', ['--version'], { stdio: 'ignore' });
+        return true;
+    } catch {
+        return false;
+    }
+}
+const describeJq = (posixBashAvailable() && jqAvailable()) ? describe : describe.skip;
+
 const SCRIPT = path.join(
     __dirname, '..', 'homeassistant-addon', 'rootfs', 'etc', 'cont-init.d', 'cgate-install.sh'
 );
@@ -36,6 +51,87 @@ const BASHIO_STUB = `
             printf '%s' "\${!var_name}"
         else
             printf '%s' "$default_value"
+        fi
+    }
+`;
+
+// Overrides the real _cgateweb_external_client_rules so tests can feed rules in
+// directly instead of reimplementing bashio's object-list flattening. Must be
+// sourced AFTER the script, so it wins.
+const EXTERNAL_RULES_STUB = `
+    _cgateweb_external_client_rules() {
+        if [[ -n "\${CGW_EXTERNAL_RULES:-}" ]]; then
+            printf '%s\\n' "\${CGW_EXTERNAL_RULES}"
+        fi
+    }
+`;
+
+// bashio::config's real query logic, copied verbatim (only trimmed of the
+// `bashio::log.trace` call and the extra-jq-args plumbing that this script
+// never uses — the latter also trips a bash 3.2 "unbound variable on an
+// empty array" bug under `set -u`, which is why macOS's system bash can't
+// run the unmodified upstream source) from:
+//   https://github.com/hassio-addons/bashio/blob/main/lib/config.sh
+//   https://github.com/hassio-addons/bashio/blob/main/lib/jq.sh
+// plus a stub for bashio::app.config, the one call real bashio makes out to
+// the Supervisor API. This exercises _cgateweb_external_client_rules's own
+// bashio::config calls (the "key|length" and "key[i].field" jq paths)
+// against bashio's real object-list flattening, rather than the
+// EXTERNAL_RULES_STUB used everywhere else in this file to test validation.
+const REAL_BASHIO_CONFIG_STUB = `
+    bashio::log.info()    { :; }
+    bashio::log.warning() { :; }
+    bashio::log.error()   { :; }
+    bashio::log.trace()   { :; }
+    bashio::log.debug()   { :; }
+    bashio::app.config() { printf '%s' "\${CGW_OPTIONS_JSON}"; }
+    bashio::jq() {
+        local data=\${1}
+        local filter=\${2:-.}
+        if [[ -f "\${data}" ]]; then
+            jq --raw-output -c -M "$filter" "\${data}"
+        else
+            jq --raw-output -c -M "$filter" <<<"\${data}"
+        fi
+    }
+    bashio::config() {
+        local key=\${1}
+        local default_value=\${2:-null}
+        local query
+        local result
+        local options
+
+        read -r -d '' query <<QUERY || true
+            if (.\${key} == null) then
+                null
+            elif (.\${key} | type == "string") then
+                .\${key} // empty
+            elif (.\${key} | type == "boolean") then
+                .\${key} // false
+            elif (.\${key} | type == "array") then
+                if (.\${key} == []) then
+                    empty
+                else
+                    .\${key}[]
+                end
+            elif (.\${key} | type == "object") then
+                if (.\${key} == {}) then
+                    empty
+                else
+                    .\${key}
+                end
+            else
+                .\${key}
+            end
+QUERY
+
+        options=$(bashio::app.config)
+        result=$(bashio::jq "\${options}" "\${query}")
+
+        if [[ "\${result}" == "null" ]]; then
+            echo "\${default_value}"
+        else
+            printf "%s" "\${result}"
         fi
     }
 `;
@@ -73,13 +169,16 @@ function runAccessControlOn(file, { config = {}, withLogs = false } = {}) {
         CGW_INSTALL_SCRIPT: SCRIPT,
         CGW_ACCESS_FILE: file
     };
-    for (const [k, v] of Object.entries(config)) env[`CGW_TEST_${k}`] = v;
+    for (const [k, v] of Object.entries(config)) {
+        env[k.startsWith('CGW_') ? k : `CGW_TEST_${k}`] = v;
+    }
 
     const stub = withLogs ? BASHIO_STUB_WITH_LOGS : BASHIO_STUB;
     const script = `
         set -u
         ${stub}
         source "$CGW_INSTALL_SCRIPT"
+        ${EXTERNAL_RULES_STUB}
         _cgateweb_write_access_control "$CGW_ACCESS_FILE"
     `;
     let status = 0;
@@ -188,6 +287,54 @@ describeBash('_cgateweb_write_access_control', () => {
         expect(contents).not.toMatch(/^program 127\.0\.0\.1$/m);
         expect(contents).not.toMatch(/^monitor 127\.0\.0\.1$/m);
         expect(contents).toContain('keep-me');
+    });
+
+    // External clients (issue #37): C-Bus Toolkit and similar tools connect to
+    // the managed C-Gate directly rather than sharing the serial PCI.
+    it('adds a remote rule per configured external client', () => {
+        const { status, contents } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.60 program\nremote 192.168.1.255 monitor' }
+        });
+
+        expect(status).toBe(0);
+        expect(contents).toContain('remote 192.168.1.60 program');
+        expect(contents).toContain('remote 192.168.1.255 monitor');
+        // Localhost access is never dropped when external clients are added.
+        expect(contents).toContain('remote 127.0.0.1 program');
+    });
+
+    it('revokes access when an address is removed from the option', () => {
+        const withClient = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.60 program' }
+        }).contents;
+        expect(withClient).toContain('192.168.1.60');
+
+        const withoutClient = writeAccessControl().contents;
+        expect(withoutClient).not.toContain('192.168.1.60');
+    });
+
+    it('rejects an address that is not an IP or hostname', () => {
+        const { status } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote not@a@host program' }
+        });
+
+        expect(status).not.toBe(0);
+    });
+
+    it('rejects a level outside monitor/operate/program', () => {
+        const { status } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.60 debug' }
+        });
+
+        expect(status).not.toBe(0);
+    });
+
+    it('rejects an entry with a missing level', () => {
+        const { status } = writeAccessControl({
+            config: { CGW_EXTERNAL_RULES: 'remote 192.168.1.60' }
+        });
+
+        expect(status).not.toBe(0);
     });
 });
 
@@ -384,5 +531,49 @@ describeBash('cgate-install.sh call site (MINOR 2)', () => {
         expect(contents).toContain('remote 127.0.0.1 program');
         expect(contents).toContain('remote 0:0:0:0:0:0:0:1 program');
         expect(contents.match(/cgateweb managed block/g)).toHaveLength(2);
+    });
+});
+
+// Proves the real _cgateweb_external_client_rules reader (not the
+// EXTERNAL_RULES_STUB used above) actually flattens bashio's object-list
+// config correctly. See REAL_BASHIO_CONFIG_STUB for what's faithful-copy vs.
+// simplified from upstream bashio.
+describeJq('_cgateweb_external_client_rules (real bashio::config reader)', () => {
+    function runExternalClientRules(optionsObj) {
+        const env = {
+            ...process.env,
+            CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+            CGW_INSTALL_SCRIPT: SCRIPT,
+            CGW_OPTIONS_JSON: JSON.stringify(optionsObj)
+        };
+        const script = `
+            set -u
+            ${REAL_BASHIO_CONFIG_STUB}
+            source "$CGW_INSTALL_SCRIPT"
+            _cgateweb_external_client_rules
+        `;
+        return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+    }
+
+    it('flattens a real object-list config into remote rules', () => {
+        const output = runExternalClientRules({
+            cgate_external_clients: [
+                { address: '192.168.1.60', level: 'program' },
+                { address: '192.168.1.255', level: 'monitor' }
+            ]
+        });
+
+        expect(output).toContain('remote 192.168.1.60 program');
+        expect(output).toContain('remote 192.168.1.255 monitor');
+    });
+
+    it('emits nothing for an empty list, matching the inert default', () => {
+        const output = runExternalClientRules({ cgate_external_clients: [] });
+        expect(output.trim()).toBe('');
+    });
+
+    it('emits nothing when the option is entirely absent (pre-upgrade config)', () => {
+        const output = runExternalClientRules({});
+        expect(output.trim()).toBe('');
     });
 });

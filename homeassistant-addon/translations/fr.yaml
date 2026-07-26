@@ -72,6 +72,10 @@ configuration:
     name: Périphérique PCI série (bêta)
     description: >-
       BETA : prise en charge des interfaces PC USB-série (5500PC/5500PCU) — testée avec les deux interfaces. Sélectionnez un périphérique série détecté dans la liste déroulante ; préférez les chemins /dev/serial/by-id/. Pour saisir un chemin personnalisé, basculez l'éditeur de configuration en mode YAML. Nécessite le mode géré et un projet C-Bus Toolkit configuré pour une interface PC série. Signalez les problèmes sur GitHub (issue #28).
+  cgate_external_clients:
+    name: Clients C-Gate externes
+    description: >-
+      Adresses autorisées à se connecter au C-Gate géré, pour des outils comme C-Bus Toolkit. Laissez vide pour n'autoriser que cet add-on. C-Gate n'a aucune authentification, et le niveau program permet de reprogrammer les unités C-Bus ; indiquez donc des adresses précises plutôt qu'un sous-réseau entier. Un octet avec la valeur 255 correspond à n'importe quelle valeur, donc 192.168.1.255 désigne l'ensemble du réseau 192.168.1.x. Vous devez également publier les ports de C-Gate dans le panneau Réseau.
   # ── MQTT (généralement détecté automatiquement) ──
   mqtt_host:
     name: Hôte du broker MQTT
