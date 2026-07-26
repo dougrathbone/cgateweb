@@ -304,6 +304,46 @@ describe('SerialDeviceRecovery', () => {
             expect(execImpl).toHaveBeenCalledTimes(2);
         });
 
+        it('does not spend the budget on a run that restarted nothing', () => {
+            // The helper exits 1 before touching a project or C-Gate when there is
+            // no device to find. Nothing was disrupted, so nothing is owed: the
+            // poll loop has to still be looking whenever the user plugs the
+            // interface back in, which may be hours later.
+            const absent = { status: 1, stdout: '', stderr: 'WARN: /dev/ttyUSB0 is not present' };
+            const execImpl = jest.fn(() => absent);
+            const { recovery, clock } = makeRecovery({
+                settings: { serialRecoveryMaxAttempts: 2 },
+                fsImpl: makeFs(),
+                execImpl
+            });
+
+            for (let i = 0; i < 6; i++) {
+                clock.t += 30000; // the CNI monitor's poll interval
+                expect(recovery.handleInterfaceDown('254').action).toBe('failed');
+            }
+            expect(execImpl).toHaveBeenCalledTimes(6);
+        });
+
+        it('still spends the budget on a broken helper', () => {
+            // A helper that cannot be spawned reports the same status as an absent
+            // device, but it will never behave differently, so it has to be
+            // allowed to run out rather than be retried on every poll forever.
+            const execImpl = jest.fn(() => ({ status: 1, stdout: '', stderr: '', error: { code: 'ENOENT' } }));
+            const { recovery, clock } = makeRecovery({
+                settings: { serialRecoveryMaxAttempts: 2 },
+                fsImpl: makeFs(),
+                execImpl
+            });
+
+            let last = null;
+            for (let i = 0; i < 4; i++) {
+                clock.t += 30000;
+                last = recovery.handleInterfaceDown('254');
+            }
+            expect(execImpl).toHaveBeenCalledTimes(2);
+            expect(last.message).toMatch(/gave up after 2/);
+        });
+
         it('says the same thing once per outage, not once per poll', () => {
             // handleInterfaceDown now runs on every offline poll, so an interface
             // left unplugged would otherwise repeat the same warning forever.

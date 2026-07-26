@@ -234,13 +234,20 @@ class SerialDeviceRecovery {
             }
         }
 
-        state.attempts += 1;
         state.lastAttemptAt = now;
 
         // One script, all three steps: re-resolve, repoint the project
         // databases, restart C-Gate.
         const script = process.env.CGATEWEB_RECOVER_SCRIPT || DEFAULT_RECOVER_SCRIPT;
         const result = this.exec(script, [String(this.settings.cgate_serial_device)]);
+
+        // The budget bounds C-Gate restarts, so only a run that got as far as
+        // restarting something spends it. A run that found no device resolved
+        // nothing, repointed nothing and signalled nothing: it cost the user
+        // nothing, and charging for it would burn the whole budget in a couple of
+        // minutes of polling while the interface is simply out - which is the one
+        // situation where we most need to still be looking when it comes back.
+        if (!this._deviceWasAbsent(result)) state.attempts += 1;
 
         if (result.status !== 0) {
             const failed = `${message}. Recovery failed: ${this._failureReason(script, result)}`;
@@ -281,6 +288,22 @@ class SerialDeviceRecovery {
             this._log('info', `C-Bus network ${networkId} interface is back on ${state.portInUse} `
                 + `after ${state.attempts} recovery attempt(s).`);
         }
+    }
+
+    /**
+     * True when the helper reported the device simply absent: it exits with
+     * EXIT_DEVICE_ABSENT before touching a project database or C-Gate, so nothing
+     * was restarted. A helper that could not be spawned or that timed out
+     * surfaces as the same status (execFileSync has no exit code to report there),
+     * but it is a broken install rather than an absent device and must be allowed
+     * to exhaust the budget instead of retrying every poll forever - hence the
+     * errno check.
+     * @param {{status: number, error?: any}} result
+     * @returns {boolean}
+     */
+    _deviceWasAbsent(result) {
+        if (result.status !== EXIT_DEVICE_ABSENT) return false;
+        return !(result.error && result.error.code);
     }
 
     /**

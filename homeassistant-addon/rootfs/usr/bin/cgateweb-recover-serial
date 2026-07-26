@@ -87,10 +87,16 @@ shopt -u nullglob
 
 # ─── 3. Restart C-Gate ───────────────────────────────────────────────────────
 # /etc/services.d/cgate/run ends in `exec java ... -jar cgate.jar`, so the
-# supervised process IS the JVM and s6 restarts it on exit —
-# services.d/cgate/finish already logs "will restart". That makes signalling the
-# process the whole restart mechanism, and it avoids `s6-svc -r <servicedir>`,
-# whose path differs between s6-overlay versions and is pinned nowhere here.
+# supervised process IS the JVM: killing it is killing the service, and
+# restarting an exited service is s6-supervise's default behaviour. That makes
+# signalling the process the whole restart mechanism, and it avoids
+# `s6-svc -r <servicedir>`, whose path differs between s6-overlay versions and is
+# pinned nowhere here.
+#
+# Nothing logs the restart on this path: services.d/cgate/finish is passed 256
+# for a process killed by a signal and explicitly excludes 256 from its "will
+# restart" warning. Hence the INFO line below — it is the only trace the user
+# gets that C-Gate was bounced deliberately.
 #
 # The pid is found by scanning /proc rather than with pgrep for the same reason:
 # pgrep is a busybox applet that need not be enabled in the base image, while
