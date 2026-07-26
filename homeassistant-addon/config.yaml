@@ -27,7 +27,7 @@ ports:
 
 ports_description:
   "8080/tcp": "C-Bus Label Editor web interface (optional; ingress works without host mapping — set web_api_key if you expose this port)"
-  "20023/tcp": "C-Gate command port (managed mode only, configurable via cgate_port -- if you changed that setting, map the port you configured instead of 20023). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
+  "20023/tcp": "C-Gate command port (managed mode only). Home Assistant can only map ports declared by the add-on, so exposing C-Gate to external clients requires leaving cgate_port at its default 20023 -- a custom cgate_port cannot be mapped here. C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
   "20024/tcp": "C-Gate event port (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
   "20025/tcp": "C-Gate status change port (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
 
