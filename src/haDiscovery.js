@@ -1,6 +1,6 @@
 // @ts-check
 const { createLogger } = require('./logger');
-const { findNetworkData, collectUnitGroups, collectUnitTypesByGroup, unknownUnitTypes } = require('./haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, collectUnitTypeData } = require('./haDiscoveryTree');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
@@ -357,9 +357,9 @@ class HaDiscovery {
         // _labelSnapshot. Only built when the feature is on — it is pure cost
         // otherwise, and with it off the classifier ignores the index anyway.
         if (this.settings.ha_discovery_type_from_unit) {
-            this._unitTypeIndex = collectUnitTypesByGroup(networkData, targetApps);
+            const { index, unknownTypes: unknown } = collectUnitTypeData(networkData, targetApps);
+            this._unitTypeIndex = index;
 
-            const unknown = unknownUnitTypes(networkData);
             if (unknown.length) {
                 this.logger.info(
                     `Unit types not recognised for classification on network ${networkId}: ${unknown.join(', ')}. ` +

@@ -267,23 +267,35 @@ function collectUnitGroups(unit, groupsByApp, targetApps) {
     });
 }
 
-// Which app/group pairs each unit type drives, so discovery can classify a
-// group by its hardware instead of its name (issues #38, #37). Mirrors
-// collectUnitGroups' handling of both TREEXML shapes, but keeps the unit type
-// that collectUnitGroups discards. Records every non-blank type it encounters,
-// recognised or not: entityTypeForGroup's asymmetric unknown handling (an
-// unrecognised type blocks only the destructive binary_sensor conclusion)
-// depends on unrecognised types surviving into this index rather than being
-// filtered out here.
+// Which app/group pairs each unit type drives, and which unit types on the
+// network the classifier does not recognise. Both are derived from the same
+// per-unit Type/Application data, so a single pass over networkData.Unit
+// produces both instead of walking the array twice (once per aggregate) on
+// every discovery run.
+//
+// The two aggregates have different scope, though, and must not be conflated:
+//   - index is scoped to targetApps, since it exists to classify groups on the
+//     apps discovery actually cares about (issues #38, #37). Mirrors
+//     collectUnitGroups' handling of both TREEXML shapes, but keeps the unit
+//     type that collectUnitGroups discards. Records every non-blank type it
+//     encounters for a matching group, recognised or not: entityTypeForGroup's
+//     asymmetric unknown handling (an unrecognised type blocks only the
+//     destructive binary_sensor conclusion) depends on unrecognised types
+//     surviving into this index rather than being filtered out here.
+//   - unknownTypes is unscoped: it reports every unrecognised type anywhere on
+//     the network, including units with no Application at all, for a
+//     once-per-run log line (issue #37). Filtering it by targetApps would hide
+//     unrecognised hardware on apps discovery is not classifying.
 /**
  * @param {any} networkData
  * @param {string[]} targetApps
- * @returns {Map<string, { types: Set<string> }>}
+ * @returns {{ index: Map<string, { types: Set<string> }>, unknownTypes: string[] }}
  */
-function collectUnitTypesByGroup(networkData, targetApps) {
+function collectUnitTypeData(networkData, targetApps) {
     /** @type {Map<string, { types: Set<string> }>} */
     const index = new Map();
-    if (!networkData) return index;
+    const unknownTypes = new Set();
+    if (!networkData) return { index, unknownTypes: [] };
 
     let units = networkData.Unit || [];
     if (!Array.isArray(units)) units = [units];
@@ -297,6 +309,8 @@ function collectUnitTypesByGroup(networkData, targetApps) {
     units.forEach(unit => {
         if (!unit) return;
         const type = (unit.Type !== null && unit.Type !== undefined) ? String(unit.Type).trim() : '';
+        if (type && !categoriseUnitType(type)) unknownTypes.add(type);
+
         if (!unit.Application) return;
 
         if (typeof unit.Application === 'object') {
@@ -325,28 +339,32 @@ function collectUnitTypesByGroup(networkData, targetApps) {
         });
     });
 
-    return index;
+    return { index, unknownTypes: [...unknownTypes] };
 }
 
-// Distinct unit types in the tree that the classifier does not recognise.
-// Logged once per discovery run so a field report can extend the table without
-// anyone having to guess at hardware they do not have (issue #37).
+// Thin wrapper kept for existing callers/tests that only need the per-group
+// index. Prefer collectUnitTypeData directly when both aggregates are needed
+// in the same discovery pass (see src/haDiscovery.js), so the unit array is
+// only walked once.
+/**
+ * @param {any} networkData
+ * @param {string[]} targetApps
+ * @returns {Map<string, { types: Set<string> }>}
+ */
+function collectUnitTypesByGroup(networkData, targetApps) {
+    return collectUnitTypeData(networkData, targetApps).index;
+}
+
+// Thin wrapper kept for existing callers/tests that only need the
+// unrecognised-type list. unknownTypes does not depend on targetApps, so the
+// scope argument passed here is irrelevant. See collectUnitTypeData for why
+// this cannot simply reuse collectUnitTypesByGroup's result.
 /**
  * @param {any} networkData
  * @returns {string[]}
  */
 function unknownUnitTypes(networkData) {
-    if (!networkData) return [];
-    let units = networkData.Unit || [];
-    if (!Array.isArray(units)) units = [units];
-
-    const unknown = new Set();
-    units.forEach(unit => {
-        if (!unit || unit.Type === null || unit.Type === undefined) return;
-        const type = String(unit.Type).trim();
-        if (type && !categoriseUnitType(type)) unknown.add(type);
-    });
-    return [...unknown];
+    return collectUnitTypeData(networkData, []).unknownTypes;
 }
 
 module.exports = {
@@ -358,6 +376,7 @@ module.exports = {
     treeGroupSignature,
     unitHasDeviceData,
     unitHasUnsyncedGroups,
+    collectUnitTypeData,
     collectUnitTypesByGroup,
     unknownUnitTypes
 };
