@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups, collectUnitTypesByGroup, unknownUnitTypes } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -577,5 +577,108 @@ describe('unsyncedUnitSummaries', () => {
             { Type: 'RELDN12', Address: '13', Application: [{ ApplicationAddress: '56', Group: [{ GroupAddress: '31' }] }] }
         ] };
         expect(unsyncedUnitSummaries(network)).toEqual(['1 DIMDN8']);
+    });
+});
+
+describe('collectUnitTypesByGroup', () => {
+    it('indexes structured TREEXML units by app/group', () => {
+        const network = {
+            Unit: [
+                {
+                    UnitAddress: '10', Type: 'DIMDN8',
+                    Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '1' }] }
+                },
+                {
+                    UnitAddress: '11', Type: 'RELDN12',
+                    Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '2' }] }
+                }
+            ]
+        };
+
+        const index = collectUnitTypesByGroup(network, ['56']);
+
+        expect([...index.get('56/1').types]).toEqual(['DIMDN8']);
+        expect([...index.get('56/2').types]).toEqual(['RELDN12']);
+    });
+
+    it('indexes the flat TREEXML shape', () => {
+        const network = {
+            Unit: { UnitAddress: '12', Type: 'RELAY2', Application: '56, 255', Groups: '5,6' }
+        };
+
+        const index = collectUnitTypesByGroup(network, ['56']);
+
+        expect([...index.get('56/5').types]).toEqual(['RELAY2']);
+        expect([...index.get('56/6').types]).toEqual(['RELAY2']);
+    });
+
+    it('merges every unit that drives the same group', () => {
+        const network = {
+            Unit: [
+                { UnitAddress: '10', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '7' }] } },
+                { UnitAddress: '11', Type: 'DIMDN8', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '7' }] } }
+            ]
+        };
+
+        const entry = collectUnitTypesByGroup(network, ['56']).get('56/7');
+
+        // Every driving unit's type is recorded, recognised or not. The
+        // classifier derives the categories; the index must not pre-judge.
+        expect([...entry.types].sort()).toEqual(['DIMDN8', 'SENLL']);
+    });
+
+    it('records an unrecognised unit type instead of filtering it out', () => {
+        // categoriseUnitType has no pattern for WIDGET9000. If the index
+        // silently dropped unrecognised types, entityTypeForGroup would lose
+        // the signal that lets it withhold the destructive binary_sensor
+        // conclusion when an unknown type shares a group with a SENLL input.
+        const network = {
+            Unit: [
+                { UnitAddress: '20', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '40' }] } },
+                { UnitAddress: '21', Type: 'WIDGET9000', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '40' }] } }
+            ]
+        };
+
+        const entry = collectUnitTypesByGroup(network, ['56']).get('56/40');
+
+        expect([...entry.types].sort()).toEqual(['SENLL', 'WIDGET9000']);
+    });
+
+    it('marks an input-only group as input with no output', () => {
+        const network = {
+            Unit: { UnitAddress: '20', Type: 'SENLL', Application: { ApplicationAddress: '56', Group: [{ GroupAddress: '40' }] } }
+        };
+
+        const entry = collectUnitTypesByGroup(network, ['56']).get('56/40');
+
+        expect([...entry.types]).toEqual(['SENLL']);
+    });
+
+    it('ignores applications outside the target list', () => {
+        const network = {
+            Unit: { UnitAddress: '10', Type: 'DIMDN8', Application: { ApplicationAddress: '99', Group: [{ GroupAddress: '1' }] } }
+        };
+
+        expect(collectUnitTypesByGroup(network, ['56']).size).toBe(0);
+    });
+
+    it('returns an empty index for missing network data', () => {
+        expect(collectUnitTypesByGroup(null, ['56']).size).toBe(0);
+    });
+
+    it('lists distinct unrecognised unit types', () => {
+        const network = {
+            Unit: [
+                { UnitAddress: '10', Type: 'WIDGET9000' },
+                { UnitAddress: '11', Type: 'WIDGET9000' },
+                { UnitAddress: '12', Type: 'DIMDN8' }
+            ]
+        };
+
+        expect(unknownUnitTypes(network)).toEqual(['WIDGET9000']);
+    });
+
+    it('returns [] for missing network data', () => {
+        expect(unknownUnitTypes(null)).toEqual([]);
     });
 });

@@ -1,4 +1,6 @@
 // @ts-check
+const { categoriseUnitType } = require('./unitTypeClassifier');
+
 function findNetworkData(networkId, treeData) {
     if (!treeData) return null;
     const idStr = String(networkId);
@@ -265,6 +267,88 @@ function collectUnitGroups(unit, groupsByApp, targetApps) {
     });
 }
 
+// Which app/group pairs each unit type drives, so discovery can classify a
+// group by its hardware instead of its name (issues #38, #37). Mirrors
+// collectUnitGroups' handling of both TREEXML shapes, but keeps the unit type
+// that collectUnitGroups discards. Records every non-blank type it encounters,
+// recognised or not: entityTypeForGroup's asymmetric unknown handling (an
+// unrecognised type blocks only the destructive binary_sensor conclusion)
+// depends on unrecognised types surviving into this index rather than being
+// filtered out here.
+/**
+ * @param {any} networkData
+ * @param {string[]} targetApps
+ * @returns {Map<string, { types: Set<string> }>}
+ */
+function collectUnitTypesByGroup(networkData, targetApps) {
+    /** @type {Map<string, { types: Set<string> }>} */
+    const index = new Map();
+    if (!networkData) return index;
+
+    let units = networkData.Unit || [];
+    if (!Array.isArray(units)) units = [units];
+
+    const record = (appId, groupId, type) => {
+        const key = `${appId}/${groupId}`;
+        if (!index.has(key)) index.set(key, { types: new Set() });
+        if (type) index.get(key).types.add(type);
+    };
+
+    units.forEach(unit => {
+        if (!unit) return;
+        const type = (unit.Type !== null && unit.Type !== undefined) ? String(unit.Type).trim() : '';
+        if (!unit.Application) return;
+
+        if (typeof unit.Application === 'object') {
+            const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];
+            apps.forEach(app => {
+                if (!app || app.ApplicationAddress === null || app.ApplicationAddress === undefined) return;
+                const appId = String(app.ApplicationAddress);
+                if (!targetApps.includes(appId) || !app.Group) return;
+                const groups = Array.isArray(app.Group) ? app.Group : [app.Group];
+                groups.forEach(g => {
+                    if (g && g.GroupAddress !== null && g.GroupAddress !== undefined) {
+                        record(appId, String(g.GroupAddress), type);
+                    }
+                });
+            });
+            return;
+        }
+
+        const unitAppIds = String(unit.Application).split(',').map(s => s.trim()).filter(Boolean);
+        const groupIds = (unit.Groups && typeof unit.Groups === 'string')
+            ? unit.Groups.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+        if (groupIds.length === 0) return;
+        targetApps.filter(t => unitAppIds.includes(t)).forEach(appId => {
+            groupIds.forEach(gid => record(appId, gid, type));
+        });
+    });
+
+    return index;
+}
+
+// Distinct unit types in the tree that the classifier does not recognise.
+// Logged once per discovery run so a field report can extend the table without
+// anyone having to guess at hardware they do not have (issue #37).
+/**
+ * @param {any} networkData
+ * @returns {string[]}
+ */
+function unknownUnitTypes(networkData) {
+    if (!networkData) return [];
+    let units = networkData.Unit || [];
+    if (!Array.isArray(units)) units = [units];
+
+    const unknown = new Set();
+    units.forEach(unit => {
+        if (!unit || unit.Type === null || unit.Type === undefined) return;
+        const type = String(unit.Type).trim();
+        if (type && !categoriseUnitType(type)) unknown.add(type);
+    });
+    return [...unknown];
+}
+
 module.exports = {
     findNetworkData,
     collectUnitGroups,
@@ -273,5 +357,7 @@ module.exports = {
     unsyncedUnitSummaries,
     treeGroupSignature,
     unitHasDeviceData,
-    unitHasUnsyncedGroups
+    unitHasUnsyncedGroups,
+    collectUnitTypesByGroup,
+    unknownUnitTypes
 };
