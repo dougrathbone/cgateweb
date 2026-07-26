@@ -334,6 +334,93 @@ describeBash('cgate-project-sync.sh', () => {
         fs.rmSync(binDir, { recursive: true, force: true });
     });
 
+    test('asks the fixup to repoint a stale serial port too (issue #28)', () => {
+        // Without --repoint-stale-serial the fixup only rewrites Windows COMx
+        // addresses, so a PC Interface that renumbered while the add-on was
+        // stopped leaves the project naming a dead ttyUSBn and C-Gate opens onto
+        // a closed interface — exactly the case the in-running recovery cannot
+        // see, because by then the device resolves fine and has not moved.
+        const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
+        const nodeCalls = path.join(binDir, 'node-calls.txt');
+        fs.writeFileSync(
+            path.join(binDir, 'node'),
+            `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${nodeCalls}"\nexit 0\n`,
+            { mode: 0o755 }
+        );
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+            env: { PATH: `${binDir}:${process.env.PATH}` }
+        });
+        expect(fs.readFileSync(nodeCalls, 'utf8')).toContain('--repoint-stale-serial');
+        fs.rmSync(binDir, { recursive: true, force: true });
+    });
+
+    describe('boot-time renumber, with the real fixup (issue #28)', () => {
+        // No node stub here: the point is what ends up in the project database
+        // when a PC Interface renumbers while the add-on is stopped.
+        const FIXUP_JS = path.join(
+            __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-project-serial-fixup.js'
+        );
+        const FIXTURE_DB = path.join(
+            __dirname, '..', 'test-env', 'volumes', 'share', 'cgate', 'tag', 'HOME.db'
+        );
+
+        async function installProject(interfaceType, interfaceAddress) {
+            const initSqlJs = require('sql.js');
+            const dest = projectDbPath(dirs.projectsDir, 'HOME');
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.copyFileSync(FIXTURE_DB, dest);
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dest));
+            db.run('UPDATE interface SET interface_type = ?, interface_address = ? WHERE id = 1',
+                [interfaceType, interfaceAddress]);
+            fs.writeFileSync(dest, Buffer.from(db.export()));
+            db.close();
+            return dest;
+        }
+
+        async function readInterface(dbPath) {
+            const initSqlJs = require('sql.js');
+            const SQL = await initSqlJs();
+            const db = new SQL.Database(fs.readFileSync(dbPath));
+            const rows = db.exec('SELECT interface_type, interface_address FROM interface')[0].values;
+            db.close();
+            return rows;
+        }
+
+        test('repoints a project left naming the port the interface used to have', async () => {
+            const dest = await installProject('serial', 'ttyUSB0');
+            // cont-init's resolver found the interface again on ttyUSB1.
+            fs.writeFileSync(path.join(dirs.dataCgate, 'serial-device'), '/dev/ttyUSB1');
+            runSync({
+                shareTag: dirs.shareTag,
+                dataCgate: dirs.dataCgate,
+                configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+                env: { CGATEWEB_PROJECT_FIXUP_JS: FIXUP_JS }
+            });
+            expect(await readInterface(dest)).toEqual([['serial', 'ttyUSB1']]);
+        });
+
+        test('leaves a CNI interface row alone on this path as well', async () => {
+            // A project can pair a serial PCI on one network with a CNI on
+            // another; rewriting the CNI's ip:port would take a working network
+            // off the air. The guard has to hold from cont-init, not just from
+            // the in-running recovery.
+            const dest = await installProject('ip', '192.168.0.2:10001');
+            fs.writeFileSync(path.join(dirs.dataCgate, 'serial-device'), '/dev/ttyUSB1');
+            runSync({
+                shareTag: dirs.shareTag,
+                dataCgate: dirs.dataCgate,
+                configObject: { cgate_mode: 'managed', cgate_serial_device: '/dev/ttyUSB0' },
+                env: { CGATEWEB_PROJECT_FIXUP_JS: FIXUP_JS }
+            });
+            expect(await readInterface(dest)).toEqual([['ip', '192.168.0.2:10001']]);
+        });
+    });
+
     test('skips the serial fixup when cgate_serial_device is not set', () => {
         const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-sync-bin-'));
         const nodeCalls = path.join(binDir, 'node-calls.txt');

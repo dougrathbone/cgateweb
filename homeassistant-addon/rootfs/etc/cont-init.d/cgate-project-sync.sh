@@ -86,13 +86,21 @@ elif [[ ${SKIPPED} -gt 0 ]]; then
     bashio::log.info "Skipped ${SKIPPED} project(s) - destination newer than share copy"
 fi
 
-# ALPHA (issue #28): point Windows-authored project interfaces at the
-# configured USB-serial PCI. Toolkit projects saved on Windows reference a COMx
-# port that cannot exist on Linux, so C-Gate opens the network with
-# InterfaceState=closed and every TREEXML comes back empty. Rewrite those
-# addresses to the resolved cgate_serial_device port name BEFORE C-Gate loads
-# the project. Runs every boot (idempotent) so a re-synced Windows project is
-# fixed again. Only meaningful in managed mode with the alpha opt-in set.
+# ALPHA (issue #28): point the project's serial interface at the configured
+# USB-serial PCI. Two cases, both leaving the network at InterfaceState=closed
+# with every TREEXML empty:
+#   - a Toolkit project saved on Windows names a COMx port, which cannot exist
+#     on Linux at all; and
+#   - a project written by this add-on names the ttyUSBn it used last boot,
+#     which a PC Interface that renumbered while we were stopped no longer
+#     answers to.
+# Rewrite either to the resolved cgate_serial_device port name BEFORE C-Gate
+# loads the project. --repoint-stale-serial is what covers the second case; the
+# in-running recovery (cgateweb-recover-serial) cannot, because from its point
+# of view the device resolves fine and has not moved since boot. The flag only
+# ever touches a row the project itself calls serial whose address has a serial
+# port's shape, so a CNI's ip:port row is left alone. Runs every boot
+# (idempotent). Only meaningful in managed mode with the alpha opt-in set.
 #
 # Use the path cont-init's resolver already agreed on rather than resolving
 # cgate_serial_device again here: a PC Interface that renumbered still has its
@@ -112,11 +120,12 @@ SERIAL_DEVICE=$(cgateweb_effective_serial_device "${CONFIGURED_SERIAL_DEVICE}")
 # The opt-in is the configured option and nothing else: a resolved-device file
 # left behind by a boot where it *was* set must never re-enable the rewrite for
 # a user who has since cleared the option.
+PROJECT_FIXUP_JS="${CGATEWEB_PROJECT_FIXUP_JS:-/usr/bin/cgateweb-project-serial-fixup.js}"
 if [[ -n "${CONFIGURED_SERIAL_DEVICE}" && "${CONFIGURED_SERIAL_DEVICE}" != "null" ]]; then
     if command -v node >/dev/null 2>&1; then
         shopt -s nullglob
         for db in "${PROJECTS_DIR}"/*/*.db; do
-            if ! OUT=$(node /usr/bin/cgateweb-project-serial-fixup.js "${db}" "${SERIAL_DEVICE}" 2>&1); then
+            if ! OUT=$(node "${PROJECT_FIXUP_JS}" "${db}" "${SERIAL_DEVICE}" --repoint-stale-serial 2>&1); then
                 bashio::log.warning "Project serial fixup failed for ${db}: ${OUT}"
             elif [[ "${OUT}" == *"rewrote project interface"* ]]; then
                 bashio::log.info "${OUT}"
