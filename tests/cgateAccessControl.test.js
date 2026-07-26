@@ -116,8 +116,14 @@ function runAccessControlOn(file, { config = {}, withLogs = false } = {}) {
     }
 
     const stub = withLogs ? BASHIO_STUB_WITH_LOGS : BASHIO_STUB;
+    // `exec 2>&1` when logs are wanted: execFileSync returns only stdout on
+    // success, so without folding stderr in, anything the shell itself writes
+    // there (notably its own raw "Permission denied" for a redirection it could
+    // not open) would be invisible to a test asserting that such messages never
+    // reach the add-on log outside bashio's formatting.
     const script = `
         set -u
+        ${withLogs ? 'exec 2>&1' : ''}
         ${stub}
         source "$CGW_INSTALL_SCRIPT"
         ${EXTERNAL_RULES_STUB}
@@ -378,14 +384,18 @@ describeBash('_cgateweb_write_access_control (stock C-Gate access.txt upgrade sh
 // file, read-only directory, path-is-a-directory) — not a stubbed-out awk —
 // per the explicit instruction not to prove this branch with a fake.
 describeBash('_cgateweb_write_access_control failure handling (IMPORTANT 1)', () => {
-    itUnlessRoot('fails and leaves the original file untouched when it cannot be read', () => {
+    itUnlessRoot('warns but still starts, leaving the original untouched, when it cannot be read', () => {
+        // An install that already has an access file keeps working with the one
+        // it has, so a failed rewrite must not take the add-on down with it: a
+        // cont-init script returning non-zero stops the add-on from starting,
+        // and 1.17.6 did nothing at all when the file already existed.
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-access-'));
         const file = path.join(dir, 'access.txt');
         const original = '# my own rule\nremote 10.0.0.9 monitor\n';
         fs.writeFileSync(file, original);
         fs.chmodSync(file, 0o000);
 
-        const { status } = runAccessControlOn(file);
+        const { status, output } = runAccessControlOn(file, { withLogs: true });
 
         // Restore read permission so the test can verify contents, then clean up.
         fs.chmodSync(file, 0o644);
@@ -393,10 +403,43 @@ describeBash('_cgateweb_write_access_control failure handling (IMPORTANT 1)', ()
         const leftoverTmp = fs.readdirSync(dir).filter((f) => f.includes('.tmp') || f.includes('.awkerr'));
         fs.rmSync(dir, { recursive: true, force: true });
 
-        expect(status).not.toBe(0);
+        expect(status).toBe(0);
         expect(contents).toBe(original);
+        expect(output).toMatch(/WARNING: .*Keeping the existing/);
+        expect(output).not.toMatch(/^ERROR:/m);
         // MINOR 4: no leftover .tmp/.awkerr file after a failed rewrite.
         expect(leftoverTmp).toHaveLength(0);
+    });
+
+    itUnlessRoot('warns but still starts when an existing file sits in an unwritable directory', () => {
+        // The new-in-1.18.0 boot-failure mode: the rewrite runs on every boot,
+        // so a config directory the add-on cannot write turned every managed
+        // install with a working access file into one that would not start.
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-access-'));
+        const configDir = path.join(dir, 'config');
+        fs.mkdirSync(configDir);
+        const file = path.join(configDir, 'access.txt');
+        const original = '# stock\ninterface 127.0.0.1 Program\n';
+        fs.writeFileSync(file, original);
+        fs.chmodSync(configDir, 0o555);
+
+        const { status, output } = runAccessControlOn(file, { withLogs: true });
+
+        fs.chmodSync(configDir, 0o755);
+        const contents = fs.readFileSync(file, 'utf8');
+        const leftover = fs.readdirSync(configDir).filter((f) => f !== 'access.txt');
+        fs.rmSync(dir, { recursive: true, force: true });
+
+        expect(status).toBe(0);
+        expect(contents).toBe(original);
+        // The diagnosis names the real fault: an unwritable directory, not a
+        // file that "could not be parsed".
+        expect(output).toMatch(/is not writable/);
+        expect(output).not.toMatch(/could not be parsed/);
+        // Raw bash redirection errors must not leak past bashio's formatting.
+        expect(output).not.toMatch(/Permission denied/);
+        // The awk stderr capture belongs in TMPDIR, not the target directory.
+        expect(leftover).toEqual([]);
     });
 
     it('fails without writing anything when the access file path is a directory', () => {

@@ -455,6 +455,46 @@ _cgateweb_ipv4_wildcard_meaning() {
 # defensive cleanup for any C-Gate release whose zip omits the stock
 # access.txt, or an install this script mis-wrote before this fix — not the
 # common case.
+#
+# Report a failed rewrite and decide whether it should stop the boot.
+#
+# An install that already has an access control file keeps working with the one
+# it has: C-Gate reads that file, not this function's intentions. A cont-init
+# script returning non-zero stops the add-on from starting altogether, and
+# 1.17.6 did nothing at all when the file already existed — so failing the boot
+# to add a rule to a file that is already granting the add-on access trades a
+# working system for a broken one. Warn and carry on instead, the same
+# deliberate choice the serial path makes when it cannot publish its resolved
+# device. Only a fresh install with no file to fall back on is fatal.
+#
+# The diagnosis is chosen here rather than at each call site because an
+# unwritable directory makes every step fail, and reporting that as "the
+# existing file could not be parsed" sent people examining the contents of a
+# file that was perfectly fine.
+_cgateweb_access_rewrite_failed() {
+    local access_file="$1"
+    local detail="$2"
+    local dir
+    dir=$(dirname "${access_file}")
+
+    local diagnosis="${detail}"
+    if [[ ! -w "${dir}" ]]; then
+        diagnosis="the directory ${dir} is not writable"
+    fi
+
+    if [[ -f "${access_file}" ]]; then
+        bashio::log.warning "Could not update the C-Gate access control file: ${diagnosis}"
+        bashio::log.warning "Keeping the existing ${access_file}; C-Gate will start with the access rules already in it"
+        if [[ -n "${CGATE_EXTERNAL_CLIENTS_CONFIGURED:-}" ]]; then
+            bashio::log.warning "Any cgate_external_clients rules you configured are NOT active until this file can be written"
+        fi
+        return 0
+    fi
+
+    bashio::log.error "Failed to write the C-Gate access control file ${access_file}: ${diagnosis}"
+    return 1
+}
+
 _cgateweb_write_access_control() {
     local access_file="$1"
     local dir
@@ -541,6 +581,9 @@ _cgateweb_write_access_control() {
 
     if [[ ${#rules[@]} -gt 2 ]]; then
         bashio::log.warning "C-Gate has no authentication on its command ports; only publish them if you need external access"
+        # Deliberately not `local`: _cgateweb_access_rewrite_failed reads it to
+        # warn that configured external rules are not active if the write fails.
+        CGATE_EXTERNAL_CLIENTS_CONFIGURED=1
     fi
 
     # Cleaned up on every return from this function (success or failure) via
@@ -552,14 +595,36 @@ _cgateweb_write_access_control() {
     # variables it references no longer exist. Self-clearing means it only
     # ever fires once, for this function's own return.
     local tmp_file="${access_file}.tmp"
-    local awk_err_file="${access_file}.awkerr.$$"
-    trap 'rm -f "${tmp_file}" "${awk_err_file}"; trap - RETURN' RETURN
+    # The awk stderr capture lives in the temp dir, not beside the access file.
+    # Inside the target directory it turned an unwritable config directory into
+    # a phantom parse failure: the shell could not create the redirection
+    # target, reported its own raw "Permission denied" outside bashio's log
+    # formatting, and failed the command substitution before awk ever ran — so
+    # the diagnosis blamed the contents of a file that had not been read. Same
+    # reasoning, and the same TMPDIR convention, as the resolver's err_file.
+    local awk_err_file=""
+    if ! awk_err_file=$(mktemp "${TMPDIR:-/tmp}/cgateweb-access-awkerr.XXXXXX" 2>/dev/null); then
+        awk_err_file=""
+        bashio::log.warning "Could not create a temporary file for access-control diagnostics; continuing without them"
+    fi
+    trap 'rm -f "${tmp_file}"; [[ -z "${awk_err_file}" ]] || rm -f "${awk_err_file}"; trap - RETURN' RETURN
+
+    # Stop here when the directory cannot be written: every step below would
+    # fail, and the shell reports a failed redirection itself, in raw bash form,
+    # outside bashio. Checked after the cgate_external_clients validation above
+    # so a typo in that option is still reported loudly rather than being
+    # skipped along with the write. mkdir -p does not catch this — it succeeds
+    # for a directory that already exists, whatever its permissions.
+    if [[ ! -w "${dir}" ]]; then
+        _cgateweb_access_rewrite_failed "${access_file}" "the directory ${dir} is not writable"
+        return $?
+    fi
 
     local preserved=""
     if [[ -f "${access_file}" ]]; then
         if [[ ! -r "${access_file}" ]]; then
-            bashio::log.error "Cannot read existing C-Gate access control file: ${access_file}"
-            return 1
+            _cgateweb_access_rewrite_failed "${access_file}" "the existing file cannot be read"
+            return $?
         fi
 
         # Keep everything outside our markers; drop the old block and any
@@ -594,11 +659,11 @@ _cgateweb_write_access_control() {
                     print "orphaned begin marker" > "/dev/stderr"
                 }
             }
-        ' "${access_file}" 2>"${awk_err_file}"); then
-            bashio::log.error "Failed to parse existing C-Gate access control file: ${access_file}"
-            return 1
+        ' "${access_file}" 2>"${awk_err_file:-/dev/null}"); then
+            _cgateweb_access_rewrite_failed "${access_file}" "the existing file could not be parsed"
+            return $?
         fi
-        if [[ -s "${awk_err_file}" ]]; then
+        if [[ -n "${awk_err_file}" && -s "${awk_err_file}" ]]; then
             bashio::log.warning "C-Gate access control file ${access_file} had an orphaned managed-block begin marker with no matching end — preserving the content after it instead of discarding it"
         fi
     else
@@ -606,20 +671,36 @@ _cgateweb_write_access_control() {
 # Lines outside the cgateweb block below are preserved across restarts."
     fi
 
-    if ! {
+    # Two things about this redirection, both verified against bash 5.3 as a
+    # non-root user:
+    #
+    #   - `2>/dev/null` precedes the stdout redirection deliberately.
+    #     Redirections are applied left to right, so stderr is already discarded
+    #     by the time bash tries to create tmp_file, which keeps the shell's own
+    #     raw "Permission denied" out of the add-on log. The diagnosis comes from
+    #     _cgateweb_access_rewrite_failed instead.
+    #   - the status is captured with `|| write_status=$?` rather than tested by
+    #     wrapping the group in `if ! ...`. A redirection that fails to open its
+    #     target does set a non-zero status for the group, but that status is
+    #     swallowed when the group is the condition of an `if !`, so the guard
+    #     this replaced could never fire; the failure only surfaced at the `mv`
+    #     below, one step later and with a misleading message.
+    local write_status=0
+    {
         printf '%s\n' "${preserved}"
         printf '%s\n' "${CGATEWEB_ACCESS_BEGIN}"
         local rule
         for rule in "${rules[@]}"; do printf '%s\n' "${rule}"; done
         printf '%s\n' "${CGATEWEB_ACCESS_END}"
-    } > "${tmp_file}"; then
-        bashio::log.error "Failed to write C-Gate access control file: ${tmp_file}"
-        return 1
+    } 2>/dev/null > "${tmp_file}" || write_status=$?
+    if [[ ${write_status} -ne 0 ]]; then
+        _cgateweb_access_rewrite_failed "${access_file}" "the temporary file ${tmp_file} could not be written"
+        return $?
     fi
 
-    if ! mv "${tmp_file}" "${access_file}"; then
-        bashio::log.error "Failed to install C-Gate access control file: ${access_file}"
-        return 1
+    if ! mv "${tmp_file}" "${access_file}" 2>/dev/null; then
+        _cgateweb_access_rewrite_failed "${access_file}" "the new file could not be moved into place"
+        return $?
     fi
 
     bashio::log.info "Wrote C-Gate access control (${#rules[@]} rule(s))"
