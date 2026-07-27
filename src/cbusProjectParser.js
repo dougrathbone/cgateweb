@@ -10,6 +10,11 @@ const { createLogger } = require('./logger');
 // otherwise exhaust process memory before xml2js parsing fails.
 const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024; // 100MB
 
+// Group address 255 is a terminator/placeholder row Toolkit writes into every
+// application (tagged "<Unused>") — never a real group. Lighting groups are
+// addresses 0-254 (cgate manual). See GitHub issue #41.
+const CBUS_GROUP_TERMINATOR = '255';
+
 // Defence-in-depth: reject ZIP entry names containing path-traversal or
 // absolute paths. The parser does not write extracted files to disk, but
 // guarding here means a future change can't accidentally introduce one.
@@ -209,6 +214,7 @@ class CbusProjectParser {
                 JOIN tagged_entity a_te ON a.tagged_entity_id = a_te.id
                 JOIN tagged_entity n_te ON n.tagged_entity_id = n_te.id
                 WHERE g_te.tag_name IS NOT NULL AND g_te.address IS NOT NULL
+                    AND g_te.address <> '${CBUS_GROUP_TERMINATOR}'
             `);
 
             const labels = {};
@@ -285,6 +291,7 @@ class CbusProjectParser {
                 for (const group of groups) {
                     const groupAddr = this._getAddress(group);
                     if (!groupAddr) continue;
+                    if (groupAddr === CBUS_GROUP_TERMINATOR) continue;
                     groupCount++;
 
                     const tagName = this._getTagName(group);
@@ -397,3 +404,4 @@ module.exports = CbusProjectParser;
 // Attached as a static for tests; the cast keeps @ts-check from treating the
 // property assignment as a second module export next to the assignment above.
 /** @type {any} */ (module.exports)._isSafeZipEntryName = _isSafeZipEntryName;
+/** @type {any} */ (module.exports).CBUS_GROUP_TERMINATOR = CBUS_GROUP_TERMINATOR;

@@ -176,6 +176,15 @@ class LabelRoutes {
                 finalLabels = result.labels;
             }
 
+            // Drop any group-255 terminator labels (Toolkit "<Unused>"
+            // placeholders) that earlier imports saved into the label file —
+            // the parser no longer emits them. See GitHub issue #41.
+            for (const key of Object.keys(finalLabels)) {
+                if (key.split('/')[2] === CbusProjectParser.CBUS_GROUP_TERMINATOR) {
+                    delete finalLabels[key];
+                }
+            }
+
             this.labelLoader.save({
                 version: 1,
                 source: filename,

@@ -1222,6 +1222,27 @@ describe('WebServer', () => {
             expect(res.body.total).toBeGreaterThanOrEqual(1);
         });
 
+        it('strips previously-saved group-255 terminator labels on import (GitHub issue #41)', async () => {
+            // Simulate a label file polluted by an earlier import of a Toolkit
+            // project DB, which writes a '<Unused>' group-255 row per app.
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                source: 'test',
+                labels: { '254/56/10': 'Kitchen', '254/56/255': '<Unused>' }
+            }));
+            labelLoader.load();
+
+            const res = await request('POST', '/api/labels/import?merge=true', Buffer.from('<xml>fake</xml>'),
+                { 'Content-Type': 'application/octet-stream' });
+
+            expect(res.status).toBe(200);
+            const saved = labelLoader.getLabelsObject();
+            expect(saved['254/56/255']).toBeUndefined();
+            expect(saved['254/56/10']).toBe('Kitchen');
+            expect(saved['254/56/1']).toBe('Imported Light');
+            expect(Object.keys(saved).some((k) => k.endsWith('/255'))).toBe(false);
+        });
+
         it('returns 400 when parse throws', async () => {
             parseSpy.mockRejectedValueOnce(new Error('bad file'));
             const res = await new Promise((resolve, reject) => {

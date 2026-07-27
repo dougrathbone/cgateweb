@@ -122,6 +122,22 @@ describe('CbusProjectParser', () => {
             expect(result.stats.labelCount).toBe(1);
         });
 
+        it('should skip group address 255 (Toolkit terminator placeholder, GitHub issue #41)', async () => {
+            const xml = `<?xml version="1.0"?>
+                <Network Address="254">
+                    <Application Address="56" TagName="Lighting">
+                        <Group Address="1" TagName="Named"/>
+                        <Group Address="255" TagName="&lt;Unused&gt;"/>
+                    </Application>
+                </Network>`;
+
+            const result = await parser.parseXML(xml);
+
+            expect(result.labels).toEqual({ '254/56/1': 'Named' });
+            expect(result.stats.groupCount).toBe(1);
+            expect(result.stats.labelCount).toBe(1);
+        });
+
         it('should parse Toolkit export with child-element Address, TagName, and DLT tags (real-world CLIPSAL.xml shape)', async () => {
             // Mirrors the structure of a real user-submitted CLIPSAL.xml (GitHub issue #3):
             // Address and TagName are child elements (not attributes) and groups may include
@@ -333,10 +349,11 @@ describe('CbusProjectParser — SQLite project DB (C-Bus Toolkit 1.17.x)', () =>
             CREATE TABLE _group (id INTEGER PRIMARY KEY, tagged_entity_id INTEGER, application_id INTEGER);
             INSERT INTO tagged_entity VALUES
                 (1,'Local','254'),(2,'Lighting','56'),(3,'Garage Door Lamps','31'),
-                (4,'Orange Wall','1'),(5,'Cooling','172'),(6,'Bedroom AC','1');
+                (4,'Orange Wall','1'),(5,'Cooling','172'),(6,'Bedroom AC','1'),
+                (7,'<Unused>','255');
             INSERT INTO network VALUES (1,1);
             INSERT INTO application VALUES (1,2,1),(2,5,1);
-            INSERT INTO _group VALUES (1,3,1),(2,4,1),(3,6,2);
+            INSERT INTO _group VALUES (1,3,1),(2,4,1),(3,6,2),(4,7,1);
         `);
         dbBuffer = Buffer.from(db.export());
         db.close();
@@ -368,5 +385,15 @@ describe('CbusProjectParser — SQLite project DB (C-Bus Toolkit 1.17.x)', () =>
         const parser = new CbusProjectParser();
         const result = await parser.parse(dbBuffer, 'x.db', { network: '999' });
         expect(result.labels).toEqual({});
+    });
+
+    it('skips the group-255 terminator row Toolkit writes per application (GitHub issue #41)', async () => {
+        // The fixture includes a real-world Toolkit placeholder row:
+        // group address 255 tagged '<Unused>' on the Lighting application.
+        const parser = new CbusProjectParser();
+        const result = await parser.parse(dbBuffer, 'THEGAFF.db');
+        expect(Object.keys(result.labels).some((k) => k.endsWith('/255'))).toBe(false);
+        expect(result.stats.groupCount).toBe(3);
+        expect(result.stats.labelCount).toBe(3);
     });
 });
