@@ -5,6 +5,10 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-dougrathbone-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/dougrathbone)
+
+If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
+
 ## [1.19.0] - 2026-07-27
 
 ### Fixed
