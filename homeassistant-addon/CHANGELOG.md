@@ -5,6 +5,12 @@ All notable changes to the C-Gate Web Bridge Home Assistant add-on will be docum
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-07-27
+
+### Fixed
+
+- **Device labels for group 255 are no longer imported from C-Bus Toolkit projects.** Toolkit writes a placeholder group at address 255, tagged "\<Unused\>", into every application in the project database — 255 is a terminator, not a real group, and the C-Gate manual defines lighting groups as addresses 0 to 254. Importing a .cbz or project .db used to save these placeholders as device labels, which then sat in the Device Labels screen and came back on every re-import (#41). The importer now skips group 255 in both the SQLite and XML project formats, and any 255 labels saved by an earlier import are removed the next time labels are imported.
+
 ## [1.18.0] - 2026-07-26
 
 ### Added
