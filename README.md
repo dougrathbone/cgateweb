@@ -234,6 +234,8 @@ Unit types cgateweb does not recognise are **left alone** — the group keeps wh
 
 Precedence is covered under *Classification precedence* above: manual overrides, label prefixes and cover names all outrank the unit type. Setting `ha_discovery_auto_type: false` disables unit-type classification along with the name heuristics.
 
+One known wrinkle: if you enable this, a group becomes a `binary_sensor`, and you then turn the setting off *and* restart the add-on, the read-only entity can linger next to the restored light. The record of which sensor configs were published is held in memory only, so a restart loses track of the one to clear. Publish an empty payload to `homeassistant/binary_sensor/cgateweb_<network>_<app>_<group>/config` to remove it. Turning the setting off without a restart in between is unaffected.
+
 With this setting enabled, `light-onoff` and `binary_sensor` also become valid `type_overrides` values, for forcing those shapes on a group whose hardware cgateweb cannot see or classify. (An override of `light` or `light-dimmable` is always valid and pins a group to the default dimmable light, which is how you exempt one group from all of the automatic rules.)
 
 #### Source unit per group

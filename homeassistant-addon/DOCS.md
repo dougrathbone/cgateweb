@@ -378,6 +378,14 @@ Unit types the add-on does not recognise are **left alone**: the group keeps wha
 
 Setting `ha_discovery_auto_type: false` disables this along with the cover name heuristics. The setting works in both `managed` and `remote` mode.
 
+**Known limitation — a leftover binary sensor after turning the setting back off.** If you enable this, a group becomes a `binary_sensor`, and you then disable it again *and* restart the add-on, the read-only entity can persist alongside the restored light. Turning the setting off republishes the light config, but the record of which sensor configs were published lives only in memory, so a restart loses track of the one to retract. Delete the retained discovery topic to clear it:
+
+```
+homeassistant/binary_sensor/cgateweb_<network>_<app>_<group>/config
+```
+
+Publishing an empty payload to that topic removes the entity. Disabling the setting without restarting in between is unaffected.
+
 ### Letting external clients reach managed C-Gate
 
 In managed mode C-Gate runs inside the add-on container, reachable only from the add-on itself. C-Gate is a multi-client server, so tools such as **C-Bus Toolkit** can connect to that same instance over your LAN — which is what you need when the PC Interface is physically attached to the Home Assistant host. Use `cgate_external_clients` to list the addresses allowed in, each with an access level:
