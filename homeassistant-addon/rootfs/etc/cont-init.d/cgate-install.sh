@@ -14,7 +14,15 @@ CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_
 # containing cgate-3.3.2_1855.zip). Downloads from the default URL are verified
 # against this; a user-set cgate_download_sha256 overrides it — the escape
 # hatch if Schneider re-releases the zip and this pin goes stale.
-CGATEWEB_DEFAULT_DOWNLOAD_SHA256="b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c"
+#
+# Re-pinned 2026-07-27: Schneider repackaged the outer zip on 2026-07-24, which
+# broke every new managed-mode install because the download no longer matched.
+# The inner payload is byte-for-byte the same C-Gate — still cgate-3.3.2_1855.zip
+# — and the bundled release-notes PDF came back named "C-Gate 3 Release Notes
+# (3).pdf", a browser download-collision suffix, so this was a manual re-zip
+# rather than a new C-Gate build. Expect it to recur: the escape hatch above is
+# the supported answer for users, and this constant is the fix for everyone else.
+CGATEWEB_DEFAULT_DOWNLOAD_SHA256="1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
 
 # The identity-aware serial resolver (issue #28) and the file it publishes its
 # answer to. Both are overridable so the unit tests can run the repo copy of

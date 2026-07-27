@@ -233,7 +233,7 @@ jobs:
           # requires the zip's sha256 (computed from the Schneider download).
           - version: "3.3.1"
             url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
-            sha256: "193e70a0e85fb00259190e284cabbf2576b269dfec9579064b0c5ad9188a8c1f"
+            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
           # 3.3.2 is the install script's built-in default URL; the empty
           # sha256 exercises the script's built-in pinned checksum.
           - version: "3.3.2"

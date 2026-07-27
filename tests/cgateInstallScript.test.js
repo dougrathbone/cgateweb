@@ -36,7 +36,7 @@ const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_L
 // sha256 of the zip the default URL serves, pinned in cgate-install.sh as
 // CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
 // script's constant fails the unit tests.
-const DEFAULT_DOWNLOAD_SHA256 = 'b6a3f8b8e722b239c0974036ab316d8ec7e1c74ad8d9976a08dbcdec9a43948c';
+const DEFAULT_DOWNLOAD_SHA256 = '1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d';
 
 function callHelper(helperName, configObject) {
     const env = {
