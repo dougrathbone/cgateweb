@@ -86,15 +86,24 @@ location set by C-Gate's `project.default.dir`). If that project is missing,
 requests like `tree 254` return `401 Bad object or device ID` and Home
 Assistant Discovery cannot find any devices.
 
+**Only a `.db` file is loaded.** A `.cbz` or `.xml` placed in
+`/share/cgate/tag/` will **not** be synced or loaded into C-Gate — the sync
+step only ever looks for `<PROJECTNAME>.db`, and anything else is left where
+it is with a startup log warning naming it.
+
 The supported workflow for managed mode is:
 
 1. Build your project in C-Bus Toolkit on a Windows machine, or copy it from an
    existing C-Gate install. The file you need is `<PROJECTNAME>.db` from
    C-Gate's `tag/` directory (where `<PROJECTNAME>` matches the `cgate_project`
-   add-on option, case-sensitive).
+   add-on option, case-sensitive) — **not** a Toolkit `.cbz`/XML export.
 2. Place the `.db` file in `/share/cgate/tag/` on your Home Assistant instance
    (accessible via the Samba, SSH, or File Editor add-ons). Create the
    directory if it does not exist.
+   > `/share` here is the **top-level** Home Assistant share. It is not the
+   > same as a `share` folder you create inside `/config` (what the File
+   > Editor add-on shows as `/homeassistant`) — files placed there are
+   > invisible to this add-on.
 3. Restart the add-on. On startup it copies each `/share/cgate/tag/<NAME>.db`
    into `Projects/<NAME>/<NAME>.db` where C-Gate expects it, and sets
    `project.start=<cgate_project>` so C-Gate loads and starts the project

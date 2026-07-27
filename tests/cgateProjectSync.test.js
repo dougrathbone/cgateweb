@@ -68,10 +68,16 @@ function projectDbPath(projectsDir, name) {
 }
 
 function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} }) {
+    // Root of the tmp tree this test's dirs live under (dataCgate is
+    // <root>/data/cgate), used to build a guaranteed-nonexistent default for
+    // the /config/share/cgate probe so existing tests never see a false
+    // positive from a real /config on the host.
+    const tmpRoot = path.dirname(path.dirname(dataCgate));
     const env = {
         ...process.env,
         CGATEWEB_SHARE_TAG_DIR: shareTag,
         CGATEWEB_DATA_CGATE_DIR: dataCgate,
+        CGATEWEB_CONFIG_SHARE_CGATE_DIR: path.join(tmpRoot, 'no-such-config-share-cgate'),
         // Pass the script path via the environment rather than interpolating it
         // into the bash -c command text, so the absolute path is never part of
         // the executed command string.
@@ -154,6 +160,73 @@ describeBash('cgate-project-sync.sh', () => {
         });
         expect(fs.existsSync(path.join(dirs.projectsDir, 'README'))).toBe(false);
         expect(fs.existsSync(path.join(dirs.projectsDir, 'PROJECT'))).toBe(false);
+    });
+
+    test('names unusable files found when no .db is present (issue #28 follow-up)', () => {
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.cbz'), 'zip-bytes');
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.xml'), '<project/>');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(out).toMatch(/HOME\.cbz/);
+        expect(out).toMatch(/HOME\.xml/);
+        expect(out).toMatch(/label/i);
+        expect(out).toMatch(/do not install a project/i);
+        expect(out).not.toMatch(/No C-Bus project database found/);
+        expect(fs.existsSync(dirs.projectsDir)).toBe(false);
+    });
+
+    test('mentions extracting when the unusable file is a .zip', () => {
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.zip'), 'zip-bytes');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(out).toMatch(/HOME\.zip/);
+        expect(out).toMatch(/extract/i);
+    });
+
+    test('treats a "<name>.db.txt" near-miss as unusable, not as a project db', () => {
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db.txt'), 'not-really-a-db');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(fs.existsSync(projectDbPath(dirs.projectsDir, 'HOME.db'))).toBe(false);
+        expect(out).toMatch(/HOME\.db\.txt/);
+    });
+
+    test('does not warn about unusable files when a real .db is also present', () => {
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.db'), 'fake-db');
+        fs.writeFileSync(path.join(dirs.shareTag, 'HOME.cbz'), 'zip-bytes');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' }
+        });
+        expect(fs.existsSync(projectDbPath(dirs.projectsDir, 'HOME'))).toBe(true);
+        expect(out).not.toMatch(/cannot be loaded/i);
+    });
+
+    test('warns about the /config vs top-level /share mixup when files were placed via File Editor', () => {
+        fs.rmSync(dirs.root, { recursive: true, force: true });
+        dirs = makeTmpDirs({ withShare: false, withData: true });
+        const wrongConfigShareCgateDir = path.join(dirs.root, 'config', 'share', 'cgate');
+        fs.mkdirSync(path.join(wrongConfigShareCgateDir, 'tag'), { recursive: true });
+        fs.writeFileSync(path.join(wrongConfigShareCgateDir, 'tag', 'HOME.db'), 'fake-db');
+        const out = runSync({
+            shareTag: dirs.shareTag,
+            dataCgate: dirs.dataCgate,
+            configObject: { cgate_mode: 'managed' },
+            env: { CGATEWEB_CONFIG_SHARE_CGATE_DIR: wrongConfigShareCgateDir }
+        });
+        expect(out).toMatch(/\/config\/share/);
+        expect(out).toMatch(/not the same as/i);
+        expect(out).not.toMatch(/No C-Bus project database found/);
     });
 
     test('is a no-op when the share tag dir does not exist', () => {
