@@ -721,6 +721,18 @@ if [[ "${CGATEWEB_INSTALL_SOURCE_ONLY:-0}" == "1" ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
+# Wait for the Supervisor API before the first bashio::config read: bashio
+# dies hard when the API is not yet listening, which would abort the whole
+# cont-init stage (test-env CI flake, "Failed to get addon config from
+# Supervisor API"). Sourced here, after the source-only guard, so unit tests
+# never touch the add-on's real install path.
+# shellcheck disable=SC1090
+source "${CGATEWEB_SUPERVISOR_WAIT_LIB:-/usr/lib/cgateweb/supervisor-wait.sh}"
+if ! cgateweb_wait_for_supervisor; then
+    bashio::log.error "Supervisor API did not respond within ${CGATEWEB_SUPERVISOR_WAIT_ATTEMPTS:-60}s — cannot read add-on config"
+    exit 1
+fi
+
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
 
 # ALPHA serial PCI check (issue #28): validate cgate_serial_device in BOTH

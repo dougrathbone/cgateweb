@@ -31,6 +31,19 @@ const SERIAL_DEVICE_LIB = path.join(
     'serial-device.sh'
 );
 
+// Same for the shared supervisor-wait helper the script sources before its
+// first bashio::config read.
+const SUPERVISOR_WAIT_LIB = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'lib',
+    'cgateweb',
+    'supervisor-wait.sh'
+);
+
 // Stub bashio: config keys come from env vars CGW_TEST_<key>. Warnings are
 // echoed so tests can assert on them (info/error stay silent).
 const BASHIO_STUB = `
@@ -85,6 +98,8 @@ function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} })
         // Point the script at the repo copy of the shared serial-device
         // helper it sources, rather than the add-on's real install path.
         CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+        // Same for the shared supervisor-wait helper.
+        CGATEWEB_SUPERVISOR_WAIT_LIB: SUPERVISOR_WAIT_LIB,
         // Default the resolved-device file to a path inside the test's own
         // tree so a test never reads the host's real /run/cgateweb copy; tests
         // that exercise the resolved path create it explicitly.

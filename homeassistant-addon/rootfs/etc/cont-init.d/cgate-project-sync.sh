@@ -26,6 +26,19 @@ PROJECTS_DIR="${DATA_CGATE_DIR}/Projects"
 CONFIG_SHARE_CGATE_DIR="${CGATEWEB_CONFIG_SHARE_CGATE_DIR:-/config/share/cgate}"
 CONFIG_SHARE_TAG_DIR="${CONFIG_SHARE_CGATE_DIR}/tag"
 
+# Wait for the Supervisor API before the first bashio::config read: bashio
+# dies hard when the API is not yet listening, which under set -e would abort
+# this cont-init script and take the add-on down with it (test-env CI flake,
+# "Failed to get addon config from Supervisor API"). The path is a variable
+# so tests can point at the repo copy (SC1090, same pattern as
+# CGATEWEB_SERIAL_DEVICE_LIB).
+# shellcheck disable=SC1090
+source "${CGATEWEB_SUPERVISOR_WAIT_LIB:-/usr/lib/cgateweb/supervisor-wait.sh}"
+if ! cgateweb_wait_for_supervisor; then
+    bashio::log.error "Supervisor API did not respond within ${CGATEWEB_SUPERVISOR_WAIT_ATTEMPTS:-60}s — cannot read add-on config"
+    exit 1
+fi
+
 CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
 if [[ "${CGATE_MODE}" != "managed" ]]; then
     exit 0

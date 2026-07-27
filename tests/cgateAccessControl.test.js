@@ -53,6 +53,11 @@ const SERIAL_DEVICE_LIB = path.join(
     __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'lib', 'cgateweb', 'serial-device.sh'
 );
 
+// Same for the shared supervisor-wait helper the script's main flow sources.
+const SUPERVISOR_WAIT_LIB = path.join(
+    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'lib', 'cgateweb', 'supervisor-wait.sh'
+);
+
 const FIXTURE_STOCK_ACCESS = fs.readFileSync(
     path.join(__dirname, 'fixtures', 'access-stock-cgate-3.3.2.txt'), 'utf8'
 );
@@ -558,6 +563,7 @@ describeBash('cgate-install.sh call site (MINOR 2)', () => {
             ...process.env,
             CGW_INSTALL_SCRIPT: SCRIPT,
             CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+            CGATEWEB_SUPERVISOR_WAIT_LIB: SUPERVISOR_WAIT_LIB,
             CGATE_DIR: cgateDir,
             CGW_TEST_cgate_mode: 'managed'
         };
