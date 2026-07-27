@@ -702,8 +702,9 @@ These settings control the pool of TCP connections used to send commands to C-Ga
 ### Managed mode: C-Gate won't install
 1. Check add-on logs for download errors
 2. Verify internet connectivity from the add-on
-3. Try `upload` mode and place the zip file in `/share/cgate/` manually
-4. Ensure the C-Gate zip file is a valid Linux package
+3. If the download fails verification or the URL no longer works: Clipsal/Schneider occasionally change the download URL or repackage the zip, which breaks the URL/checksum pinned in the add-on (this happened in July 2026). Check the add-on's [GitHub releases](https://github.com/dougrathbone/cgateweb/releases) for an update re-pinning the new file, or install manually — see "Uploading C-Gate manually" above: download the C-Gate 3 Linux package from the Clipsal downloads page yourself, set `cgate_install_source` to `upload`, place the zip in `/share/cgate/`, and restart
+4. Note that newer C-Gate versions may require a Schneider login on the download portal, so a direct `cgate_download_url` pointing at the portal can serve a login page instead of the zip — download in a browser and use `upload` mode instead
+5. Ensure the C-Gate zip file is a valid Linux package
 
 ### Performance issues
 1. Increase `message_interval` to reduce C-Gate command frequency

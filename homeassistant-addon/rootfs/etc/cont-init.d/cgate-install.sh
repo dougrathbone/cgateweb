@@ -84,6 +84,25 @@ _cgateweb_custom_url_without_sha256() {
     if [[ "${url}" != "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" && -z "${sha}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# Standard "what to do now" block for every C-Gate download failure. The most
+# common external cause is Clipsal/Schneider changing the download URL or
+# repackaging the zip (they did on 2026-07-24, breaking every fresh install
+# until the pin was updated), so say that plainly and hand the user the two
+# working paths: fetch the zip themselves and use upload mode, or point the
+# add-on at a URL+checksum they control.
+_cgateweb_log_download_guidance() {
+    bashio::log.error "One common cause is Clipsal/Schneider changing the download URL or repackaging the zip,"
+    bashio::log.error "so the URL or checksum pinned in this add-on no longer matches what is served."
+    bashio::log.error "How to get C-Gate installed manually:"
+    bashio::log.error "  1. Download the C-Gate 3 Linux package from the Clipsal downloads page:"
+    bashio::log.error "     https://updates.clipsal.com/ClipsalSoftwareDownload/mainsite/cis/technical/downloads/index.html"
+    bashio::log.error "  2. Set cgate_install_source to 'upload' in the add-on configuration."
+    bashio::log.error "  3. Place the zip in /share/cgate/ on your Home Assistant host (via the Samba, SSH or File Editor add-on)."
+    bashio::log.error "  4. Restart the add-on — it will install from that zip."
+    bashio::log.error "Alternative: set cgate_download_url and cgate_download_sha256 to a mirror you control."
+    bashio::log.error "Check this add-on's GitHub releases/issues for an update re-pinning the new official file."
+}
+
 # Inspect a zip's central directory and reject any entry name that contains
 # path-traversal (..) or starts with an absolute path. Modern unzip ignores
 # these by default, but explicit pre-extract validation is defence-in-depth
@@ -836,8 +855,8 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     # a fresh attempt is the cheapest fix. Size + zip-magic logging makes a bad
     # download obvious in the log even when it ultimately fails.
     for attempt in 1 2 3; do
-        HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err" || true)
-        CURL_EXIT=$?
+        CURL_EXIT=0
+        HTTP_CODE=$(curl -fSL --max-time 600 --connect-timeout 30 -w "%{http_code}" -o "${TEMP_ZIP}" "${DOWNLOAD_URL}" 2>"${WORK_DIR}/curl.err") || CURL_EXIT=$?
 
         if [[ ${CURL_EXIT} -ne 0 ]]; then
             CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
@@ -845,11 +864,9 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
             bashio::log.error "URL: ${DOWNLOAD_URL}"
             bashio::log.error "Error: ${CURL_ERR}"
             if [[ "${HTTP_CODE}" == "404" ]]; then
-                bashio::log.error "The download URL returned 404. Schneider Electric may have updated the download location."
-                bashio::log.error "Visit https://www.se.com and search for 'C-Gate 3 Linux' to find the current URL."
-                bashio::log.error "Then set cgate_download_url in the addon configuration."
+                bashio::log.error "The download URL returned 404 — the file is no longer at that location."
             fi
-            bashio::log.error "Alternative: set cgate_install_source to 'upload' and place the C-Gate zip in /share/cgate/"
+            _cgateweb_log_download_guidance
             exit 1
         fi
 
@@ -888,16 +905,19 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
 
     if [[ ${DOWNLOAD_OK} -ne 1 ]]; then
         bashio::log.error "C-Gate download failed verification after 3 attempts"
-        if [[ -n "${DOWNLOAD_SHA256}" ]]; then
+        if [[ -z "${ACTUAL_SHA256}" ]]; then
+            # No attempt produced a real zip: the URL served a web page.
+            bashio::log.error "The URL served a web page, not the C-Gate package. If this URL came from Schneider's"
+            bashio::log.error "portal, note that newer C-Gate versions require a Schneider login — download it in"
+            bashio::log.error "a browser instead of pointing the add-on at the portal URL."
+        else
             bashio::log.error "Expected: ${EXPECTED_SHA256}"
-            bashio::log.error "Actual:   ${ACTUAL_SHA256:-unknown} (${DOWNLOAD_SIZE} bytes)"
+            bashio::log.error "Actual:   ${ACTUAL_SHA256} (${DOWNLOAD_SIZE} bytes)"
+            bashio::log.error "Either the download path is corrupting the file (flaky network, proxy or CDN block page),"
+            bashio::log.error "or Clipsal/Schneider repackaged the zip — they did on 2026-07-24, breaking fresh"
+            bashio::log.error "installs until this add-on's pinned checksum was updated."
         fi
-        bashio::log.error "The pinned checksum matches the official Schneider file, so repeated mismatches mean the"
-        bashio::log.error "download path is corrupting the file (flaky network, proxy or CDN block page) — or,"
-        bashio::log.error "less likely, the vendor re-released the zip."
-        bashio::log.error "Fix: download the zip on another machine (${DOWNLOAD_URL}),"
-        bashio::log.error "set cgate_install_source to 'upload', and place the zip in /share/cgate/."
-        bashio::log.error "Or, to use a different file intentionally, set cgate_download_sha256 to its checksum."
+        _cgateweb_log_download_guidance
         exit 1
     fi
 
@@ -905,6 +925,7 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     DOWNLOAD_SIZE=$(stat -c%s "${TEMP_ZIP}" 2>/dev/null || stat -f%z "${TEMP_ZIP}" 2>/dev/null || echo 0)
     if [[ ${DOWNLOAD_SIZE} -gt 524288000 ]]; then
         bashio::log.error "Downloaded file is too large (${DOWNLOAD_SIZE} bytes, max 500MB)"
+        _cgateweb_log_download_guidance
         exit 1
     fi
 

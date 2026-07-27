@@ -32,6 +32,18 @@ const SERIAL_DEVICE_LIB = path.join(
     'serial-device.sh'
 );
 
+// Same for the shared supervisor-wait helper the script's main flow sources.
+const SUPERVISOR_WAIT_LIB = path.join(
+    __dirname,
+    '..',
+    'homeassistant-addon',
+    'rootfs',
+    'usr',
+    'lib',
+    'cgateweb',
+    'supervisor-wait.sh'
+);
+
 const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2';
 // sha256 of the zip the default URL serves, pinned in cgate-install.sh as
 // CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
@@ -734,5 +746,107 @@ exit 0
             expect(r.output).toMatch(/ERROR: Could not determine which serial device to use \(resolver exited 2\)/);
             expect(r.output).not.toMatch(/Serial device not found/);
         });
+    });
+});
+
+// Download-failure guidance (main flow). Runs the real script body in managed
+// download mode against a stubbed curl, so the failure exits are exercised
+// end to end: each must print the standard "Clipsal may have changed the URL,
+// download it yourself and use upload mode" guidance (the 2026-07-24
+// Schneider repackage broke fresh installs and users had no useful pointer).
+describeBash('cgate-install.sh download failure guidance (main flow)', () => {
+    const GUIDANCE = [
+        /Clipsal\/Schneider changing the download URL or repackaging the zip/,
+        /updates\.clipsal\.com\/ClipsalSoftwareDownload/,
+        /cgate_install_source to 'upload'/,
+        /\/share\/cgate\//
+    ];
+
+    // Run the script body with a stubbed curl. `curlBody` is the bash body of
+    // the stub: it receives the original arguments and must print the fake
+    // HTTP status code on stdout (the script's -w "%{http_code}" capture).
+    // Returns { status, output, attempts } — attempts is how often curl ran.
+    function runDownloadFlow(curlBody) {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-download-fail-'));
+        const cgateDir = path.join(dir, 'cgate'); // no cgate.jar -> NEED_INSTALL=1
+        const counterFile = path.join(dir, 'curl-count');
+        const env = {
+            ...process.env,
+            CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+            CGATEWEB_SUPERVISOR_WAIT_LIB: SUPERVISOR_WAIT_LIB,
+            CGATE_DIR: cgateDir,
+            CGW_CURL_COUNTER: counterFile,
+            CGW_TEST_cgate_mode: 'managed',
+            CGW_TEST_cgate_install_source: 'download'
+        };
+        const script = `
+            set -u
+            ${BASHIO_STUB_WITH_LOGS}
+            sleep() { :; }
+            # macOS has shasum but not coreutils sha256sum; the add-on image
+            # and CI have sha256sum. Shim it so the production script runs
+            # unmodified on dev machines.
+            if ! command -v sha256sum >/dev/null 2>&1; then
+                sha256sum() { shasum -a 256 "$@"; }
+            fi
+            curl() {
+                local n out=""
+                n=$(cat "$CGW_CURL_COUNTER" 2>/dev/null || echo 0)
+                n=$((n + 1))
+                echo "$n" > "$CGW_CURL_COUNTER"
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        -o) out="$2"; shift 2 ;;
+                        *) shift ;;
+                    esac
+                done
+                ${curlBody}
+            }
+            source "$CGW_INSTALL_SCRIPT"
+        `;
+        let status = 0;
+        let output;
+        try {
+            output = execFileSync('bash', ['-c', script], { encoding: 'utf8', env, stdio: 'pipe' });
+        } catch (err) {
+            status = err.status;
+            output = `${err.stdout || ''}${err.stderr || ''}`;
+        }
+        const attempts = parseInt(fs.readFileSync(counterFile, 'utf8').trim(), 10) || 0;
+        fs.rmSync(dir, { recursive: true, force: true });
+        return { status, output, attempts };
+    }
+
+    test('HTTP failure (e.g. 404 after a Schneider URL change) logs the guidance', () => {
+        // curl -f exits 22 on an HTTP error and still prints the status code.
+        const r = runDownloadFlow('printf "404"; exit 22');
+        expect(r.status).toBe(1);
+        expect(r.output).toMatch(/Failed to download C-Gate \(HTTP 404/);
+        expect(r.output).toMatch(/no longer at that location/);
+        for (const re of GUIDANCE) expect(r.output).toMatch(re);
+        // A hard HTTP failure exits immediately; retrying a 404 is pointless.
+        expect(r.attempts).toBe(1);
+    });
+
+    test('non-zip content (portal login/error page) retries, then logs the Schneider-login note and guidance', () => {
+        const r = runDownloadFlow('printf "<html>login</html>" > "$out"; printf "200"');
+        expect(r.status).toBe(1);
+        expect(r.attempts).toBe(3);
+        expect(r.output).toMatch(/not a zip archive/);
+        expect(r.output).toMatch(/newer C-Gate versions require a Schneider login/);
+        for (const re of GUIDANCE) expect(r.output).toMatch(re);
+    });
+
+    test('checksum mismatch (repackaged zip) retries, then logs expected/actual and the guidance', () => {
+        // Real zip magic so the PK check passes; sha256sum then runs for real
+        // and mismatches the pinned default checksum.
+        const r = runDownloadFlow('printf "PK\\x03\\x04 repackaged-by-schneider" > "$out"; printf "200"');
+        expect(r.status).toBe(1);
+        expect(r.attempts).toBe(3);
+        expect(r.output).toMatch(/Expected: [0-9a-f]{64}/);
+        expect(r.output).toMatch(/Actual: {3}[0-9a-f]{64}/);
+        expect(r.output).toMatch(/repackaged the zip/);
+        for (const re of GUIDANCE) expect(r.output).toMatch(re);
     });
 });
