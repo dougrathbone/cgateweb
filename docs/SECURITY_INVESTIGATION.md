@@ -1,0 +1,178 @@
+# C-Bus Security Application (208) — Design & Assessment
+
+Design for supporting the C-Bus **Security** application (app id `208`, `$D0`) as a
+first-class feature alongside the native HVAC (172) support, requested in
+[GitHub issue #42](https://github.com/dougrathbone/cgateweb/issues/42).
+
+> **Official spec available:** *C-Bus Security Application* (CBUS-APP/05 issue 4.3) —
+> [`docs/Security Application.md`](./Security%20Application.md). Sections below cite
+> it as "spec §5.x". Wire examples confirmed against live captures posted in #42 by
+> @djagerif (status reports and zone events from a Ness/Comfort-style panel on
+> network 254).
+
+> **Status:** design only — no code yet. Ground-truth captures still needed for the
+> marked unknowns (see §7).
+
+---
+
+## 1. Protocol summary (what C-Gate puts on the wire)
+
+Zone labels live under **application 1** in the Toolkit project; zone state events
+arrive on **application 208**. One security system per network max (spec §5.10).
+
+### Zone events (spec §5.5.1.11–5.5.1.14)
+
+```
+security zone_unsealed //PROJECT/254/208/35    # zone opened ("detected")
+security zone_sealed   //PROJECT/254/208/35    # zone closed ("normal")
+```
+
+Zone numbers are `$01`–`$7F` (1–127). The spec also defines `zone_open` and
+`zone_short` (loop fault states); see "zone states" below — whether real panels
+emit them as discrete events is unconfirmed.
+
+### Bulk state sync (spec §5.5.1.20–21, §5.5.2.1–2)
+
+Security panels **do not answer lighting-style MMI/getall requests** (spec §5.9),
+so initial sync uses dedicated requests (send both after network sync):
+
+```
+security status_request //PROJECT/254/208 1
+security status_request //PROJECT/254/208 2
+```
+
+Replies (space-separated bytes on the event port, `#`-prefixed):
+
+```
+security status_report_1 //PROJECT/254/208 <state> <tamper> <panic> <z1..z32 packed>
+security status_report_2 //PROJECT/254/208 <z33..z80 packed>
+```
+
+- Report 1 covers zones 1–32, prefixed by system arm state, tamper and panic bytes
+  (this is the "first three positions" offset observed in #42).
+- Report 2 covers zones 33–80, no prefix. **The spec caps at zone 80**; panels that
+  extended to 96 zones are the open question (see §7).
+- Zone states are **2 bits each, 4 zones per byte**: `%00` sealed, `%01` unsealed,
+  `%10` open, `%11` short. Absent zones always report sealed.
+
+### System state events (spec §5.5.1.1–2, §5.5.1.5–8)
+
+`system_armed` (arm code `$01` away, `$02` home/night, `$03+` vendor), `system_disarmed`,
+`alarm_on`, `alarm_off`, plus tamper/panic messages. Needed for a future
+`alarm_control_panel` entity, not for zone sensors.
+
+### Control messages (spec §5.5.2.3 — "Part B", later phase)
+
+`security arm //PROJECT/254/208 <mode>` with `$01` away, `$02` night/home, `$03` day,
+`$04` vacation, `$FF` highest; disarm is arm code `$00` via the matching command.
+
+## 2. What happens today (pre-change behaviour)
+
+Verified against current master:
+
+- `security zone_sealed //…/208/35` **parses as a generic event** and publishes a
+  misleading `OFF` to `cbus/read/254/208/35/state` for *both* sealed and unsealed
+  (`actionIsOn` knows neither verb).
+- `security status_report_1 …` **fails parsing entirely** → "Could not parse C-Bus
+  event" warning spam.
+- No discovery, no sync, no config — zero security handling exists in `src/`.
+
+## 3. Architecture: the native-HVAC template
+
+The native aircon feature is the exact template — security lines have the same
+shape (`<app> <verb> //…` with no group-style payload CBusEvent can parse). Every
+seam has a 1:1 counterpart:
+
+| Piece | HVAC (existing) | Security (proposed) |
+|---|---|---|
+| Line decoder | `src/applicationDecoders/airconDecoder.js` (standalone) | `src/applicationDecoders/securityDecoder.js` — `zone_sealed/unsealed`, `status_report_1/2`, `system_armed/disarmed`, `alarm_on/off` |
+| Event handler | `src/airconEventHandler.js` (`isAirconLine`/`handleLine`) | `src/securityEventHandler.js`, gated on `settings.cbus_security_app_id` |
+| Hook point | `cgateWebBridge._processEventLine` first check (`src/cgateWebBridge.js:573`) | Insert `_handleSecurityLine` first (before the generic parser so zone events stop publishing bogus OFF and reports stop warn-spamming) |
+| Publish | `eventPublisher.publishReading` (`src/eventPublisher.js:104`) | Same: zone → `cbus/read/{net}/208/{zone}/state` `ON` (unsealed/open) / `OFF` (sealed), retained |
+| Discovery | `haDiscovery.ensureNativeAirconDiscovery` (event-driven) | `ensureSecurityZoneDiscovery` + a label-driven branch in tree discovery (§4) |
+| Initial sync | `AIRCON REFRESH` per ward on first sight | `SECURITY STATUS_REQUEST 1/2` after `762` sync-ok (`bridgeInitializationService.handleAllConnected` / `haDiscovery.handleNetworkSyncComplete`) and on first security traffic (mirror `_maybeRefreshWard`) |
+| Config | `cbus_aircon_app_id` | `cbus_security_app_id` (default `208`; `0`/empty disables) through config.yaml → addonOptionMap → defaultSettings → settingsValidator, plus translations |
+| Write path | `mqttCommandRouter` native-aircon handlers | Phase 2 only (arm/disarm) |
+
+## 4. Discovery: zones as `binary_sensor`
+
+Two complementary seams (mirroring how lighting combines tree + label discovery):
+
+1. **Label-driven (primary):** Toolkit zone labels live under app 1, and the label
+   importer already stores them app-agnostically as `net/1/<zone>` keys
+   (`src/cbusProjectParser.js` — no change needed). Add a security branch to
+   `_runDiscoveryFromTree` (or extend `_supplementFromLabels`, currently
+   lighting-only at `src/haDiscovery.js:453`) that enumerates `{net}/1/*` labels
+   and publishes one `binary_sensor` per zone, keyed `net/208/<zone>`. Zones get
+   announced at startup even before the first zone event — important because zone
+   events can be rare.
+2. **Event-driven (fallback):** `ensureSecurityZoneDiscovery(network, appId, zone)`
+   on first zone event/status report for an unlabelled zone, following the
+   `ensureTemperatureDiscovery` contract (idempotent Seen set, `exclude` honored,
+   topics registered in `_eventDrivenDiscoveryTopics` so tree-run stale cleanup
+   skips them).
+
+**Device-class inference** (requested in #42): new mapping in
+`src/deviceTypeClassifier.js` (home of the existing cover-keyword classifier):
+`PIR|motion` → `motion`, `garage` → `garage_door`, `door` → `door`,
+`window` → `window`; default `device_class: door`-less generic binary_sensor when
+nothing matches. Keyword list overridable via a
+`ha_discovery_security_device_class_keywords`-style setting, mirroring
+`ha_discovery_auto_type_cover_keywords`. Smoke detectors (`smoke` → `smoke`) and
+`tamper` are cheap additions to the same map.
+
+**2-bit zone states:** HA `binary_sensor` is on/off. Map `%01 unsealed` and
+`%10 open` → `ON`, `%00 sealed` → `OFF`, and publish `%11 short` as `ON` with the
+raw state in a JSON attributes topic (same pattern as djagerif's Comfort example:
+`state_topic` + `json_attributes_topic`), so automations can distinguish faults.
+
+## 5. Phasing & effort assessment
+
+### Phase 1 — Zone sensors (the "Part A" from #42)
+
+| Work item | Effort |
+|---|---|
+| `securityDecoder` (zone events + status_report_1/2 bit unpacking + arm/tamper/panic prefix) | M — bit packing is the only real logic; well specified |
+| `securityEventHandler` + `_processEventLine` hook + stop bogus OFF/warn spam | S |
+| `ensureSecurityZoneDiscovery` + label-driven app-1 branch + cross-app label lookup | M |
+| Device-class inference + setting | S |
+| Initial sync: `status_request 1|2` on connect + after 762 sync-ok | S |
+| `cbus_security_app_id` end-to-end config (+ schema, translations, DOCS.md) | S |
+| Tests: `securityDecoder.test.js`, `securityEventHandler.test.js`, `securityDiscovery.test.js` (template: `temperatureDiscovery.test.js`), cbusEvent no-bogus-OFF regression | M |
+
+Phase 1 is self-contained, read-only on the bus, and delivers all the value
+djagerif asked for first. No new dependencies; every mechanism already exists.
+
+### Phase 2 — Alarm control ("Part B", later)
+
+`alarm_control_panel` MQTT entity (arm away/home/night/vacation, disarm),
+built on the Phase 1 decoder's `system_armed/disarmed/alarm_on/off` events and
+the §5.5.2 control messages sent via the command port. Needs a control-enabled
+flag like `cbus_aircon_control_enabled` (`security arm` is a write — same
+careful opt-in posture as aircon writes). Disarm-under-duress semantics
+(spec §5.12) need real-panel captures before we touch them. Sized M–L, mostly
+because of capture-driven validation, not code volume.
+
+## 6. What we need from the reporter
+
+djagerif has offered logs and testing. Concretely:
+
+1. Raw captures (`cbus_raw_event_log_apps: ["208"]` exists today —
+   `src/defaultSettings.js:200`) of: arm/disarm cycles, an alarm event, a zone
+   fault if producible, and both status reports.
+2. Whether their panel reports zones 81–96 anywhere (spec caps report 2 at zone
+   80; see §7).
+3. A Toolkit label import already works — their app-1 zone names will drive
+   device-class inference, so the label file from their project is useful for
+   tuning the keyword map.
+
+## 7. Open questions
+
+- **Zones 81–96:** spec §5.5.1.21 fixes report 2 at zones 33–80. If newer panels
+  report 96 zones, is there an undocumented report 3, or do high zones only
+  appear as discrete events? Until known: sync zones 1–80 via reports, and let
+  event-driven discovery pick up any higher zone that emits an event.
+- Do real panels emit `zone_open`/`zone_short` as discrete events, or only via
+  the 2-bit report fields?
+- C-Gate's exact rendering of `system_armed`/`alarm_on` lines (argument text) —
+  decoder should be tolerant until captured.
