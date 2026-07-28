@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.20.0] - 2026-07-27
+
+### Added
+
+- **Security Application zone sensors (Alpha).** Zones on the C-Bus Security application (208) now appear in Home Assistant as `binary_sensor` entities (#42). Zone state comes from the panel's live `zone_sealed`/`zone_unsealed` events and from bulk syncs (`security status_request` 1 and 2 on connect and after network sync, since panels ignore lighting-style getall). Sealed is off; unsealed, open and short are on, with the raw zone state in attributes. Zones are named from your Toolkit project's application 1 labels, and the device class is inferred from the name (PIR/motion, garage, door, window, smoke), so a "Garage PIR" gets the motion icon. On by default via the new `cbus_security_app_id` option; set it to `0` to disable. **Alpha means:** validated against the official protocol spec (CBUS-APP/05, now in `docs/`) plus captures from one 64-zone Cytech panel, so panels from other vendors may render events differently and need decoder tweaks; zones above 80 are discovered from events only (the spec's bulk report caps at zone 80); and alarm control (arm/disarm) is not included yet — that is phase 2 and will be opt-in. Please report how your panel behaves on issue #42. As a side effect, security events no longer publish a bogus `OFF` state and status reports no longer spam parse warnings.
+- **A CI watchdog now checks the C-Gate download every day.** It verifies the pinned download URL still serves a zip matching the pinned checksum, so a Clipsal/Schneider portal change or repackage (which broke fresh installs in July 2026) is caught early rather than by the next user to install.
+
+### Fixed
+
+- **Managed-mode installs now recover from a slow Supervisor at boot.** The add-on's startup scripts read config from the Supervisor API immediately on container start; if the API was not listening yet the boot died and the bridge never came up (this flaked CI repeatedly). The add-on now waits for the API before its first config read.
+- **Failed C-Gate downloads now tell you what to do.** Every download-failure path explains that Clipsal/Schneider may have changed the download URL or repackaged the zip, links to the Clipsal downloads page, and walks through installing manually with `upload` mode (`/share/cgate/`). It also notes that newer C-Gate versions may need a Schneider login, so a browser download plus upload mode is the path there. A latent bug where curl's exit code was masked (leaving the HTTP-error guidance, including the 404 message, unreachable) is fixed too.
+
 ## [1.19.0] - 2026-07-27
 
 ### Fixed
