@@ -9,12 +9,20 @@ const { NEWLINE } = require('./constants');
  * Decoded security reading produced by securityDecoder.decodeLine. The exact
  * fields vary by `kind`; only the ones this handler touches are listed.
  * @typedef {Object} SecurityReading
- * @property {string} kind - 'zone' | 'status_report_1' | 'status_report_2' | system-state verbs
+ * @property {string} kind - 'zone' | 'status_report_1' | 'status_report_2' | 'status_request' | system-state verbs
  * @property {string} network
  * @property {string} application
  * @property {string|null} [zone]
  * @property {string} [zoneState] - 'sealed' | 'unsealed' | 'open' | 'short'
  * @property {Array<{zone: number, state: string}>} [zones] - status reports only
+ * @property {number|null} [armState] - status_report_1 only
+ * @property {string|null} [armMode] - status_report_1/system_arm: 'disarmed'|'away'|'night'|'day'|'vacation'
+ * @property {boolean} [tamperActive] - status_report_1 only
+ * @property {boolean} [panicActive] - status_report_1 only
+ * @property {number|null} [mode] - system_arm only
+ * @property {string|null} [modeName] - system_arm only: 'disarmed'|'away'|'night'|'day'|'vacation'
+ * @property {number|null} [report] - status_request only
+ * @property {string|null} [detail] - arm_failed/fire_alarm free-text argument
  */
 
 /**
@@ -30,10 +38,15 @@ const { NEWLINE } = require('./constants');
  *
  * Phase 1 scope (zone sensors): zone_sealed/unsealed/open/short events and
  * status reports publish zone state; the remaining system-state verbs
- * (arm_ready, system_arm, alarm_on/off, …) are decoded and debug-logged only.
+ * (arm_ready, system_arm, alarm_on/off, …) are decoded, logged and surfaced
+ * to the Live Events stream only — no MQTT state.
+ *
+ * This handler also owns the status_request sync dedupe for the whole bridge:
+ * every trigger (connect, first traffic, 762 sync-ok) routes through
+ * {@link requestStatusSync} so the per-network Sets are shared.
  */
 class SecurityEventHandler {
-    constructor({ eventPublisher, logger, settings, getHaDiscovery, cbusname, sendCommand }) {
+    constructor({ eventPublisher, logger, settings, getHaDiscovery, cbusname, sendCommand, onEventLog }) {
         this.eventPublisher = eventPublisher;
         this.logger = logger;
         this.settings = settings;
@@ -44,8 +57,15 @@ class SecurityEventHandler {
         // initial sync. Optional: without them no request is ever sent.
         this.cbusname = cbusname || null;
         this.sendCommand = typeof sendCommand === 'function' ? sendCommand : null;
-        // Networks already sent a status_request 1+2 this session.
-        this._statusRequestedNetworks = new Set();
+        // Live Events (SSE) fan-out, same entry shape as EventPublisher's
+        // onEventLog ({ ts, network, app, group, level, type }). Optional.
+        this.onEventLog = typeof onEventLog === 'function' ? onEventLog : null;
+        // Per-network status_request dedupe: key "net/app" → { early, postSync }.
+        // 'early' covers the connect and first-traffic triggers (whichever
+        // fires first — the fallback for sessions where no 762 ever arrives,
+        // e.g. a bridge restart on an already-synced network); 'postSync'
+        // covers the 762 sync-ok trigger. At most one pair each per session.
+        this._syncState = new Map();
     }
 
     /**
@@ -62,6 +82,57 @@ class SecurityEventHandler {
         return s.startsWith('security ');
     }
 
+    /**
+     * Send the status_request report pair (1 = system state + zones 1-32,
+     * 2 = zones 33-80) for a network, deduplicated per session. Security
+     * panels do not answer lighting-style getall requests (spec §5.9), so
+     * this is the only way to learn zone state up front. The request is
+     * read-only — the panel only broadcasts its current state in reply.
+     *
+     * All triggers route here so the dedupe is shared:
+     *   'connect' — BridgeInitializationService on ALL CONNECTED
+     *   'traffic' — first security traffic seen on the network
+     *   'sync'    — C-Gate 762 "Network sync ok" event
+     * 'connect' and 'traffic' share one "early" slot (first one wins);
+     * 'sync' has its own slot, so a post-sync refresh is always allowed once.
+     *
+     * @param {string|number} network - C-Bus network id.
+     * @param {'connect'|'traffic'|'sync'} trigger - What prompted the request.
+     * @returns {boolean} true when the request pair was actually sent.
+     */
+    requestStatusSync(network, trigger) {
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return false;
+        if (!this.sendCommand || !this.cbusname) return false;
+        if (network === null || network === undefined) return false;
+
+        const key = `${network}/${appId}`;
+        let state = this._syncState.get(key);
+        if (!state) {
+            state = { early: false, postSync: false };
+            this._syncState.set(key, state);
+        }
+        if (trigger === 'sync') {
+            if (state.postSync) return false;
+            state.postSync = true;
+        } else {
+            if (state.early) return false;
+            state.early = true;
+        }
+
+        for (const report of [1, 2]) {
+            const cmd = buildSecurityStatusRequest({
+                cbusname: this.cbusname,
+                network,
+                application: appId,
+                report
+            });
+            this.sendCommand(cmd + NEWLINE);
+        }
+        this.logger.info(`Requested security zone status sync for network ${network} (${key}, trigger: ${trigger})`);
+        return true;
+    }
+
     handleLine(line) {
         const appId = this.settings.cbus_security_app_id;
         if (!appId || String(appId) === '0') return false;
@@ -71,18 +142,32 @@ class SecurityEventHandler {
         if (reading && reading.application === String(appId)) {
             if (reading.kind === 'zone') {
                 this._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
+                this.logger.info(`Security zone ${reading.network}/${reading.application}/${reading.zone}: ${reading.zoneState}`);
+                this._emitEventLog(reading.network, reading.application, reading.zone,
+                    reading.zoneState === 'sealed' ? 0 : 255,
+                    reading.zoneState === 'sealed' ? 'off' : 'on');
             } else if (reading.kind === 'status_report_1' || reading.kind === 'status_report_2') {
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
                 }
+                this._logStatusReportSummary(reading);
+            } else if (reading.kind === 'status_request') {
+                // Echo of our own request on the event port — consume quietly.
+                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                    this.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
+                }
             } else {
                 // System-state verbs (arm_ready, system_arm, alarm_on/off, …):
-                // phase 2 material — decode and log only, no MQTT state.
-                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                    this.logger.debug(`C-Bus Security event: ${reading.kind} (${reading.network}/${reading.application})`);
-                }
+                // phase 2 material — no MQTT state, but log them human-readably
+                // and surface them in the Live Events stream.
+                this.logger.info(
+                    `C-Bus Security: ${this._describeSystemEvent(reading)} (${reading.network}/${reading.application})`
+                );
+                this._emitSystemEventLog(reading);
             }
-            this._maybeRequestStatus(reading);
+            if (reading.kind !== 'status_request') {
+                this.requestStatusSync(reading.network, 'traffic');
+            }
             return true;
         }
         // Recognisable security traffic, but we couldn't decode it or it
@@ -115,31 +200,89 @@ class SecurityEventHandler {
     }
 
     /**
-     * Initial zone-state sync: the first time security traffic is seen on a
-     * network, ask the panel for both status reports so learned zone state and
-     * HA entities settle quickly instead of waiting for zone events (which can
-     * be rare). Security panels do not answer lighting-style getall requests
-     * (spec §5.9). Sent at most once per network per session; the request is
-     * read-only — the panel only broadcasts its current state in reply.
+     * One DEBUG summary line per status report (counts per zone state, plus
+     * the arm/tamper/panic prefix for report 1) instead of one line per zone.
      *
-     * @param {SecurityReading} reading - Any decoded security reading.
+     * @param {SecurityReading} reading
      * @private
      */
-    _maybeRequestStatus(reading) {
-        if (!this.sendCommand || !this.cbusname) return;
-        const key = `${reading.network}/${reading.application}`;
-        if (this._statusRequestedNetworks.has(key)) return;
-        this._statusRequestedNetworks.add(key);
-        for (const report of [1, 2]) {
-            const cmd = buildSecurityStatusRequest({
-                cbusname: this.cbusname,
-                network: reading.network,
-                application: reading.application,
-                report
-            });
-            this.sendCommand(cmd + NEWLINE);
+    _logStatusReportSummary(reading) {
+        if (!this.logger.isLevelEnabled || !this.logger.isLevelEnabled('debug')) return;
+        const counts = { sealed: 0, unsealed: 0, open: 0, short: 0 };
+        for (const entry of reading.zones) {
+            if (Object.prototype.hasOwnProperty.call(counts, entry.state)) counts[entry.state]++;
         }
-        this.logger.info(`Requested security zone status sync for network ${reading.network} (${reading.network}/${reading.application})`);
+        const parts = Object.entries(counts).filter(([, n]) => n > 0).map(([state, n]) => `${n} ${state}`);
+        let summary = `Security ${reading.kind} ${reading.network}/${reading.application}: ${reading.zones.length} zones (${parts.join(', ')})`;
+        if (reading.kind === 'status_report_1') {
+            summary += `; arm=${reading.armMode || reading.armState}, tamper=${reading.tamperActive ? 'active' : 'ok'}, panic=${reading.panicActive ? 'active' : 'ok'}`;
+        }
+        this.logger.debug(summary);
+    }
+
+    /**
+     * Human-readable text for a system-state reading (logged at INFO).
+     *
+     * @param {SecurityReading} reading
+     * @returns {string}
+     * @private
+     */
+    _describeSystemEvent(reading) {
+        switch (reading.kind) {
+            case 'system_arm':
+                if (reading.mode === 0) return 'System disarmed';
+                return `System armed (${reading.modeName ? reading.modeName[0].toUpperCase() + reading.modeName.slice(1) : `mode ${reading.mode}`} mode)`;
+            case 'arm_ready':
+                return 'Ready to arm';
+            case 'arm_not_ready':
+                return `Zone ${reading.zone} open — not ready to arm`;
+            case 'exit_delay_started':
+                return 'Exit delay started';
+            case 'zone_isolated':
+                return `Zone ${reading.zone} bypassed`;
+            case 'arm_failed':
+                return reading.detail ? `Arm failed (${reading.detail})` : 'Arm failed';
+            case 'alarm_on':
+                return 'Alarm on';
+            case 'alarm_off':
+                return 'Alarm off';
+            case 'fire_alarm':
+                return reading.detail ? `Fire alarm (${reading.detail})` : 'Fire alarm';
+            default:
+                return reading.kind;
+        }
+    }
+
+    /**
+     * Surface a system-state reading in the Live Events stream. Uses the zone
+     * as the group when the verb carries one (arm_not_ready, zone_isolated),
+     * otherwise '0' (panel-wide event). Level/type follow the on/off-ish
+     * verbs so the UI bar and styling match other events.
+     *
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _emitSystemEventLog(reading) {
+        let level = 0;
+        let type = 'update';
+        if (reading.kind === 'alarm_on' || (reading.kind === 'system_arm' && reading.mode !== 0)) {
+            level = 255;
+            type = 'on';
+        } else if (reading.kind === 'alarm_off' || (reading.kind === 'system_arm' && reading.mode === 0)) {
+            type = 'off';
+        }
+        this._emitEventLog(reading.network, reading.application, reading.zone || '0', level, type);
+    }
+
+    /**
+     * Emit one Live Events (SSE) entry in the same shape EventPublisher uses
+     * for lighting events ({ ts, network, app, group, level, type }).
+     *
+     * @private
+     */
+    _emitEventLog(network, application, group, level, type) {
+        if (!this.onEventLog) return;
+        this.onEventLog({ ts: Date.now(), network, app: application, group, level, type });
     }
 }
 

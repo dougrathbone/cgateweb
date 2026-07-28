@@ -113,6 +113,9 @@ class CgateWebBridge {
             getCommandResponseProcessor: () => this.commandResponseProcessor,
             getDiscoveredNetworks: () => this.discoveredNetworks,
             getHaDiscovery: this._getHaDiscovery,
+            // Constructed later in the build sequence (like commandResponseProcessor),
+            // so read it live. Owns the security status_request dedupe.
+            getSecurityEventHandler: () => this.securityEventHandler,
             applyDiscoveredNetworks: (networks) => { this.discoveredNetworks = networks; },
             applyHaDiscovery: (haDiscovery) => {
                 this.haDiscovery = haDiscovery;
@@ -240,7 +243,8 @@ class CgateWebBridge {
             settings: this.settings,
             getHaDiscovery: this._getHaDiscovery,
             cbusname: this.settings.cbusname,
-            sendCommand: (command) => this.cgateCommandQueue.add(command)
+            sendCommand: (command) => this.cgateCommandQueue.add(command),
+            onEventLog: this._onEventLog
         });
 
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
@@ -618,6 +622,9 @@ class CgateWebBridge {
             if (this.haDiscovery) {
                 this.haDiscovery.handleNetworkSyncComplete(syncedNetworkId);
             }
+            // Post-sync zone-state refresh: deduplicated inside the handler
+            // (one post-762 pair per network per session).
+            this.securityEventHandler.requestStatusSync(syncedNetworkId, 'sync');
             return;
         }
 

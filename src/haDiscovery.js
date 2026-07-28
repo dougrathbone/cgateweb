@@ -1,13 +1,11 @@
 // @ts-check
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
-const { buildSecurityStatusRequest } = require('./securityCommand');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_SENSOR,
-    HA_DISCOVERY_SUFFIX,
-    NEWLINE
+    HA_DISCOVERY_SUFFIX
 } = require('./constants');
 
 /**
@@ -121,15 +119,64 @@ class HaDiscovery {
     /**
      * Replace the label data (used for hot-reload).
      * Accepts either a full labelData object or a plain Map for backward compatibility.
+     * Security zones additionally get their discovery config republished when
+     * their application-1 label changed, so a Toolkit zone rename reaches Home
+     * Assistant without waiting for the next tree run (issue #42 feedback).
      * @param {Object|Map<string, string>} labelData
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     updateLabels(labelData) {
+        const previousLabels = this.labelMap;
         this._applyLabelData(labelData);
+        this._republishRenamedSecurityZones(previousLabels);
         const parts = [`${this.labelMap.size} labels`];
         if (this.typeOverrides.size > 0) parts.push(`${this.typeOverrides.size} type overrides`);
         if (this.entityIds.size > 0) parts.push(`${this.entityIds.size} entity IDs`);
         if (this.exclude.size > 0) parts.push(`${this.exclude.size} excluded`);
         this.logger.info(`Label data updated (${parts.join(', ')})`);
+    }
+
+    /**
+     * Re-announce security zones whose application-1 label just changed (web
+     * save or file reload — both flow through updateLabels). Clears the
+     * zone's Seen key and republishes its discovery config; the unique_id is
+     * unchanged, so Home Assistant updates the entity's name and device class
+     * in place. Labels removed outright only clear the Seen key, so a future
+     * zone event re-announces with the fallback name.
+     *
+     * @param {Map<string, string>} previousLabels - Label map before this update.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     * @private
+     */
+    _republishRenamedSecurityZones(previousLabels) {
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return;
+        if (!previousLabels) return;
+
+        let republished = 0;
+        for (const [labelKey, newLabel] of this.labelMap) {
+            const match = labelKey.match(/^(\d+)\/1\/(\d+)$/);
+            if (!match) continue;
+            if (previousLabels.get(labelKey) === newLabel) continue;
+            const seenKey = `${match[1]}/${appId}/${match[2]}`;
+            this._securityZoneSeen.delete(seenKey);
+            if (this.ensureSecurityZoneDiscovery(match[1], appId, match[2])) {
+                republished++;
+            }
+        }
+
+        // Labels that disappeared entirely: drop the Seen key so the zone is
+        // re-announced (with its fallback name) on its next event.
+        for (const [labelKey] of previousLabels) {
+            const match = labelKey.match(/^(\d+)\/1\/(\d+)$/);
+            if (!match) continue;
+            if (this.labelMap.has(labelKey)) continue;
+            this._securityZoneSeen.delete(`${match[1]}/${appId}/${match[2]}`);
+        }
+
+        if (republished > 0) {
+            this.logger.info(`Republished ${republished} security zone discovery config(s) after label changes`);
+        }
     }
 
     _applyLabelData(labelData) {
@@ -238,32 +285,6 @@ class HaDiscovery {
         // the fresh TREEXML re-evaluates completeness from a clean budget.
         this._clearTreeResyncState(networkKey);
         this.queueTreeRequest(networkKey);
-        // Zone states may have changed while the network was unsynced, and
-        // security panels don't answer getall (spec §5.9) — re-request them.
-        this._sendSecurityStatusRequests(networkKey);
-    }
-
-    /**
-     * Send the security application's status_request reports 1 and 2 for a
-     * network (initial/refresh zone-state sync). Gated on
-     * cbus_security_app_id (empty/'0' disables). Read-only: the panel only
-     * broadcasts its current zone state in reply.
-     * @private
-     */
-    _sendSecurityStatusRequests(networkId) {
-        const appId = this.settings.cbus_security_app_id;
-        if (!appId || String(appId) === '0') return;
-        if (!this._sendCommand) return;
-        for (const report of [1, 2]) {
-            this._sendCommand(
-                buildSecurityStatusRequest({
-                    cbusname: this.settings.cbusname,
-                    network: networkId,
-                    application: appId,
-                    report
-                }) + NEWLINE
-            );
-        }
     }
 
     /**

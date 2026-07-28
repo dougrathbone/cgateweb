@@ -7,7 +7,6 @@ const {
     NEWLINE,
     DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
-const { buildSecurityStatusRequest } = require('./securityCommand');
 
 /**
  * Drives post-connection initialization (auto-discovery, initial/periodic
@@ -38,6 +37,7 @@ class BridgeInitializationService {
      * @param {Function} deps.getCommandResponseProcessor - () => commandResponseProcessor (live)
      * @param {Function} deps.getDiscoveredNetworks - () => current discovered networks (live)
      * @param {Function} deps.getHaDiscovery - () => current haDiscovery instance (live)
+     * @param {Function} [deps.getSecurityEventHandler] - () => securityEventHandler (live); owns the security status_request dedupe
      * @param {Function} deps.applyDiscoveredNetworks - (networks) => set bridge.discoveredNetworks now
      * @param {Function} deps.applyHaDiscovery - (haDiscovery) => set bridge.haDiscovery (+ wire processor) now
      * @param {Function} deps.updateReadiness - (reason) => signal bridge readiness
@@ -55,6 +55,7 @@ class BridgeInitializationService {
         this._getCommandResponseProcessor = deps.getCommandResponseProcessor;
         this._getDiscoveredNetworks = deps.getDiscoveredNetworks;
         this._getHaDiscovery = deps.getHaDiscovery;
+        this._getSecurityEventHandler = deps.getSecurityEventHandler || null;
         this._applyDiscoveredNetworks = deps.applyDiscoveredNetworks;
         this._applyHaDiscovery = deps.applyHaDiscovery;
         this._updateReadiness = deps.updateReadiness;
@@ -479,11 +480,13 @@ class BridgeInitializationService {
      * Send the security application's initial zone-state sync (status_request
      * reports 1 and 2) for each HA-discovery network. Security panels do not
      * answer lighting-style getall requests (spec §5.9), so this is the only
-     * way to learn zone state up front; zone events alone can be rare. The
-     * request is read-only — the panel only broadcasts its current state in
-     * reply. Gated on cbus_security_app_id (empty/'0' disables) and on the
-     * network being in ha_discovery_networks; the event handler repeats the
-     * request once per network on first security traffic as a fallback.
+     * way to learn zone state up front; zone events alone can be rare.
+     *
+     * This is the "connect" trigger — it only queues the request when no
+     * other trigger (first traffic, 762 sync-ok) got there first. All sending
+     * and dedupe lives in SecurityEventHandler.requestStatusSync so the
+     * per-network Sets are shared across every trigger. Gated on the network
+     * being in ha_discovery_networks.
      * @private
      */
     _sendSecurityStatusRequests() {
@@ -491,19 +494,11 @@ class BridgeInitializationService {
         if (!appId || String(appId) === '0') return;
         const networks = this.settings.ha_discovery_networks;
         if (!Array.isArray(networks) || networks.length === 0) return;
+        const handler = this._getSecurityEventHandler ? this._getSecurityEventHandler() : null;
+        if (!handler) return;
         for (const network of networks) {
-            for (const report of [1, 2]) {
-                this.commandQueue.add(
-                    buildSecurityStatusRequest({
-                        cbusname: this.settings.cbusname,
-                        network,
-                        application: appId,
-                        report
-                    }) + NEWLINE
-                );
-            }
+            handler.requestStatusSync(network, 'connect');
         }
-        this.logger.debug(`Requested security zone status sync for networks: ${networks.join(', ')}`);
     }
 
     /**

@@ -1168,6 +1168,65 @@ describe('CgateWebBridge', () => {
 
                 queueSpy.mockRestore();
             });
+
+            it('sends at most one early pair (connect/traffic) plus one post-762 pair per network', () => {
+                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+
+                // Connect trigger (via the init service's entry point into the handler)
+                bridge.securityEventHandler.requestStatusSync('254', 'connect');
+                // First traffic — deduped against the connect send
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+                // 762 sync-ok — allowed once as the post-sync refresh
+                bridge._processEventLine('762 //TestProject/254 Network sync ok');
+                // Further 762s and traffic — all deduped
+                bridge._processEventLine('762 //TestProject/254 Network sync ok');
+                bridge._processEventLine(ZONE_SEALED_LINE);
+
+                const syncCommands = queueSpy.mock.calls
+                    .map(c => c[0])
+                    .filter(cmd => typeof cmd === 'string' && cmd.startsWith('security status_request'));
+                expect(syncCommands).toEqual([
+                    'security status_request //TestProject/254/208 1\n',
+                    'security status_request //TestProject/254/208 2\n',
+                    'security status_request //TestProject/254/208 1\n',
+                    'security status_request //TestProject/254/208 2\n'
+                ]);
+
+                queueSpy.mockRestore();
+            });
+
+            it('consumes our own status_request echoes without warning or re-syncing', () => {
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+
+                bridge._processEventLine('security status_request //TestProject/254/208 1 #sourceunit=0 OID= sessionId=cmd6 commandId={none}');
+
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                // The echo must not count as first traffic and trigger a sync
+                const syncCommands = queueSpy.mock.calls
+                    .map(c => c[0])
+                    .filter(cmd => typeof cmd === 'string' && cmd.startsWith('security status_request'));
+                expect(syncCommands).toEqual([]);
+
+                warnSpy.mockRestore();
+                publishEventSpy.mockRestore();
+                queueSpy.mockRestore();
+            });
+
+            it('feeds zone events to the Live Events stream', () => {
+                const entries = [];
+                const unsubscribe = (entry) => entries.push(entry);
+                bridge.eventStream.subscribe(unsubscribe);
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+
+                bridge.eventStream.unsubscribe(unsubscribe);
+                const zoneEntry = entries.find(e => e.app === '208' && e.group === '58');
+                expect(zoneEntry).toBeDefined();
+                expect(zoneEntry).toMatchObject({ network: '254', level: 255, type: 'on' });
+            });
         });
 
         describe('with cbus_security_app_id disabled', () => {

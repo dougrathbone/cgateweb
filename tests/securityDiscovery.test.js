@@ -177,48 +177,71 @@ describe('HaDiscovery — app 208 security zones', () => {
         });
     });
 
-    describe('status re-request after network sync (762)', () => {
-        it('sends status_request 1 and 2 on handleNetworkSyncComplete when the security app is enabled', () => {
-            const sendCommand = jest.fn();
-            const hd = new HaDiscovery(
-                {
-                    ha_discovery_enabled: true,
-                    ha_discovery_prefix: 'homeassistant',
-                    ha_discovery_networks: ['254'],
-                    cbus_security_app_id: '208',
-                    cbusname: 'MIDSTRM'
-                },
+    describe('label rename republish (updateLabels)', () => {
+        function makeSecurityDiscovery(labels, settings = {}) {
+            return new HaDiscovery(
+                { ha_discovery_enabled: true, ha_discovery_prefix: 'homeassistant', cbus_security_app_id: '208', ...settings },
                 publishFn,
-                sendCommand
+                jest.fn(),
+                { labels }
             );
-            hd.handleNetworkSyncComplete('254');
-            const syncCommands = sendCommand.mock.calls
-                .map(c => c[0])
-                .filter(cmd => typeof cmd === 'string' && cmd.startsWith('security status_request'));
-            expect(syncCommands).toEqual([
-                'security status_request //MIDSTRM/254/208 1\n',
-                'security status_request //MIDSTRM/254/208 2\n'
-            ]);
+        }
+
+        it('republishes the zone config with the new name and device class when its app-1 label changes', () => {
+            const hd = makeSecurityDiscovery(new Map([['254/1/35', 'Group 35']]));
+            hd.ensureSecurityZoneDiscovery('254', '208', '35'); // announced as "Group 35"
+            publishFn.mockClear();
+
+            hd.updateLabels({ labels: new Map([['254/1/35', 'Front Door']]) });
+
+            const calls = publishFn.mock.calls.filter(c => c[0] === 'homeassistant/binary_sensor/cgateweb_254_208_35/config');
+            expect(calls).toHaveLength(1);
+            const payload = JSON.parse(calls[0][1]);
+            expect(payload.device.name).toBe('Front Door');
+            expect(payload.device_class).toBe('door');
+            expect(payload.unique_id).toBe('cgateweb_254_208_35'); // unchanged → HA updates in place
         });
 
-        it('sends nothing on sync complete when the security app is disabled', () => {
-            const sendCommand = jest.fn();
-            const hd = new HaDiscovery(
-                {
-                    ha_discovery_enabled: true,
-                    ha_discovery_prefix: 'homeassistant',
-                    ha_discovery_networks: ['254'],
-                    cbus_security_app_id: '0',
-                    cbusname: 'MIDSTRM'
-                },
-                publishFn,
-                sendCommand
-            );
-            hd.handleNetworkSyncComplete('254');
-            const syncCommands = sendCommand.mock.calls
-                .map(c => c[0])
-                .filter(cmd => typeof cmd === 'string' && cmd.startsWith('security status_request'));
-            expect(syncCommands).toEqual([]);
+        it('does not republish when the label is unchanged', () => {
+            const hd = makeSecurityDiscovery(new Map([['254/1/35', 'Front Door']]));
+            hd.ensureSecurityZoneDiscovery('254', '208', '35');
+            publishFn.mockClear();
+
+            hd.updateLabels({ labels: new Map([['254/1/35', 'Front Door']]) });
+
+            expect(publishFn).not.toHaveBeenCalled();
+        });
+
+        it('names a zone that was announced with a fallback name once a label first appears', () => {
+            const hd = makeSecurityDiscovery(new Map());
+            hd.ensureSecurityZoneDiscovery('254', '208', '35'); // fallback "CBus Security Zone …"
+            publishFn.mockClear();
+
+            hd.updateLabels({ labels: new Map([['254/1/35', 'Garage PIR']]) });
+
+            const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/binary_sensor/cgateweb_254_208_35/config');
+            expect(call).toBeDefined();
+            const payload = JSON.parse(call[1]);
+            expect(payload.device.name).toBe('Garage PIR');
+            expect(payload.device_class).toBe('motion');
+        });
+
+        it('clears the Seen key for a removed label so the next zone event re-announces', () => {
+            const hd = makeSecurityDiscovery(new Map([['254/1/35', 'Front Door']]));
+            hd.ensureSecurityZoneDiscovery('254', '208', '35');
+            publishFn.mockClear();
+
+            hd.updateLabels({ labels: new Map() }); // label removed — no immediate republish
+            expect(publishFn).not.toHaveBeenCalled();
+            // …but the zone is no longer "seen", so its next event re-announces
+            expect(hd.ensureSecurityZoneDiscovery('254', '208', '35')).toBe(true);
+        });
+
+        it('does nothing when the security app is disabled', () => {
+            const hd = makeSecurityDiscovery(new Map([['254/1/35', 'Group 35']]), { cbus_security_app_id: '0' });
+            publishFn.mockClear();
+            hd.updateLabels({ labels: new Map([['254/1/35', 'Front Door']]) });
+            expect(publishFn).not.toHaveBeenCalled();
         });
     });
 });

@@ -122,6 +122,26 @@ describe('securityDecoder', () => {
         });
     });
 
+    describe('status_request (own command echoes)', () => {
+        it('decodes a status_request echo with its report number', () => {
+            const r = securityDecoder.decodeLine('security status_request //MIDSTRM/254/208 1 #sourceunit=0 OID= sessionId=cmd6 commandId={none}');
+            expect(r).toEqual({
+                kind: 'status_request',
+                network: '254',
+                application: '208',
+                report: 1,
+                verb: 'status_request'
+            });
+        });
+
+        it('decodes report 2 and tolerates a missing report number', () => {
+            expect(securityDecoder.decodeLine('security status_request //MIDSTRM/254/208 2'))
+                .toMatchObject({ kind: 'status_request', report: 2 });
+            expect(securityDecoder.decodeLine('security status_request //MIDSTRM/254/208'))
+                .toMatchObject({ kind: 'status_request', report: null });
+        });
+    });
+
     describe('system state verbs (phase 2 surface, decoded leniently)', () => {
         it('decodes arm_ready with no zone', () => {
             expect(securityDecoder.decodeLine('# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID='))

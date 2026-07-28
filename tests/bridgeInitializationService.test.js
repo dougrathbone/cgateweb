@@ -142,40 +142,49 @@ describe('BridgeInitializationService', () => {
     });
 
     describe('_sendSecurityStatusRequests', () => {
-        it('sends status_request 1 and 2 for each ha_discovery network when the security app is enabled', () => {
-            const { bridge, commandQueueAdd } = makeBridge({
+        it('delegates a connect-trigger sync per ha_discovery network to the security handler', () => {
+            const requestStatusSync = jest.fn();
+            const { bridge } = makeBridge({
                 cbus_security_app_id: '208',
                 ha_discovery_networks: [254, 255]
             });
+            bridge.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
             const svc = makeService(bridge);
             svc._sendSecurityStatusRequests();
-            expect(commandQueueAdd).toHaveBeenCalledTimes(4);
-            expect(commandQueueAdd).toHaveBeenNthCalledWith(1, 'security status_request //HOME/254/208 1\n');
-            expect(commandQueueAdd).toHaveBeenNthCalledWith(2, 'security status_request //HOME/254/208 2\n');
-            expect(commandQueueAdd).toHaveBeenNthCalledWith(3, 'security status_request //HOME/255/208 1\n');
-            expect(commandQueueAdd).toHaveBeenNthCalledWith(4, 'security status_request //HOME/255/208 2\n');
+            expect(requestStatusSync).toHaveBeenCalledTimes(2);
+            expect(requestStatusSync).toHaveBeenNthCalledWith(1, 254, 'connect');
+            expect(requestStatusSync).toHaveBeenNthCalledWith(2, 255, 'connect');
         });
 
         it('does nothing when the security app is disabled (null/empty/0)', () => {
+            const requestStatusSync = jest.fn();
             for (const cbus_security_app_id of [null, '', '0']) {
-                const { bridge, commandQueueAdd } = makeBridge({
+                const { bridge } = makeBridge({
                     cbus_security_app_id,
                     ha_discovery_networks: [254]
                 });
+                bridge.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
                 const svc = makeService(bridge);
                 svc._sendSecurityStatusRequests();
-                expect(commandQueueAdd).not.toHaveBeenCalled();
             }
+            expect(requestStatusSync).not.toHaveBeenCalled();
         });
 
-        it('does nothing without configured ha_discovery_networks', () => {
-            const { bridge, commandQueueAdd } = makeBridge({
+        it('does nothing without configured ha_discovery_networks or a handler', () => {
+            const requestStatusSync = jest.fn();
+            const { bridge: noNets } = makeBridge({
                 cbus_security_app_id: '208',
                 ha_discovery_networks: []
             });
-            const svc = makeService(bridge);
-            svc._sendSecurityStatusRequests();
-            expect(commandQueueAdd).not.toHaveBeenCalled();
+            noNets.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
+            makeService(noNets)._sendSecurityStatusRequests();
+            // No handler available (accessor not provided) — must not throw
+            const { bridge: noHandler } = makeBridge({
+                cbus_security_app_id: '208',
+                ha_discovery_networks: [254]
+            });
+            expect(() => makeService(noHandler)._sendSecurityStatusRequests()).not.toThrow();
+            expect(requestStatusSync).not.toHaveBeenCalled();
         });
     });
 

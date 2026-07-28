@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.20.1] - 2026-07-28
+
+### Fixed
+
+- **Security Alpha: zone status sync was requested up to three times at startup** — once on connect, once on first security traffic, and once after network sync-ok (#42). All triggers now share one dedupe, so at most one early request pair and one post-sync pair go out per network per session.
+- **Security Alpha: zone changes are now visible.** Zone events log at INFO (`Security zone 254/208/35: unsealed`) and appear in the web UI's Live Events window alongside lighting events. Bulk status reports log a one-line summary at DEBUG instead of staying silent.
+- **Security Alpha: arm/alarm log lines are human-readable.** `System armed (Day mode)`, `System disarmed`, `Ready to arm`, `Zone 44 open — not ready to arm`, `Zone 44 bypassed`, `Arm failed (...)`, `Alarm on/off` and friends now log at INFO with the mode, zone or detail included, instead of a bare verb name at DEBUG.
+- **Security Alpha: renaming a zone label now updates Home Assistant.** Re-importing your Toolkit project (or editing a label in the web UI) republishes the zone's discovery config, so the entity picks up the new name and device class in place; previously it kept the default "Group N" name until restart.
+- **Security Alpha: the bridge's own status_request echoes no longer log "verb pending support"** — they are recognised and consumed quietly.
+
 ## [1.20.0] - 2026-07-27
 
 ### Added

@@ -12,6 +12,8 @@ const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
  *   - status_report_1  → { kind:'status_report_1', …, armState, armMode,
  *                          tamper, tamperActive, panic, panicActive, zones[] } (zones 1-32)
  *   - status_report_2  → { kind:'status_report_2', …, zones[] } (zones 33-80)
+ *   - status_request     → { kind:'status_request', …, report } (our own command
+ *                          echoes on the event port)
  *   - arm_ready        → { kind:'arm_ready', … }
  *   - arm_not_ready    → { kind:'arm_not_ready', …, zone } (zone names the blocker)
  *   - exit_delay_started → { kind:'exit_delay_started', … }
@@ -211,6 +213,15 @@ function decodeLine(line) {
 
     if (verb === 'status_report_2') {
         return decodeStatusReport2({ network, application, params, verb });
+    }
+
+    // Our own status_request commands echo back on the event port
+    // ("security status_request //PROJECT/<net>/<app> <report> #sourceunit=0
+    // OID= sessionId=cmd6 …") — recognise them so they are consumed quietly
+    // instead of logging as undecoded.
+    if (verb === 'status_request') {
+        const report = params.length > 0 ? parseInt(params[0], 10) : NaN;
+        return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
     }
 
     // System state verbs (phase 2 builds on these; phase 1 decodes + logs only).
