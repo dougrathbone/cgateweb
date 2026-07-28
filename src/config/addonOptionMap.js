@@ -25,6 +25,10 @@ const ADDON_OPTION_MAP = [
     { src: 'ha_discovery_trigger_app_id', dst: 'ha_discovery_trigger_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_hvac_app_id', dst: 'ha_discovery_hvac_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'cbus_aircon_app_id', dst: 'cbus_aircon_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
+    // stringifyDefined (not Truthy): an explicit 0 must map to '0' so users can
+    // DISABLE the default-on security app — a truthy copy would drop the 0 and
+    // leave the default '208' in force.
+    { src: 'cbus_security_app_id', dst: 'cbus_security_app_id', kind: 'stringifyDefined', when: 'haDiscovery' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },
@@ -91,6 +95,11 @@ function applyAddonOptionMap(config, options, flags = {}) {
                 break;
             case 'stringifyTruthy':
                 if (value) {
+                    config[rule.dst] = String(value);
+                }
+                break;
+            case 'stringifyDefined':
+                if (value !== undefined && value !== null && value !== '') {
                     config[rule.dst] = String(value);
                 }
                 break;

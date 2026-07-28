@@ -438,6 +438,37 @@ describe('ConfigLoader', () => {
 
             expect(config.cbus_aircon_app_id).toBeUndefined();
         });
+
+        test('should map cbus_security_app_id to config as a string', () => {
+            const options = { ...mockAddonOptions, cbus_security_app_id: 208 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_app_id).toBe('208');
+        });
+
+        test('should map an explicit cbus_security_app_id of 0 to "0" (disables the default-on feature)', () => {
+            const options = { ...mockAddonOptions, cbus_security_app_id: 0 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_app_id).toBe('0');
+        });
+
+        test('should not set cbus_security_app_id when option is absent (default applies)', () => {
+            const options = { ...mockAddonOptions };
+            delete options.cbus_security_app_id;
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_app_id).toBeUndefined();
+        });
     });
 
     describe('load() - Standalone Configuration', () => {

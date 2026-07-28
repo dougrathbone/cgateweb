@@ -6,6 +6,12 @@ describe('aircon app id default', () => {
     });
 });
 
+describe('security app id default', () => {
+    it('defaults cbus_security_app_id to "208" (enabled; 0/empty disables)', () => {
+        expect(defaultSettings.cbus_security_app_id).toBe('208');
+    });
+});
+
 describe('raw event capture defaults', () => {
     it('defaults cbusRawEventLogApps to an empty array (capture off)', () => {
         expect(defaultSettings.cbusRawEventLogApps).toEqual([]);

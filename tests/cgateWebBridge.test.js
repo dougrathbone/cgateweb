@@ -1054,6 +1054,142 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    describe('Security (208) event routing via _handleSecurityLine', () => {
+        // Verbatim live captures from GitHub issue #42 (64-zone Cytech panel).
+        const ZONE_UNSEALED_LINE = '# security zone_unsealed //TestProject/254/208/58  #sourceunit=18 OID=';
+        const ZONE_SEALED_LINE = '# security zone_sealed //TestProject/254/208/58  #sourceunit=18 OID=';
+        const STATUS_REPORT_1_LINE = '# security status_report_1 //TestProject/254/208 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 1 0 0 0 0 #sourceunit=18 OID=';
+
+        describe('with cbus_security_app_id set', () => {
+            beforeEach(() => {
+                bridge.settings.cbus_security_app_id = '208';
+            });
+
+            it('publishes ON for an unsealed zone and OFF for a sealed one', () => {
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+                bridge._processEventLine(ZONE_SEALED_LINE);
+
+                const statePublishes = publishSpy.mock.calls.filter(call =>
+                    call[0] === 'cbus/read/254/208/58/state'
+                );
+                expect(statePublishes.map(c => c[1])).toEqual(['ON', 'OFF']);
+                // Raw 2-bit state rides the attributes topic.
+                const attrPublishes = publishSpy.mock.calls.filter(call =>
+                    call[0] === 'cbus/read/254/208/58/attributes'
+                );
+                expect(attrPublishes.map(c => JSON.parse(c[1]))).toEqual([
+                    { zone_state: 'unsealed' },
+                    { zone_state: 'sealed' }
+                ]);
+
+                publishSpy.mockRestore();
+            });
+
+            it('regression: zone events no longer publish a bogus OFF via the generic parser', () => {
+                // Pre-change, `security zone_unsealed //…` ran through CBusEvent,
+                // which knew neither verb and published a misleading OFF.
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                const warnSpy = jest.spyOn(bridge, 'warn');
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                expect(warnSpy).not.toHaveBeenCalledWith(
+                    expect.stringContaining('Could not parse event line')
+                );
+
+                publishEventSpy.mockRestore();
+                warnSpy.mockRestore();
+            });
+
+            it('regression: status reports no longer spam "Could not parse event line" warnings', () => {
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge._processEventLine(STATUS_REPORT_1_LINE);
+
+                expect(warnSpy).not.toHaveBeenCalledWith(
+                    expect.stringContaining('Could not parse event line')
+                );
+                // …and all 32 zones get their state published instead
+                const zoneStates = publishSpy.mock.calls.filter(call =>
+                    /cbus\/read\/254\/208\/\d+\/state/.test(call[0])
+                );
+                expect(zoneStates).toHaveLength(32);
+                const z27 = publishSpy.mock.calls.find(call => call[0] === 'cbus/read/254/208/27/state');
+                expect(z27[1]).toBe('ON');
+
+                warnSpy.mockRestore();
+                publishSpy.mockRestore();
+            });
+
+            it('captures an unconsumed security line but does not warn-parse it as a standard event', () => {
+                const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                // A security-format line that the handler doesn't consume
+                // (unsupported verb). It must still reach raw capture, but must
+                // NOT be run through CBusEvent.
+                bridge._processEventLine('security some_unknown_verb //TestProject/254/208 1');
+
+                expect(rawCaptureSpy).toHaveBeenCalled();
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+
+                rawCaptureSpy.mockRestore();
+                warnSpy.mockRestore();
+                publishEventSpy.mockRestore();
+            });
+
+            it('triggers security zone discovery for zones seen', () => {
+                bridge.haDiscovery = { ensureSecurityZoneDiscovery: jest.fn() };
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+
+                expect(bridge.haDiscovery.ensureSecurityZoneDiscovery).toHaveBeenCalledWith('254', '208', '58');
+            });
+
+            it('requests the status sync once per network on first security traffic', () => {
+                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+                bridge._processEventLine(ZONE_SEALED_LINE); // same network — no repeat
+
+                const syncCommands = queueSpy.mock.calls
+                    .map(c => c[0])
+                    .filter(cmd => typeof cmd === 'string' && cmd.startsWith('security status_request'));
+                expect(syncCommands).toEqual([
+                    'security status_request //TestProject/254/208 1\n',
+                    'security status_request //TestProject/254/208 2\n'
+                ]);
+
+                queueSpy.mockRestore();
+            });
+        });
+
+        describe('with cbus_security_app_id disabled', () => {
+            it('falls through to the comment path without publishing zone state', () => {
+                bridge.settings.cbus_security_app_id = '0';
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                bridge._processEventLine(ZONE_UNSEALED_LINE);
+
+                const zonePublish = publishSpy.mock.calls.find(call =>
+                    call[0] === 'cbus/read/254/208/58/state'
+                );
+                expect(zonePublish).toBeUndefined();
+                expect(publishEventSpy).not.toHaveBeenCalled();
+
+                publishSpy.mockRestore();
+                publishEventSpy.mockRestore();
+            });
+        });
+    });
+
     describe('Queue Processing', () => {
         describe('_sendCgateCommand()', () => {
             it('should send commands via connection pool', async () => {

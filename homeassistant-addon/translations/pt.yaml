@@ -240,6 +240,11 @@ configuration:
     name: Controlo do ar condicionado
     description: >-
       Permitir que o Home Assistant controle os termostatos C-Bus nativos (modo e temperatura). Desativado por predefinição: escreve no sistema de aquecimento/arrefecimento ativo. Requer o ID da aplicação de ar condicionado definido.
+  cbus_security_app_id:
+    name: ID da aplicação de segurança
+    description: >-
+      ID da aplicação Security do C-Bus (predefinição 208) para sensores de zonas de alarme. Publica um sensor binário por zona — sealed é off; unsealed, open ou short é on — e sincroniza o estado das zonas ao ligar. Defina 0 para desativar.
+
 
   # ── Diagnósticos do Bridge ──
   ha_bridge_diagnostics_enabled:

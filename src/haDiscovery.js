@@ -1,11 +1,13 @@
 // @ts-check
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
+const { buildSecurityStatusRequest } = require('./securityCommand');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_SENSOR,
-    HA_DISCOVERY_SUFFIX
+    HA_DISCOVERY_SUFFIX,
+    NEWLINE
 } = require('./constants');
 
 /**
@@ -19,6 +21,7 @@ const {
  * @property {(networkId: string) => void} _clearTreeResyncState
  * @property {(networkId: string|number, appId: string|number, groups: Array<Object>) => void} _processLightingGroups
  * @property {(networkId: string|number, appAddress: string|number, groups: Array<Object>) => void} _processEnableControlGroups
+ * @property {(network: string|number, appId: string|number, zone: string|number) => boolean} ensureSecurityZoneDiscovery
  */
 class HaDiscovery {
     /**
@@ -94,6 +97,11 @@ class HaDiscovery {
         // event-driven the first time a sensor broadcasts. Tracks
         // "network/app/group" keys already published this session.
         this._temperatureSeen = new Set();
+
+        // Security (app 208) zones are discovered event-driven (first zone
+        // event or status report) and from application-1 labels during tree
+        // runs. Tracks "network/app/zone" keys already published this session.
+        this._securityZoneSeen = new Set();
 
         // Network IDs whose CNI/PCI connectivity binary_sensor config has been
         // published this session (event-driven, idempotent).
@@ -230,6 +238,32 @@ class HaDiscovery {
         // the fresh TREEXML re-evaluates completeness from a clean budget.
         this._clearTreeResyncState(networkKey);
         this.queueTreeRequest(networkKey);
+        // Zone states may have changed while the network was unsynced, and
+        // security panels don't answer getall (spec §5.9) — re-request them.
+        this._sendSecurityStatusRequests(networkKey);
+    }
+
+    /**
+     * Send the security application's status_request reports 1 and 2 for a
+     * network (initial/refresh zone-state sync). Gated on
+     * cbus_security_app_id (empty/'0' disables). Read-only: the panel only
+     * broadcasts its current zone state in reply.
+     * @private
+     */
+    _sendSecurityStatusRequests(networkId) {
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return;
+        if (!this._sendCommand) return;
+        for (const report of [1, 2]) {
+            this._sendCommand(
+                buildSecurityStatusRequest({
+                    cbusname: this.settings.cbusname,
+                    network: networkId,
+                    application: appId,
+                    report
+                }) + NEWLINE
+            );
+        }
     }
 
     /**
@@ -397,6 +431,11 @@ class HaDiscovery {
         // but labels.json may define groups that are valid and controllable.
         this._supplementFromLabels(networkId, lightingAppId, groupsByApp);
 
+        // Security zones never appear in TREEXML at all (the security panel is
+        // not a C-Bus unit with a <Groups> list); their labels live under
+        // application 1, so announce one binary_sensor per labeled zone.
+        this._supplementSecurityZonesFromLabels(networkId);
+
         // Clear any previously published discovery topics for this network that were
         // not republished in this run (device excluded or type changed since last run).
         // Event-driven topics (native aircon climate, CNI connectivity) share the
@@ -471,6 +510,38 @@ class HaDiscovery {
 
         if (supplementCount > 0) {
             this.logger.info(`Supplemented ${supplementCount} additional groups from label data for network ${networkId}`);
+        }
+    }
+
+    /**
+     * Announce one HA binary_sensor per security zone known from the label
+     * data. Zone labels live under application 1 (`{net}/1/{zone}` keys — the
+     * Toolkit import already ingests them); the entities are keyed on the
+     * security app (208). Zones get announced at startup even before the first
+     * zone event — important because zone events can be rare. Gated on
+     * cbus_security_app_id (empty/'0' disables).
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     */
+    _supplementSecurityZonesFromLabels(networkId) {
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return;
+        const { labelMap } = this._labelSnapshot;
+        if (!labelMap || labelMap.size === 0) return;
+
+        const prefix = `${networkId}/1/`;
+        let supplementCount = 0;
+
+        for (const [labelKey] of labelMap) {
+            if (!labelKey.startsWith(prefix)) continue;
+            const zone = labelKey.substring(prefix.length);
+            // ensureSecurityZoneDiscovery is idempotent and honours exclusions.
+            if (this.ensureSecurityZoneDiscovery(networkId, appId, zone)) {
+                supplementCount++;
+            }
+        }
+
+        if (supplementCount > 0) {
+            this.logger.info(`Supplemented ${supplementCount} security zones from label data for network ${networkId}`);
         }
     }
 

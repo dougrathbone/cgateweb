@@ -1,6 +1,6 @@
 // @ts-check
 const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryConfigs');
-const { classifyLightingGroup, typeFromLabelPrefix } = require('./deviceTypeClassifier');
+const { classifyLightingGroup, typeFromLabelPrefix, classifySecurityZoneDeviceClass } = require('./deviceTypeClassifier');
 const { entityTypeForGroup } = require('./unitTypeClassifier');
 const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
 const {
@@ -11,6 +11,7 @@ const {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_ATTRIBUTES,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
@@ -94,6 +95,9 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _temperatureSeen;
+
+    /** @type {Set<string>} */
+    _securityZoneSeen;
 
     /** @type {Set<string>} */
     _currentRunTopics;
@@ -568,6 +572,98 @@ class _HaDiscoveryPublishers {
         this._eventDrivenDiscoveryTopics.add(discoveryTopic);
         this.discoveryCount++;
         this.logger.info(`Temperature sensor entity published: ${labelKey} (${finalLabel})`);
+    }
+
+    /**
+     * Event-driven discovery for C-Bus Security (app 208) zones. Called
+     * whenever a zone event or status report mentions a zone; announces the
+     * HA binary_sensor the first time that zone is seen. Follows the
+     * ensureTemperatureDiscovery contract: idempotent Seen set, `exclude`
+     * honored with retraction, topics registered in _publishedTopics and
+     * _eventDrivenDiscoveryTopics so tree-run stale cleanup skips them.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId - security app id (e.g. 208)
+     * @param {string|number} zone  - security zone number (1-127)
+     * @returns {boolean} true if a new binary_sensor entity was published this call
+     */
+    ensureSecurityZoneDiscovery(network, appId, zone) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined || zone === null || zone === undefined) return false;
+
+        const key = `${network}/${appId}/${zone}`;
+        if (this._securityZoneSeen.has(key)) return false;
+
+        // Zone labels live under application 1 in the Toolkit project, so an
+        // exclusion can be recorded against either key shape.
+        const labelKey = `${network}/1/${zone}`;
+        if (this.exclude.has(key) || this.exclude.has(labelKey)) {
+            this.logger.debug(`Excluding security zone ${key} from discovery`);
+            const excludedUniqueId = `cgateweb_${network}_${appId}_${zone}`;
+            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
+            this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.delete(excludedTopic);
+            this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            this._securityZoneSeen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        this._createSecurityZoneDiscovery(String(network), String(appId), String(zone));
+        this._securityZoneSeen.add(key);
+        return true;
+    }
+
+    /**
+     * Build and publish the binary_sensor discovery payload for one security
+     * zone. State comes from the securityEventHandler zone topics
+     * (cbus/read/{net}/{app}/{zone}/state ON = unsealed/open/short, OFF =
+     * sealed); the raw 2-bit state name rides the JSON attributes topic.
+     * The zone's name and device class come from its application-1 label.
+     *
+     * @private
+     */
+    _createSecurityZoneDiscovery(networkId, appId, zone) {
+        // Zone labels live under application 1 in the Toolkit project (the
+        // label importer stores them as {net}/1/{zone} keys).
+        const labelKey = `${networkId}/1/${zone}`;
+        const customLabel = this.labelMap.get(labelKey);
+        const finalLabel = customLabel || `CBus Security Zone ${networkId}/${appId}/${zone}`;
+        if (customLabel) this.labelStats.custom++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${zone}`;
+        const entityId = this.entityIds.get(labelKey);
+        const area = this.areas && this.areas.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${zone}`;
+        const deviceClass = classifySecurityZoneDeviceClass(finalLabel, this.settings);
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(HA_COMPONENT_BINARY_SENSOR, entityId)),
+
+            state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            payload_on: MQTT_STATE_ON,
+            payload_off: MQTT_STATE_OFF,
+            json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+            ...(deviceClass && { device_class: deviceClass }),
+
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: [uniqueId],
+                name: finalLabel,
+                model: 'C-Bus Security Zone',
+                area
+            }),
+            origin: buildOriginBlock()
+        };
+
+        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.add(discoveryTopic);
+        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        this.discoveryCount++;
+        this.logger.info(`Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`);
     }
 
     /**

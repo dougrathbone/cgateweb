@@ -9,6 +9,7 @@ const MqttCommandRouter = require('./mqttCommandRouter');
 const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
+const SecurityEventHandler = require('./securityEventHandler');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
@@ -222,6 +223,18 @@ class CgateWebBridge {
         // and only when control is enabled — see _maybeRefreshWard).
         this.airconEventHandler = new AirconEventHandler({
             registry: this.airconControlRegistry,
+            eventPublisher: this.eventPublisher,
+            logger: this.logger,
+            settings: this.settings,
+            getHaDiscovery: this._getHaDiscovery,
+            cbusname: this.settings.cbusname,
+            sendCommand: (command) => this.cgateCommandQueue.add(command)
+        });
+
+        // Decodes security (app 208) event lines and publishes zone state.
+        // sendCommand feeds the throttled command queue (security
+        // status_request initial sync only — phase 1 is read-only on the bus).
+        this.securityEventHandler = new SecurityEventHandler({
             eventPublisher: this.eventPublisher,
             logger: this.logger,
             settings: this.settings,
@@ -569,8 +582,20 @@ class CgateWebBridge {
         return this.airconEventHandler.handleLine(line);
     }
 
+    /**
+     * Delegates security (app 208) event-line handling to SecurityEventHandler.
+     * Returns true when the line was a security line and was consumed there.
+     */
+    _handleSecurityLine(line) {
+        return this.securityEventHandler.handleLine(line);
+    }
+
     _processEventLine(line) {
         if (this._handleAirconLine(line)) return;
+        // Security lines are `#`-comment-prefixed like aircon lines; consume
+        // them before the generic comment-dropping branch so zone events don't
+        // publish a bogus OFF and status reports don't warn-spam the parser.
+        if (this._handleSecurityLine(line)) return;
 
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${line}`);
@@ -608,6 +633,13 @@ class CgateWebBridge {
         // "Could not parse event line" warning on every broadcast.
         if (this.airconEventHandler.isAirconLine(line)) {
             this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${line}`);
+            return;
+        }
+
+        // Same for unconsumed security lines (feature disabled, an unsupported
+        // verb, or a different app): never valid CBusEvents.
+        if (this.securityEventHandler.isSecurityLine(line)) {
+            this.logger.debug(`Unparsed security line (captured, not a standard event): ${line}`);
             return;
         }
 

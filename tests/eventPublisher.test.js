@@ -1038,6 +1038,50 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish ON + attributes for an unsealed security zone', () => {
+            eventPublisher.publishReading('254', '208', '58', {
+                kind: 'security_zone',
+                zoneState: 'unsealed'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/state',
+                'ON',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/attributes',
+                '{"zone_state":"unsealed"}',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish OFF for a sealed security zone', () => {
+            eventPublisher.publishReading('254', '208', '58', {
+                kind: 'security_zone',
+                zoneState: 'sealed'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/state',
+                'OFF',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish ON for the loop-fault security zone states (open/short)', () => {
+            for (const zoneState of ['open', 'short']) {
+                mockPublishFn.mockClear();
+                eventPublisher.publishReading('254', '208', '58', { kind: 'security_zone', zoneState });
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/208/58/state',
+                    'ON',
+                    mockMqttOptions
+                );
+            }
+        });
+
         it('should publish sensor_status and sensor_problem alongside current_temperature when decoded', () => {
             eventPublisher.publishReading('254', '172', '201', {
                 kind: 'temperature',

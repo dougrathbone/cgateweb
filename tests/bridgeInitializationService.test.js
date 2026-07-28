@@ -141,6 +141,44 @@ describe('BridgeInitializationService', () => {
         jest.useRealTimers();
     });
 
+    describe('_sendSecurityStatusRequests', () => {
+        it('sends status_request 1 and 2 for each ha_discovery network when the security app is enabled', () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                cbus_security_app_id: '208',
+                ha_discovery_networks: [254, 255]
+            });
+            const svc = makeService(bridge);
+            svc._sendSecurityStatusRequests();
+            expect(commandQueueAdd).toHaveBeenCalledTimes(4);
+            expect(commandQueueAdd).toHaveBeenNthCalledWith(1, 'security status_request //HOME/254/208 1\n');
+            expect(commandQueueAdd).toHaveBeenNthCalledWith(2, 'security status_request //HOME/254/208 2\n');
+            expect(commandQueueAdd).toHaveBeenNthCalledWith(3, 'security status_request //HOME/255/208 1\n');
+            expect(commandQueueAdd).toHaveBeenNthCalledWith(4, 'security status_request //HOME/255/208 2\n');
+        });
+
+        it('does nothing when the security app is disabled (null/empty/0)', () => {
+            for (const cbus_security_app_id of [null, '', '0']) {
+                const { bridge, commandQueueAdd } = makeBridge({
+                    cbus_security_app_id,
+                    ha_discovery_networks: [254]
+                });
+                const svc = makeService(bridge);
+                svc._sendSecurityStatusRequests();
+                expect(commandQueueAdd).not.toHaveBeenCalled();
+            }
+        });
+
+        it('does nothing without configured ha_discovery_networks', () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                cbus_security_app_id: '208',
+                ha_discovery_networks: []
+            });
+            const svc = makeService(bridge);
+            svc._sendSecurityStatusRequests();
+            expect(commandQueueAdd).not.toHaveBeenCalled();
+        });
+    });
+
     describe('_resolveGetallNetworks', () => {
         it('returns only lighting app when no optional apps are configured', () => {
             const { bridge } = makeBridge({ getall_networks: [254, 1] });

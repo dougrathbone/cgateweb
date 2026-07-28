@@ -84,4 +84,54 @@ function typeFromLabelPrefix(label, settings = {}) {
         : null;
 }
 
-module.exports = { classifyLightingGroup, typeFromLabelPrefix, LABEL_PREFIX_TYPES, DEFAULT_COVER_KEYWORDS };
+// Keyword → HA binary_sensor device_class for Security application (208)
+// zones, inferred from the zone's label (issue #42: "PIR"/"motion" → motion,
+// "Garage Door" → garage_door, etc.). Ordered: the first match wins, so
+// "garage" precedes "door" and "Garage Door" becomes garage_door, not door.
+const DEFAULT_SECURITY_ZONE_DEVICE_CLASS_KEYWORDS = [
+    ['pir', 'motion'],
+    ['motion', 'motion'],
+    ['garage', 'garage_door'],
+    ['door', 'door'],
+    ['window', 'window'],
+    ['smoke', 'smoke']
+];
+
+/**
+ * Infer a Home Assistant binary_sensor device_class for a security zone from
+ * its label. Returns null (no device_class) when nothing matches — a generic
+ * binary_sensor is the right default for names like Toolkit's "Group1".
+ *
+ * @param {string} label - The zone label (custom label from the app-1 import).
+ * @param {Object} settings - Bridge settings.
+ * @param {Object<string, string>} [settings.ha_discovery_security_device_class_keywords] -
+ *   Override keyword → device_class map (replaces the default when non-empty).
+ * @returns {string|null} HA device_class (e.g. 'motion', 'door') or null.
+ */
+function classifySecurityZoneDeviceClass(label, settings = {}) {
+    if (typeof label !== 'string' || !label.trim()) return null;
+
+    const overrides = settings.ha_discovery_security_device_class_keywords;
+    const entries = (overrides && typeof overrides === 'object' && Object.keys(overrides).length > 0)
+        ? Object.entries(overrides)
+        : DEFAULT_SECURITY_ZONE_DEVICE_CLASS_KEYWORDS;
+
+    for (const [kw, deviceClass] of entries) {
+        if (typeof kw !== 'string' || !kw.trim()) continue;
+        if (typeof deviceClass !== 'string' || !deviceClass.trim()) continue;
+        const re = new RegExp(`\\b${escapeRegExp(kw.trim())}`, 'i');
+        if (re.test(label)) {
+            return deviceClass;
+        }
+    }
+    return null;
+}
+
+module.exports = {
+    classifyLightingGroup,
+    typeFromLabelPrefix,
+    classifySecurityZoneDeviceClass,
+    LABEL_PREFIX_TYPES,
+    DEFAULT_COVER_KEYWORDS,
+    DEFAULT_SECURITY_ZONE_DEVICE_CLASS_KEYWORDS
+};

@@ -52,6 +52,7 @@ class SettingsValidator {
         this._validateHomeAssistantSettings(settings, errors);
         this._validateRawEventCaptureSettings(settings, errors);
         this._validateAirconSettings(settings, errors);
+        this._validateSecuritySettings(settings, errors);
 
         // Handle validation results
         if (errors.length > 0) {
@@ -228,6 +229,21 @@ class SettingsValidator {
         if (val !== undefined && val !== null) {
             if (typeof val !== 'string' && typeof val !== 'number') {
                 errors.push('cbus_aircon_app_id must be a string or number when specified');
+            }
+        }
+    }
+
+    /**
+     * Validate Security application settings (general, not gated on HA discovery)
+     * @param {Object} settings - Settings object to validate
+     * @param {Array} errors - Array to push error messages into
+     * @private
+     */
+    _validateSecuritySettings(settings, errors) {
+        const val = settings.cbus_security_app_id;
+        if (val !== undefined && val !== null) {
+            if (typeof val !== 'string' && typeof val !== 'number') {
+                errors.push('cbus_security_app_id must be a string or number when specified');
             }
         }
     }

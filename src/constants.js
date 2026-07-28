@@ -6,6 +6,7 @@ const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting de
 const DEFAULT_CBUS_APP_TRIGGER = '202'; // C-Bus application ID for trigger groups (keypads, scenes)
 const DEFAULT_CBUS_APP_TEMPERATURE = '25';   // C-Bus Temperature Broadcast application ($19)
 const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning application ($AC)
+const DEFAULT_CBUS_APP_SECURITY = '208';     // C-Bus Security application ($D0)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -61,6 +62,7 @@ const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION = 'humidity_action'; // humidifying
 const MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT = 'fan_speed_pct';     // Fan speed % from the Raw Level (spec §25.12.8)
 const MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL = 'comfort_level';     // Evaporative comfort level (spec §25.12.7, default mapping)
 const MQTT_TOPIC_SUFFIX_SOURCE_UNIT = 'source_unit';              // C-Bus unit that last changed the group (#sourceunit)
+const MQTT_TOPIC_SUFFIX_ATTRIBUTES = 'attributes';                // JSON attributes (e.g. raw security zone state)
 // Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
 // HA's climate card and our write clamp both use this so users can't request a
 // value the thermostat will silently reject.
@@ -169,6 +171,7 @@ module.exports = {
     DEFAULT_CBUS_APP_TRIGGER,
     DEFAULT_CBUS_APP_TEMPERATURE,
     DEFAULT_CBUS_APP_AIRCON,
+    DEFAULT_CBUS_APP_SECURITY,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -220,6 +223,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
+    MQTT_TOPIC_SUFFIX_ATTRIBUTES,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,

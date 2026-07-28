@@ -234,6 +234,11 @@ configuration:
     name: Styrning av luftkonditionering
     description: >-
       Tillåt Home Assistant att styra inbyggda C-Bus-termostater (läge och temperatur). Avstängt som standard — det skriver till aktiv värme/kyla. Kräver att applikations-id för luftkonditionering är inställt.
+  cbus_security_app_id:
+    name: Säkerhetsapplikations-id
+    description: >-
+      C-Bus säkerhetsapplikations-id (standard 208) för larmzonssensorer. Publicerar en binär sensor per zon — sealed är av; unsealed, open eller short är på — och synkroniserar zonernas status vid anslutning. Sätt till 0 för att stänga av.
+
 
   # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:

@@ -237,6 +237,11 @@ configuration:
     name: Ovládání klimatizace
     description: >-
       Povolit Home Assistant ovládat nativní termostaty C-Bus (režim a teplotu). Ve výchozím nastavení vypnuto — zapisuje do aktivního vytápění/chlazení. Vyžaduje nastavené ID aplikace klimatizace.
+  cbus_security_app_id:
+    name: ID aplikace zabezpečení
+    description: >-
+      ID aplikace Security C-Bus (výchozí 208) pro snímače alarmových zón. Publikuje jeden binární snímač na zónu — sealed je vypnuto; unsealed, open nebo short je zapnuto — a synchronizuje stav zón při připojení. Pro vypnutí nastavte 0.
+
 
   # ── Diagnostika bridge ──
   ha_bridge_diagnostics_enabled:

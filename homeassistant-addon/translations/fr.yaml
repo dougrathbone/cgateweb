@@ -248,6 +248,11 @@ configuration:
     name: Contrôle de la climatisation
     description: >-
       Autoriser Home Assistant à contrôler les thermostats C-Bus natifs (mode et température). Désactivé par défaut : écrit sur le chauffage/la climatisation en service. Nécessite un ID d’application de climatisation défini.
+  cbus_security_app_id:
+    name: ID d'application de sécurité
+    description: >-
+      ID de l'application Security C-Bus (208 par défaut) pour les capteurs de zones d'alarme. Publie un capteur binaire par zone — sealed = off ; unsealed, open ou short = on — et synchronise l'état des zones à la connexion. Réglez sur 0 pour désactiver.
+
 
   # ── Diagnostics du bridge ──
   ha_bridge_diagnostics_enabled:

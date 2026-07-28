@@ -236,6 +236,11 @@ configuration:
     name: Sterowanie klimatyzacją
     description: >-
       Zezwól Home Assistant na sterowanie natywnymi termostatami C-Bus (tryb i temperatura). Domyślnie wyłączone — zapisuje do działającego ogrzewania/chłodzenia. Wymaga ustawionego ID aplikacji klimatyzacji.
+  cbus_security_app_id:
+    name: ID aplikacji bezpieczeństwa
+    description: >-
+      ID aplikacji Security C-Bus (domyślnie 208) dla czujników stref alarmowych. Publikuje jeden czujnik binarny na strefę — sealed to wył.; unsealed, open lub short to wł. — i synchronizuje stan stref przy połączeniu. Ustaw 0, aby wyłączyć.
+
 
   # ── Diagnostyka bridge ──
   ha_bridge_diagnostics_enabled:

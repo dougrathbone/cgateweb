@@ -1,5 +1,6 @@
 const {
     classifyLightingGroup,
+    classifySecurityZoneDeviceClass,
     DEFAULT_COVER_KEYWORDS
 } = require('../src/deviceTypeClassifier');
 
@@ -106,5 +107,51 @@ describe('typeFromLabelPrefix (issue #35)', () => {
 
     it('exposes exactly the supported prefix map', () => {
         expect(LABEL_PREFIX_TYPES).toEqual({ light: 'light', cover: 'cover', switch: 'switch', relay: 'relay', pir: 'pir' });
+    });
+});
+
+describe('classifySecurityZoneDeviceClass', () => {
+    it('maps PIR/motion labels to motion', () => {
+        expect(classifySecurityZoneDeviceClass('Garage PIR')).toBe('motion');
+        expect(classifySecurityZoneDeviceClass('Hallway PIR Sensor')).toBe('motion');
+        expect(classifySecurityZoneDeviceClass('Living Room Motion')).toBe('motion');
+    });
+
+    it('maps garage/door/window/smoke labels, garage winning over door', () => {
+        expect(classifySecurityZoneDeviceClass('Garage Door')).toBe('garage_door');
+        expect(classifySecurityZoneDeviceClass('Front Door')).toBe('door');
+        expect(classifySecurityZoneDeviceClass('Kitchen Window')).toBe('window');
+        expect(classifySecurityZoneDeviceClass('Hallway Smoke Detector')).toBe('smoke');
+    });
+
+    it('matches case-insensitively on a leading word boundary (plurals included)', () => {
+        expect(classifySecurityZoneDeviceClass('front door')).toBe('door');
+        expect(classifySecurityZoneDeviceClass('UPSTAIRS WINDOWS')).toBe('window');
+        expect(classifySecurityZoneDeviceClass('Bedroom Doors')).toBe('door');
+    });
+
+    it('returns null when nothing matches (generic binary_sensor)', () => {
+        expect(classifySecurityZoneDeviceClass('Group1')).toBeNull();
+        expect(classifySecurityZoneDeviceClass('Zone 12')).toBeNull();
+        expect(classifySecurityZoneDeviceClass('')).toBeNull();
+        expect(classifySecurityZoneDeviceClass(undefined)).toBeNull();
+        expect(classifySecurityZoneDeviceClass(null)).toBeNull();
+    });
+
+    it('honours a keyword override map from settings', () => {
+        const settings = { ha_discovery_security_device_class_keywords: { reed: 'door' } };
+        expect(classifySecurityZoneDeviceClass('Patio Reed Switch', settings)).toBe('door');
+        // The override replaces the default map entirely.
+        expect(classifySecurityZoneDeviceClass('Front Door', settings)).toBeNull();
+    });
+
+    it('falls back to the default map for empty/invalid overrides', () => {
+        expect(classifySecurityZoneDeviceClass('Front Door', { ha_discovery_security_device_class_keywords: {} })).toBe('door');
+        expect(classifySecurityZoneDeviceClass('Front Door', { ha_discovery_security_device_class_keywords: 'door' })).toBe('door');
+    });
+
+    it('skips invalid entries in an override map', () => {
+        const settings = { ha_discovery_security_device_class_keywords: { '': 'door', reed: '' } };
+        expect(classifySecurityZoneDeviceClass('Patio Reed Switch', settings)).toBeNull();
     });
 });

@@ -7,6 +7,7 @@ const {
     NEWLINE,
     DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
+const { buildSecurityStatusRequest } = require('./securityCommand');
 
 /**
  * Drives post-connection initialization (auto-discovery, initial/periodic
@@ -121,6 +122,10 @@ class BridgeInitializationService {
         if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
             this._scheduleAllGetalls(getallNetworks);
         }
+
+        // Security panels don't answer lighting-style getall (spec §5.9), so
+        // the security app syncs zone state via dedicated status requests.
+        this._sendSecurityStatusRequests();
 
         // Monitor CNI/PCI connectivity per network (independent of getall).
         this._startNetworkInterfaceMonitoring();
@@ -468,6 +473,37 @@ class BridgeInitializationService {
             return [settings.getallnetapp];
         }
         return [];
+    }
+
+    /**
+     * Send the security application's initial zone-state sync (status_request
+     * reports 1 and 2) for each HA-discovery network. Security panels do not
+     * answer lighting-style getall requests (spec §5.9), so this is the only
+     * way to learn zone state up front; zone events alone can be rare. The
+     * request is read-only — the panel only broadcasts its current state in
+     * reply. Gated on cbus_security_app_id (empty/'0' disables) and on the
+     * network being in ha_discovery_networks; the event handler repeats the
+     * request once per network on first security traffic as a fallback.
+     * @private
+     */
+    _sendSecurityStatusRequests() {
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return;
+        const networks = this.settings.ha_discovery_networks;
+        if (!Array.isArray(networks) || networks.length === 0) return;
+        for (const network of networks) {
+            for (const report of [1, 2]) {
+                this.commandQueue.add(
+                    buildSecurityStatusRequest({
+                        cbusname: this.settings.cbusname,
+                        network,
+                        application: appId,
+                        report
+                    }) + NEWLINE
+                );
+            }
+        }
+        this.logger.debug(`Requested security zone status sync for networks: ${networks.join(', ')}`);
     }
 
     /**

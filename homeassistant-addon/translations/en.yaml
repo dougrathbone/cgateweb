@@ -236,6 +236,11 @@ configuration:
     name: Air Conditioning Control
     description: >-
       Allow Home Assistant to control native C-Bus thermostats (set mode and temperature). Your thermostats still appear in Home Assistant as read-only climate entities without this — enabling it only adds the set mode/temperature commands, which write to live heating/cooling and add C-Bus traffic. Off by default. Requires the Air Conditioning Application ID to be set.
+  cbus_security_app_id:
+    name: Security Application ID
+    description: >-
+      C-Bus Security application id (default 208) for alarm zone sensors. Publishes one binary sensor per zone — sealed is off; unsealed, open or short is on — and syncs the zone states on connect. Set to 0 to disable.
+
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:

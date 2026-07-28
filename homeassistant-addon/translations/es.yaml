@@ -243,6 +243,11 @@ configuration:
     name: Control de aire acondicionado
     description: >-
       Permitir que Home Assistant controle los termostatos C-Bus nativos (modo y temperatura). Desactivado por defecto: escribe en la calefacción/refrigeración activa. Requiere configurar el ID de aplicación de aire acondicionado.
+  cbus_security_app_id:
+    name: ID de aplicación de seguridad
+    description: >-
+      ID de la aplicación Security de C-Bus (208 por defecto) para sensores de zonas de alarma. Publica un sensor binario por zona — sealed es off; unsealed, open o short es on — y sincroniza el estado de las zonas al conectar. Establezca 0 para desactivar.
+
 
   # ── Diagnósticos del bridge ──
   ha_bridge_diagnostics_enabled:

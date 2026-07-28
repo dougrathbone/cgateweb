@@ -240,6 +240,11 @@ configuration:
     name: Airconditioning-besturing
     description: >-
       Sta Home Assistant toe om native C-Bus-thermostaten te bedienen (modus en temperatuur). Standaard uitgeschakeld — het schrijft naar de actieve verwarming/koeling. Vereist een ingestelde airconditioning-applicatie-id.
+  cbus_security_app_id:
+    name: Beveiligingsapplicatie-id
+    description: >-
+      C-Bus-beveiligingsapplicatie-id (standaard 208) voor alarmzonesensoren. Publiceert één binaire sensor per zone — sealed is uit; unsealed, open of short is aan — en synchroniseert de zonestatus bij verbinding. Stel in op 0 om uit te schakelen.
+
 
   # ── Bridge Diagnostiek ──
   ha_bridge_diagnostics_enabled:

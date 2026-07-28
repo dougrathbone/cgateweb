@@ -10,8 +10,9 @@ first-class feature alongside the native HVAC (172) support, requested in
 > @djagerif (status reports and zone events from a Ness/Comfort-style panel on
 > network 254).
 
-> **Status:** design only — no code yet. Ground-truth captures still needed for the
-> marked unknowns (see §7).
+> **Status:** phase 1 (zone sensors) in progress. Live-panel captures received
+> 2026-07-27 (#42) — the event surface in §1 is confirmed; remaining unknowns
+> are listed in §7.
 
 ---
 
@@ -50,16 +51,36 @@ security status_report_2 //PROJECT/254/208 <z33..z80 packed>
 
 - Report 1 covers zones 1–32, prefixed by system arm state, tamper and panic bytes
   (this is the "first three positions" offset observed in #42).
-- Report 2 covers zones 33–80, no prefix. **The spec caps at zone 80**; panels that
-  extended to 96 zones are the open question (see §7).
+- Report 2 covers zones 33–80, no prefix. **The spec caps at zone 80**, and the
+  only accessible panel is 64-zone, so anything higher is event-driven only
+  (see §7).
 - Zone states are **2 bits each, 4 zones per byte**: `%00` sealed, `%01` unsealed,
   `%10` open, `%11` short. Absent zones always report sealed.
 
-### System state events (spec §5.5.1.1–2, §5.5.1.5–8)
+### System state events (confirmed by live captures, #42)
 
-`system_armed` (arm code `$01` away, `$02` home/night, `$03+` vendor), `system_disarmed`,
-`alarm_on`, `alarm_off`, plus tamper/panic messages. Needed for a future
-`alarm_control_panel` entity, not for zone sensors.
+Captured from a real 64-zone Cytech panel (event port, `#`-prefixed comment lines,
+so the handler hooks the **comment path**, same as aircon lines):
+
+```
+security arm_ready           //MIDSTRM/254/208
+security arm_not_ready       //MIDSTRM/254/208/44      # names the blocking zone
+security exit_delay_started  //MIDSTRM/254/208
+security system_arm          //MIDSTRM/254/208 <mode>  # see table below
+security arm_failed          //MIDSTRM/254/208 arm_failed_raised
+security alarm_on            //MIDSTRM/254/208
+security alarm_off           //MIDSTRM/254/208
+security zone_isolated       //MIDSTRM/254/208/44      # zone bypassed on arming
+security fire_alarm          //MIDSTRM/254/208 fire_alarm_raised
+```
+
+Arm modes (spec §5.5.1.1, confirmed by capture): `0` disarmed, `1` away, `2` night,
+`3` day/stay, `4` vacation. `system_arm 0` is the disarm announcement; the spec's
+separate `system_disarmed` verb was not observed. Note the panel uses `system_arm`
+(spec calls the event "System Armed / Disarmed"), not `system_armed`.
+
+The `alarm_control_panel` entity (phase 2) builds on these; zone sensors (phase 1)
+only need `zone_sealed`/`zone_unsealed` and the status reports.
 
 ### Control messages (spec §5.5.2.3 — "Part B", later phase)
 
@@ -146,33 +167,37 @@ djagerif asked for first. No new dependencies; every mechanism already exists.
 ### Phase 2 — Alarm control ("Part B", later)
 
 `alarm_control_panel` MQTT entity (arm away/home/night/vacation, disarm),
-built on the Phase 1 decoder's `system_armed/disarmed/alarm_on/off` events and
+built on the Phase 1 decoder's `system_arm`/`alarm_on`/`alarm_off` events and
 the §5.5.2 control messages sent via the command port. Needs a control-enabled
 flag like `cbus_aircon_control_enabled` (`security arm` is a write — same
 careful opt-in posture as aircon writes). Disarm-under-duress semantics
-(spec §5.12) need real-panel captures before we touch them. Sized M–L, mostly
-because of capture-driven validation, not code volume.
+(spec §5.12) still need real-panel captures before we touch them. Sized M–L,
+mostly because of capture-driven validation, not code volume.
 
-## 6. What we need from the reporter
+## 6. Reporter captures — received
 
-djagerif has offered logs and testing. Concretely:
+djagerif delivered DEBUG-level captures (#42, 2026-07-27) covering arm away /
+day-stay / vacation (local and remote), exit-delay expiry (`arm_failed`), zone
+bypass on arming (`zone_isolated`), fire alarm, and final-exit-door arming.
+Every verb in §1's table comes from those lines. Two practical notes:
 
-1. Raw captures (`cbus_raw_event_log_apps: ["208"]` exists today —
-   `src/defaultSettings.js:200`) of: arm/disarm cycles, an alarm event, a zone
-   fault if producible, and both status reports.
-2. Whether their panel reports zones 81–96 anywhere (spec caps report 2 at zone
-   80; see §7).
-3. A Toolkit label import already works — their app-1 zone names will drive
-   device-class inference, so the label file from their project is useful for
-   tuning the keyword map.
+- The raw-capture setting (`cbusRawEventLogApps`, `src/defaultSettings.js:200`)
+  is **not exposed in the add-on config** — DEBUG level already logs the full
+  line text via "Ignoring comment from event port", which proved sufficient.
+- His Toolkit project uses default `Group1`, `Group2` zone names, so
+  device-class inference gets no keywords from his install — the generic
+  default matters as much as the mapping.
+- His panel is 64-zone (Cytech now owns the C-Bus interface), so zones 81–96
+  are untestable for the foreseeable future (see §7).
 
 ## 7. Open questions
 
-- **Zones 81–96:** spec §5.5.1.21 fixes report 2 at zones 33–80. If newer panels
-  report 96 zones, is there an undocumented report 3, or do high zones only
-  appear as discrete events? Until known: sync zones 1–80 via reports, and let
-  event-driven discovery pick up any higher zone that emits an event.
+- **Zones 81–96:** spec §5.5.1.21 fixes report 2 at zones 33–80, and no
+  accessible panel reports higher. Settled until Cytech ships something newer:
+  sync zones 1–80 via reports, and let event-driven discovery pick up any
+  higher zone that emits an event.
 - Do real panels emit `zone_open`/`zone_short` as discrete events, or only via
-  the 2-bit report fields?
-- C-Gate's exact rendering of `system_armed`/`alarm_on` lines (argument text) —
-  decoder should be tolerant until captured.
+  the 2-bit report fields? Decoder accepts both regardless.
+- ~~C-Gate's exact rendering of `system_armed`/`alarm_on` lines~~ — resolved by
+  capture: the verb is `system_arm <mode>`, and alarm-style verbs may carry a
+  free-text argument (`arm_failed_raised`, `fire_alarm_raised`).

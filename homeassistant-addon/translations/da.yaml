@@ -239,6 +239,11 @@ configuration:
     name: Styring af klimaanlæg
     description: >-
       Tillad Home Assistant at styre indbyggede C-Bus-termostater (tilstand og temperatur). Slået fra som standard — det skriver til aktiv opvarmning/køling. Kræver, at applikations-id for klimaanlæg er angivet.
+  cbus_security_app_id:
+    name: Sikkerhedsapplikations-id
+    description: >-
+      C-Bus sikkerhedsapplikations-id (standard 208) til alarmzonesensorer. Udgiver én binær sensor pr. zone — sealed er fra; unsealed, open eller short er til — og synkroniserer zonernes status ved tilslutning. Sæt til 0 for at deaktivere.
+
 
   # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:

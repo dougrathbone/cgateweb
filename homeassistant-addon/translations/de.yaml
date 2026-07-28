@@ -240,6 +240,11 @@ configuration:
     name: Klimaanlagen-Steuerung
     description: >-
       Home Assistant erlauben, native C-Bus-Thermostate zu steuern (Modus und Temperatur). Standardmäßig deaktiviert — es schreibt in die laufende Heizung/Kühlung. Erfordert eine gesetzte Air-Conditioning-Anwendungs-ID.
+  cbus_security_app_id:
+    name: Sicherheitsanwendungs-ID
+    description: >-
+      C-Bus-Sicherheitsanwendungs-ID (Standard 208) für Alarmzonensensoren. Veröffentlicht einen Binärsensor pro Zone — sealed ist aus; unsealed, open oder short ist an — und synchronisiert die Zonenstände beim Verbindungsaufbau. Zum Deaktivieren auf 0 setzen.
+
 
   # ── Bridge-Diagnose ──
   ha_bridge_diagnostics_enabled:

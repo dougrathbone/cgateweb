@@ -26,6 +26,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
+    MQTT_TOPIC_SUFFIX_ATTRIBUTES,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -269,6 +270,8 @@ class EventPublisher {
      *   humidity       → cbus/read/{net}/{app}/{group}/current_humidity (if non-null)
      *   humidity_mode  → cbus/read/{net}/{app}/{group}/humidity_mode + humidity_setpoint
      *   humidity_action → cbus/read/{net}/{app}/{group}/humidity_action
+     *   security_zone  → cbus/read/{net}/{app}/{zone}/state (ON for unsealed/open/short)
+     *                  → cbus/read/{net}/{app}/{zone}/attributes (raw 2-bit state name)
      */
     publishReading(network, application, group, reading) {
         if (!reading) return;
@@ -419,6 +422,23 @@ class EventPublisher {
                 reading.action,
                 this.mqttOptions
             );
+        } else if (reading.kind === 'security_zone') {
+            // Security zone state (app 208): the binary_sensor state is ON for
+            // unsealed/open/short and OFF for sealed; the raw 2-bit state name
+            // goes to the JSON attributes topic so automations can distinguish
+            // fault states (open/short) from a normal unsealed zone.
+            if (reading.zoneState !== null && reading.zoneState !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                    reading.zoneState === 'sealed' ? MQTT_STATE_OFF : MQTT_STATE_ON,
+                    this.mqttOptions
+                );
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                    JSON.stringify({ zone_state: reading.zoneState }),
+                    this.mqttOptions
+                );
+            }
         }
     }
 

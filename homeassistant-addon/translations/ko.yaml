@@ -226,6 +226,11 @@ configuration:
     name: 공조 제어
     description: >-
       Home Assistant가 네이티브 C-Bus 온도조절기를 제어(모드 및 온도 설정)하도록 허용합니다. 기본값은 비활성화입니다. 작동 중인 난방/냉방에 기록합니다. 공조 애플리케이션 ID 설정이 필요합니다.
+  cbus_security_app_id:
+    name: 보안 애플리케이션 ID
+    description: >-
+      알람 존 센서용 C-Bus 보안 애플리케이션 ID(기본값 208). 존당 바이너리 센서 하나를 게시합니다(sealed는 꺼짐, unsealed/open/short는 켜짐). 연결 시 존 상태를 동기화합니다. 비활성화하려면 0으로 설정하세요.
+
 
   # ── Bridge 진단 ──
   ha_bridge_diagnostics_enabled:

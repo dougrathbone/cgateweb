@@ -96,6 +96,10 @@ const defaultSettings = {
     // (set mode/setpoint) via AIRCON commands. Off by default — it writes to live
     // heating/cooling. Requires cbus_aircon_app_id to be set.
     cbus_aircon_control_enabled: false,
+    // C-Bus Security app ID for zone sensors (default 208). Publishes one
+    // binary_sensor per zone (sealed/unsealed) and syncs zone state via
+    // security status_request on connect. Empty or '0' disables.
+    cbus_security_app_id: '208',
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
     ha_bridge_diagnostics_interval_sec: 60,

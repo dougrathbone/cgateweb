@@ -243,6 +243,11 @@ configuration:
     name: Controllo climatizzazione
     description: >-
       Consenti a Home Assistant di controllare i termostati C-Bus nativi (modalità e temperatura). Disattivato per impostazione predefinita: scrive sull’impianto attivo. Richiede un ID applicazione climatizzazione impostato.
+  cbus_security_app_id:
+    name: ID applicazione sicurezza
+    description: >-
+      ID dell'applicazione Security C-Bus (predefinito 208) per i sensori delle zone di allarme. Pubblica un sensore binario per zona — sealed è off; unsealed, open o short è on — e sincronizza lo stato delle zone alla connessione. Impostare 0 per disattivare.
+
 
   # ── Diagnostica del bridge ──
   ha_bridge_diagnostics_enabled:

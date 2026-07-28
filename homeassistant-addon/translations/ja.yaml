@@ -238,6 +238,11 @@ configuration:
     name: 空調制御
     description: >-
       Home Assistant がネイティブ C-Bus サーモスタットを制御（モードと温度の設定）できるようにします。デフォルトは無効です。稼働中の暖房/冷房に書き込みます。空調アプリケーション ID の設定が必要です。
+  cbus_security_app_id:
+    name: セキュリティアプリケーション ID
+    description: >-
+      アラームゾーンセンサー用の C-Bus セキュリティアプリケーション ID（デフォルト 208）。ゾーンごとにバイナリセンサーを1つ公開します（sealed はオフ、unsealed/open/short はオン）。接続時にゾーン状態を同期します。無効にするには 0 を設定してください。
+
 
   # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:

@@ -213,6 +213,11 @@ configuration:
     name: 空调控制
     description: >-
       允许 Home Assistant 控制原生 C-Bus 温控器（设置模式和温度）。默认关闭——它会写入正在运行的供暖/制冷。需要设置空调应用 ID。
+  cbus_security_app_id:
+    name: 安防应用 ID
+    description: >-
+      用于报警区域传感器的 C-Bus 安防（Security）应用 ID（默认 208）。每个区域发布一个二进制传感器——sealed 为关；unsealed、open 或 short 为开——并在连接时同步区域状态。设置为 0 可禁用。
+
 
   # ── Bridge 诊断 ──
   ha_bridge_diagnostics_enabled:
