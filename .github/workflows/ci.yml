@@ -106,18 +106,24 @@ jobs:
         chmod +x /tmp/hadolint
         /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
 
-  # Cheap, fast check that Schneider still serves exactly what the install
-  # script expects: the download URL answers, the payload is a real zip, and
-  # its sha256 matches the pin. Catches a portal move or repackage (which
-  # broke every fresh install on 2026-07-24) without booting the whole stack.
-  # Deliberately NOT in the required status checks: a failure is a loud
-  # signal on the commit/PR, but a third-party outage must not block merges.
+  # Cheap check that Schneider still serves exactly what the install script
+  # expects (portal move or repackage broke fresh installs once already).
+  # SCHEDULED-RUN ONLY: on push/PR the integration legs already download and
+  # checksum-verify the same URLs via the real installer in the same run, and
+  # running this job concurrently with them got the runner IP rate-limited by
+  # Schneider's IdP (idp.se.com "rate limit ... reached" HTML page instead of
+  # a zip). Deliberately NOT in the required status checks: a failure is a
+  # loud signal, but a third-party outage must not block merges.
   cgate-download-check:
     name: Verify C-Gate download (${{ matrix.cgate.version }})
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    if: github.event_name == 'schedule'
     strategy:
       fail-fast: false
+      # Serial legs: parallel downloads of two ~57MB zips from one runner IP
+      # are what tripped Schneider's rate limit in the first place.
+      max-parallel: 1
       matrix:
         cgate:
           - version: "3.3.1"
@@ -160,30 +166,48 @@ jobs:
         EXPECTED_SHA256: ${{ env.expected_sha256 }}
       run: |
         set -uo pipefail
-        # Log every signal a Schneider portal change would move: HTTP status,
-        # post-redirect URL, content type and byte count.
-        curl -fSL --max-time 600 --connect-timeout 30 -o cgate.zip \
-          -w 'HTTP status:   %{http_code}\nFinal URL:     %{url_effective}\nContent-Type:  %{content_type}\nBytes:         %{size_download}\n' \
-          "${URL}" || {
-            echo "::error::Download failed for ${URL}. Schneider may have moved the file or the portal may be down."
-            exit 1
-          }
+        # Retry like the add-on's installer does: the Schneider CDN/proxy path
+        # occasionally hands back truncated or error-page content (a transient
+        # HTML page already false-alarmed this job once), and a fresh attempt
+        # is the cheapest fix. Every attempt logs the signals a real Schneider
+        # change would move: HTTP status, post-redirect URL, content type and
+        # byte count. Three strikes and it is a genuine failure.
+        VERIFIED=0
+        FAIL_REASON=""
+        for attempt in 1 2 3; do
+          echo "=== Download attempt ${attempt}/3: ${URL} ==="
+          CURL_EXIT=0
+          curl -fSL --max-time 600 --connect-timeout 30 -o cgate.zip \
+            -w 'HTTP status:   %{http_code}\nFinal URL:     %{url_effective}\nContent-Type:  %{content_type}\nBytes:         %{size_download}\n' \
+            "${URL}" || CURL_EXIT=$?
 
-        # A real zip starts with PK; an HTML error or login page does not.
-        if ! head -c 2 cgate.zip | grep -q '^PK'; then
-          echo "::error::Downloaded content is not a zip archive (no PK header) — likely an HTML error or login page."
-          echo "::error::Schneider may have moved the download behind a login. First bytes:"
-          head -c 200 cgate.zip || true
-          exit 1
-        fi
-        echo "Zip magic: OK (PK header present)"
+          if [[ ${CURL_EXIT} -ne 0 ]]; then
+            FAIL_REASON="download failed (curl exit ${CURL_EXIT})"
+          elif ! head -c 2 cgate.zip | grep -q '^PK'; then
+            # A real zip starts with PK; an HTML error or login page does not.
+            FAIL_REASON="not a zip archive (no PK header — likely an HTML error or login page). First bytes: $(head -c 200 cgate.zip | tr -d '\n' || true)"
+          else
+            ACTUAL_SHA256=$(sha256sum cgate.zip | awk '{print $1}')
+            echo "Expected sha256: ${EXPECTED_SHA256}"
+            echo "Actual sha256:   ${ACTUAL_SHA256}"
+            if [[ "${ACTUAL_SHA256}" == "${EXPECTED_SHA256}" ]]; then
+              VERIFIED=1
+              break
+            fi
+            FAIL_REASON="checksum mismatch (expected ${EXPECTED_SHA256}, got ${ACTUAL_SHA256})"
+          fi
 
-        ACTUAL_SHA256=$(sha256sum cgate.zip | awk '{print $1}')
-        echo "Expected sha256: ${EXPECTED_SHA256}"
-        echo "Actual sha256:   ${ACTUAL_SHA256}"
-        if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
-          echo "::error::Checksum mismatch. Schneider likely repackaged the zip (as on 2026-07-24)."
-          echo "::error::After verifying the new file is genuinely theirs, re-pin the checksum to ${ACTUAL_SHA256}."
+          echo "Attempt ${attempt}/3 failed: ${FAIL_REASON}"
+          if [[ ${attempt} -lt 3 ]]; then
+            # Schneider's rate limit asks for "a few minutes"; give it some room.
+            sleep 30
+          fi
+        done
+
+        if [[ ${VERIFIED} -ne 1 ]]; then
+          echo "::error::C-Gate download failed verification after 3 attempts: ${FAIL_REASON}"
+          echo "::error::If the download failed or served a web page, Schneider may have moved the file or put it behind a login."
+          echo "::error::If the checksum mismatched, Schneider likely repackaged the zip (as on 2026-07-24) — verify the new file is genuinely theirs, then re-pin the checksum."
           exit 1
         fi
         echo "C-Gate download verified: zip magic and checksum both match the pin."
