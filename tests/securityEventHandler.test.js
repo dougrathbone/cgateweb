@@ -76,11 +76,12 @@ describe('SecurityEventHandler', () => {
         );
     });
 
-    it('logs a discrete zone event at INFO', () => {
-        const deps = makeDeps();
+    it('logs a discrete zone event at DEBUG (routine traffic — INFO is reserved for system verbs)', () => {
+        const deps = makeDeps({ logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), isLevelEnabled: jest.fn().mockReturnValue(true) } });
         const handler = new SecurityEventHandler(deps);
         handler.handleLine(ZONE_UNSEALED_LINE);
-        expect(deps.logger.info).toHaveBeenCalledWith('Security zone 254/208/58: unsealed');
+        expect(deps.logger.debug).toHaveBeenCalledWith('Security zone 254/208/58: unsealed');
+        expect(deps.logger.info).not.toHaveBeenCalledWith(expect.stringContaining('Security zone'));
     });
 
     it('logs a one-line DEBUG summary for status reports (counts per state, not per zone)', () => {
@@ -187,6 +188,44 @@ describe('SecurityEventHandler', () => {
             handler.handleLine(STATUS_REPORT_2_LINE);
             handler.handleLine('security status_request //MIDSTRM/254/208 1 #sourceunit=0 OID= sessionId=cmd6 commandId={none}');
             expect(onEventLog).not.toHaveBeenCalled();
+        });
+
+        it('includes the application-1 zone label in zone entries when known', () => {
+            const onEventLog = jest.fn();
+            const getHaDiscovery = () => ({
+                ensureSecurityZoneDiscovery: jest.fn(),
+                labelMap: new Map([['254/1/58', 'Front Door']])
+            });
+            const deps = makeDeps({ onEventLog, getHaDiscovery });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            expect(onEventLog).toHaveBeenCalledWith(expect.objectContaining({
+                network: '254', app: '208', group: '58', label: 'Front Door'
+            }));
+        });
+
+        it('labels zone-bearing system events (arm_not_ready) the same way', () => {
+            const onEventLog = jest.fn();
+            const getHaDiscovery = () => ({
+                ensureSecurityZoneDiscovery: jest.fn(),
+                labelMap: new Map([['254/1/44', 'Kitchen Window']])
+            });
+            const deps = makeDeps({ onEventLog, getHaDiscovery });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            expect(onEventLog).toHaveBeenCalledWith(expect.objectContaining({
+                group: '44', label: 'Kitchen Window'
+            }));
+        });
+
+        it('omits the label field when the zone has no label (address semantics unchanged)', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog, getHaDiscovery: () => ({ ensureSecurityZoneDiscovery: jest.fn() }) });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            const entry = onEventLog.mock.calls[0][0];
+            expect('label' in entry).toBe(false);
+            expect(entry).toMatchObject({ network: '254', app: '208', group: '58' });
         });
     });
 

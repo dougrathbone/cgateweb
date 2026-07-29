@@ -27,8 +27,11 @@ const ADDON_OPTION_MAP = [
     { src: 'cbus_aircon_app_id', dst: 'cbus_aircon_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     // stringifyDefined (not Truthy): an explicit 0 must map to '0' so users can
     // DISABLE the default-on security app — a truthy copy would drop the 0 and
-    // leave the default '208' in force.
-    { src: 'cbus_security_app_id', dst: 'cbus_security_app_id', kind: 'stringifyDefined', when: 'haDiscovery' },
+    // leave the default '208' in force. Deliberately NOT gated on 'haDiscovery':
+    // the security app publishes zone state to MQTT independently of Home
+    // Assistant discovery, so gating it would make '0' a no-op with discovery
+    // off (default '208' would stay in force and zones would publish anyway).
+    { src: 'cbus_security_app_id', dst: 'cbus_security_app_id', kind: 'stringifyDefined' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },

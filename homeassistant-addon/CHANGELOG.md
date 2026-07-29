@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.20.2] - 2026-07-28
+
+### Fixed
+
+- **Security Alpha: `cbus_security_app_id: 0` was ignored when HA discovery was disabled.** The option was gated on discovery being on, so an MQTT-only user who set it to `0` still got the default `208` and zone events published anyway. The option now applies regardless of discovery state.
+- **Security Alpha: zone state changes now log at DEBUG instead of INFO** (#42). A busy panel would otherwise fill the log over months. Arm and alarm events (armed, disarmed, ready, bypassed, alarm on/off, ...) stay at INFO since they are rare and significant.
+- **Security Alpha: the Live Events window now shows zone names.** Zone entries carried the `254/208/<zone>` address while labels live under application 1, so the name lookup always missed. Entries now resolve the zone's Toolkit label, including for zone-bearing arm events like "not ready" and "bypassed".
+
 ## [1.20.1] - 2026-07-28
 
 ### Fixed

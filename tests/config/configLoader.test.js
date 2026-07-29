@@ -459,6 +459,20 @@ describe('ConfigLoader', () => {
             expect(config.cbus_security_app_id).toBe('0');
         });
 
+        test('should honour cbus_security_app_id 0 even when HA discovery is disabled (regression: option was gated on discovery)', () => {
+            // The security app publishes zone state to MQTT independently of
+            // HA discovery, so its kill switch must apply either way. Gated on
+            // discovery, an explicit 0 was dropped and the default '208' kept
+            // the feature (and its MQTT publishes) on against the user's wish.
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_security_app_id: 0 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_app_id).toBe('0');
+        });
+
         test('should not set cbus_security_app_id when option is absent (default applies)', () => {
             const options = { ...mockAddonOptions };
             delete options.cbus_security_app_id;

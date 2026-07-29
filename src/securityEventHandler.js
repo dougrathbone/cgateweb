@@ -142,10 +142,15 @@ class SecurityEventHandler {
         if (reading && reading.application === String(appId)) {
             if (reading.kind === 'zone') {
                 this._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
-                this.logger.info(`Security zone ${reading.network}/${reading.application}/${reading.zone}: ${reading.zoneState}`);
+                // DEBUG, not INFO: zone changes are routine traffic and would
+                // fill the log over months on a busy panel (issue #42 feedback).
+                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                    this.logger.debug(`Security zone ${reading.network}/${reading.application}/${reading.zone}: ${reading.zoneState}`);
+                }
                 this._emitEventLog(reading.network, reading.application, reading.zone,
                     reading.zoneState === 'sealed' ? 0 : 255,
-                    reading.zoneState === 'sealed' ? 'off' : 'on');
+                    reading.zoneState === 'sealed' ? 'off' : 'on',
+                    this._zoneLabel(reading.network, reading.zone));
             } else if (reading.kind === 'status_report_1' || reading.kind === 'status_report_2') {
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
@@ -271,18 +276,38 @@ class SecurityEventHandler {
         } else if (reading.kind === 'alarm_off' || (reading.kind === 'system_arm' && reading.mode === 0)) {
             type = 'off';
         }
-        this._emitEventLog(reading.network, reading.application, reading.zone || '0', level, type);
+        this._emitEventLog(reading.network, reading.application, reading.zone || '0', level, type,
+            reading.zone ? this._zoneLabel(reading.network, reading.zone) : null);
+    }
+
+    /**
+     * Resolve a security zone's display label. Zone labels live under
+     * application 1 in the Toolkit project (`{net}/1/{zone}` keys), while zone
+     * events are keyed on the security app — the same cross-app lookup
+     * discovery does. Returns null when no label is known.
+     *
+     * @param {string} network
+     * @param {string} zone
+     * @returns {string|null}
+     * @private
+     */
+    _zoneLabel(network, zone) {
+        const haDiscovery = this.getHaDiscovery();
+        const labelMap = haDiscovery && haDiscovery.labelMap;
+        if (!labelMap || typeof labelMap.get !== 'function') return null;
+        return labelMap.get(`${network}/1/${zone}`) || null;
     }
 
     /**
      * Emit one Live Events (SSE) entry in the same shape EventPublisher uses
-     * for lighting events ({ ts, network, app, group, level, type }).
+     * for lighting events ({ ts, network, app, group, level, type }), plus an
+     * optional display label the UI prefers over its own label lookup.
      *
      * @private
      */
-    _emitEventLog(network, application, group, level, type) {
+    _emitEventLog(network, application, group, level, type, label = null) {
         if (!this.onEventLog) return;
-        this.onEventLog({ ts: Date.now(), network, app: application, group, level, type });
+        this.onEventLog({ ts: Date.now(), network, app: application, group, level, type, ...(label && { label }) });
     }
 }
 

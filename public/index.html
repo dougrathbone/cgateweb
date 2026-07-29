@@ -1926,7 +1926,7 @@ input, select, textarea {
       if (!eventFilter) return true;
       var f = eventFilter.toLowerCase();
       if (row.addr.toLowerCase().indexOf(f) !== -1) return true;
-      var lbl = getLabelForAddress(row.addr).toLowerCase();
+      var lbl = (row.label || getLabelForAddress(row.addr)).toLowerCase();
       if (lbl && lbl.indexOf(f) !== -1) return true;
       return false;
     }
@@ -1949,7 +1949,10 @@ input, select, textarea {
       var html = '';
       for (var i = 0; i < filtered.length; i++) {
         var row = filtered[i];
-        var lbl = getLabelForAddress(row.addr);
+        // An entry-carried label (e.g. security zones, whose labels live under
+        // application 1 while the entry address is net/208/zone) wins over the
+        // address lookup.
+        var lbl = row.label || getLabelForAddress(row.addr);
         var pct = Math.round(row.level / 255 * 100);
         html += '<tr data-addr="' + esc(row.addr) + '">' +
           '<td>' + esc(row.time) + '</td>' +
@@ -1996,7 +1999,8 @@ input, select, textarea {
         time: formatTime(event.ts),
         addr: event.network + '/' + event.app + '/' + event.group,
         level: typeof event.level === 'number' ? event.level : 0,
-        type: event.type || 'update'
+        type: event.type || 'update',
+        label: event.label || ''
       };
       eventRows.push(row);
       if (eventRows.length > EVENT_MAX) {
