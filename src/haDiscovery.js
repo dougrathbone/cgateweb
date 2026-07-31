@@ -34,7 +34,20 @@ class HaDiscovery {
      */
     constructor(settings, publishFn, sendCommandFn, labelData = null) {
         this.settings = settings;
-        this._publish = publishFn;
+        // Retained discovery config payloads by topic, so they can be replayed
+        // after an MQTT broker restart drops them (issue #44). Recorded in the
+        // _publish wrapper below rather than at each of the ~16 call sites that
+        // publish a config, so the cache cannot drift out of sync with them.
+        // Bounded by entity count: a few hundred payloads of roughly 500 bytes.
+        this._publishedConfigPayloads = new Map();
+        this._publish = (topic, payload, options) => {
+            if (typeof topic === 'string' && topic.endsWith(`/${HA_DISCOVERY_SUFFIX}`)) {
+                // An empty payload is a retraction — forget it, don't replay it.
+                if (payload) this._publishedConfigPayloads.set(topic, payload);
+                else this._publishedConfigPayloads.delete(topic);
+            }
+            return publishFn(topic, payload, options);
+        };
         this._sendCommand = sendCommandFn;
         this._applyLabelData(labelData);
 
@@ -119,6 +132,26 @@ class HaDiscovery {
         // connectivity sensors vanish whenever a tree refresh runs after they
         // were announced. Tracked here so the cleanup can skip them.
         this._eventDrivenDiscoveryTopics = new Set();
+    }
+
+    /**
+     * Re-send every discovery config published this session, retained.
+     *
+     * A broker restart without retained-message persistence loses the configs,
+     * and Home Assistant then has no entities at all until the next tree run.
+     * Replaying the cached payloads restores them exactly, without re-running
+     * TREEXML and its retry/epoch machinery (issue #44).
+     *
+     * @returns {number} configs republished
+     */
+    republishDiscoveryConfigs() {
+        let count = 0;
+        for (const [topic, payload] of this._publishedConfigPayloads) {
+            this._publish(topic, payload, MQTT_RETAINED_STATE_OPTIONS);
+            count++;
+        }
+        if (count > 0) this.logger.info(`Republished ${count} HA Discovery config(s)`);
+        return count;
     }
 
     /**
