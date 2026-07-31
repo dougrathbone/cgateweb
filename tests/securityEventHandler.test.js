@@ -175,9 +175,33 @@ describe('SecurityEventHandler', () => {
             handler.handleLine(SYSTEM_ARM_LINE); // mode 3 = armed
             handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
             handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
-            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ group: '0', level: 255, type: 'on' }));
-            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ group: '0', level: 0, type: 'off' }));
+            // Panel-wide verbs carry no zone, so group is null and the UI renders
+            // the address as net/app rather than a bogus net/app/0.
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ group: null, level: 255, type: 'on' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ group: null, level: 0, type: 'off' }));
             expect(onEventLog).toHaveBeenNthCalledWith(3, expect.objectContaining({ group: '44', level: 0, type: 'update' }));
+        });
+
+        it('describes zone entries so the UI need not render a level percentage', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            handler.handleLine(ZONE_SEALED_LINE);
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ description: 'Zone unsealed' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ description: 'Zone sealed' }));
+        });
+
+        it('describes system entries with the same text used for the INFO log', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(SYSTEM_ARM_LINE);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ description: 'System armed (Day mode)' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ description: 'System disarmed' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(3, expect.objectContaining({ description: 'Zone 44 bypassed' }));
         });
 
         it('does not flood the stream for status reports or echoes', () => {

@@ -150,7 +150,8 @@ class SecurityEventHandler {
                 this._emitEventLog(reading.network, reading.application, reading.zone,
                     reading.zoneState === 'sealed' ? 0 : 255,
                     reading.zoneState === 'sealed' ? 'off' : 'on',
-                    this._zoneLabel(reading.network, reading.zone));
+                    this._zoneLabel(reading.network, reading.zone),
+                    `Zone ${reading.zoneState}`);
             } else if (reading.kind === 'status_report_1' || reading.kind === 'status_report_2') {
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
@@ -261,8 +262,11 @@ class SecurityEventHandler {
     /**
      * Surface a system-state reading in the Live Events stream. Uses the zone
      * as the group when the verb carries one (arm_not_ready, zone_isolated),
-     * otherwise '0' (panel-wide event). Level/type follow the on/off-ish
-     * verbs so the UI bar and styling match other events.
+     * otherwise null — the UI renders a group-less entry as net/app instead of
+     * inventing a net/app/0 address that matches no real C-Bus object.
+     * Level/type follow the on/off-ish verbs so the UI styling matches other
+     * events; the description carries the human-readable text so the UI never
+     * has to render a meaningless level percentage for a security event.
      *
      * @param {SecurityReading} reading
      * @private
@@ -276,8 +280,9 @@ class SecurityEventHandler {
         } else if (reading.kind === 'alarm_off' || (reading.kind === 'system_arm' && reading.mode === 0)) {
             type = 'off';
         }
-        this._emitEventLog(reading.network, reading.application, reading.zone || '0', level, type,
-            reading.zone ? this._zoneLabel(reading.network, reading.zone) : null);
+        this._emitEventLog(reading.network, reading.application, reading.zone || null, level, type,
+            reading.zone ? this._zoneLabel(reading.network, reading.zone) : null,
+            this._describeSystemEvent(reading));
     }
 
     /**
@@ -301,13 +306,20 @@ class SecurityEventHandler {
     /**
      * Emit one Live Events (SSE) entry in the same shape EventPublisher uses
      * for lighting events ({ ts, network, app, group, level, type }), plus an
-     * optional display label the UI prefers over its own label lookup.
+     * optional display label the UI prefers over its own label lookup and an
+     * optional human-readable description. When a description is present the UI
+     * shows it in place of the level percentage, because "0 (0%)" says nothing
+     * useful about a zone unsealing or a system arming (issue #42 feedback).
      *
      * @private
      */
-    _emitEventLog(network, application, group, level, type, label = null) {
+    _emitEventLog(network, application, group, level, type, label = null, description = null) {
         if (!this.onEventLog) return;
-        this.onEventLog({ ts: Date.now(), network, app: application, group, level, type, ...(label && { label }) });
+        this.onEventLog({
+            ts: Date.now(), network, app: application, group, level, type,
+            ...(label && { label }),
+            ...(description && { description })
+        });
     }
 }
 

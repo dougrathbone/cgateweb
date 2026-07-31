@@ -1928,6 +1928,7 @@ input, select, textarea {
       if (row.addr.toLowerCase().indexOf(f) !== -1) return true;
       var lbl = (row.label || getLabelForAddress(row.addr)).toLowerCase();
       if (lbl && lbl.indexOf(f) !== -1) return true;
+      if (row.description && row.description.toLowerCase().indexOf(f) !== -1) return true;
       return false;
     }
 
@@ -1954,12 +1955,18 @@ input, select, textarea {
         // address lookup.
         var lbl = row.label || getLabelForAddress(row.addr);
         var pct = Math.round(row.level / 255 * 100);
+        // Security events carry a description ("Zone unsealed", "System armed
+        // (Day mode)"). A level percentage is meaningless for those, so the
+        // description takes over both the value and the bar cell.
+        var valueCells = row.description
+          ? '<td colspan="2">' + esc(row.description) + '</td>'
+          : '<td>' + esc(row.level) + ' (' + pct + '%)</td>' +
+            '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>';
         html += '<tr data-addr="' + esc(row.addr) + '">' +
           '<td>' + esc(row.time) + '</td>' +
           '<td>' + esc(row.addr) + '</td>' +
           '<td>' + (lbl ? esc(lbl) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-          '<td>' + esc(row.level) + ' (' + pct + '%)</td>' +
-          '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>' +
+          valueCells +
           '</tr>';
       }
       tbody.innerHTML = html;
@@ -1994,13 +2001,18 @@ input, select, textarea {
       eventCount++;
       document.getElementById('eventCountBadge').textContent = eventCount;
 
+      // Panel-wide security events have no group, so the address is net/app.
+      var hasGroup = event.group !== null && event.group !== undefined && event.group !== '';
       var row = {
         ts: event.ts,
         time: formatTime(event.ts),
-        addr: event.network + '/' + event.app + '/' + event.group,
+        addr: hasGroup
+          ? event.network + '/' + event.app + '/' + event.group
+          : event.network + '/' + event.app,
         level: typeof event.level === 'number' ? event.level : 0,
         type: event.type || 'update',
-        label: event.label || ''
+        label: event.label || '',
+        description: event.description || ''
       };
       eventRows.push(row);
       if (eventRows.length > EVENT_MAX) {
