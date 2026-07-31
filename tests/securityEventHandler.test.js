@@ -138,10 +138,23 @@ describe('SecurityEventHandler', () => {
             ['# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Exit delay started (254/208)'],
             ['# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 open — not ready to arm (254/208)'],
             ['# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 bypassed (254/208)'],
-            ['# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=', 'C-Bus Security: Arm failed (arm_failed_raised) (254/208)'],
             ['# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Alarm on (254/208)'],
             ['# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Alarm off (254/208)'],
-            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Fire alarm (fire_alarm_raised) (254/208)']
+            // Panel trouble conditions. The raw _raised/_cleared argument is
+            // dropped from the log line: the sense is already in the wording.
+            ['# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=', 'C-Bus Security: Arm failed (254/208)'],
+            ['# security arm_failed //MIDSTRM/254/208 arm_failed_cleared #sourceunit=18 OID=', 'C-Bus Security: Arm failure cleared (254/208)'],
+            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Fire alarm (254/208)'],
+            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_cleared #sourceunit=18 OID=', 'C-Bus Security: Fire alarm cleared (254/208)'],
+            ['# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Mains power failure (254/208)'],
+            ['# security mains_restored //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Mains power restored (254/208)'],
+            ['# security low_battery //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Battery low (254/208)'],
+            ['# security low_battery_corrected //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Battery restored (254/208)'],
+            ['# security tamper_on //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Tamper detected (254/208)'],
+            ['# security tamper_off //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Tamper cleared (254/208)'],
+            ['# security panic_activated //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Panic activated (254/208)'],
+            ['# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Phone line cut (254/208)'],
+            ['# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_cleared #sourceunit=18 OID=', 'C-Bus Security: Phone line restored (254/208)']
         ];
 
         it.each(cases)('logs %s', (line, expected) => {

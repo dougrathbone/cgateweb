@@ -18,10 +18,13 @@ const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
  *   - arm_not_ready    → { kind:'arm_not_ready', …, zone } (zone names the blocker)
  *   - exit_delay_started → { kind:'exit_delay_started', … }
  *   - system_arm       → { kind:'system_arm', …, mode, modeName } (0-4; 0 = disarmed)
- *   - arm_failed       → { kind:'arm_failed', …, detail } (free-text, e.g. arm_failed_raised)
  *   - alarm_on / alarm_off → { kind:'alarm_on'|'alarm_off', … }
  *   - zone_isolated    → { kind:'zone_isolated', …, zone } (zone bypassed on arming)
- *   - fire_alarm       → { kind:'fire_alarm', …, detail }
+ *   - panel-wide trouble verbs → { kind:'panel_trouble', …, condition, active, detail }
+ *       mains_failure/mains_restored, low_battery/low_battery_corrected,
+ *       tamper_on/tamper_off, panic_activated/panic_off/panic_cleared, and the
+ *       detail-suffixed line_cut_alarm, arm_failed and fire_alarm (whose
+ *       "<verb>_raised"/"<verb>_cleared" argument carries the sense).
  *
  * Status report rendering: the spec (CBUS-APP/05 §5.5.1.20-21) packs 4 zones
  * per byte, 2 bits each (%00 sealed, %01 unsealed, %10 open, %11 short), but
@@ -63,6 +66,43 @@ const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
 // Verbs whose address carries a trailing zone (//PROJECT/<net>/<app>/<zone>).
 const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated', 'arm_not_ready'
+]);
+
+/**
+ * Panel-wide trouble conditions, in display order.
+ */
+const PANEL_TROUBLE_CONDITIONS = ['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire'];
+
+/**
+ * Verbs that name their own sense. Confirmed by the #42 captures except
+ * low_battery, tamper_on and panic_off/panic_cleared: the panel only ever
+ * emitted the other half of those three pairs (low_battery_corrected,
+ * tamper_off, panic_activated), so these names are inferred from the naming
+ * convention of the confirmed pairs. An inferred verb that never arrives costs
+ * nothing, and panic still recovers via the disarm-derived clear in
+ * securityPanelState.
+ */
+const PANEL_TROUBLE_VERBS = new Map([
+    ['mains_failure', { condition: 'mains', active: true }],
+    ['mains_restored', { condition: 'mains', active: false }],
+    ['low_battery', { condition: 'battery', active: true }],
+    ['low_battery_corrected', { condition: 'battery', active: false }],
+    ['tamper_on', { condition: 'tamper', active: true }],
+    ['tamper_off', { condition: 'tamper', active: false }],
+    ['panic_activated', { condition: 'panic', active: true }],
+    ['panic_off', { condition: 'panic', active: false }],
+    ['panic_cleared', { condition: 'panic', active: false }]
+]);
+
+/**
+ * Verbs whose active/cleared sense rides a "<verb>_raised" / "<verb>_cleared"
+ * detail argument rather than the verb name (confirmed for all three in the
+ * #42 captures). A bare verb with no detail means raised.
+ */
+const PANEL_TROUBLE_DETAIL_VERBS = new Map([
+    ['line_cut_alarm', 'line'],
+    ['arm_failed', 'arm_failed'],
+    ['fire_alarm', 'fire']
 ]);
 
 /**
@@ -245,11 +285,6 @@ function decodeLine(line) {
         return { kind: 'system_arm', network, application, mode: Number.isInteger(mode) ? mode : null, modeName, verb };
     }
 
-    if (verb === 'arm_failed' || verb === 'fire_alarm') {
-        // Alarm-style verbs may carry a free-text argument (e.g. arm_failed_raised).
-        return { kind: verb, network, application, detail: params.length > 0 ? params.join(' ') : null, verb };
-    }
-
     if (verb === 'alarm_on' || verb === 'alarm_off') {
         return { kind: verb, network, application, verb };
     }
@@ -258,7 +293,30 @@ function decodeLine(line) {
         return { kind: 'zone_isolated', network, application, zone, verb };
     }
 
+    // Panel-wide trouble conditions (mains, battery, tamper, panic, phone line,
+    // arm failure, fire). These become diagnostic binary_sensors; the raise and
+    // clear senses are resolved here so downstream code never parses verbs.
+    const named = PANEL_TROUBLE_VERBS.get(verb);
+    if (named) {
+        return {
+            kind: 'panel_trouble', network, application,
+            condition: named.condition, active: named.active, verb, detail: null
+        };
+    }
+
+    const detailCondition = PANEL_TROUBLE_DETAIL_VERBS.get(verb);
+    if (detailCondition) {
+        const detail = params.length > 0 ? params.join(' ') : null;
+        return {
+            kind: 'panel_trouble', network, application,
+            condition: detailCondition, active: !(detail && detail.endsWith('_cleared')), verb, detail
+        };
+    }
+
     return null;
 }
 
-module.exports = { appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE };
+module.exports = {
+    appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE,
+    PANEL_TROUBLE_CONDITIONS, PANEL_TROUBLE_VERBS, PANEL_TROUBLE_DETAIL_VERBS
+};

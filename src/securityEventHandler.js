@@ -6,6 +6,21 @@ const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
 
 /**
+ * User-facing wording for each panel trouble condition, in both senses. The
+ * panel's own `_raised`/`_cleared` argument is deliberately not echoed into the
+ * log line: the sense is already carried by the wording.
+ */
+const PANEL_TROUBLE_TEXT = {
+    mains: { raised: 'Mains power failure', cleared: 'Mains power restored' },
+    battery: { raised: 'Battery low', cleared: 'Battery restored' },
+    tamper: { raised: 'Tamper detected', cleared: 'Tamper cleared' },
+    panic: { raised: 'Panic activated', cleared: 'Panic cleared' },
+    line: { raised: 'Phone line cut', cleared: 'Phone line restored' },
+    arm_failed: { raised: 'Arm failed', cleared: 'Arm failure cleared' },
+    fire: { raised: 'Fire alarm', cleared: 'Fire alarm cleared' }
+};
+
+/**
  * Decoded security reading produced by securityDecoder.decodeLine. The exact
  * fields vary by `kind`; only the ones this handler touches are listed.
  * @typedef {Object} SecurityReading
@@ -22,7 +37,9 @@ const { NEWLINE } = require('./constants');
  * @property {number|null} [mode] - system_arm only
  * @property {string|null} [modeName] - system_arm only: 'disarmed'|'away'|'night'|'day'|'vacation'
  * @property {number|null} [report] - status_request only
- * @property {string|null} [detail] - arm_failed/fire_alarm free-text argument
+ * @property {string|null} [detail] - detail-suffixed trouble verbs' free-text argument
+ * @property {string} [condition] - panel_trouble only: 'mains'|'battery'|'tamper'|'panic'|'line'|'arm_failed'|'fire'
+ * @property {boolean} [active] - panel_trouble only: true = raised, false = cleared
  */
 
 /**
@@ -246,14 +263,14 @@ class SecurityEventHandler {
                 return 'Exit delay started';
             case 'zone_isolated':
                 return `Zone ${reading.zone} bypassed`;
-            case 'arm_failed':
-                return reading.detail ? `Arm failed (${reading.detail})` : 'Arm failed';
             case 'alarm_on':
                 return 'Alarm on';
             case 'alarm_off':
                 return 'Alarm off';
-            case 'fire_alarm':
-                return reading.detail ? `Fire alarm (${reading.detail})` : 'Fire alarm';
+            case 'panel_trouble':
+                return PANEL_TROUBLE_TEXT[reading.condition]
+                    ? PANEL_TROUBLE_TEXT[reading.condition][reading.active ? 'raised' : 'cleared']
+                    : reading.condition;
             default:
                 return reading.kind;
         }
