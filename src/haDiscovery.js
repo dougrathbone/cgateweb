@@ -101,6 +101,11 @@ class HaDiscovery {
         // runs. Tracks "network/app/zone" keys already published this session.
         this._securityZoneSeen = new Set();
 
+        // Security panel-wide trouble sensors (mains, battery, tamper, panic,
+        // phone line, arm failure, fire), announced as one group per network on
+        // first security traffic. Tracks "network/app/panel" keys.
+        this._securityPanelSeen = new Set();
+
         // Network IDs whose CNI/PCI connectivity binary_sensor config has been
         // published this session (event-driven, idempotent).
         this._cniDiscoverySeen = new Set();

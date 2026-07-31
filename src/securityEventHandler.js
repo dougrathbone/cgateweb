@@ -2,6 +2,7 @@
 'use strict';
 
 const securityDecoder = require('./applicationDecoders/securityDecoder');
+const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
 
@@ -83,6 +84,8 @@ class SecurityEventHandler {
         // e.g. a bridge restart on an already-synced network); 'postSync'
         // covers the 762 sync-ok trigger. At most one pair each per session.
         this._syncState = new Map();
+        // Panel-wide trouble conditions, so repeated verbs don't republish.
+        this.panelState = new SecurityPanelState();
     }
 
     /**
@@ -173,13 +176,31 @@ class SecurityEventHandler {
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
                 }
+                // Report 1's prefix bytes are the only authoritative source for
+                // tamper and panic, so let them correct the assumed-healthy seed.
+                this._publishPanelChanges(reading.network, reading.application,
+                    this.panelState.seedFromStatusReport(reading));
                 this._logStatusReportSummary(reading);
+            } else if (reading.kind === 'panel_trouble') {
+                this._publishPanelChanges(reading.network, reading.application,
+                    this.panelState.applyReading(reading));
+                this.logger.info(
+                    `C-Bus Security: ${this._describeSystemEvent(reading)} (${reading.network}/${reading.application})`
+                );
+                this._emitSystemEventLog(reading);
             } else if (reading.kind === 'status_request') {
                 // Echo of our own request on the event port — consume quietly.
                 if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
                     this.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
                 }
             } else {
+                // A disarm clears panic, arm failure and fire even though the
+                // panel sends no dedicated cleared verb for them, and a
+                // successful arm retires an earlier arm failure.
+                if (reading.kind === 'system_arm') {
+                    this._publishPanelChanges(reading.network, reading.application,
+                        this.panelState.applyReading(reading));
+                }
                 // System-state verbs (arm_ready, system_arm, alarm_on/off, …):
                 // phase 2 material — no MQTT state, but log them human-readably
                 // and surface them in the Live Events stream.
@@ -220,6 +241,46 @@ class SecurityEventHandler {
         if (haDiscovery) {
             haDiscovery.ensureSecurityZoneDiscovery(network, application, zone);
         }
+    }
+
+    /**
+     * Publish changed panel trouble conditions and make sure the panel's
+     * entities exist. Discovery runs even when nothing changed, so a healthy
+     * panel still gets its seven sensors seeded to OFF on first traffic rather
+     * than waiting for its first fault.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {Array<{condition: string, active: boolean}>} changes
+     * @private
+     */
+    _publishPanelChanges(network, application, changes) {
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
+            if (haDiscovery.ensureSecurityPanelDiscovery(network, application)) {
+                // Newly announced: seed every condition so none sits Unknown.
+                for (const { condition, active } of this.panelState.initialStates(network)) {
+                    this._publishPanelCondition(network, application, condition, active);
+                }
+                return;
+            }
+        }
+        for (const { condition, active } of changes) {
+            this._publishPanelCondition(network, application, condition, active);
+        }
+    }
+
+    /**
+     * @param {string} network
+     * @param {string} application
+     * @param {string} condition
+     * @param {boolean} active
+     * @private
+     */
+    _publishPanelCondition(network, application, condition, active) {
+        this.eventPublisher.publishReading(network, application, `panel/${condition}`, {
+            kind: 'security_panel', active
+        });
     }
 
     /**

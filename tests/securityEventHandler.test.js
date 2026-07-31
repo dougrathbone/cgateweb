@@ -109,7 +109,9 @@ describe('SecurityEventHandler', () => {
         expect(deps.sendCommand).not.toHaveBeenCalled();
     });
 
-    it('consumes system-state verbs without publishing MQTT state', () => {
+    // arm_failed and fire_alarm are deliberately absent: they are panel trouble
+    // conditions now and do publish state (see 'panel trouble conditions').
+    it('consumes arm-progress and alarm verbs without publishing MQTT state', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
         for (const line of [
@@ -117,11 +119,9 @@ describe('SecurityEventHandler', () => {
             '# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=',
             '# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=',
             '# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=',
-            '# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID='
+            '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID='
         ]) {
             expect(handler.handleLine(line)).toBe(true);
         }
@@ -162,6 +162,71 @@ describe('SecurityEventHandler', () => {
             const handler = new SecurityEventHandler(deps);
             handler.handleLine(line);
             expect(deps.logger.info).toHaveBeenCalledWith(expected);
+        });
+    });
+
+    describe('panel trouble conditions', () => {
+        it('publishes ON for a mains failure and OFF when restored', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/mains', { kind: 'security_panel', active: true }
+            );
+            handler.handleLine('# security mains_restored //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', 'panel/mains', { kind: 'security_panel', active: false }
+            );
+        });
+
+        it('does not republish a repeated raise', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        });
+
+        it('clears panic on disarm even though the panel sends no panic_off', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security panic_activated //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/panic', { kind: 'security_panel', active: false }
+            );
+        });
+
+        it('triggers panel discovery on the first trouble event', () => {
+            const ensureSecurityPanelDiscovery = jest.fn();
+            const deps = makeDeps({
+                getHaDiscovery: () => ({ ensureSecurityZoneDiscovery: jest.fn(), ensureSecurityPanelDiscovery })
+            });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(ensureSecurityPanelDiscovery).toHaveBeenCalledWith('254', '208');
+        });
+
+        it('seeds tamper from a status_report_1 so the panel sensor reflects reality', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            // arm state 0, tamper 255 (active), panic 0, then zone values.
+            handler.handleLine('# security status_report_1 //MIDSTRM/254/208 0 255 0 0 0 0 #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/tamper', { kind: 'security_panel', active: true }
+            );
+        });
+
+        it('consumes the line and logs at INFO with a Live Events description', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            expect(handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=')).toBe(true);
+            expect(deps.logger.info).toHaveBeenCalledWith('C-Bus Security: Mains power failure (254/208)');
+            expect(onEventLog).toHaveBeenCalledWith(expect.objectContaining({
+                group: null, description: 'Mains power failure'
+            }));
         });
     });
 

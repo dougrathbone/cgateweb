@@ -244,4 +244,84 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(publishFn).not.toHaveBeenCalled();
         });
     });
+
+    describe('panel trouble sensors', () => {
+        const CONDITIONS = ['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire'];
+
+        function panelPayloads() {
+            return publishFn.mock.calls
+                .filter(c => c[0].includes('_208_panel_'))
+                .map(c => ({ topic: c[0], payload: c[1] ? JSON.parse(c[1]) : null }));
+        }
+
+        function payloadFor(condition) {
+            const found = panelPayloads().find(p => p.topic.endsWith(`_panel_${condition}/config`));
+            return found && found.payload;
+        }
+
+        it('publishes one binary_sensor per condition', () => {
+            expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(true);
+            expect(panelPayloads()).toHaveLength(7);
+            for (const condition of CONDITIONS) {
+                expect(payloadFor(condition)).toBeDefined();
+            }
+        });
+
+        it('groups them all on one shared panel device as diagnostics', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            for (const condition of CONDITIONS) {
+                const payload = payloadFor(condition);
+                expect(payload.entity_category).toBe('diagnostic');
+                expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
+                expect(payload.device.name).toBe('C-Bus Security Panel 254/208');
+                expect(payload.device.model).toBe('C-Bus Security Panel');
+            }
+        });
+
+        it('points each sensor at its own panel state topic', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            const mains = payloadFor('mains');
+            expect(mains.state_topic).toBe('cbus/read/254/208/panel/mains/state');
+            expect(mains.unique_id).toBe('cgateweb_254_208_panel_mains');
+            expect(mains.payload_on).toBe('ON');
+            expect(mains.payload_off).toBe('OFF');
+            expect(mains.name).toBe('Mains power');
+        });
+
+        it('assigns the agreed device classes', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            expect(payloadFor('mains').device_class).toBe('problem');
+            expect(payloadFor('battery').device_class).toBe('battery');
+            expect(payloadFor('tamper').device_class).toBe('tamper');
+            expect(payloadFor('panic').device_class).toBe('safety');
+            expect(payloadFor('line').device_class).toBe('problem');
+            expect(payloadFor('arm_failed').device_class).toBe('problem');
+            expect(payloadFor('fire').device_class).toBe('smoke');
+        });
+
+        it('is idempotent', () => {
+            expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(true);
+            publishFn.mockClear();
+            expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
+            expect(publishFn).not.toHaveBeenCalled();
+        });
+
+        it('retracts all seven and skips an excluded panel', () => {
+            d.exclude.add('254/208/panel');
+            expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
+            const retracted = panelPayloads().filter(p => p.payload === null);
+            expect(retracted).toHaveLength(7);
+        });
+
+        it('publishes nothing when HA discovery is disabled', () => {
+            const off = new HaDiscovery(
+                { ha_discovery_enabled: false, ha_discovery_prefix: 'homeassistant', cbus_security_app_id: '208' },
+                publishFn,
+                jest.fn()
+            );
+            publishFn.mockClear();
+            expect(off.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
+            expect(publishFn).not.toHaveBeenCalled();
+        });
+    });
 });

@@ -439,6 +439,15 @@ class EventPublisher {
                     this.mqttOptions
                 );
             }
+        } else if (reading.kind === 'security_panel') {
+            // Panel-wide trouble condition (app 208): ON means the trouble is
+            // present. `group` is the "panel/<condition>" path segment, so the
+            // base already addresses the right topic.
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                reading.active ? MQTT_STATE_ON : MQTT_STATE_OFF,
+                this.mqttOptions
+            );
         }
     }
 

@@ -47,6 +47,32 @@ const {
     HA_MODEL_TRIGGER,
     entityIdFields
 } = require('./constants');
+const { PANEL_TROUBLE_CONDITIONS } = require('./applicationDecoders/securityDecoder');
+
+/**
+ * Display names and HA device classes for the panel trouble sensors. These are
+ * entity names on a shared device, so they read as short attributes of the
+ * panel ("Mains power") rather than repeating the device name.
+ */
+const PANEL_CONDITION_NAMES = {
+    mains: 'Mains power',
+    battery: 'Battery',
+    tamper: 'Tamper',
+    panic: 'Panic',
+    line: 'Phone line',
+    arm_failed: 'Arm failed',
+    fire: 'Fire alarm'
+};
+
+const PANEL_CONDITION_DEVICE_CLASSES = {
+    mains: 'problem',
+    battery: 'battery',
+    tamper: 'tamper',
+    panic: 'safety',
+    line: 'problem',
+    arm_failed: 'problem',
+    fire: 'smoke'
+};
 
 class _HaDiscoveryPublishers {
     // Host-provided instance state. This class is never instantiated: its
@@ -98,6 +124,9 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _securityZoneSeen;
+
+    /** @type {Set<string>} */
+    _securityPanelSeen;
 
     /** @type {Set<string>} */
     _currentRunTopics;
@@ -664,6 +693,103 @@ class _HaDiscoveryPublishers {
         this._eventDrivenDiscoveryTopics.add(discoveryTopic);
         this.discoveryCount++;
         this.logger.info(`Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`);
+    }
+
+    /**
+     * Announce the seven panel-wide trouble binary_sensors for a network the
+     * first time any security traffic is seen on it. Follows the
+     * ensureSecurityZoneDiscovery contract: idempotent Seen set, `exclude`
+     * honored with retraction, topics registered in _publishedTopics and
+     * _eventDrivenDiscoveryTopics so tree-run stale cleanup skips them.
+     *
+     * Unlike zones (one HA device each), all seven share a single "C-Bus
+     * Security Panel" device: they describe the panel's health, not seven
+     * separate pieces of hardware. entity_category 'diagnostic' keeps them off
+     * auto-generated dashboards.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId - security app id (e.g. 208)
+     * @returns {boolean} true if the entities were published this call
+     */
+    ensureSecurityPanelDiscovery(network, appId) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined) return false;
+
+        const key = `${network}/${appId}/panel`;
+        if (this._securityPanelSeen.has(key)) return false;
+
+        if (this.exclude.has(key)) {
+            this.logger.debug(`Excluding security panel ${network}/${appId} from discovery`);
+            for (const condition of PANEL_TROUBLE_CONDITIONS) {
+                const excludedTopic = this._securityPanelTopic(String(network), String(appId), condition);
+                this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+                this._publishedTopics.delete(excludedTopic);
+                this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            }
+            this._securityPanelSeen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        this._createSecurityPanelDiscovery(String(network), String(appId));
+        this._securityPanelSeen.add(key);
+        return true;
+    }
+
+    /**
+     * Discovery config topic for one panel trouble condition.
+     *
+     * @param {string} networkId
+     * @param {string} appId
+     * @param {string} condition
+     * @returns {string}
+     * @private
+     */
+    _securityPanelTopic(networkId, appId, condition) {
+        const uniqueId = `cgateweb_${networkId}_${appId}_panel_${condition}`;
+        return `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+    }
+
+    /**
+     * Build and publish the seven panel trouble binary_sensor payloads. State
+     * comes from securityEventHandler via
+     * cbus/read/{net}/{app}/panel/{condition}/state (ON = trouble present).
+     *
+     * @private
+     */
+    _createSecurityPanelDiscovery(networkId, appId) {
+        const deviceName = `C-Bus Security Panel ${networkId}/${appId}`;
+        for (const condition of PANEL_TROUBLE_CONDITIONS) {
+            const uniqueId = `cgateweb_${networkId}_${appId}_panel_${condition}`;
+            const discoveryTopic = this._securityPanelTopic(networkId, appId, condition);
+            const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${condition}`;
+
+            const payload = {
+                // Seven entities on one shared device, so each needs its own
+                // name (zones use null, taking the device name instead).
+                name: PANEL_CONDITION_NAMES[condition],
+                unique_id: uniqueId,
+
+                state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF,
+                device_class: PANEL_CONDITION_DEVICE_CLASSES[condition],
+                entity_category: 'diagnostic',
+
+                qos: 0,
+                device: buildDeviceBlock({
+                    identifiers: [`cgateweb_${networkId}_${appId}_panel`],
+                    name: deviceName,
+                    model: 'C-Bus Security Panel'
+                }),
+                origin: buildOriginBlock()
+            };
+
+            this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.add(discoveryTopic);
+            this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+            this.discoveryCount++;
+        }
+        this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_TROUBLE_CONDITIONS.length} conditions)`);
     }
 
     /**
