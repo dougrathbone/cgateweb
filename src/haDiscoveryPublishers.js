@@ -47,32 +47,7 @@ const {
     HA_MODEL_TRIGGER,
     entityIdFields
 } = require('./constants');
-const { PANEL_TROUBLE_CONDITIONS } = require('./applicationDecoders/securityDecoder');
-
-/**
- * Display names and HA device classes for the panel trouble sensors. These are
- * entity names on a shared device, so they read as short attributes of the
- * panel ("Mains power") rather than repeating the device name.
- */
-const PANEL_CONDITION_NAMES = {
-    mains: 'Mains power',
-    battery: 'Battery',
-    tamper: 'Tamper',
-    panic: 'Panic',
-    line: 'Phone line',
-    arm_failed: 'Arm failed',
-    fire: 'Fire alarm'
-};
-
-const PANEL_CONDITION_DEVICE_CLASSES = {
-    mains: 'problem',
-    battery: 'battery',
-    tamper: 'tamper',
-    panic: 'safety',
-    line: 'problem',
-    arm_failed: 'problem',
-    fire: 'smoke'
-};
+const { PANEL_CONDITIONS } = require('./securityPanelConditions');
 
 class _HaDiscoveryPublishers {
     // Host-provided instance state. This class is never instantiated: its
@@ -545,9 +520,7 @@ class _HaDiscoveryPublishers {
             this.logger.debug(`Excluding temperature group ${key} from discovery`);
             const excludedUniqueId = `cgateweb_${network}_${appId}_${group}`;
             const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
-            this._publishedTopics.delete(excludedTopic);
-            this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            this._retractEventDrivenConfig(excludedTopic);
             this._temperatureSeen.add(key); // don't re-check on every event
             return false;
         }
@@ -630,9 +603,7 @@ class _HaDiscoveryPublishers {
             this.logger.debug(`Excluding security zone ${key} from discovery`);
             const excludedUniqueId = `cgateweb_${network}_${appId}_${zone}`;
             const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
-            this._publishedTopics.delete(excludedTopic);
-            this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            this._retractEventDrivenConfig(excludedTopic);
             this._securityZoneSeen.add(key); // don't re-check on every event
             return false;
         }
@@ -720,11 +691,10 @@ class _HaDiscoveryPublishers {
 
         if (this.exclude.has(key)) {
             this.logger.debug(`Excluding security panel ${network}/${appId} from discovery`);
-            for (const condition of PANEL_TROUBLE_CONDITIONS) {
-                const excludedTopic = this._securityPanelTopic(String(network), String(appId), condition);
-                this._publish(excludedTopic, '', MQTT_RETAINED_STATE_OPTIONS);
-                this._publishedTopics.delete(excludedTopic);
-                this._eventDrivenDiscoveryTopics.delete(excludedTopic);
+            for (const condition of PANEL_CONDITIONS) {
+                this._retractEventDrivenConfig(
+                    this._securityPanelTopic(this._securityPanelUniqueId(String(network), String(appId), condition.id))
+                );
             }
             this._securityPanelSeen.add(key); // don't re-check on every event
             return false;
@@ -736,43 +706,53 @@ class _HaDiscoveryPublishers {
     }
 
     /**
-     * Discovery config topic for one panel trouble condition.
+     * unique_id for one panel trouble condition. The discovery topic embeds this,
+     * so both must come from here or a retraction would target a topic HA never
+     * saw and orphan the entity.
      *
      * @param {string} networkId
      * @param {string} appId
-     * @param {string} condition
+     * @param {string} conditionId
      * @returns {string}
      * @private
      */
-    _securityPanelTopic(networkId, appId, condition) {
-        const uniqueId = `cgateweb_${networkId}_${appId}_panel_${condition}`;
+    _securityPanelUniqueId(networkId, appId, conditionId) {
+        return `cgateweb_${networkId}_${appId}_panel_${conditionId}`;
+    }
+
+    /**
+     * @param {string} uniqueId
+     * @returns {string}
+     * @private
+     */
+    _securityPanelTopic(uniqueId) {
         return `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
     }
 
     /**
-     * Build and publish the seven panel trouble binary_sensor payloads. State
-     * comes from securityEventHandler via
+     * Build and publish the panel trouble binary_sensor payloads, one per
+     * condition. State comes from securityEventHandler via
      * cbus/read/{net}/{app}/panel/{condition}/state (ON = trouble present).
      *
      * @private
      */
     _createSecurityPanelDiscovery(networkId, appId) {
         const deviceName = `C-Bus Security Panel ${networkId}/${appId}`;
-        for (const condition of PANEL_TROUBLE_CONDITIONS) {
-            const uniqueId = `cgateweb_${networkId}_${appId}_panel_${condition}`;
-            const discoveryTopic = this._securityPanelTopic(networkId, appId, condition);
-            const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${condition}`;
+        for (const condition of PANEL_CONDITIONS) {
+            const uniqueId = this._securityPanelUniqueId(networkId, appId, condition.id);
+            const discoveryTopic = this._securityPanelTopic(uniqueId);
+            const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${condition.id}`;
 
             const payload = {
-                // Seven entities on one shared device, so each needs its own
+                // Several entities on one shared device, so each needs its own
                 // name (zones use null, taking the device name instead).
-                name: PANEL_CONDITION_NAMES[condition],
+                name: condition.name,
                 unique_id: uniqueId,
 
                 state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
                 payload_on: MQTT_STATE_ON,
                 payload_off: MQTT_STATE_OFF,
-                device_class: PANEL_CONDITION_DEVICE_CLASSES[condition],
+                device_class: condition.deviceClass,
                 entity_category: 'diagnostic',
 
                 qos: 0,
@@ -789,7 +769,21 @@ class _HaDiscoveryPublishers {
             this._eventDrivenDiscoveryTopics.add(discoveryTopic);
             this.discoveryCount++;
         }
-        this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_TROUBLE_CONDITIONS.length} conditions)`);
+        this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_CONDITIONS.length} conditions)`);
+    }
+
+    /**
+     * Retract one event-driven discovery config: clear the retained message and
+     * forget it, so a later tree run's stale cleanup doesn't try to clear it
+     * again and the replay cache doesn't resurrect it on a broker reconnect.
+     *
+     * @param {string} topic
+     * @private
+     */
+    _retractEventDrivenConfig(topic) {
+        this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.delete(topic);
+        this._eventDrivenDiscoveryTopics.delete(topic);
     }
 
     /**
@@ -820,9 +814,7 @@ class _HaDiscoveryPublishers {
             // sensors) so they disappear from HA once the user excludes it (e.g.
             // a PAC/controller mirroring the real thermostats).
             for (const topic of this._nativeAirconDiscoveryTopics(network, appId, sourceUnit)) {
-                this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
-                this._publishedTopics.delete(topic);
-                this._eventDrivenDiscoveryTopics.delete(topic);
+                this._retractEventDrivenConfig(topic);
             }
             this._nativeAirconSeen.add(key); // don't re-check on every event
             return false;

@@ -1,25 +1,11 @@
 // @ts-check
 'use strict';
 
-const { PANEL_TROUBLE_CONDITIONS } = require('./applicationDecoders/securityDecoder');
-
-/**
- * Conditions the panel clears implicitly on disarm. The 2026-07-29 captures in
- * issue #42 never show an explicit clear for panic or fire, and the tester
- * confirmed that disarming "clears all possible trouble conditions" - both the
- * arm-failure and fire-alarm sequences end alarm_on → alarm_off → system_arm 0
- * with no dedicated cleared verb in between.
- *
- * Mains, battery, tamper and line are deliberately absent: a power fault or a
- * cut phone line is a physical condition that disarming the panel cannot fix,
- * and the panel does emit explicit restored/corrected verbs for those.
- */
-const CLEARED_ON_DISARM = ['panic', 'arm_failed', 'fire'];
-
-/**
- * Cleared by a *successful* arm, since the previous failure is now moot.
- */
-const CLEARED_ON_ARM = ['arm_failed'];
+const {
+    PANEL_TROUBLE_CONDITIONS,
+    CLEARED_ON_DISARM,
+    CLEARED_ON_ARM
+} = require('./securityPanelConditions');
 
 /**
  * Tracks panel-wide trouble state per C-Bus network so the bridge only
@@ -100,17 +86,6 @@ class SecurityPanelState {
     initialStates(network) {
         const state = this._forNetwork(network);
         return PANEL_TROUBLE_CONDITIONS.map((condition) => ({ condition, active: state[condition] }));
-    }
-
-    /**
-     * Snapshot of one network's conditions. Returns a copy - callers must not
-     * be able to mutate the tracker's state by editing the result.
-     *
-     * @param {string} network
-     * @returns {Object<string, boolean>}
-     */
-    getState(network) {
-        return { ...this._forNetwork(network) };
     }
 
     /**

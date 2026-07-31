@@ -252,10 +252,8 @@ class CgateWebBridge {
         // (issue #44). Neither event restarts the bridge, so nothing else would.
         this.stateResyncCoordinator = new StateResyncCoordinator({
             settings: this.settings,
-            commandQueue: this.cgateCommandQueue,
             logger: this.logger,
             getHaDiscovery: this._getHaDiscovery,
-            getSecurityEventHandler: () => this.securityEventHandler,
             initializationService: this.initializationService
         });
 
@@ -415,26 +413,19 @@ class CgateWebBridge {
             }
         });
 
-        // MQTT message routing. The HA birth topic is intercepted here rather
-        // than in the command router: it isn't a cbus/write command, and an
-        // 'online' payload means Home Assistant restarted and has lost every
-        // entity state it was holding (issue #44).
-        this.mqttManager.on('message', (topic, payload) => {
-            if (topic === this.mqttManager.haStatusTopic) {
-                if (String(payload).trim().toLowerCase() === 'online') {
-                    this.logger.info('Home Assistant came online; resyncing entity state');
-                    this.stateResyncCoordinator.requestResync('ha-birth');
-                }
-                return;
-            }
-            this.mqttCommandRouter.routeMessage(topic, payload);
+        // MQTT message routing
+        this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
+
+        // Home Assistant restarted: it has lost every entity state it was
+        // holding, and the add-on kept running, so nothing else would resend it.
+        this.mqttManager.on('haOnline', () => {
+            this.logger.info('Home Assistant came online; resyncing entity state');
+            this.stateResyncCoordinator.requestResync('ha-birth');
         });
 
         // A mid-session broker reconnect may have dropped the retained discovery
         // configs along with the state, so this path republishes both.
-        this.mqttManager.on('reconnect', () => {
-            this.stateResyncCoordinator.requestResync('mqtt-reconnect', { republishDiscovery: true });
-        });
+        this.mqttManager.on('reconnect', () => this.stateResyncCoordinator.requestResync('mqtt-reconnect'));
 
         // Data processing handlers - pass connection for per-connection line processing
         this.commandConnectionPool.on('data', (data, connection) => this._handleCommandData(data, connection));

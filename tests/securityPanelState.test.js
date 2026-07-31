@@ -11,6 +11,9 @@ describe('SecurityPanelState', () => {
         kind: 'panel_trouble', network, condition, active
     });
 
+    const activeFor = (tracker, network, condition) =>
+        tracker.initialStates(network).find((c) => c.condition === condition).active;
+
     describe('transitions', () => {
         it('reports a newly raised condition as changed', () => {
             expect(state.applyReading(trouble('mains', true)))
@@ -57,7 +60,7 @@ describe('SecurityPanelState', () => {
             state.applyReading(trouble('mains', true));
             state.applyReading(trouble('battery', true));
             expect(state.applyReading({ kind: 'system_arm', network: '254', mode: 0 })).toEqual([]);
-            expect(state.getState('254').mains).toBe(true);
+            expect(activeFor(state, '254', 'mains')).toBe(true);
         });
 
         it('clears arm_failed on a successful arm but leaves panic alone', () => {
@@ -65,7 +68,7 @@ describe('SecurityPanelState', () => {
             state.applyReading(trouble('panic', true));
             expect(state.applyReading({ kind: 'system_arm', network: '254', mode: 1 }))
                 .toEqual([{ condition: 'arm_failed', active: false }]);
-            expect(state.getState('254').panic).toBe(true);
+            expect(activeFor(state, '254', 'panic')).toBe(true);
         });
 
         it('reports nothing when a disarm has nothing to clear', () => {
@@ -78,7 +81,7 @@ describe('SecurityPanelState', () => {
             expect(state.seedFromStatusReport({
                 kind: 'status_report_1', network: '254', tamperActive: true, panicActive: false
             })).toEqual([{ condition: 'tamper', active: true }]);
-            expect(state.getState('254').tamper).toBe(true);
+            expect(activeFor(state, '254', 'tamper')).toBe(true);
         });
 
         it('seeds both when both are active', () => {
@@ -120,15 +123,4 @@ describe('SecurityPanelState', () => {
         });
     });
 
-    describe('getState', () => {
-        it('returns all seven conditions for an untouched network', () => {
-            expect(Object.keys(state.getState('254'))).toHaveLength(7);
-        });
-
-        it('does not leak mutations back into the tracker', () => {
-            const snapshot = state.getState('254');
-            snapshot.mains = true;
-            expect(state.getState('254').mains).toBe(false);
-        });
-    });
 });

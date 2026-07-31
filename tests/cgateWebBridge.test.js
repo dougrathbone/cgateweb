@@ -484,7 +484,11 @@ describe('CgateWebBridge', () => {
 
                 bridge._handleAllConnected();
 
-                expect(addSpy).toHaveBeenCalledWith(expect.stringContaining('GET //TestProject/254/56/* level'));
+                // Startup passes no queue options, so this getall keeps default
+                // (normal) priority; the resync path is the one that uses 'bulk'.
+                expect(addSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('GET //TestProject/254/56/* level'), {}
+                );
             });
 
             it('should set up periodic getall when enabled', () => {
@@ -1372,20 +1376,9 @@ describe('CgateWebBridge', () => {
         });
         afterEach(() => jest.restoreAllMocks());
 
-        it('resyncs when Home Assistant publishes its online birth message', () => {
-            bridge.mqttManager.emit('message', 'homeassistant/status', 'online');
+        it('resyncs when Home Assistant comes online', () => {
+            bridge.mqttManager.emit('haOnline');
             expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('ha-birth');
-        });
-
-        it('ignores the offline will message', () => {
-            bridge.mqttManager.emit('message', 'homeassistant/status', 'offline');
-            expect(bridge.stateResyncCoordinator.requestResync).not.toHaveBeenCalled();
-        });
-
-        it('does not route the birth topic to the command router', () => {
-            jest.spyOn(bridge.mqttCommandRouter, 'routeMessage').mockImplementation(() => {});
-            bridge.mqttManager.emit('message', 'homeassistant/status', 'online');
-            expect(bridge.mqttCommandRouter.routeMessage).not.toHaveBeenCalled();
         });
 
         it('still routes normal cbus/write commands', () => {
@@ -1394,10 +1387,9 @@ describe('CgateWebBridge', () => {
             expect(bridge.mqttCommandRouter.routeMessage).toHaveBeenCalledWith('cbus/write/254/56/4/switch', 'ON');
         });
 
-        it('resyncs and republishes discovery on a broker reconnect', () => {
+        it('resyncs on a broker reconnect', () => {
             bridge.mqttManager.emit('reconnect');
-            expect(bridge.stateResyncCoordinator.requestResync)
-                .toHaveBeenCalledWith('mqtt-reconnect', { republishDiscovery: true });
+            expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('mqtt-reconnect');
         });
     });
 

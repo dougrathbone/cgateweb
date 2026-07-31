@@ -484,12 +484,31 @@ describe('MqttManager', () => {
 
             it('derives the birth topic from ha_discovery_prefix', () => {
                 mqttManager.settings.ha_discovery_prefix = 'ha-custom';
+                mqttManager._haStatusTopic = null; // clear the memo
                 expect(mqttManager.haStatusTopic).toBe('ha-custom/status');
             });
 
             it('prefers an explicit haStatusTopic override', () => {
                 mqttManager.settings.haStatusTopic = 'somewhere/else';
+                mqttManager._haStatusTopic = null;
                 expect(mqttManager.haStatusTopic).toBe('somewhere/else');
+            });
+
+            it('emits haOnline for an online birth payload, not a generic message', () => {
+                const onHaOnline = jest.fn();
+                const onMessage = jest.fn();
+                mqttManager.on('haOnline', onHaOnline);
+                mqttManager.on('message', onMessage);
+                mqttManager._handleMessage('homeassistant/status', Buffer.from('online'), {});
+                expect(onHaOnline).toHaveBeenCalledTimes(1);
+                expect(onMessage).not.toHaveBeenCalled();
+            });
+
+            it('ignores the offline will payload', () => {
+                const onHaOnline = jest.fn();
+                mqttManager.on('haOnline', onHaOnline);
+                mqttManager._handleMessage('homeassistant/status', Buffer.from('offline'), {});
+                expect(onHaOnline).not.toHaveBeenCalled();
             });
 
             it('does not emit reconnect on the first connect', () => {

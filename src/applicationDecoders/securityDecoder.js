@@ -1,5 +1,10 @@
 // @ts-check
 const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
+const {
+    PANEL_TROUBLE_CONDITIONS,
+    PANEL_TROUBLE_VERBS,
+    PANEL_TROUBLE_DETAIL_VERBS
+} = require('../securityPanelConditions');
 
 /**
  * C-Bus Security application (208 / $D0) line decoder.
@@ -68,42 +73,9 @@ const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated', 'arm_not_ready'
 ]);
 
-/**
- * Panel-wide trouble conditions, in display order.
- */
-const PANEL_TROUBLE_CONDITIONS = ['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire'];
-
-/**
- * Verbs that name their own sense. Confirmed by the #42 captures except
- * low_battery, tamper_on and panic_off/panic_cleared: the panel only ever
- * emitted the other half of those three pairs (low_battery_corrected,
- * tamper_off, panic_activated), so these names are inferred from the naming
- * convention of the confirmed pairs. An inferred verb that never arrives costs
- * nothing, and panic still recovers via the disarm-derived clear in
- * securityPanelState.
- */
-const PANEL_TROUBLE_VERBS = new Map([
-    ['mains_failure', { condition: 'mains', active: true }],
-    ['mains_restored', { condition: 'mains', active: false }],
-    ['low_battery', { condition: 'battery', active: true }],
-    ['low_battery_corrected', { condition: 'battery', active: false }],
-    ['tamper_on', { condition: 'tamper', active: true }],
-    ['tamper_off', { condition: 'tamper', active: false }],
-    ['panic_activated', { condition: 'panic', active: true }],
-    ['panic_off', { condition: 'panic', active: false }],
-    ['panic_cleared', { condition: 'panic', active: false }]
-]);
-
-/**
- * Verbs whose active/cleared sense rides a "<verb>_raised" / "<verb>_cleared"
- * detail argument rather than the verb name (confirmed for all three in the
- * #42 captures). A bare verb with no detail means raised.
- */
-const PANEL_TROUBLE_DETAIL_VERBS = new Map([
-    ['line_cut_alarm', 'line'],
-    ['arm_failed', 'arm_failed'],
-    ['fire_alarm', 'fire']
-]);
+// Panel-wide trouble conditions and their verbs live in securityPanelConditions
+// so the wire format, the HA entity metadata and the log wording for one
+// condition stay in a single record.
 
 /**
  * Parse a C-Bus address //PROJECT/<net>/<app>[/<zone>].
@@ -297,19 +269,18 @@ function decodeLine(line) {
     // arm failure, fire). These become diagnostic binary_sensors; the raise and
     // clear senses are resolved here so downstream code never parses verbs.
     const named = PANEL_TROUBLE_VERBS.get(verb);
-    if (named) {
-        return {
-            kind: 'panel_trouble', network, application,
-            condition: named.condition, active: named.active, verb, detail: null
-        };
-    }
-
     const detailCondition = PANEL_TROUBLE_DETAIL_VERBS.get(verb);
-    if (detailCondition) {
+    if (named || detailCondition) {
+        // Verbs in PANEL_TROUBLE_VERBS name their own sense; the rest carry it
+        // in a "<verb>_raised" / "<verb>_cleared" argument, where a bare verb
+        // with no argument means raised.
         const detail = params.length > 0 ? params.join(' ') : null;
         return {
             kind: 'panel_trouble', network, application,
-            condition: detailCondition, active: !(detail && detail.endsWith('_cleared')), verb, detail
+            condition: named ? named.condition : detailCondition,
+            active: named ? named.active : !(detail && detail.endsWith('_cleared')),
+            verb,
+            detail
         };
     }
 
@@ -318,5 +289,5 @@ function decodeLine(line) {
 
 module.exports = {
     appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE,
-    PANEL_TROUBLE_CONDITIONS, PANEL_TROUBLE_VERBS, PANEL_TROUBLE_DETAIL_VERBS
+    PANEL_TROUBLE_CONDITIONS
 };

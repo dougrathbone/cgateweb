@@ -5,20 +5,20 @@ const securityDecoder = require('./applicationDecoders/securityDecoder');
 const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
+const { describePanelCondition } = require('./securityPanelConditions');
 
 /**
- * User-facing wording for each panel trouble condition, in both senses. The
- * panel's own `_raised`/`_cleared` argument is deliberately not echoed into the
- * log line: the sense is already carried by the wording.
+ * Which dedupe slot each status-sync trigger consumes. 'resync' has no slot: a
+ * Home Assistant or broker restart can happen any number of times in one bridge
+ * session and each one genuinely needs the zone state resent, so it is exempt
+ * from the once-per-session dedupe. Rate limiting for that trigger is the resync
+ * coordinator's debounce instead.
  */
-const PANEL_TROUBLE_TEXT = {
-    mains: { raised: 'Mains power failure', cleared: 'Mains power restored' },
-    battery: { raised: 'Battery low', cleared: 'Battery restored' },
-    tamper: { raised: 'Tamper detected', cleared: 'Tamper cleared' },
-    panic: { raised: 'Panic activated', cleared: 'Panic cleared' },
-    line: { raised: 'Phone line cut', cleared: 'Phone line restored' },
-    arm_failed: { raised: 'Arm failed', cleared: 'Arm failure cleared' },
-    fire: { raised: 'Fire alarm', cleared: 'Fire alarm cleared' }
+const SYNC_TRIGGER_SLOTS = {
+    connect: 'early',
+    traffic: 'early',
+    sync: 'postSync',
+    resync: null
 };
 
 /**
@@ -126,23 +126,24 @@ class SecurityEventHandler {
         if (!this.sendCommand || !this.cbusname) return false;
         if (network === null || network === undefined) return false;
 
+        if (!Object.prototype.hasOwnProperty.call(SYNC_TRIGGER_SLOTS, trigger)) {
+            // Fail loudly rather than consuming a dedupe slot: silently burning
+            // the 'early' slot on a typo would suppress the real connect/traffic
+            // sync for the rest of the session.
+            this.logger.warn(`Unknown security status-sync trigger '${trigger}'; ignoring`);
+            return false;
+        }
+
         const key = `${network}/${appId}`;
         let state = this._syncState.get(key);
         if (!state) {
             state = { early: false, postSync: false };
             this._syncState.set(key, state);
         }
-        if (trigger === 'resync') {
-            // Home Assistant or broker restart (issue #44). Deliberately exempt
-            // from the once-per-session dedupe: HA can restart any number of
-            // times in a session, and each restart genuinely needs the zone
-            // state resent. Rate limiting is the resync coordinator's debounce.
-        } else if (trigger === 'sync') {
-            if (state.postSync) return false;
-            state.postSync = true;
-        } else {
-            if (state.early) return false;
-            state.early = true;
+        const slot = SYNC_TRIGGER_SLOTS[trigger];
+        if (slot) {
+            if (state[slot]) return false;
+            state[slot] = true;
         }
 
         for (const report of [1, 2]) {
@@ -181,10 +182,12 @@ class SecurityEventHandler {
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
                 }
-                // Report 1's prefix bytes are the only authoritative source for
-                // tamper and panic, so let them correct the assumed-healthy seed.
-                this._publishPanelChanges(reading.network, reading.application,
-                    this.panelState.seedFromStatusReport(reading));
+                // Only report 1 carries the tamper and panic prefix bytes, which
+                // are the one authoritative source for those two conditions.
+                if (reading.kind === 'status_report_1') {
+                    this._publishPanelChanges(reading.network, reading.application,
+                        this.panelState.seedFromStatusReport(reading));
+                }
                 this._logStatusReportSummary(reading);
             } else if (reading.kind === 'panel_trouble') {
                 this._publishPanelChanges(reading.network, reading.application,
@@ -261,16 +264,12 @@ class SecurityEventHandler {
      */
     _publishPanelChanges(network, application, changes) {
         const haDiscovery = this.getHaDiscovery();
-        if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
-            if (haDiscovery.ensureSecurityPanelDiscovery(network, application)) {
-                // Newly announced: seed every condition so none sits Unknown.
-                for (const { condition, active } of this.panelState.initialStates(network)) {
-                    this._publishPanelCondition(network, application, condition, active);
-                }
-                return;
-            }
-        }
-        for (const { condition, active } of changes) {
+        const justAnnounced = haDiscovery && haDiscovery.ensureSecurityPanelDiscovery(network, application);
+        // On the first announce, publish all seven so none sits Unknown in HA.
+        // Callers always fold their reading into the tracker before calling, so
+        // the seed is a superset of `changes` rather than a competing view.
+        const toPublish = justAnnounced ? this.panelState.initialStates(network) : changes;
+        for (const { condition, active } of toPublish) {
             this._publishPanelCondition(network, application, condition, active);
         }
     }
@@ -334,9 +333,7 @@ class SecurityEventHandler {
             case 'alarm_off':
                 return 'Alarm off';
             case 'panel_trouble':
-                return PANEL_TROUBLE_TEXT[reading.condition]
-                    ? PANEL_TROUBLE_TEXT[reading.condition][reading.active ? 'raised' : 'cleared']
-                    : reading.condition;
+                return describePanelCondition(reading.condition, reading.active === true);
             default:
                 return reading.kind;
         }

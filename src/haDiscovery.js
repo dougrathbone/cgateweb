@@ -8,6 +8,10 @@ const {
     HA_DISCOVERY_SUFFIX
 } = require('./constants');
 
+// Discovery config topics end in this; used to recognise them in the _publish
+// wrapper that records payloads for replay after a broker restart.
+const CONFIG_TOPIC_SUFFIX = `/${HA_DISCOVERY_SUFFIX}`;
+
 /**
  * Methods mixed into HaDiscovery.prototype from haDiscoveryTreeSession.js and
  * haDiscoveryPublishers.js at module load (see the Object.assign calls at the
@@ -40,8 +44,9 @@ class HaDiscovery {
         // publish a config, so the cache cannot drift out of sync with them.
         // Bounded by entity count: a few hundred payloads of roughly 500 bytes.
         this._publishedConfigPayloads = new Map();
+        this._rawPublish = publishFn;
         this._publish = (topic, payload, options) => {
-            if (typeof topic === 'string' && topic.endsWith(`/${HA_DISCOVERY_SUFFIX}`)) {
+            if (typeof topic === 'string' && topic.endsWith(CONFIG_TOPIC_SUFFIX)) {
                 // An empty payload is a retraction — forget it, don't replay it.
                 if (payload) this._publishedConfigPayloads.set(topic, payload);
                 else this._publishedConfigPayloads.delete(topic);
@@ -147,7 +152,9 @@ class HaDiscovery {
     republishDiscoveryConfigs() {
         let count = 0;
         for (const [topic, payload] of this._publishedConfigPayloads) {
-            this._publish(topic, payload, MQTT_RETAINED_STATE_OPTIONS);
+            // Raw publish: going through this._publish would re-record each
+            // entry with the value we are iterating, for no benefit.
+            this._rawPublish(topic, payload, MQTT_RETAINED_STATE_OPTIONS);
             count++;
         }
         if (count > 0) this.logger.info(`Republished ${count} HA Discovery config(s)`);

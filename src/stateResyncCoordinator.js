@@ -1,7 +1,13 @@
 // @ts-check
 'use strict';
 
-const { CGATE_CMD_GET, CGATE_PARAM_LEVEL, NEWLINE } = require('./constants');
+/**
+ * Triggers that also need the retained HA Discovery configs replayed, not just
+ * state. A broker restart without persistence drops the configs, so the entities
+ * are gone rather than merely stale; a Home Assistant restart leaves the broker
+ * untouched, so its retained configs are still there to be re-read.
+ */
+const TRIGGERS_NEEDING_DISCOVERY_REPUBLISH = new Set(['mqtt-reconnect']);
 
 /**
  * Republishes entity state after Home Assistant or the MQTT broker restarts
@@ -26,27 +32,22 @@ class StateResyncCoordinator {
     /**
      * @param {Object} deps
      * @param {Object} deps.settings
-     * @param {{ add: (cmd: string) => void }} deps.commandQueue
      * @param {ReturnType<typeof import('./logger').createLogger>} deps.logger
      * @param {() => (Object|null)} deps.getHaDiscovery - late-bound: haDiscovery is built after the bridge constructor
-     * @param {() => (Object|null)} deps.getSecurityEventHandler
-     * @param {{ _resolveGetallNetworks: () => string[] }} deps.initializationService
+     * @param {{ sendGetallLevels: Function, sendSecurityStatusRequests: Function }} deps.initializationService
      */
-    constructor({ settings, commandQueue, logger, getHaDiscovery, getSecurityEventHandler, initializationService }) {
+    constructor({ settings, logger, getHaDiscovery, initializationService }) {
         this.settings = settings;
-        this.commandQueue = commandQueue;
         this.logger = logger;
         this.getHaDiscovery = getHaDiscovery;
-        this.getSecurityEventHandler = getSecurityEventHandler;
         this.initializationService = initializationService;
 
         /** @type {NodeJS.Timeout|null} */
         this._pending = null;
-        /** @type {Set<string>} triggers collapsed into the pending resync */
+        // Triggers collapsed into the pending resync. Also the sticky record of
+        // whether any of them needed the discovery configs replayed.
+        /** @type {Set<string>} */
         this._pendingTriggers = new Set();
-        // Sticky across collapsed triggers: if any of them wanted the configs
-        // republished, the single resync that runs must do it.
-        this._pendingRepublishDiscovery = false;
     }
 
     /**
@@ -54,17 +55,15 @@ class StateResyncCoordinator {
      * one.
      *
      * @param {'ha-birth'|'mqtt-reconnect'|string} trigger
-     * @param {{ republishDiscovery?: boolean }} [options]
      * @returns {boolean} true when a resync is now pending
      */
-    requestResync(trigger, options = {}) {
+    requestResync(trigger) {
         if (!this._triggerEnabled(trigger)) {
             this.logger.debug(`State resync trigger '${trigger}' is disabled by settings`);
             return false;
         }
 
         this._pendingTriggers.add(trigger);
-        if (options.republishDiscovery) this._pendingRepublishDiscovery = true;
 
         if (this._pending) clearTimeout(this._pending);
         const debounceMs = Number(this.settings.stateResyncDebounceMs) || 5000;
@@ -82,7 +81,6 @@ class StateResyncCoordinator {
             this._pending = null;
         }
         this._pendingTriggers.clear();
-        this._pendingRepublishDiscovery = false;
     }
 
     /**
@@ -101,20 +99,31 @@ class StateResyncCoordinator {
      */
     _runResync() {
         this._pending = null;
-        const triggers = [...this._pendingTriggers].join(', ');
-        const republishDiscovery = this._pendingRepublishDiscovery;
+        const pendingTriggers = [...this._pendingTriggers];
+        const triggers = pendingTriggers.join(', ');
+        const republishDiscovery = pendingTriggers.some((t) => TRIGGERS_NEEDING_DISCOVERY_REPUBLISH.has(t));
         this._pendingTriggers.clear();
-        this._pendingRepublishDiscovery = false;
 
         let configs = 0;
         if (republishDiscovery) {
             const haDiscovery = this.getHaDiscovery();
-            if (haDiscovery && typeof haDiscovery.republishDiscoveryConfigs === 'function') {
-                configs = haDiscovery.republishDiscoveryConfigs();
-            }
+            if (haDiscovery) configs = haDiscovery.republishDiscoveryConfigs();
         }
 
-        const netapps = this.initializationService._resolveGetallNetworks();
+        // 'bulk' priority: a resync can be dozens of commands, and it fires
+        // exactly when someone is likely pressing switches (they just restarted
+        // HA). Startup's getall gets away with normal priority because nothing
+        // competes with it; here a user command must not queue behind the flood.
+        const netapps = this.initializationService.sendGetallLevels(null, { priority: 'bulk' });
+
+        // Security panels do not answer lighting-style getall (spec §5.9), so the
+        // zone sensors need their own status_request pair or they would go stale
+        // across exactly the restart this coordinator exists to fix. This is
+        // resolved from ha_discovery_networks, not from the getall pairs: the
+        // security app is deliberately absent from those, so an install with
+        // ha_discovery_networks set but no getall_networks still resyncs zones.
+        this.initializationService.sendSecurityStatusRequests('resync');
+
         if (netapps.length === 0) {
             this.logger.debug(
                 `State resync (${triggers}) had no getall networks configured, so no levels were requested`
@@ -122,26 +131,8 @@ class StateResyncCoordinator {
             return;
         }
 
-        for (const netapp of netapps) {
-            this.commandQueue.add(
-                `${CGATE_CMD_GET} //${this.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-            );
-        }
-
-        // Security panels do not answer lighting-style getall (spec §5.9), so
-        // the zone sensors need their own status_request pair or they would stay
-        // stale across exactly the restart this coordinator exists to fix.
-        const securityEventHandler = this.getSecurityEventHandler();
-        const networks = new Set(netapps.map((netapp) => String(netapp).split('/')[0]));
-        if (securityEventHandler && typeof securityEventHandler.requestStatusSync === 'function') {
-            for (const network of networks) {
-                securityEventHandler.requestStatusSync(network, 'resync');
-            }
-        }
-
         this.logger.info(
-            `State resync (${triggers}): requested levels for ${netapps.length} network/app pair(s), ` +
-            `${networks.size} security status sync(s)` +
+            `State resync (${triggers}): requested levels for ${netapps.length} network/app pair(s)` +
             (republishDiscovery ? `, republished ${configs} discovery config(s)` : '')
         );
     }
