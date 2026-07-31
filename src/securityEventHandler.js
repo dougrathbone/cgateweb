@@ -117,7 +117,7 @@ class SecurityEventHandler {
      * 'sync' has its own slot, so a post-sync refresh is always allowed once.
      *
      * @param {string|number} network - C-Bus network id.
-     * @param {'connect'|'traffic'|'sync'} trigger - What prompted the request.
+     * @param {'connect'|'traffic'|'sync'|'resync'} trigger - What prompted the request.
      * @returns {boolean} true when the request pair was actually sent.
      */
     requestStatusSync(network, trigger) {
@@ -132,7 +132,12 @@ class SecurityEventHandler {
             state = { early: false, postSync: false };
             this._syncState.set(key, state);
         }
-        if (trigger === 'sync') {
+        if (trigger === 'resync') {
+            // Home Assistant or broker restart (issue #44). Deliberately exempt
+            // from the once-per-session dedupe: HA can restart any number of
+            // times in a session, and each restart genuinely needs the zone
+            // state resent. Rate limiting is the resync coordinator's debounce.
+        } else if (trigger === 'sync') {
             if (state.postSync) return false;
             state.postSync = true;
         } else {

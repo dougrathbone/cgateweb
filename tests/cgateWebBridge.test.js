@@ -1361,6 +1361,46 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    // Issue #44: neither a Home Assistant restart nor a broker restart restarts
+    // the bridge, so these two signals are the only chance to resend state.
+    describe('state resync wiring', () => {
+        let bridge;
+        beforeEach(() => {
+            bridge = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+            bridge._setupEventHandlers();
+            jest.spyOn(bridge.stateResyncCoordinator, 'requestResync').mockImplementation(() => true);
+        });
+        afterEach(() => jest.restoreAllMocks());
+
+        it('resyncs when Home Assistant publishes its online birth message', () => {
+            bridge.mqttManager.emit('message', 'homeassistant/status', 'online');
+            expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('ha-birth');
+        });
+
+        it('ignores the offline will message', () => {
+            bridge.mqttManager.emit('message', 'homeassistant/status', 'offline');
+            expect(bridge.stateResyncCoordinator.requestResync).not.toHaveBeenCalled();
+        });
+
+        it('does not route the birth topic to the command router', () => {
+            jest.spyOn(bridge.mqttCommandRouter, 'routeMessage').mockImplementation(() => {});
+            bridge.mqttManager.emit('message', 'homeassistant/status', 'online');
+            expect(bridge.mqttCommandRouter.routeMessage).not.toHaveBeenCalled();
+        });
+
+        it('still routes normal cbus/write commands', () => {
+            jest.spyOn(bridge.mqttCommandRouter, 'routeMessage').mockImplementation(() => {});
+            bridge.mqttManager.emit('message', 'cbus/write/254/56/4/switch', 'ON');
+            expect(bridge.mqttCommandRouter.routeMessage).toHaveBeenCalledWith('cbus/write/254/56/4/switch', 'ON');
+        });
+
+        it('resyncs and republishes discovery on a broker reconnect', () => {
+            bridge.mqttManager.emit('reconnect');
+            expect(bridge.stateResyncCoordinator.requestResync)
+                .toHaveBeenCalledWith('mqtt-reconnect', { republishDiscovery: true });
+        });
+    });
+
     describe('reloadSettings()', () => {
         let bridge;
         beforeEach(() => {

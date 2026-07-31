@@ -468,10 +468,42 @@ describe('MqttManager', () => {
                     if (callback) callback(null);
                     return true;
                 });
-                
+
                 mockClient.emit('connect');
-                
+
                 expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Subscribed to MQTT topic'));
+            });
+
+            // Issue #44: a HA restart leaves the add-on running, so its birth
+            // message is the only signal that entity state needs resending.
+            it('subscribes to the Home Assistant birth topic', () => {
+                const subscribeSpy = jest.spyOn(mqttManager, 'subscribe');
+                mockClient.emit('connect');
+                expect(subscribeSpy).toHaveBeenCalledWith('homeassistant/status', expect.any(Function));
+            });
+
+            it('derives the birth topic from ha_discovery_prefix', () => {
+                mqttManager.settings.ha_discovery_prefix = 'ha-custom';
+                expect(mqttManager.haStatusTopic).toBe('ha-custom/status');
+            });
+
+            it('prefers an explicit haStatusTopic override', () => {
+                mqttManager.settings.haStatusTopic = 'somewhere/else';
+                expect(mqttManager.haStatusTopic).toBe('somewhere/else');
+            });
+
+            it('does not emit reconnect on the first connect', () => {
+                const emitSpy = jest.spyOn(mqttManager, 'emit');
+                mockClient.emit('connect');
+                expect(emitSpy).not.toHaveBeenCalledWith('reconnect');
+            });
+
+            it('emits reconnect on a mid-session reconnect', () => {
+                mockClient.emit('connect');
+                const emitSpy = jest.spyOn(mqttManager, 'emit');
+                mockClient.emit('close');
+                mockClient.emit('connect');
+                expect(emitSpy).toHaveBeenCalledWith('reconnect');
             });
         });
 

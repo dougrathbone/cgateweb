@@ -394,6 +394,27 @@ describe('SecurityEventHandler', () => {
             expect(deps.sendCommand).toHaveBeenCalledTimes(4);
         });
 
+        // Issue #44: HA can restart any number of times in one bridge session,
+        // and every restart genuinely needs the zone state resent. Rate limiting
+        // for this trigger is the resync coordinator's debounce, not the dedupe.
+        it('exempts the resync trigger from the once-per-session dedupe', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.requestStatusSync('254', 'connect');
+            handler.requestStatusSync('254', 'sync');
+            expect(handler.requestStatusSync('254', 'resync')).toBe(true);
+            expect(handler.requestStatusSync('254', 'resync')).toBe(true);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(8); // 4 pairs
+        });
+
+        it('does not let a resync consume the early or post-762 slots', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.requestStatusSync('254', 'resync');
+            expect(handler.requestStatusSync('254', 'connect')).toBe(true);
+            expect(handler.requestStatusSync('254', 'sync')).toBe(true);
+        });
+
         it('fires the early pair on first traffic when connect never happened (no-762 sessions)', () => {
             const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
             const handler = new SecurityEventHandler(deps);

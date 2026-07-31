@@ -43,6 +43,8 @@ class MqttManager extends EventEmitter {
      * @param {string} [settings.mqttCertFile] - Path to client certificate file for TLS
      * @param {string} [settings.mqttKeyFile] - Path to client private key file for TLS
      * @param {boolean} [settings.mqttRejectUnauthorized] - Set false to disable TLS certificate verification
+     * @param {string|null} [settings.haStatusTopic] - Home Assistant birth/will topic override (default `<prefix>/status`)
+     * @param {string} [settings.ha_discovery_prefix] - HA Discovery prefix, used to derive the birth topic
      * @param {{ type?: string }} [settings._environment] - Runtime environment descriptor (internal)
      */
     constructor(settings) {
@@ -285,6 +287,11 @@ class MqttManager extends EventEmitter {
     _handleConnect() {
         this._connecting = false;
         this.connected = true;
+        // Captured before the flag is set: a true mid-session reconnect means
+        // the broker restarted or dropped us, which may have taken the retained
+        // discovery configs with it (issue #44). A first connect needs no
+        // resync — startup's own getall covers it.
+        const isReconnect = this._hasConnectedOnce;
         this._hasConnectedOnce = true;
         this._authFailureLogged = false;
         this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
@@ -315,8 +322,33 @@ class MqttManager extends EventEmitter {
                 this.logger.info(`Subscribed to MQTT topic: ${MQTT_TOPIC_PREFIX_WRITE}/#`);
             }
         });
-        
+
+        // Home Assistant's birth message, so a HA restart can trigger a state
+        // resync (issue #44). HA restarting does not restart the add-on, so this
+        // is the only signal that its entity states need resending.
+        this.subscribe(this.haStatusTopic, (err) => {
+            if (err) {
+                this.logger.error(`MQTT Subscription error:`, { error: err });
+            } else {
+                this.logger.info(`Subscribed to MQTT topic: ${this.haStatusTopic}`);
+            }
+        });
+
         this.emit('connect');
+        if (isReconnect) this.emit('reconnect');
+    }
+
+    /**
+     * Home Assistant's birth/will topic. Defaults to `<prefix>/status`, which is
+     * 'homeassistant/status' out of the box and follows ha_discovery_prefix when
+     * a user has changed it; overridable via haStatusTopic.
+     *
+     * @returns {string}
+     */
+    get haStatusTopic() {
+        if (this.settings.haStatusTopic) return String(this.settings.haStatusTopic);
+        const prefix = this.settings.ha_discovery_prefix || 'homeassistant';
+        return `${prefix}/status`;
     }
 
     _handleClose() {
