@@ -32,8 +32,49 @@
 /** Schneider's identity provider host; a redirect here means we were bounced to auth. */
 const IDP_HOST = 'idp.se.com';
 
-/** The rate-limit wording, as it appears both in the redirect URL and the page. */
-const RATE_LIMIT_MARKER = /rate limit/i;
+/**
+ * The rate-limit wording, as it appears in both the redirect URL and the page.
+ * Deliberately the full phrase rather than a bare "rate limit": this verdict
+ * SKIPS the integration test, so a loose match risks filing a genuine portal
+ * breakage as throttling and going green while users are broken.
+ */
+const RATE_LIMIT_MARKER = /rate limit for endpoint/i;
+
+/**
+ * True when the URL's host really is Schneider's identity provider.
+ *
+ * Compares the parsed hostname rather than substring-matching the whole URL:
+ * `https://evil.example.com/?next=idp.se.com` contains the string but is not
+ * the IdP, and treating it as throttling would silently skip the test.
+ *
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isIdentityProviderUrl(url) {
+    let hostname;
+    try {
+        ({ hostname } = new URL(url));
+    } catch {
+        return false;
+    }
+    return hostname === IDP_HOST || hostname.endsWith(`.${IDP_HOST}`);
+}
+
+/**
+ * The rate-limit phrase can arrive percent-encoded in the redirect URL
+ * (`The%20rate%20limit%20for%20endpoint`), so test the decoded form too.
+ *
+ * @param {string} value
+ * @returns {boolean}
+ */
+function mentionsRateLimit(value) {
+    if (RATE_LIMIT_MARKER.test(value)) return true;
+    try {
+        return RATE_LIMIT_MARKER.test(decodeURIComponent(value));
+    } catch {
+        return false;
+    }
+}
 
 /**
  * @typedef {Object} DownloadObservation
@@ -76,8 +117,8 @@ function classifyCgateDownload(observation) {
 
     // Check throttling before the status code: the giveaway is that Schneider
     // returns 200 with an HTML body, so a status-first check would miss it.
-    const bouncedToIdp = finalUrl.includes(IDP_HOST);
-    const saysRateLimited = RATE_LIMIT_MARKER.test(finalUrl) || RATE_LIMIT_MARKER.test(bodySample);
+    const bouncedToIdp = isIdentityProviderUrl(finalUrl);
+    const saysRateLimited = mentionsRateLimit(finalUrl) || mentionsRateLimit(bodySample);
     if (bouncedToIdp || saysRateLimited) {
         return {
             classification: 'rate-limited',
@@ -138,7 +179,9 @@ function classifyCgateDownload(observation) {
 function sanitizeReason(reason) {
     return String(reason)
         .replace(/[\r\n]+/g, ' ')
-        .replace(/::/g, ':')
+        // Collapse the whole run in one pass. Replacing '::' with ':' would
+        // leave '::::' as '::' — still a usable marker.
+        .replace(/:{2,}/g, ':')
         .replace(/[^\x20-\x7E]/g, '')
         .slice(0, 300)
         .trim();
