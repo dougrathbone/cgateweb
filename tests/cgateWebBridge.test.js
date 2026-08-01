@@ -5,8 +5,12 @@ const { defaultSettings } = require('../index.js');
 const EventEmitter = require('events');
 
 // --- Mock CgateConnectionPool ---
+// One emitter shared by every test in this file, because jest.mock hands the
+// same instance to every `new CgateConnectionPool(...)`. The afterEach below
+// detaches its listeners; without that, each bridge built in beforeEach leaves
+// its subscriptions attached and events fired by a later test also run every
+// earlier test's handlers against a half-torn-down bridge.
 const mockConnectionPool = new EventEmitter();
-mockConnectionPool.setMaxListeners(100); // Prevent memory leak warnings
 mockConnectionPool.start = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = true;
     mockConnectionPool.healthyConnections = { size: 3 };
@@ -173,7 +177,12 @@ describe('CgateWebBridge', () => {
         
         // Run any pending setImmediate callbacks before clearing
         await new Promise(resolve => setImmediate(resolve));
-        
+
+        // The pool mock is module-scoped and outlives every bridge, so its
+        // listeners have to be dropped explicitly (bridge.stop() would do it,
+        // but the teardown above deliberately stops short of a full stop()).
+        mockConnectionPool.removeAllListeners();
+
         jest.clearAllTimers();
         mockConsoleWarn.mockClear();
         mockConsoleError.mockClear();

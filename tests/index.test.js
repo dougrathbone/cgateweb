@@ -1,5 +1,14 @@
 const ORIGINAL_ENV = { ...process.env };
 
+// main() attaches shutdown/crash handlers to the *global* process object.
+// jest.resetModules() throws away the module registry but not those listeners,
+// so every main() call in this file left another set behind: past ten the run
+// printed MaxListenersExceededWarning, and once afterEach restored the real
+// process.exit those stale uncaughtException/unhandledRejection handlers were
+// live wires -- one stray rejection later in the file would have called the
+// real process.exit(1) and taken the Jest worker down mid-run.
+const PROCESS_EVENTS = ['SIGTERM', 'SIGINT', 'SIGUSR1', 'uncaughtException', 'unhandledRejection'];
+
 function loadIndexWithMocks({
     loadedConfig = { cbusip: '10.0.0.10', mqtt: 'broker:1883', _environment: { type: 'standalone' } },
     loadError = null,
@@ -74,8 +83,12 @@ describe('index.js', () => {
     let _exitSpy;
     let logSpy;
     let errorSpy;
+    let processListenersBefore;
 
     beforeEach(() => {
+        processListenersBefore = new Map(
+            PROCESS_EVENTS.map((event) => [event, process.listeners(event)])
+        );
         jest.resetModules();
         process.env = { ...ORIGINAL_ENV };
         delete process.env.ALLOW_DEFAULT_FALLBACK;
@@ -96,6 +109,16 @@ describe('index.js', () => {
     });
 
     afterEach(() => {
+        // Detach anything main() bolted onto the shared process object, so the
+        // next test starts from the listener set this one inherited.
+        for (const event of PROCESS_EVENTS) {
+            const inherited = processListenersBefore.get(event);
+            for (const listener of process.listeners(event)) {
+                if (!inherited.includes(listener)) {
+                    process.removeListener(event, listener);
+                }
+            }
+        }
         process.env = { ...ORIGINAL_ENV };
         jest.restoreAllMocks();
     });
