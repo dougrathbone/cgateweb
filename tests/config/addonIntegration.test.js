@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const yaml = require('yaml');
 
@@ -155,11 +156,25 @@ describe('Addon Configuration Integration', () => {
     });
 
     describe('ConfigLoader addon options mapping', () => {
+        // A private temp dir per run, not a fixed .tmp-test-options.json in the
+        // repo root: the old shared name meant two concurrent jest runs over the
+        // same checkout clobbered each other's options file, and a crash between
+        // write and unlink left an untracked, un-ignored file behind.
+        let tmpDir;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-addon-options-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
         test('should reject config.yaml defaults with empty cgate_host in remote mode', () => {
             const ConfigLoader = require('../../src/config/ConfigLoader');
 
             const optionsJson = JSON.stringify(configYaml.options);
-            const tmpPath = path.join(__dirname, '../../.tmp-test-options.json');
+            const tmpPath = path.join(tmpDir, 'options.json');
 
             fs.writeFileSync(tmpPath, optionsJson);
 
@@ -186,7 +201,7 @@ describe('Addon Configuration Integration', () => {
 
             const optionsWithHost = { ...configYaml.options, cgate_host: '192.168.1.100' };
             const optionsJson = JSON.stringify(optionsWithHost);
-            const tmpPath = path.join(__dirname, '../../.tmp-test-options.json');
+            const tmpPath = path.join(tmpDir, 'options.json');
 
             fs.writeFileSync(tmpPath, optionsJson);
 
