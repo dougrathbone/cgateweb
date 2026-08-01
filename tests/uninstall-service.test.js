@@ -19,7 +19,10 @@ describe('uninstall-service.js', () => {
 
     beforeEach(() => {
         jest.resetModules();
-        jest.clearAllMocks();
+        // Same reasoning as install-service.test.js: clearAllMocks leaves
+        // per-test mockImplementations installed, so a stubbed fs/execSync
+        // behaviour would silently carry into the next test.
+        jest.resetAllMocks();
 
         exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
             throw new Error(`process.exit:${code}`);

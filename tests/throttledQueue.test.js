@@ -3,10 +3,7 @@
 
 const ThrottledQueue = require('../src/throttledQueue');
 
-// --- Tests --- 
-
-// Use Jest's fake timers
-jest.useFakeTimers();
+// --- Tests ---
 
 describe('ThrottledQueue', () => {
     let mockProcessFn;
@@ -14,11 +11,22 @@ describe('ThrottledQueue', () => {
     const intervalMs = 100;
 
     beforeEach(() => {
+        // Fake timers are installed per test rather than once at module scope:
+        // a single module-scope jest.useFakeTimers() can be undone by any test
+        // that switches back to real timers, and whether that has happened yet
+        // depends on execution order. Installing them here makes every test
+        // start from the same timer state no matter what ran before it.
+        jest.useFakeTimers();
         // Reset mocks and queue before each test
         mockProcessFn = jest.fn();
         queue = new ThrottledQueue(mockProcessFn, intervalMs);
         // Clear any pending timers
         jest.clearAllTimers();
+    });
+
+    afterEach(() => {
+        queue?.clear?.();
+        jest.useRealTimers();
     });
 
     it('should process the first item immediately when added', () => {
@@ -203,7 +211,6 @@ describe('ThrottledQueue', () => {
         });
 
         it('should drop oldest items when queue is full', () => {
-            jest.useFakeTimers();
             const processed = [];
             const queue = new ThrottledQueue(
                 (item) => processed.push(item),
@@ -229,12 +236,11 @@ describe('ThrottledQueue', () => {
             
             expect(queue.droppedCount).toBe(1);
             expect(queue.length).toBe(3);
-            
-            jest.useRealTimers();
+
+            queue.clear();
         });
 
         it('should allow unlimited queue when maxSize is 0', () => {
-            jest.useFakeTimers();
             const queue = new ThrottledQueue(jest.fn(), 100, 'Test', { maxSize: 0 });
             
             for (let i = 0; i < 5000; i++) {
@@ -244,13 +250,11 @@ describe('ThrottledQueue', () => {
             expect(queue.droppedCount).toBe(0);
             // 1 processed immediately, 4999 in queue
             expect(queue.length).toBe(4999);
-            
+
             queue.clear();
-            jest.useRealTimers();
         });
 
         it('should track total dropped count', () => {
-            jest.useFakeTimers();
             const queue = new ThrottledQueue(jest.fn(), 100, 'Test', { maxSize: 2 });
             
             // Fill queue: first item processed immediately
@@ -262,22 +266,12 @@ describe('ThrottledQueue', () => {
             queue.add('f'); // drop d, queue: [e, f]
             
             expect(queue.droppedCount).toBe(3);
-            
+
             queue.clear();
-            jest.useRealTimers();
         });
     });
 
     describe('priority and processing gate', () => {
-        beforeEach(() => {
-            jest.useFakeTimers();
-            jest.clearAllTimers();
-        });
-
-        afterEach(() => {
-            jest.useFakeTimers();
-        });
-
         it('should process higher-priority items before lower-priority ones', () => {
             const processed = [];
             const queue = new ThrottledQueue(

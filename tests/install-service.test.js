@@ -23,7 +23,12 @@ describe('install-service.js', () => {
 
     beforeEach(() => {
         jest.resetModules();
-        jest.clearAllMocks();
+        // resetAllMocks, not clearAllMocks: clearAllMocks only wipes recorded
+        // calls, it leaves mockImplementation/mockReturnValue in place. The
+        // "writing service file fails" test installs a throwing writeFileSync
+        // that nothing below re-stubs, so under clearAllMocks it survives into
+        // whichever test runs next and makes the happy-path installs exit(1).
+        jest.resetAllMocks();
 
         exitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => {
             throw new Error(`process.exit:${code}`);
