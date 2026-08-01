@@ -1764,6 +1764,32 @@ describe('WebServer', () => {
             });
         }
 
+        /**
+         * Poll until `predicate()` is truthy, or fail with a message naming what
+         * we were waiting for.
+         *
+         * These tests drive a real HTTP server over a real socket, so the events
+         * they assert on (the server noticing a client hang-up, a chunk landing
+         * in the client's buffer) arrive whenever the kernel and the event loop
+         * get round to them. A fixed `setTimeout(..., 30)` encodes one machine's
+         * timing as a correctness requirement: it passes on a laptop and becomes
+         * a coin flip on a loaded CI runner. Polling asserts the same thing but
+         * finishes as soon as it is true and only gives up after a margin no
+         * healthy run will ever need.
+         */
+        async function waitFor(predicate, { label = 'condition', timeoutMs = 5000, intervalMs = 5 } = {}) {
+            const deadline = Date.now() + timeoutMs;
+            for (;;) {
+                if (predicate()) return;
+                if (Date.now() >= deadline) {
+                    throw new Error(`Timed out after ${timeoutMs}ms waiting for ${label}`);
+                }
+                await new Promise((r) => setTimeout(r, intervalMs));
+            }
+        }
+
+        const countDataLines = (lines) => lines.filter((l) => l.startsWith('data:')).length;
+
         it('returns 200 with Content-Type text/event-stream', async () => {
             const { res, destroy } = await openSSE(port);
             expect(res.statusCode).toBe(200);
@@ -1809,7 +1835,7 @@ describe('WebServer', () => {
             expect(second.status).toBe(503);
 
             first.destroy();
-            await new Promise((r) => setTimeout(r, 20));
+            await waitFor(() => listeners.size === 0, { label: 'the server to release the first SSE slot' });
             const third = await openSSE(cappedPort);
             expect(third.res.statusCode).toBe(200);
             third.destroy();
@@ -1835,8 +1861,7 @@ describe('WebServer', () => {
             const ssePort = sseServer._server.address().port;
 
             const { lines, destroy } = await openSSE(ssePort);
-            // Give response a tick to flush
-            await new Promise((r) => setTimeout(r, 50));
+            await waitFor(() => countDataLines(lines) >= 1, { label: 'the buffered event to reach the client' });
             destroy();
             await sseServer.close();
 
@@ -1846,7 +1871,7 @@ describe('WebServer', () => {
             expect(parsed).toMatchObject({ ts: 1000, network: '254', app: '56', group: '5' });
         });
 
-        it('SSE client receives new events pushed after connecting', (done) => {
+        it('SSE client receives new events pushed after connecting', async () => {
             const listeners = new Set();
             const mockStream = {
                 subscribe: (fn) => listeners.add(fn),
@@ -1859,38 +1884,41 @@ describe('WebServer', () => {
                 allowUnauthenticatedMutations: true,
                 eventStream: mockStream
             });
-            sseServer.start().then(() => {
-                const ssePort = sseServer._server.address().port;
-                const received = [];
-                const req = http.request(
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const received = [];
+            const req = await new Promise((resolve, reject) => {
+                const request = http.request(
                     { hostname: '127.0.0.1', port: ssePort, path: '/api/events/stream', method: 'GET' },
                     (res) => {
                         res.on('data', (chunk) => {
                             received.push(...chunk.toString().split('\n').filter(Boolean));
                         });
-
-                        // After connection is open, push a live event
-                        setTimeout(() => {
-                            const liveEvent = { ts: 2000, network: '254', app: '56', group: '10', level: 255, type: 'on' };
-                            for (const fn of listeners) fn(liveEvent);
-
-                            setTimeout(() => {
-                                req.destroy();
-                                sseServer.close().then(() => {
-                                    const dataLines = received.filter((l) => l.startsWith('data:'));
-                                    expect(dataLines.length).toBeGreaterThanOrEqual(1);
-                                    const parsed = JSON.parse(dataLines[dataLines.length - 1].slice('data:'.length).trim());
-                                    expect(parsed).toMatchObject({ ts: 2000, group: '10', level: 255 });
-                                    done();
-                                }).catch(done);
-                            }, 50);
-                        }, 30);
+                        resolve(request);
                     }
                 );
-                req.on('error', (e) => { if (e.code !== 'ECONNRESET') done(e); });
-                req.end();
-            }).catch(done);
-        }, 10000);
+                request.on('error', (e) => { if (e.code !== 'ECONNRESET') reject(e); });
+                request.end();
+            });
+
+            // The response headers arriving does not mean the handler has
+            // finished subscribing, so wait for the subscription itself before
+            // pushing -- an event pushed too early goes to nobody.
+            await waitFor(() => listeners.size === 1, { label: 'the SSE client to subscribe' });
+
+            const liveEvent = { ts: 2000, network: '254', app: '56', group: '10', level: 255, type: 'on' };
+            for (const fn of listeners) fn(liveEvent);
+
+            await waitFor(() => countDataLines(received) >= 1, { label: 'the pushed event to reach the client' });
+
+            req.destroy();
+            await sseServer.close();
+
+            const dataLines = received.filter((l) => l.startsWith('data:'));
+            const parsed = JSON.parse(dataLines[dataLines.length - 1].slice('data:'.length).trim());
+            expect(parsed).toMatchObject({ ts: 2000, group: '10', level: 255 });
+        });
 
         it('disconnect cleans up the listener (no memory leak)', async () => {
             const listeners = new Set();
@@ -1909,13 +1937,11 @@ describe('WebServer', () => {
             const ssePort = sseServer._server.address().port;
 
             const { destroy } = await openSSE(ssePort);
-            await new Promise((r) => setTimeout(r, 30));
-            expect(listeners.size).toBe(1);
+            await waitFor(() => listeners.size === 1, { label: 'the SSE client to subscribe' });
 
             // Disconnect the SSE client
             destroy();
-            await new Promise((r) => setTimeout(r, 80));
-            expect(listeners.size).toBe(0);
+            await waitFor(() => listeners.size === 0, { label: 'the server to unsubscribe the closed client' });
 
             await sseServer.close();
         });
@@ -1973,14 +1999,16 @@ describe('WebServer', () => {
             const req1 = await makeClient(client1Lines);
             const req2 = await makeClient(client2Lines);
 
-            await new Promise((r) => setTimeout(r, 30));
-            expect(listeners.size).toBe(2);
+            await waitFor(() => listeners.size === 2, { label: 'both SSE clients to subscribe' });
 
             // Broadcast an event to all listeners
             const broadcastEvent = { ts: 3000, network: '254', app: '56', group: '7', level: 64, type: 'ramp' };
             for (const fn of listeners) fn(broadcastEvent);
 
-            await new Promise((r) => setTimeout(r, 50));
+            await waitFor(
+                () => countDataLines(client1Lines) >= 1 && countDataLines(client2Lines) >= 1,
+                { label: 'the broadcast to reach both clients' }
+            );
             req1.destroy();
             req2.destroy();
             await sseServer.close();
@@ -1996,7 +2024,7 @@ describe('WebServer', () => {
             expect(p2).toMatchObject({ ts: 3000, group: '7' });
         });
 
-        it('keepalive comment is sent at interval', (done) => {
+        it('keepalive comment is sent at interval', async () => {
             const listeners = new Set();
             const mockStream = {
                 subscribe: (fn) => listeners.add(fn),
@@ -2011,30 +2039,32 @@ describe('WebServer', () => {
                 eventStream: mockStream,
                 _sseKeepaliveMs: 80
             });
-            sseServer.start().then(() => {
-                const ssePort = sseServer._server.address().port;
-                const received = [];
-                const req = http.request(
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            const received = [];
+            const req = await new Promise((resolve, reject) => {
+                const request = http.request(
                     { hostname: '127.0.0.1', port: ssePort, path: '/api/events/stream', method: 'GET' },
                     (res) => {
                         res.on('data', (chunk) => {
                             received.push(chunk.toString());
                         });
-                        // Wait long enough for at least one keepalive
-                        setTimeout(() => {
-                            req.destroy();
-                            sseServer.close().then(() => {
-                                const combined = received.join('');
-                                expect(combined).toContain(': keepalive');
-                                done();
-                            }).catch(done);
-                        }, 200);
+                        resolve(request);
                     }
                 );
-                req.on('error', (e) => { if (e.code !== 'ECONNRESET') done(e); });
-                req.end();
-            }).catch(done);
-        }, 10000);
+                request.on('error', (e) => { if (e.code !== 'ECONNRESET') reject(e); });
+                request.end();
+            });
+
+            // Previously a flat 200ms wait for an 80ms keepalive: two and a half
+            // periods of margin, which a stalled event loop eats easily.
+            await waitFor(() => received.join('').includes(': keepalive'), { label: 'a keepalive comment' });
+
+            req.destroy();
+            await sseServer.close();
+            expect(received.join('')).toContain(': keepalive');
+        });
 
         it('filter/search on client side does not affect SSE server-side streaming', async () => {
             // The SSE endpoint streams all events without filtering;
@@ -2059,7 +2089,7 @@ describe('WebServer', () => {
             const ssePort = sseServer._server.address().port;
 
             const { lines, destroy } = await openSSE(ssePort);
-            await new Promise((r) => setTimeout(r, 50));
+            await waitFor(() => countDataLines(lines) >= 2, { label: 'both buffered events to reach the client' });
             destroy();
             await sseServer.close();
 
