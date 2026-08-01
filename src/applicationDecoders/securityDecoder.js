@@ -1,5 +1,10 @@
 // @ts-check
 const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
+const {
+    PANEL_TROUBLE_CONDITIONS,
+    PANEL_TROUBLE_VERBS,
+    PANEL_TROUBLE_DETAIL_VERBS
+} = require('../securityPanelConditions');
 
 /**
  * C-Bus Security application (208 / $D0) line decoder.
@@ -18,10 +23,13 @@ const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
  *   - arm_not_ready    → { kind:'arm_not_ready', …, zone } (zone names the blocker)
  *   - exit_delay_started → { kind:'exit_delay_started', … }
  *   - system_arm       → { kind:'system_arm', …, mode, modeName } (0-4; 0 = disarmed)
- *   - arm_failed       → { kind:'arm_failed', …, detail } (free-text, e.g. arm_failed_raised)
  *   - alarm_on / alarm_off → { kind:'alarm_on'|'alarm_off', … }
  *   - zone_isolated    → { kind:'zone_isolated', …, zone } (zone bypassed on arming)
- *   - fire_alarm       → { kind:'fire_alarm', …, detail }
+ *   - panel-wide trouble verbs → { kind:'panel_trouble', …, condition, active, detail }
+ *       mains_failure/mains_restored, low_battery/low_battery_corrected,
+ *       tamper_on/tamper_off, panic_activated/panic_off/panic_cleared, and the
+ *       detail-suffixed line_cut_alarm, arm_failed and fire_alarm (whose
+ *       "<verb>_raised"/"<verb>_cleared" argument carries the sense).
  *
  * Status report rendering: the spec (CBUS-APP/05 §5.5.1.20-21) packs 4 zones
  * per byte, 2 bits each (%00 sealed, %01 unsealed, %10 open, %11 short), but
@@ -64,6 +72,10 @@ const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
 const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated', 'arm_not_ready'
 ]);
+
+// Panel-wide trouble conditions and their verbs live in securityPanelConditions
+// so the wire format, the HA entity metadata and the log wording for one
+// condition stay in a single record.
 
 /**
  * Parse a C-Bus address //PROJECT/<net>/<app>[/<zone>].
@@ -245,11 +257,6 @@ function decodeLine(line) {
         return { kind: 'system_arm', network, application, mode: Number.isInteger(mode) ? mode : null, modeName, verb };
     }
 
-    if (verb === 'arm_failed' || verb === 'fire_alarm') {
-        // Alarm-style verbs may carry a free-text argument (e.g. arm_failed_raised).
-        return { kind: verb, network, application, detail: params.length > 0 ? params.join(' ') : null, verb };
-    }
-
     if (verb === 'alarm_on' || verb === 'alarm_off') {
         return { kind: verb, network, application, verb };
     }
@@ -258,7 +265,29 @@ function decodeLine(line) {
         return { kind: 'zone_isolated', network, application, zone, verb };
     }
 
+    // Panel-wide trouble conditions (mains, battery, tamper, panic, phone line,
+    // arm failure, fire). These become diagnostic binary_sensors; the raise and
+    // clear senses are resolved here so downstream code never parses verbs.
+    const named = PANEL_TROUBLE_VERBS.get(verb);
+    const detailCondition = PANEL_TROUBLE_DETAIL_VERBS.get(verb);
+    if (named || detailCondition) {
+        // Verbs in PANEL_TROUBLE_VERBS name their own sense; the rest carry it
+        // in a "<verb>_raised" / "<verb>_cleared" argument, where a bare verb
+        // with no argument means raised.
+        const detail = params.length > 0 ? params.join(' ') : null;
+        return {
+            kind: 'panel_trouble', network, application,
+            condition: named ? named.condition : detailCondition,
+            active: named ? named.active : !(detail && detail.endsWith('_cleared')),
+            verb,
+            detail
+        };
+    }
+
     return null;
 }
 
-module.exports = { appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE };
+module.exports = {
+    appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE,
+    PANEL_TROUBLE_CONDITIONS
+};

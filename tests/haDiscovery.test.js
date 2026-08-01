@@ -114,7 +114,10 @@ describe('HaDiscovery', () => {
     describe('Constructor', () => {
         it('should initialize with correct properties', () => {
             expect(haDiscovery.settings).toBe(mockSettings);
-            expect(haDiscovery._publish).toBe(mockPublishFn);
+            // _publish wraps the injected fn to cache config payloads for replay
+            // (issue #44), so assert delegation rather than identity.
+            haDiscovery._publish('some/topic', 'payload', { retain: true });
+            expect(mockPublishFn).toHaveBeenCalledWith('some/topic', 'payload', { retain: true });
             expect(haDiscovery._sendCommand).toBe(mockSendCommandFn);
             expect(haDiscovery.treeBufferParts).toEqual([]);
             expect(haDiscovery.treeNetwork).toBeNull();
@@ -3256,5 +3259,67 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
 
         expect(() => d._publishDiscoveryFromTree('254', UNIT_TREE)).toThrow('boom');
         expect(d._unitTypeIndex).toBeNull();
+    });
+});
+
+describe('HaDiscovery — discovery config replay (issue #44)', () => {
+    let publishFn;
+    let d;
+
+    beforeEach(() => {
+        publishFn = jest.fn();
+        d = new HaDiscovery(
+            { ha_discovery_enabled: true, ha_discovery_prefix: 'homeassistant', cbus_security_app_id: '208' },
+            publishFn,
+            jest.fn()
+        );
+        jest.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    it('replays every published discovery config payload retained', () => {
+        d.ensureSecurityZoneDiscovery('254', '208', '13');
+        publishFn.mockClear();
+
+        expect(d.republishDiscoveryConfigs()).toBe(1);
+        expect(publishFn).toHaveBeenCalledWith(
+            'homeassistant/binary_sensor/cgateweb_254_208_13/config',
+            expect.stringContaining('cgateweb_254_208_13'),
+            expect.objectContaining({ retain: true })
+        );
+    });
+
+    it('replays each config once regardless of how many entities exist', () => {
+        d.ensureSecurityZoneDiscovery('254', '208', '13');
+        d.ensureSecurityZoneDiscovery('254', '208', '14');
+        d.ensureSecurityPanelDiscovery('254', '208');
+        publishFn.mockClear();
+
+        // 2 zones + 7 panel conditions
+        expect(d.republishDiscoveryConfigs()).toBe(9);
+    });
+
+    it('does not replay a retracted config', () => {
+        d.ensureSecurityZoneDiscovery('254', '208', '13');
+        d.exclude.add('254/208/14');
+        d.ensureSecurityZoneDiscovery('254', '208', '14'); // retracts with an empty payload
+        publishFn.mockClear();
+
+        expect(d.republishDiscoveryConfigs()).toBe(1);
+        expect(publishFn).not.toHaveBeenCalledWith(
+            'homeassistant/binary_sensor/cgateweb_254_208_14/config',
+            expect.anything(),
+            expect.anything()
+        );
+    });
+
+    it('returns zero when nothing has been published yet', () => {
+        expect(d.republishDiscoveryConfigs()).toBe(0);
+        expect(publishFn).not.toHaveBeenCalled();
+    });
+
+    it('does not record non-config state publishes', () => {
+        d._publish('cbus/read/254/208/13/state', 'ON', { retain: true });
+        expect(d.republishDiscoveryConfigs()).toBe(0);
     });
 });

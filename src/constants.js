@@ -108,6 +108,9 @@ const HA_COMPONENT_CLIMATE = 'climate';
 const HA_COMPONENT_SENSOR = 'sensor';
 const HA_COMPONENT_BINARY_SENSOR = 'binary_sensor';
 const HA_DISCOVERY_SUFFIX = 'config';
+// Fallback when ha_discovery_prefix is unset. defaultSettings and ConfigLoader
+// both supply it, so this only matters for directly-constructed collaborators.
+const HA_DISCOVERY_PREFIX_DEFAULT = 'homeassistant';
 
 // HA Device Classes
 const HA_DEVICE_CLASS_SHUTTER = 'shutter';
@@ -258,6 +261,7 @@ module.exports = {
     HA_COMPONENT_SENSOR,
     HA_COMPONENT_BINARY_SENSOR,
     HA_DISCOVERY_SUFFIX,
+    HA_DISCOVERY_PREFIX_DEFAULT,
     HA_DEVICE_CLASS_SHUTTER,
     HA_DEVICE_CLASS_OUTLET,
     HA_DEVICE_VIA,

@@ -171,9 +171,9 @@ describe('securityDecoder', () => {
                 .toMatchObject({ kind: 'system_arm', mode: 9, modeName: null });
         });
 
-        it('decodes arm_failed with its free-text argument', () => {
+        it('decodes arm_failed as a panel trouble condition, keeping its free-text argument', () => {
             expect(securityDecoder.decodeLine('# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID='))
-                .toMatchObject({ kind: 'arm_failed', detail: 'arm_failed_raised' });
+                .toMatchObject({ kind: 'panel_trouble', condition: 'arm_failed', active: true, detail: 'arm_failed_raised' });
         });
 
         it('decodes alarm_on and alarm_off', () => {
@@ -188,9 +188,54 @@ describe('securityDecoder', () => {
                 .toMatchObject({ kind: 'zone_isolated', zone: '44' });
         });
 
-        it('decodes fire_alarm with its free-text argument', () => {
+        it('decodes fire_alarm as a panel trouble condition, keeping its free-text argument', () => {
             expect(securityDecoder.decodeLine('# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID='))
-                .toMatchObject({ kind: 'fire_alarm', detail: 'fire_alarm_raised' });
+                .toMatchObject({ kind: 'panel_trouble', condition: 'fire', active: true, detail: 'fire_alarm_raised' });
+        });
+    });
+
+    // Panel-wide trouble verbs, captured on the 64-zone Cytech panel in issue
+    // #42 on 2026-07-29 (panic press, mains failure, and the disarm that clears
+    // every outstanding trouble condition at once).
+    describe('panel trouble verbs', () => {
+        const cases = [
+            ['mains_failure', 'mains', true],
+            ['mains_restored', 'mains', false],
+            ['low_battery', 'battery', true],
+            ['low_battery_corrected', 'battery', false],
+            ['tamper_on', 'tamper', true],
+            ['tamper_off', 'tamper', false],
+            ['panic_activated', 'panic', true],
+            ['panic_off', 'panic', false],
+            ['panic_cleared', 'panic', false]
+        ];
+
+        it.each(cases)('decodes %s as %s active=%s', (verb, condition, active) => {
+            expect(securityDecoder.decodeLine(`# security ${verb} //MIDSTRM/254/208  #sourceunit=18 OID=`))
+                .toMatchObject({
+                    kind: 'panel_trouble', network: '254', application: '208', condition, active, verb
+                });
+        });
+
+        it('derives active from the _raised/_cleared detail suffix', () => {
+            expect(securityDecoder.decodeLine('# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_cleared #sourceunit=18 OID='))
+                .toMatchObject({ condition: 'line', active: false });
+            expect(securityDecoder.decodeLine('# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_raised #sourceunit=18 OID='))
+                .toMatchObject({ condition: 'line', active: true });
+        });
+
+        it('treats a bare detail-style verb as raised', () => {
+            expect(securityDecoder.decodeLine('# security fire_alarm //MIDSTRM/254/208  #sourceunit=18 OID='))
+                .toMatchObject({ condition: 'fire', active: true, detail: null });
+        });
+
+        it('still returns null for genuinely unknown verbs so they reach raw capture', () => {
+            expect(securityDecoder.decodeLine('# security some_future_verb //MIDSTRM/254/208 #sourceunit=18 OID=')).toBeNull();
+        });
+
+        it('exposes the condition list in display order', () => {
+            expect(securityDecoder.PANEL_TROUBLE_CONDITIONS)
+                .toEqual(['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire']);
         });
     });
 

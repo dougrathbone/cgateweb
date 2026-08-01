@@ -109,7 +109,9 @@ describe('SecurityEventHandler', () => {
         expect(deps.sendCommand).not.toHaveBeenCalled();
     });
 
-    it('consumes system-state verbs without publishing MQTT state', () => {
+    // arm_failed and fire_alarm are deliberately absent: they are panel trouble
+    // conditions now and do publish state (see 'panel trouble conditions').
+    it('consumes arm-progress and alarm verbs without publishing MQTT state', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
         for (const line of [
@@ -117,11 +119,9 @@ describe('SecurityEventHandler', () => {
             '# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=',
             '# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=',
             '# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=',
-            '# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID='
+            '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID='
         ]) {
             expect(handler.handleLine(line)).toBe(true);
         }
@@ -138,10 +138,23 @@ describe('SecurityEventHandler', () => {
             ['# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Exit delay started (254/208)'],
             ['# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 open — not ready to arm (254/208)'],
             ['# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 bypassed (254/208)'],
-            ['# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=', 'C-Bus Security: Arm failed (arm_failed_raised) (254/208)'],
             ['# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Alarm on (254/208)'],
             ['# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Alarm off (254/208)'],
-            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Fire alarm (fire_alarm_raised) (254/208)']
+            // Panel trouble conditions. The raw _raised/_cleared argument is
+            // dropped from the log line: the sense is already in the wording.
+            ['# security arm_failed //MIDSTRM/254/208 arm_failed_raised #sourceunit=18 OID=', 'C-Bus Security: Arm failed (254/208)'],
+            ['# security arm_failed //MIDSTRM/254/208 arm_failed_cleared #sourceunit=18 OID=', 'C-Bus Security: Arm failure cleared (254/208)'],
+            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Fire alarm (254/208)'],
+            ['# security fire_alarm //MIDSTRM/254/208 fire_alarm_cleared #sourceunit=18 OID=', 'C-Bus Security: Fire alarm cleared (254/208)'],
+            ['# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Mains power failure (254/208)'],
+            ['# security mains_restored //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Mains power restored (254/208)'],
+            ['# security low_battery //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Battery low (254/208)'],
+            ['# security low_battery_corrected //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Battery restored (254/208)'],
+            ['# security tamper_on //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Tamper detected (254/208)'],
+            ['# security tamper_off //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Tamper cleared (254/208)'],
+            ['# security panic_activated //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Panic activated (254/208)'],
+            ['# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_raised #sourceunit=18 OID=', 'C-Bus Security: Phone line cut (254/208)'],
+            ['# security line_cut_alarm //MIDSTRM/254/208 line_cut_alarm_cleared #sourceunit=18 OID=', 'C-Bus Security: Phone line restored (254/208)']
         ];
 
         it.each(cases)('logs %s', (line, expected) => {
@@ -149,6 +162,71 @@ describe('SecurityEventHandler', () => {
             const handler = new SecurityEventHandler(deps);
             handler.handleLine(line);
             expect(deps.logger.info).toHaveBeenCalledWith(expected);
+        });
+    });
+
+    describe('panel trouble conditions', () => {
+        it('publishes ON for a mains failure and OFF when restored', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/mains', { kind: 'security_panel', active: true }
+            );
+            handler.handleLine('# security mains_restored //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', 'panel/mains', { kind: 'security_panel', active: false }
+            );
+        });
+
+        it('does not republish a repeated raise', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        });
+
+        it('clears panic on disarm even though the panel sends no panic_off', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security panic_activated //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/panic', { kind: 'security_panel', active: false }
+            );
+        });
+
+        it('triggers panel discovery on the first trouble event', () => {
+            const ensureSecurityPanelDiscovery = jest.fn();
+            const deps = makeDeps({
+                getHaDiscovery: () => ({ ensureSecurityZoneDiscovery: jest.fn(), ensureSecurityPanelDiscovery })
+            });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(ensureSecurityPanelDiscovery).toHaveBeenCalledWith('254', '208');
+        });
+
+        it('seeds tamper from a status_report_1 so the panel sensor reflects reality', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            // arm state 0, tamper 255 (active), panic 0, then zone values.
+            handler.handleLine('# security status_report_1 //MIDSTRM/254/208 0 255 0 0 0 0 #sourceunit=18 OID=');
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/tamper', { kind: 'security_panel', active: true }
+            );
+        });
+
+        it('consumes the line and logs at INFO with a Live Events description', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            expect(handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=')).toBe(true);
+            expect(deps.logger.info).toHaveBeenCalledWith('C-Bus Security: Mains power failure (254/208)');
+            expect(onEventLog).toHaveBeenCalledWith(expect.objectContaining({
+                group: null, description: 'Mains power failure'
+            }));
         });
     });
 
@@ -175,9 +253,33 @@ describe('SecurityEventHandler', () => {
             handler.handleLine(SYSTEM_ARM_LINE); // mode 3 = armed
             handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
             handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
-            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ group: '0', level: 255, type: 'on' }));
-            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ group: '0', level: 0, type: 'off' }));
+            // Panel-wide verbs carry no zone, so group is null and the UI renders
+            // the address as net/app rather than a bogus net/app/0.
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ group: null, level: 255, type: 'on' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ group: null, level: 0, type: 'off' }));
             expect(onEventLog).toHaveBeenNthCalledWith(3, expect.objectContaining({ group: '44', level: 0, type: 'update' }));
+        });
+
+        it('describes zone entries so the UI need not render a level percentage', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            handler.handleLine(ZONE_SEALED_LINE);
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ description: 'Zone unsealed' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ description: 'Zone sealed' }));
+        });
+
+        it('describes system entries with the same text used for the INFO log', () => {
+            const onEventLog = jest.fn();
+            const deps = makeDeps({ onEventLog });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(SYSTEM_ARM_LINE);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            expect(onEventLog).toHaveBeenNthCalledWith(1, expect.objectContaining({ description: 'System armed (Day mode)' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(2, expect.objectContaining({ description: 'System disarmed' }));
+            expect(onEventLog).toHaveBeenNthCalledWith(3, expect.objectContaining({ description: 'Zone 44 bypassed' }));
         });
 
         it('does not flood the stream for status reports or echoes', () => {
@@ -290,6 +392,27 @@ describe('SecurityEventHandler', () => {
             expect(handler.requestStatusSync('254', 'sync')).toBe(false); // deduped
             handler.handleLine(ZONE_UNSEALED_LINE);                        // still deduped
             expect(deps.sendCommand).toHaveBeenCalledTimes(4);
+        });
+
+        // Issue #44: HA can restart any number of times in one bridge session,
+        // and every restart genuinely needs the zone state resent. Rate limiting
+        // for this trigger is the resync coordinator's debounce, not the dedupe.
+        it('exempts the resync trigger from the once-per-session dedupe', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.requestStatusSync('254', 'connect');
+            handler.requestStatusSync('254', 'sync');
+            expect(handler.requestStatusSync('254', 'resync')).toBe(true);
+            expect(handler.requestStatusSync('254', 'resync')).toBe(true);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(8); // 4 pairs
+        });
+
+        it('does not let a resync consume the early or post-762 slots', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.requestStatusSync('254', 'resync');
+            expect(handler.requestStatusSync('254', 'connect')).toBe(true);
+            expect(handler.requestStatusSync('254', 'sync')).toBe(true);
         });
 
         it('fires the early pair on first traffic when connect never happened (no-762 sessions)', () => {

@@ -484,7 +484,11 @@ describe('CgateWebBridge', () => {
 
                 bridge._handleAllConnected();
 
-                expect(addSpy).toHaveBeenCalledWith(expect.stringContaining('GET //TestProject/254/56/* level'));
+                // Startup passes no queue options, so this getall keeps default
+                // (normal) priority; the resync path is the one that uses 'bulk'.
+                expect(addSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('GET //TestProject/254/56/* level'), {}
+                );
             });
 
             it('should set up periodic getall when enabled', () => {
@@ -1358,6 +1362,34 @@ describe('CgateWebBridge', () => {
                 );
                 publishSpy.mockRestore();
             });
+        });
+    });
+
+    // Issue #44: neither a Home Assistant restart nor a broker restart restarts
+    // the bridge, so these two signals are the only chance to resend state.
+    describe('state resync wiring', () => {
+        let bridge;
+        beforeEach(() => {
+            bridge = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+            bridge._setupEventHandlers();
+            jest.spyOn(bridge.stateResyncCoordinator, 'requestResync').mockImplementation(() => true);
+        });
+        afterEach(() => jest.restoreAllMocks());
+
+        it('resyncs when Home Assistant comes online', () => {
+            bridge.mqttManager.emit('haOnline');
+            expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('ha-birth');
+        });
+
+        it('still routes normal cbus/write commands', () => {
+            jest.spyOn(bridge.mqttCommandRouter, 'routeMessage').mockImplementation(() => {});
+            bridge.mqttManager.emit('message', 'cbus/write/254/56/4/switch', 'ON');
+            expect(bridge.mqttCommandRouter.routeMessage).toHaveBeenCalledWith('cbus/write/254/56/4/switch', 'ON');
+        });
+
+        it('resyncs on a broker reconnect', () => {
+            bridge.mqttManager.emit('reconnect');
+            expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('mqtt-reconnect');
         });
     });
 

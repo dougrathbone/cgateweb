@@ -10,6 +10,7 @@ const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
+const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
@@ -247,6 +248,15 @@ class CgateWebBridge {
             onEventLog: this._onEventLog
         });
 
+        // Republishes state after a Home Assistant or MQTT broker restart
+        // (issue #44). Neither event restarts the bridge, so nothing else would.
+        this.stateResyncCoordinator = new StateResyncCoordinator({
+            settings: this.settings,
+            logger: this.logger,
+            getHaDiscovery: this._getHaDiscovery,
+            initializationService: this.initializationService
+        });
+
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).
         this.networkInterfaceMonitor = new NetworkInterfaceMonitor({ logger: this.logger });
 
@@ -406,6 +416,17 @@ class CgateWebBridge {
         // MQTT message routing
         this.mqttManager.on('message', (topic, payload) => this.mqttCommandRouter.routeMessage(topic, payload));
 
+        // Home Assistant restarted: it has lost every entity state it was
+        // holding, and the add-on kept running, so nothing else would resend it.
+        this.mqttManager.on('haOnline', () => {
+            this.logger.info('Home Assistant came online; resyncing entity state');
+            this.stateResyncCoordinator.requestResync('ha-birth');
+        });
+
+        // A mid-session broker reconnect may have dropped the retained discovery
+        // configs along with the state, so this path republishes both.
+        this.mqttManager.on('reconnect', () => this.stateResyncCoordinator.requestResync('mqtt-reconnect'));
+
         // Data processing handlers - pass connection for per-connection line processing
         this.commandConnectionPool.on('data', (data, connection) => this._handleCommandData(data, connection));
         this.eventConnection.on('data', (data) => this._handleEventData(data));
@@ -514,6 +535,7 @@ class CgateWebBridge {
         this.mqttManager.removeAllListeners();
 
         this.initializationService.stop();
+        this.stateResyncCoordinator.dispose();
         this.haBridgeDiagnostics.stop();
         this.staleDeviceDetector.stop();
 

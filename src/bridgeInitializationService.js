@@ -113,11 +113,7 @@ class BridgeInitializationService {
 
         if (getallNetworks.length > 0 && this.settings.getallonstart) {
             this._log(`Getting all initial values for networks: ${getallNetworks.join(', ')}...`);
-            for (const netapp of getallNetworks) {
-                this.commandQueue.add(
-                    `${CGATE_CMD_GET} //${this.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-                );
-            }
+            this.sendGetallLevels(getallNetworks);
         }
 
         if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
@@ -126,7 +122,7 @@ class BridgeInitializationService {
 
         // Security panels don't answer lighting-style getall (spec §5.9), so
         // the security app syncs zone state via dedicated status requests.
-        this._sendSecurityStatusRequests();
+        this.sendSecurityStatusRequests();
 
         // Monitor CNI/PCI connectivity per network (independent of getall).
         this._startNetworkInterfaceMonitoring();
@@ -248,9 +244,7 @@ class BridgeInitializationService {
         this._log(`Starting periodic 'get all' for ${networkAppPath} every ${intervalMs / 1000} seconds.`);
         const handle = setInterval(() => {
             this.logger.debug(`Getting all periodic values for ${networkAppPath}...`);
-            this.commandQueue.add(
-                `${CGATE_CMD_GET} //${this.settings.cbusname}/${networkAppPath}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`
-            );
+            this.commandQueue.add(this._getallLevelsCommand(networkAppPath));
         }, intervalMs).unref();
         this._perAppTimers.set(networkAppPath, handle);
     }
@@ -489,7 +483,35 @@ class BridgeInitializationService {
      * being in ha_discovery_networks.
      * @private
      */
-    _sendSecurityStatusRequests() {
+    /**
+     * The C-Gate wire command that asks for every group level on one
+     * network/app pair. Single source for the syntax, including the trailing
+     * newline, which all three getall paths (start, periodic, resync) share.
+     *
+     * @param {string} netapp - "network/app", e.g. "254/56"
+     * @returns {string}
+     * @private
+     */
+    _getallLevelsCommand(netapp) {
+        return `${CGATE_CMD_GET} //${this.settings.cbusname}/${netapp}/* ${CGATE_PARAM_LEVEL}${NEWLINE}`;
+    }
+
+    /**
+     * Queue a level getall for each configured network/app pair.
+     *
+     * @param {string[]|null} [netapps] - pairs to request; resolved from settings when omitted
+     * @param {{priority?: string}} [options] - command queue options
+     * @returns {string[]} the pairs actually queued
+     */
+    sendGetallLevels(netapps = null, options = {}) {
+        const pairs = netapps || this._resolveGetallNetworks();
+        for (const netapp of pairs) {
+            this.commandQueue.add(this._getallLevelsCommand(netapp), options);
+        }
+        return pairs;
+    }
+
+    sendSecurityStatusRequests(trigger = 'connect') {
         const appId = this.settings.cbus_security_app_id;
         if (!appId || String(appId) === '0') return;
         const networks = this.settings.ha_discovery_networks;
@@ -497,7 +519,7 @@ class BridgeInitializationService {
         const handler = this._getSecurityEventHandler ? this._getSecurityEventHandler() : null;
         if (!handler) return;
         for (const network of networks) {
-            handler.requestStatusSync(network, 'connect');
+            handler.requestStatusSync(network, trigger);
         }
     }
 

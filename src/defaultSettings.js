@@ -127,6 +127,19 @@ const defaultSettings = {
     // Bound on retained MQTT publishes queued while the broker is unreachable.
     // Newest-wins per topic; oldest entries are evicted when full.
     mqttPendingPublishMaxEntries: 1000,
+    // Republish entity state after Home Assistant or the MQTT broker restarts
+    // (issue #44). Neither looks like a bridge restart, so without this HA comes
+    // back with entities stuck unknown until the next physical C-Bus event.
+    // Both default on: this is a fix, not an opt-in feature.
+    stateResyncOnHaRestart: true,
+    stateResyncOnMqttReconnect: true,
+    // Collapse near-simultaneous resync triggers (a broker bounce that also
+    // restarts HA) into a single pass.
+    stateResyncDebounceMs: 5000,
+    // Home Assistant's birth/will topic. Null derives it from
+    // ha_discovery_prefix, which is 'homeassistant/status' by default and
+    // follows the prefix when a user has changed it.
+    haStatusTopic: null,
     // How often (ms) to poll each C-Bus network's CNI/PCI interface state so a
     // dropout between C-Gate and the C-Bus network surfaces on the status page.
     // Set to 0 to disable. Default 30s.

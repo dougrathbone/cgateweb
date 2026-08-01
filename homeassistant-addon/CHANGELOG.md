@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.21.0] - 2026-07-31
+
+### Added
+
+- **Security Alpha: panel health now appears in Home Assistant** (#42). Seven new `binary_sensor` entities track the panel itself rather than its zones: mains power, battery, tamper, panic, phone line, arm failure and fire alarm. They share a single "C-Bus Security Panel" device and are marked as diagnostics, so they group under Diagnostics on the device page instead of landing on your dashboards. Verbs your panel was already sending (`mains_failure`, `mains_restored`, `low_battery_corrected`, `tamper_off`, `panic_activated`, `line_cut_alarm`, plus `arm_failed` and `fire_alarm`) were previously discarded as "verb pending support"; they now drive real entities and log at INFO in plain language. Note that the panel only reports changes and offers no way to query mains, battery, line, arm-fail or fire state, so those four start as OK and correct themselves on the next change or disarm; tamper and panic are seeded from the panel's status report, which does carry them. Three verbs are inferred rather than captured (`low_battery`, `tamper_on`, and a panic clear) because the test panel only ever emitted the other half of those pairs, so please report on #42 if your panel names them differently.
+
+### Fixed
+
+- **Entity state is restored after Home Assistant or your MQTT broker restarts** (#44). Restarting Home Assistant does not restart the add-on, so nothing used to republish state: HA came back with entities in an unknown state until the next time something physically changed on the C-Bus, which is why a relay light would show two lightning-bolt icons and only turn into a proper switch icon once you used it. Restarting the broker was worse, since without retained-message persistence the entities disappeared entirely. The add-on now watches for Home Assistant's online message and for its own broker reconnection, re-requests levels for your configured networks, re-requests security zone state (security panels ignore the normal level request), and on a broker reconnect republishes the discovery configuration so the entities come back. Near-simultaneous restarts are collapsed into a single refresh.
+- **Security Alpha: the Live Events window now describes security events instead of showing meaningless levels** (#42). An arm sequence used to render as a column of `0 (0%)` and `255 (100%)` rows; it now reads "Zone unsealed", "Zone 13 bypassed", "Ready to arm", "Exit delay started", "System armed (Day mode)" and "System disarmed". Panel-wide events also stop showing a bogus `/0` group on the end of their address. Lighting events are unchanged, and the filter box searches the new text.
+
 ## [1.20.2] - 2026-07-28
 
 ### Fixed

@@ -141,7 +141,7 @@ describe('BridgeInitializationService', () => {
         jest.useRealTimers();
     });
 
-    describe('_sendSecurityStatusRequests', () => {
+    describe('sendSecurityStatusRequests', () => {
         it('delegates a connect-trigger sync per ha_discovery network to the security handler', () => {
             const requestStatusSync = jest.fn();
             const { bridge } = makeBridge({
@@ -150,7 +150,7 @@ describe('BridgeInitializationService', () => {
             });
             bridge.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
             const svc = makeService(bridge);
-            svc._sendSecurityStatusRequests();
+            svc.sendSecurityStatusRequests();
             expect(requestStatusSync).toHaveBeenCalledTimes(2);
             expect(requestStatusSync).toHaveBeenNthCalledWith(1, 254, 'connect');
             expect(requestStatusSync).toHaveBeenNthCalledWith(2, 255, 'connect');
@@ -165,7 +165,7 @@ describe('BridgeInitializationService', () => {
                 });
                 bridge.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
                 const svc = makeService(bridge);
-                svc._sendSecurityStatusRequests();
+                svc.sendSecurityStatusRequests();
             }
             expect(requestStatusSync).not.toHaveBeenCalled();
         });
@@ -177,13 +177,13 @@ describe('BridgeInitializationService', () => {
                 ha_discovery_networks: []
             });
             noNets.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
-            makeService(noNets)._sendSecurityStatusRequests();
+            makeService(noNets).sendSecurityStatusRequests();
             // No handler available (accessor not provided) — must not throw
             const { bridge: noHandler } = makeBridge({
                 cbus_security_app_id: '208',
                 ha_discovery_networks: [254]
             });
-            expect(() => makeService(noHandler)._sendSecurityStatusRequests()).not.toThrow();
+            expect(() => makeService(noHandler).sendSecurityStatusRequests()).not.toThrow();
             expect(requestStatusSync).not.toHaveBeenCalled();
         });
     });
