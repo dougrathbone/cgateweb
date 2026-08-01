@@ -319,6 +319,25 @@ describe('CommandResponseProcessor', () => {
             expect(mockHaDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
         });
 
+        it('should invoke onNetworkSyncComplete with the parsed network id on 762', () => {
+            const onNetworkSyncComplete = jest.fn();
+            processor.onNetworkSyncComplete = onNetworkSyncComplete;
+            processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
+            expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
+        it('should invoke onNetworkSyncComplete on 762 even with discovery disabled (haDiscovery null)', () => {
+            // MQTT-only installs still need their state topics repopulated
+            // after a network sync; the callback must not depend on discovery.
+            const onNetworkSyncComplete = jest.fn();
+            processor.onNetworkSyncComplete = onNetworkSyncComplete;
+            processor.haDiscovery = null;
+            expect(() => {
+                processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
+            }).not.toThrow();
+            expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
+        });
+
         it('should not throw on 762 when haDiscovery is not yet initialized', () => {
             processor.haDiscovery = null;
             expect(() => {

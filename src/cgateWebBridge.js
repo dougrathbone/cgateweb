@@ -286,6 +286,7 @@ class CgateWebBridge {
             haDiscovery: null, // Will be set after haDiscovery is initialized
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
+            onNetworkSyncComplete: (_networkId) => this.stateResyncCoordinator.requestResync('network-sync'),
             logger: this.logger
         });
 
@@ -647,6 +648,10 @@ class CgateWebBridge {
             // Post-sync zone-state refresh: deduplicated inside the handler
             // (one post-762 pair per network per session).
             this.securityEventHandler.requestStatusSync(syncedNetworkId, 'sync');
+            // Post-sync level refresh: the tree is only fully populated now,
+            // so any startup getall that ran before the sync missed state.
+            // Debounced inside the coordinator (repeated 762s collapse).
+            this.stateResyncCoordinator.requestResync('network-sync');
             return;
         }
 

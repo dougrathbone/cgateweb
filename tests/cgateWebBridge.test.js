@@ -824,6 +824,18 @@ describe('CgateWebBridge', () => {
                 expect(bridge.haDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
             });
 
+            it('requests a debounced level resync on a 762 event line', () => {
+                // The tree is only fully populated after sync-ok, so any
+                // startup getall that ran before it missed state (issue #44).
+                const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
+
+                expect(resyncSpy).toHaveBeenCalledWith('network-sync');
+                resyncSpy.mockRestore();
+            });
+
             it('tolerates a 762 line when HA Discovery is not initialized', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 bridge.haDiscovery = null;

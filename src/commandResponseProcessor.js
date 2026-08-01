@@ -38,9 +38,10 @@ class CommandResponseProcessor {
      * @param {Function} options.onObjectStatus - Callback for object status events
      * @param {Function} [options.onCommandError] - Callback for C-Gate command error responses
      * @param {Function} [options.onNetworkState] - Callback for network-level interface/state readings: (networkId, reading) => void
+     * @param {Function} [options.onNetworkSyncComplete] - Callback for C-Gate 762 network-sync-complete events: (networkId) => void
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
@@ -51,6 +52,10 @@ class CommandResponseProcessor {
         // ("//PROJECT/254: InterfaceState=running"), used to track CNI/PCI
         // connectivity. Signature: (networkId, { interfaceState?|state? }).
         this.onNetworkState = onNetworkState || null;
+        // Called when C-Gate reports a network finished synchronising (762),
+        // so the bridge can refresh entity levels with the tree now fully
+        // populated. Signature: (networkId).
+        this.onNetworkSyncComplete = onNetworkSyncComplete || null;
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -261,9 +266,10 @@ class CommandResponseProcessor {
             this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${data}`);
             return;
         }
-        if (!this._haDiscovery) return;
-
-        this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
+        if (this._haDiscovery) this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
+        // The level refresh is independent of HA discovery: MQTT-only installs
+        // need their state topics repopulated after a sync too.
+        if (this.onNetworkSyncComplete) this.onNetworkSyncComplete(pathMatch[1]);
     }
 
     /**
