@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.21.1] - 2026-08-01
+
+### Fixed
+
+- **Key-input switches and bus couplers are now recognised for unit-type classification** (#37). With "Set entity type from C-Bus unit type" on, a group driven only by a key-input wall switch (`KEY1`, `KEYB2`, `KEYB4`, `KEYGL5`, `KEYE1`–`KEYE4`) or a bus coupler (`BCN4B`) now becomes a `binary_sensor` instead of keeping the default light type and logging "unit types not recognised". Both families are input-only hardware that drives no load. Reported from a live showroom install.
+
 ## [1.21.0] - 2026-07-31
 
 ### Added

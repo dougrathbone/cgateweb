@@ -14,7 +14,12 @@
 
 // Prefixes matched case-insensitively against the unit's TREEXML <Type>.
 // Confirmed real values: DIMDN8, RELDN12, RELAY2, PCLOCAL4, SENLL, SENTEMP,
-// PC_CNIED, TEXT.
+// PC_CNIED, TEXT, KEYGL5, KEYE1-KEYE4, KEY1, KEYB2, KEYB4, BCN4B.
+//
+// KEY* are key-input wall switches and BCN* are bus couplers — both are
+// input-only units that send commands but drive no load, so a group they alone
+// "drive" is a sensor, not a controllable entity (GitHub #37, reported by a
+// showroom install: KEY1, KEYB2, KEYB4, BCN4B).
 //
 // 'management' (PC_, PCLOCAL, TEXT) never affects entityTypeForGroup's return
 // value below — it exists only so a caller can filter these out of its
@@ -27,6 +32,8 @@ const UNIT_TYPE_PATTERNS = [
     // sensor's unit type is never seen driving one — temperature/HVAC publish
     // through their own separate paths.
     { pattern: /^SEN/i, category: 'input' },
+    { pattern: /^KEY/i, category: 'input' },
+    { pattern: /^BCN/i, category: 'input' },
     { pattern: /^PC_/i, category: 'management' },
     { pattern: /^PCLOCAL/i, category: 'management' },
     { pattern: /^TEXT/i, category: 'management' }
