@@ -93,15 +93,21 @@ jobs:
           homeassistant-addon/rootfs/usr/lib/cgateweb/*.sh
 
     - name: actionlint
+      # Retry the release download: a 5xx or reset from the GitHub release CDN
+      # has nothing to do with the code under test, and without --retry it fails
+      # a required check. --retry-all-errors is needed because -f turns an HTTP
+      # error into exit 22, which plain --retry does not consider retryable.
       run: |
-        curl -fsSL -o /tmp/actionlint.tar.gz \
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
+          --connect-timeout 30 --max-time 300 -o /tmp/actionlint.tar.gz \
           "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
         tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
         /tmp/actionlint -color
 
     - name: hadolint
       run: |
-        curl -fsSL -o /tmp/hadolint \
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
+          --connect-timeout 30 --max-time 300 -o /tmp/hadolint \
           "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
         chmod +x /tmp/hadolint
         /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
@@ -494,7 +500,9 @@ jobs:
         CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
       run: |
         mkdir -p test-env/volumes/share/cgate
-        curl -fSL --max-time 600 --connect-timeout 30 -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
+        curl -fSL --retry 3 --retry-all-errors --retry-delay 10 \
+          --max-time 600 --connect-timeout 30 \
+          -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
 
     - name: Set up managed-upload test options
       run: cp test-env/options-managed-upload.json test-env/active-options.json
