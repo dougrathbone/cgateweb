@@ -37,7 +37,20 @@ const mqtt = require('../node_modules/mqtt');
 const TEST_ENV_DIR   = path.resolve(__dirname);
 const CGATE_JAR      = path.join(TEST_ENV_DIR, 'volumes/data/cgate/cgate.jar');
 const MQTT_URL       = 'mqtt://localhost:1883';
-const READY_TIMEOUT  = Number(process.env.CGATEWEB_E2E_READY_TIMEOUT_MS) || 3 * 60 * 1000;   // 3 min — covers first-time C-Gate download
+// Readiness is now measured from the moment C-Gate is installed, not from
+// container start: the install phase gets its own progress-based wait below.
+// Folding the two together meant one flat deadline had to cover a 57MB download
+// from a third party AND the thing the test is actually about.
+const READY_TIMEOUT  = Number(process.env.CGATEWEB_E2E_READY_TIMEOUT_MS) || 3 * 60 * 1000;
+// No progress at all for this long means the install is wedged, not slow.
+const INSTALL_STALL_MS = Number(process.env.CGATEWEB_E2E_INSTALL_STALL_MS) || 2 * 60 * 1000;
+// Absolute ceiling so a pathologically slow CDN cannot burn the job's timeout
+// budget. cgate-install.sh allows curl 600s per attempt and retries 3 times, so
+// this is deliberately shorter than the container's own worst case -- but it is
+// only reached when the download is genuinely still making progress.
+const INSTALL_MAX_MS = Number(process.env.CGATEWEB_E2E_INSTALL_TIMEOUT_MS) || 8 * 60 * 1000;
+// C-Gate binds its command port within a couple of seconds of the JVM starting.
+const CGATE_LISTEN_TIMEOUT_MS = Number(process.env.CGATEWEB_E2E_CGATE_LISTEN_TIMEOUT_MS) || 90 * 1000;
 const STABLE_WINDOW  = 10 * 1000;        // 10 s stability check after ready
 
 const args           = new Set(process.argv.slice(2));
@@ -91,24 +104,216 @@ function composeDown() {
 }
 
 /**
- * Print the tail of each compose container's logs. Called when the run fails
- * so CI output shows what the addon actually did (C-Gate install, bridge
- * startup) — a bare readiness timeout otherwise leaves nothing to diagnose.
- * Uses `ps -a` because a failed cont-init can leave the addon container
- * stopped before we get here.
+ * Name of the compose container for a service, or null. `ps -a` because a
+ * failed cont-init can leave the container stopped.
+ *
+ * Sorted by creation and taking the newest: a previous run that was torn down
+ * uncleanly leaves an exited container matching the same name filter, and
+ * picking that one made the install wait below report "the addon container is
+ * exited" one second into a perfectly healthy run.
+ */
+function containerFor(service, { includeStopped = true } = {}) {
+    const args = ['ps'];
+    if (includeStopped) args.push('-a');
+    args.push('--sort', 'created', '--format', '{{.Names}}', '--filter', `name=${service}`);
+    const ps = spawnSync('podman', args, { encoding: 'utf8' });
+    const names = (ps.stdout || '').trim().split('\n').filter(Boolean);
+    return names.length ? names[names.length - 1] : null;
+}
+
+/**
+ * Print each compose container's logs. Called when the run fails so CI output
+ * shows what the addon actually did — a bare readiness timeout otherwise leaves
+ * nothing to diagnose.
+ *
+ * The addon gets its head printed as well as its tail. The C-Gate install runs
+ * in cont-init, i.e. in the container's first few seconds, and the bridge's
+ * reconnect loop then emits several lines a second; on a failed run the tail
+ * was 300 lines of "Connecting to C-Gate command port" and the install output —
+ * the only thing that could say whether the download succeeded — had scrolled
+ * off. That is why the last readiness timeout in CI was undiagnosable.
  */
 function dumpContainerLogs() {
     const services = [['addon', 300], ['supervisor', 100], ['mqtt', 100]];
     for (const [svc, tail] of services) {
-        const ps = spawnSync('podman', ['ps', '-a', '--format', '{{.Names}}', '--filter', `name=${svc}`], {
-            encoding: 'utf8',
-        });
-        const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+        const container = containerFor(svc);
         if (!container) continue;
+
+        if (svc === 'addon') {
+            const head = spawnSync('podman', ['logs', container], { encoding: 'utf8' });
+            const headOut = `${head.stdout || ''}${head.stderr || ''}`.split('\n').slice(0, 200).join('\n').trimEnd();
+            log(`\n${BOLD}── container logs: ${container} (first 200 lines — cont-init / C-Gate install) ──${RESET}`);
+            log(headOut || '(no output)');
+        }
+
         log(`\n${BOLD}── container logs: ${container} (last ${tail} lines) ──${RESET}`);
         const res = spawnSync('podman', ['logs', '--tail', String(tail), container], { encoding: 'utf8' });
         const out = `${res.stdout || ''}${res.stderr || ''}`.trimEnd();
         log(out || '(no output)');
+    }
+}
+
+/**
+ * A cheap fingerprint of how far the managed C-Gate install has got. Any change
+ * between polls counts as progress, which is what lets the wait below tell
+ * "slow" apart from "wedged" without putting a stopwatch on someone else's CDN.
+ *
+ * Three signals, because no single one covers the whole install: the extracted
+ * jar (the finish line, visible on the host via the /data bind mount), the size
+ * of the part-downloaded zip (only visible inside the container — it lands in a
+ * mktemp dir under /tmp, which is not mounted), and the container's log length
+ * (covers unzip, copy and C-Gate startup, where neither of the other two moves).
+ */
+function installProgress() {
+    const container = containerFor('addon');
+    if (!container) return { alive: false, status: 'absent', fingerprint: 'absent' };
+
+    const inspect = spawnSync('podman', ['inspect', '-f', '{{.State.Status}}', container], { encoding: 'utf8' });
+    const status = (inspect.stdout || '').trim() || 'unknown';
+
+    let zipBytes = 0;
+    if (status === 'running') {
+        const stat = spawnSync(
+            'podman',
+            ['exec', container, 'sh', '-c', 'stat -c%s /tmp/cgate-install.*/cgate-download.zip 2>/dev/null | head -1'],
+            { encoding: 'utf8' }
+        );
+        zipBytes = parseInt((stat.stdout || '').trim(), 10) || 0;
+    }
+
+    const logs = spawnSync('podman', ['logs', container], { encoding: 'utf8' });
+    const logLines = `${logs.stdout || ''}${logs.stderr || ''}`.split('\n').length;
+
+    const jar = fs.existsSync(CGATE_JAR);
+    return {
+        alive: status === 'running',
+        status,
+        jar,
+        zipBytes,
+        logLines,
+        fingerprint: `${jar ? 1 : 0}:${zipBytes}:${logLines}`,
+    };
+}
+
+/**
+ * Wait for the managed C-Gate install to finish, i.e. for cgate.jar to appear
+ * in the bind-mounted data volume.
+ *
+ * This used to be folded into the MQTT readiness wait: a single 180s deadline
+ * covering a 57MB download from Schneider, a checksum, an unzip, a JVM start
+ * *and* the bridge connecting. cgate-install.sh gives curl 600s per attempt and
+ * retries three times, so on a runner Schneider is serving slowly the test
+ * declared failure while the container was still doing exactly what it was told
+ * to. Both outcomes then read as the same line in the log.
+ *
+ * The fix is not a bigger number. It is to wait on the condition, give up when
+ * the container stops making progress (or exits), and say which phase failed.
+ */
+async function waitForCgateInstalled({ stallMs = INSTALL_STALL_MS, maxMs = INSTALL_MAX_MS } = {}) {
+    const startedAt = Date.now();
+    let lastFingerprint = null;
+    let lastProgressAt = startedAt;
+    let lastReport = 0;
+    let deadPolls = 0;
+
+    for (;;) {
+        const p = installProgress();
+        const elapsedMs = Date.now() - startedAt;
+
+        if (p.jar) return { installed: true, elapsedMs };
+
+        // Two consecutive readings before calling it dead: podman reports a
+        // container that is mid-create as absent, and a one-poll blip should
+        // not end the run.
+        if (p.status === 'exited' || p.status === 'absent') {
+            deadPolls += 1;
+            if (deadPolls >= 2) {
+                return {
+                    installed: false,
+                    elapsedMs,
+                    reason: `the addon container is ${p.status} after ${Math.round(elapsedMs / 1000)}s — cont-init failed, see the container log below`,
+                };
+            }
+        } else {
+            deadPolls = 0;
+        }
+
+        if (p.fingerprint !== lastFingerprint) {
+            lastFingerprint = p.fingerprint;
+            lastProgressAt = Date.now();
+        }
+
+        const stalledMs = Date.now() - lastProgressAt;
+        if (stalledMs >= stallMs) {
+            return {
+                installed: false,
+                elapsedMs,
+                reason: `no install progress for ${Math.round(stalledMs / 1000)}s (downloaded ${p.zipBytes} bytes, container ${p.status}) — the install is wedged, not merely slow`,
+            };
+        }
+
+        if (elapsedMs >= maxMs) {
+            return {
+                installed: false,
+                elapsedMs,
+                reason: `still installing after ${Math.round(elapsedMs / 1000)}s (downloaded ${p.zipBytes} bytes) — still making progress, but past the ${Math.round(maxMs / 1000)}s ceiling`,
+            };
+        }
+
+        // One line every 30s so a slow download looks like a slow download in
+        // the CI log rather than three minutes of silence.
+        if (elapsedMs - lastReport >= 30000) {
+            lastReport = elapsedMs;
+            info(`still installing (${Math.round(elapsedMs / 1000)}s, ${p.zipBytes} bytes downloaded, container ${p.status})`);
+        }
+
+        await new Promise(r => setTimeout(r, 2000));
+    }
+}
+
+/**
+ * Is C-Gate accepting TCP connections on its command port? Asked from inside the
+ * container because access.txt only permits 127.0.0.1 and the port is not
+ * published to the host.
+ */
+function cgatePortListening(port = 20023) {
+    const container = containerFor('addon', { includeStopped: false });
+    if (!container) return false;
+    const res = spawnSync('podman', ['exec', container, 'nc', '-z', '127.0.0.1', String(port)], {
+        encoding: 'utf8',
+    });
+    return res.status === 0;
+}
+
+/**
+ * Wait for C-Gate itself to bind its command port.
+ *
+ * This phase exists because of a CI failure that produced nothing but
+ * "Bridge did not become ready within 180s". The bridge was in fact running and
+ * retrying against ECONNREFUSED for the whole three minutes, which means
+ * cont-init had completed and cgate.jar was on disk -- the download was fine and
+ * the JVM was the problem. Nothing in the output said so, and the C-Gate service
+ * output that would have explained it had already scrolled out of the log tail.
+ *
+ * Splitting it out means the next occurrence names the phase: C-Gate never bound
+ * the port, or it bound it and the bridge still did not come up. Normal is under
+ * two seconds, so the ceiling here is generous rather than load-bearing.
+ */
+async function waitForCgateListening({ timeoutMs = CGATE_LISTEN_TIMEOUT_MS } = {}) {
+    const startedAt = Date.now();
+    for (;;) {
+        if (cgatePortListening()) return { listening: true, elapsedMs: Date.now() - startedAt };
+
+        const elapsedMs = Date.now() - startedAt;
+        if (elapsedMs >= timeoutMs) {
+            const p = installProgress();
+            return {
+                listening: false,
+                elapsedMs,
+                reason: `C-Gate is installed but never accepted a connection on port 20023 within ${Math.round(timeoutMs / 1000)}s (addon container ${p.status}) — the JVM did not start or died on startup, see the C-Gate service lines in the container log below`,
+            };
+        }
+        await new Promise(r => setTimeout(r, 1000));
     }
 }
 
@@ -120,10 +325,7 @@ function dumpContainerLogs() {
  * which the MQTT surface alone can't prove without live C-Bus hardware.
  */
 function probeCgate(commands, port = 20023) {
-    const ps = spawnSync('podman', ['ps', '--format', '{{.Names}}', '--filter', 'name=addon'], {
-        encoding: 'utf8',
-    });
-    const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+    const container = containerFor('addon', { includeStopped: false });
     if (!container) return { ok: false, output: '', error: 'addon container not found' };
 
     // Single-quote each command for bash, escaping any embedded single quotes
@@ -153,10 +355,7 @@ function probeCgate(commands, port = 20023) {
  * Returns { ok, status, body, error }.
  */
 function curlInAddon(urlPath, { method = 'GET', headers = {}, body = null } = {}) {
-    const ps = spawnSync('podman', ['ps', '--format', '{{.Names}}', '--filter', 'name=addon'], {
-        encoding: 'utf8',
-    });
-    const container = (ps.stdout || '').trim().split('\n').filter(Boolean)[0];
+    const container = containerFor('addon', { includeStopped: false });
     if (!container) return { ok: false, status: 0, body: '', error: 'addon container not found' };
 
     const args = ['exec', '-i', container, 'curl', '-s', '-w', '\n%{http_code}', '-X', method];
@@ -355,7 +554,20 @@ async function runTests() {
         info('C-Gate already installed — skipping download wait');
     } else {
         info('C-Gate not yet installed — waiting for download + install...');
+        const install = await waitForCgateInstalled();
+        if (!install.installed) {
+            fail(`C-Gate install did not complete: ${install.reason}`);
+            return { passed, failed: failed + 1 };
+        }
+        info(`C-Gate installed after ${Math.round(install.elapsedMs / 1000)}s`);
     }
+
+    const listening = await waitForCgateListening();
+    if (!listening.listening) {
+        fail(listening.reason);
+        return { passed, failed: failed + 1 };
+    }
+    info(`C-Gate accepting connections on 20023 after ${Math.round(listening.elapsedMs / 1000)}s`);
 
     // Live-C-Bus assertions (entity counts, discovery_status=ok, empty retry
     // queue) require a *synced* C-Bus network — i.e. real hardware or a
@@ -390,7 +602,15 @@ async function runTests() {
         msgs = await waitForMqtt(READINESS_TOPICS, isReady, READY_TIMEOUT);
         info(`Bridge reached ready state`);
     } catch (err) {
-        fail(`Bridge did not become ready within ${READY_TIMEOUT / 1000}s: ${err.message}`);
+        // Reaching here means C-Gate is installed AND was accepting connections,
+        // so the failure is the bridge's, not the download's or the JVM's. Say
+        // whether C-Gate is *still* listening: if it is not, it died after
+        // startup, which is a different bug from a bridge that never connects.
+        const stillListening = cgatePortListening();
+        fail(
+            `C-Gate installed and reached its command port, but the bridge did not become ready within ${READY_TIMEOUT / 1000}s ` +
+            `(C-Gate ${stillListening ? 'is still listening — the bridge is at fault' : 'has since stopped listening — C-Gate died after startup'}): ${err.message}`
+        );
         return { passed, failed: failed + 1 };
     }
 
