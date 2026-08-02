@@ -117,7 +117,10 @@ class AirconControlRegistry {
  * the registry so a write echoes the thermostat's own configuration (§25.6.3).
  */
 function buildSetZoneHvacMode({ cbusname, network, application, ward, zones, modeRaw, rawlevel, setback = 0, guard = 0, useaux = 1, type, level, aux = 0 }) {
-    return `AIRCON SET_ZONE_HVAC_MODE //${cbusname}/${network}/${application} ${ward} ${zones} ${modeRaw} ${rawlevel} ${setback} ${guard} ${useaux} ${type} ${level} ${aux}`;
+    // A thermostat whose broadcasts haven't carried a plant type yet writes 0
+    // ("any") — centralized so callers pass the learned value through as-is.
+    const hvacType = (type !== null && type !== undefined) ? type : 0;
+    return `AIRCON SET_ZONE_HVAC_MODE //${cbusname}/${network}/${application} ${ward} ${zones} ${modeRaw} ${rawlevel} ${setback} ${guard} ${useaux} ${hvacType} ${level} ${aux}`;
 }
 
 function buildSetWardOff({ cbusname, network, application, ward }) {

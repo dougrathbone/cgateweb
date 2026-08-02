@@ -555,12 +555,45 @@ class MqttCommandRouter extends EventEmitter {
             String(command.getApplication()) === String(this.settings.cbus_aircon_app_id);
     }
 
+    /**
+     * Whether a native HVAC write may proceed: warns and returns false when
+     * cbus_aircon_control_enabled is off.
+     *
+     * @param {string} what - What was attempted ('setpoint', 'mode', 'fan mode').
+     * @param {string} topic - Original topic for the warning.
+     * @returns {boolean}
+     * @private
+     */
+    _nativeAirconControlAllowed(what, topic) {
+        if (this.settings.cbus_aircon_control_enabled) return true;
+        this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring ${what} on ${topic}`);
+        return false;
+    }
+
+    /**
+     * The thermostat state learned from its broadcasts, or null (with a
+     * warning) when the unit hasn't reported yet — native writes need its
+     * ward/zones/type, so there is nothing to build a command from before then.
+     *
+     * @param {string} network
+     * @param {string} unit - Thermostat source unit address.
+     * @param {string} what - What was attempted ('set setpoint', 'set mode', 'set fan mode').
+     * @param {string} topic - Original topic for the warning.
+     * @returns {Object|null}
+     * @private
+     */
+    _requireNativeAirconState(network, unit, what, topic) {
+        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
+        if (!state) {
+            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot ${what} until the thermostat reports once (${topic})`);
+            return null;
+        }
+        return state;
+    }
+
     _handleHvacSetpoint(command, payload, topic) {
         if (this._isNativeAircon(command)) {
-            if (!this.settings.cbus_aircon_control_enabled) {
-                this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring setpoint on ${topic}`);
-                return;
-            }
+            if (!this._nativeAirconControlAllowed('setpoint', topic)) return;
             return this._handleNativeAirconSetpoint(command, payload, topic);
         }
 
@@ -601,10 +634,7 @@ class MqttCommandRouter extends EventEmitter {
      */
     _handleHvacMode(command, payload, topic) {
         if (this._isNativeAircon(command)) {
-            if (!this.settings.cbus_aircon_control_enabled) {
-                this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring mode on ${topic}`);
-                return;
-            }
+            if (!this._nativeAirconControlAllowed('mode', topic)) return;
             return this._handleNativeAirconMode(command, payload, topic);
         }
 
@@ -642,11 +672,8 @@ class MqttCommandRouter extends EventEmitter {
     _handleNativeAirconSetpoint(command, payload, topic) {
         const network = command.getNetwork();
         const unit = command.getGroup();
-        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
-        if (!state) {
-            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set setpoint until the thermostat reports once (${topic})`);
-            return;
-        }
+        const state = this._requireNativeAirconState(network, unit, 'set setpoint', topic);
+        if (!state) return;
         if (state.modeRaw === 0) {
             // Writing a setpoint to an off thermostat would force it on in the
             // fallback mode — the climate card adjusting a target must never
@@ -721,7 +748,7 @@ class MqttCommandRouter extends EventEmitter {
             modeRaw,
             rawlevel: 0,
             ...this._airconFlagEcho(state),
-            type: (state.type !== null && state.type !== undefined) ? state.type : 0,
+            type: state.type,
             level
         });
         this._queueCommand(cmd + NEWLINE);
@@ -768,11 +795,8 @@ class MqttCommandRouter extends EventEmitter {
         const network = command.getNetwork();
         const unit = command.getGroup();
         const application = command.getApplication();
-        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
-        if (!state) {
-            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set mode until the thermostat reports once (${topic})`);
-            return;
-        }
+        const state = this._requireNativeAirconState(network, unit, 'set mode', topic);
+        if (!state) return;
 
         const mode = String(payload).toLowerCase();
         if (mode === 'off') {
@@ -800,7 +824,7 @@ class MqttCommandRouter extends EventEmitter {
             modeRaw: code,
             rawlevel,
             ...this._airconFlagEcho(state),
-            type: (state.type !== null && state.type !== undefined) ? state.type : 0,
+            type: state.type,
             level
         });
         this._queueCommand(cmd + NEWLINE);
@@ -837,10 +861,7 @@ class MqttCommandRouter extends EventEmitter {
      */
     _handleHvacFanMode(command, payload, topic) {
         if (this._isNativeAircon(command)) {
-            if (!this.settings.cbus_aircon_control_enabled) {
-                this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring fan mode on ${topic}`);
-                return;
-            }
+            if (!this._nativeAirconControlAllowed('fan mode', topic)) return;
             return this._handleNativeAirconFanMode(command, payload, topic);
         }
         this.logger.warn(`HVAC fan mode is only supported on the native Air Conditioning application; ignoring ${topic}`);
@@ -858,11 +879,8 @@ class MqttCommandRouter extends EventEmitter {
         const network = command.getNetwork();
         const unit = command.getGroup();
         const application = command.getApplication();
-        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
-        if (!state) {
-            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot set fan mode until the thermostat reports once (${topic})`);
-            return;
-        }
+        const state = this._requireNativeAirconState(network, unit, 'set fan mode', topic);
+        if (!state) return;
         if (state.modeRaw === 0) {
             // Same guard as the setpoint path: a fan-mode write would force the
             // off unit on in the fallback mode.
@@ -903,7 +921,7 @@ class MqttCommandRouter extends EventEmitter {
             setback: flags.setback,
             guard: flags.guard,
             useaux,
-            type: (state.type !== null && state.type !== undefined) ? state.type : 0,
+            type: state.type,
             level,
             aux
         });
