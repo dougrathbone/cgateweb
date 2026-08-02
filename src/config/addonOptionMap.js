@@ -24,7 +24,11 @@ const ADDON_OPTION_MAP = [
     { src: 'ha_discovery_switch_app_id', dst: 'ha_discovery_switch_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_trigger_app_id', dst: 'ha_discovery_trigger_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_hvac_app_id', dst: 'ha_discovery_hvac_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
-    { src: 'cbus_aircon_app_id', dst: 'cbus_aircon_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
+    // Not gated on 'haDiscovery' (same reason as cbus_security_app_id below):
+    // aircon readings publish to MQTT independently of Home Assistant
+    // discovery, so gating would silently disable the feature for MQTT-only
+    // installs that set the option.
+    { src: 'cbus_aircon_app_id', dst: 'cbus_aircon_app_id', kind: 'stringifyTruthy' },
     // stringifyDefined (not Truthy): an explicit 0 must map to '0' so users can
     // DISABLE the default-on security app — a truthy copy would drop the 0 and
     // leave the default '208' in force. Deliberately NOT gated on 'haDiscovery':

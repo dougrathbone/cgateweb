@@ -473,6 +473,19 @@ describe('ConfigLoader', () => {
             expect(config.cbus_security_app_id).toBe('0');
         });
 
+        test('should honour cbus_aircon_app_id even when HA discovery is disabled (aircon readings publish to MQTT regardless)', () => {
+            // Aircon temperature readings publish to MQTT independently of HA
+            // discovery, so the app id must apply either way. Gated on
+            // discovery, an MQTT-only install could not enable aircon at all.
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_aircon_app_id: 172 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_aircon_app_id).toBe('172');
+        });
+
         test('should not set cbus_security_app_id when option is absent (default applies)', () => {
             const options = { ...mockAddonOptions };
             delete options.cbus_security_app_id;
