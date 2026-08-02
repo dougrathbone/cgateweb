@@ -1922,9 +1922,8 @@ input, select, textarea {
       return (labels && labels[addrKey]) ? labels[addrKey] : '';
     }
 
-    function eventMatchesFilter(row) {
-      if (!eventFilter) return true;
-      var f = eventFilter.toLowerCase();
+    function eventMatchesFilter(row, f) {
+      if (!f) return true;
       if (row.addr.toLowerCase().indexOf(f) !== -1) return true;
       var lbl = (row.label || getLabelForAddress(row.addr)).toLowerCase();
       if (lbl && lbl.indexOf(f) !== -1) return true;
@@ -1932,11 +1931,45 @@ input, select, textarea {
       return false;
     }
 
+    function eventFilterValue() {
+      return eventFilter ? eventFilter.toLowerCase() : '';
+    }
+
+    function buildEventRowHtml(row) {
+      // An entry-carried label (e.g. security zones, whose labels live under
+      // application 1 while the entry address is net/208/zone) wins over the
+      // address lookup.
+      var lbl = row.label || getLabelForAddress(row.addr);
+      var pct = Math.round(row.level / 255 * 100);
+      // Security events carry a description ("Zone unsealed", "System armed
+      // (Day mode)"). A level percentage is meaningless for those, so the
+      // description takes over both the value and the bar cell.
+      var valueCells = row.description
+        ? '<td colspan="2">' + esc(row.description) + '</td>'
+        : '<td>' + esc(row.level) + ' (' + pct + '%)</td>' +
+          '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>';
+      return '<tr data-addr="' + esc(row.addr) + '">' +
+        '<td>' + esc(row.time) + '</td>' +
+        '<td>' + esc(row.addr) + '</td>' +
+        '<td>' + (lbl ? esc(lbl) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
+        valueCells +
+        '</tr>';
+    }
+
+    function flashEventRow(tr) {
+      if (!tr) return;
+      tr.classList.remove('new-event');
+      // Force reflow so animation restarts
+      void tr.offsetWidth;
+      tr.classList.add('new-event');
+    }
+
     function renderEventLog() {
       var tbody = document.getElementById('eventLogBody');
       var table = document.getElementById('eventLogTable');
       var empty = document.getElementById('eventLogEmpty');
-      var filtered = eventRows.filter(eventMatchesFilter);
+      var f = eventFilterValue();
+      var filtered = eventRows.filter(function(row) { return eventMatchesFilter(row, f); });
       if (filtered.length === 0) {
         table.style.display = 'none';
         empty.style.display = 'block';
@@ -1949,52 +1982,12 @@ input, select, textarea {
       empty.style.display = 'none';
       var html = '';
       for (var i = 0; i < filtered.length; i++) {
-        var row = filtered[i];
-        // An entry-carried label (e.g. security zones, whose labels live under
-        // application 1 while the entry address is net/208/zone) wins over the
-        // address lookup.
-        var lbl = row.label || getLabelForAddress(row.addr);
-        var pct = Math.round(row.level / 255 * 100);
-        // Security events carry a description ("Zone unsealed", "System armed
-        // (Day mode)"). A level percentage is meaningless for those, so the
-        // description takes over both the value and the bar cell.
-        var valueCells = row.description
-          ? '<td colspan="2">' + esc(row.description) + '</td>'
-          : '<td>' + esc(row.level) + ' (' + pct + '%)</td>' +
-            '<td class="event-bar-cell"><div class="event-bar-bg"><div class="event-bar-fill" style="width:' + pct + '%"></div></div></td>';
-        html += '<tr data-addr="' + esc(row.addr) + '">' +
-          '<td>' + esc(row.time) + '</td>' +
-          '<td>' + esc(row.addr) + '</td>' +
-          '<td>' + (lbl ? esc(lbl) : '<span style="color:var(--text-muted)">—</span>') + '</td>' +
-          valueCells +
-          '</tr>';
+        html += buildEventRowHtml(filtered[i]);
       }
       tbody.innerHTML = html;
 
       // Flash the most-recent row
-      if (filtered.length > 0) {
-        var rows = tbody.querySelectorAll('tr');
-        var last = rows[rows.length - 1];
-        if (last) {
-          last.classList.remove('new-event');
-          // Force reflow so animation restarts
-          void last.offsetWidth;
-          last.classList.add('new-event');
-        }
-      }
-
-      // Click row to filter label table
-      tbody.querySelectorAll('tr').forEach(function(tr) {
-        tr.addEventListener('click', function() {
-          var addr = tr.getAttribute('data-addr');
-          if (addr) {
-            var si = document.getElementById('searchInput');
-            var tf = document.getElementById('typeFilter');
-            if (si) { si.value = addr; si.dispatchEvent(new Event('input')); }
-            if (tf) { tf.value = ''; tf.dispatchEvent(new Event('change')); }
-          }
-        });
-      });
+      flashEventRow(tbody.lastElementChild);
     }
 
     function appendEventRow(event) {
@@ -2015,12 +2008,22 @@ input, select, textarea {
         description: event.description || ''
       };
       eventRows.push(row);
-      if (eventRows.length > EVENT_MAX) {
-        eventRows.shift();
-      }
+      var dropped = eventRows.length > EVENT_MAX ? eventRows.shift() : null;
 
       if (eventLive) {
-        renderEventLog();
+        var tbody = document.getElementById('eventLogBody');
+        var table = document.getElementById('eventLogTable');
+        // Steady state (live, unfiltered, table already rendered): append just
+        // the new row and drop the oldest DOM row if the buffer overflowed,
+        // instead of rebuilding the whole table for every event. Anything
+        // else (filter active, empty state) takes the full render.
+        if (!eventFilterValue() && table.style.display !== 'none' && tbody.childElementCount > 0) {
+          tbody.insertAdjacentHTML('beforeend', buildEventRowHtml(row));
+          if (dropped && tbody.firstElementChild) tbody.removeChild(tbody.firstElementChild);
+          flashEventRow(tbody.lastElementChild);
+        } else {
+          renderEventLog();
+        }
         // Auto-scroll to bottom
         var wrap = document.getElementById('eventLogTableWrap');
         if (wrap) wrap.scrollTop = wrap.scrollHeight;
@@ -2074,6 +2077,20 @@ input, select, textarea {
     document.getElementById('eventFilterInput').addEventListener('input', function() {
       eventFilter = this.value.trim();
       renderEventLog();
+    });
+
+    // Click a row to filter the label table by its address. One delegated
+    // listener on the tbody covers every row, including ones appended later.
+    document.getElementById('eventLogBody').addEventListener('click', function(e) {
+      var tr = e.target.closest('tr');
+      if (!tr) return;
+      var addr = tr.getAttribute('data-addr');
+      if (addr) {
+        var si = document.getElementById('searchInput');
+        var tf = document.getElementById('typeFilter');
+        if (si) { si.value = addr; si.dispatchEvent(new Event('input')); }
+        if (tf) { tf.value = ''; tf.dispatchEvent(new Event('change')); }
+      }
     });
 
     // Start SSE connection
