@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.22.1] - 2026-08-02
+
+### Fixed
+
+- **Security panel trouble state now survives a restart.** Mains power, battery, phone line, arm failure and fire conditions used to reset to healthy on every add-on restart because the panel offers no way to query them; the last known state is now kept on disk and restored on startup. (#42)
+
 ## [1.22.0] - 2026-08-02
 
 ### Fixed
