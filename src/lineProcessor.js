@@ -16,8 +16,28 @@ class LineProcessor {
 
         this.lineProcessor = null;
         this._buffer = '';
+        // Leading characters of _buffer already consumed by processData. Kept
+        // as an offset during the line loop so each completed line costs an
+        // integer assignment instead of re-slicing the remaining buffer;
+        // materialized back into _buffer at the end of the loop and lazily by
+        // every public accessor (see _materializeBuffer).
+        this._bufferOffset = 0;
     }
-    
+
+    /**
+     * Fold a pending offset back into _buffer. Runs at the top of processData
+     * (a re-entrant call from a line callback must see the true remainder)
+     * and in every public accessor, so the offset is only ever observable
+     * mid-loop — e.g. a callback calling close() still sees the remainder.
+     * @private
+     */
+    _materializeBuffer() {
+        if (this._bufferOffset > 0) {
+            this._buffer = this._buffer.slice(this._bufferOffset);
+            this._bufferOffset = 0;
+        }
+    }
+
     /**
      * Process incoming data by writing it to the stream
      * @param {Buffer|string} data - New data to process
@@ -29,6 +49,7 @@ class LineProcessor {
         }
 
         this.lineProcessor = lineProcessor;
+        this._materializeBuffer();
         this._buffer += Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
 
         // Prevent unbounded buffer growth from malformed data without newlines
@@ -45,16 +66,20 @@ class LineProcessor {
         while (delimiterIndex !== -1) {
             const rawLine = buffer.slice(searchStart, delimiterIndex);
             searchStart = delimiterIndex + delimiterLength;
-            // Preserve existing semantics for re-entrant callbacks (e.g. close()).
-            this._buffer = buffer.slice(searchStart);
+            // Preserve existing semantics for re-entrant callbacks (e.g. close()):
+            // the remainder is visible via the offset, not a per-line slice.
+            this._bufferOffset = searchStart;
 
             this._processLine(rawLine);
 
             delimiterIndex = buffer.indexOf(delimiter, searchStart);
         }
 
-        if (searchStart === 0) {
-            this._buffer = buffer;
+        // One slice per chunk with at least one completed line (vs one per
+        // line) — after this the offset is zero and _buffer is the remainder.
+        if (searchStart > 0) {
+            this._buffer = buffer.slice(searchStart);
+            this._bufferOffset = 0;
         }
     }
     
@@ -94,38 +119,43 @@ class LineProcessor {
      * Close the line processor and clean up resources
      */
     close() {
+        this._materializeBuffer();
         if (this._buffer && this.lineProcessor) {
             this._processLine(this._buffer);
         }
         this._buffer = '';
+        this._bufferOffset = 0;
         this.lineProcessor = null;
     }
-    
+
     // Compatibility methods for existing BufferParser interface
-    
+
     /**
      * Get any remaining buffered partial line.
      * @returns {string} Remaining unprocessed partial line
      */
     getBuffer() {
+        this._materializeBuffer();
         return this._buffer;
     }
-    
+
     /**
      * Check if there's remaining buffered partial line data.
      * @returns {boolean}
      */
     hasData() {
+        this._materializeBuffer();
         return this._buffer.length > 0;
     }
-    
+
     /**
      * Clear buffered partial line.
      */
     clearBuffer() {
         this._buffer = '';
+        this._bufferOffset = 0;
     }
-    
+
     /**
      * Process the final line if there is buffered data.
      * @param {function} lineProcessor - Optional line processor callback
@@ -135,6 +165,7 @@ class LineProcessor {
             this.lineProcessor = lineProcessor;
         }
 
+        this._materializeBuffer();
         if (this._buffer) {
             this._processLine(this._buffer);
             this._buffer = '';
