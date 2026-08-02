@@ -52,9 +52,12 @@ class CBusEvent {
         // OID=...") — the C-Bus unit that changed the group (issue #35: lets
         // consumers tell a physical switch press from a bridge/CNI write). A
         // value of -1 (no source, e.g. sync updates) naturally fails the
-        // digits-only match and stays null.
-        const sourceMatch = this._rawEvent.match(/#sourceunit=(\d+)/);
-        if (sourceMatch) this._sourceUnit = sourceMatch[1];
+        // digits-only match and stays null. Most lines carry no metadata at
+        // all, so gate the regex on a cheap '#' scan.
+        if (this._rawEvent.indexOf('#') !== -1) {
+            const sourceMatch = this._rawEvent.match(/#sourceunit=(\d+)/);
+            if (sourceMatch) this._sourceUnit = sourceMatch[1];
+        }
 
         if (this._rawEvent) {
             this._parse();
