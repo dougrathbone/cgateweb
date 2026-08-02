@@ -89,6 +89,38 @@ class SecurityPanelState {
     }
 
     /**
+     * Snapshot every network's conditions for persistence:
+     * { network: { condition: active } }. The panel offers no way to query
+     * mains, battery, line, arm-fail or fire, so this snapshot is the only way
+     * those survive a bridge restart (#42).
+     *
+     * @returns {Object<string, Object<string, boolean>>}
+     */
+    toJSON() {
+        const out = {};
+        for (const [network, state] of this._byNetwork) out[network] = { ...state };
+        return out;
+    }
+
+    /**
+     * Load a snapshot written by toJSON. Unknown conditions and non-boolean
+     * values are ignored, so a hand-edited or newer-version file cannot
+     * corrupt the tracker; unknown networks are adopted as-is.
+     *
+     * @param {Object<string, Object<string, boolean>>} data
+     */
+    restore(data) {
+        if (!data || typeof data !== 'object') return;
+        for (const [network, state] of Object.entries(data)) {
+            if (!state || typeof state !== 'object') continue;
+            const target = this._forNetwork(network);
+            for (const condition of PANEL_TROUBLE_CONDITIONS) {
+                if (typeof state[condition] === 'boolean') target[condition] = state[condition];
+            }
+        }
+    }
+
+    /**
      * @param {string} network
      * @returns {Object<string, boolean>}
      * @private

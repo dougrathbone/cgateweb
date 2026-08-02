@@ -481,3 +481,50 @@ describe('SecurityEventHandler', () => {
         });
     });
 });
+
+describe('panel state persistence', () => {
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+    const MAINS_FAILURE_LINE = '# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=';
+
+    let dir;
+    let stateFile;
+    beforeEach(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-panel-state-'));
+        stateFile = path.join(dir, 'security-panel-state.json');
+    });
+    afterEach(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('writes the panel state file when a trouble condition changes', () => {
+        const handler = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        handler.handleLine(MAINS_FAILURE_LINE);
+        const written = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        expect(written['254'].mains).toBe(true);
+        expect(written['254'].fire).toBe(false);
+    });
+
+    it('restores panel state at construction so a restart keeps the last known conditions', () => {
+        fs.writeFileSync(stateFile, JSON.stringify({ '254': { mains: true, arm_failed: true } }));
+        const handler = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        const states = handler.panelState.initialStates('254');
+        expect(states.find((c) => c.condition === 'mains').active).toBe(true);
+        expect(states.find((c) => c.condition === 'arm_failed').active).toBe(true);
+        expect(states.find((c) => c.condition === 'battery').active).toBe(false);
+    });
+
+    it('tolerates a corrupt state file and starts fresh', () => {
+        fs.writeFileSync(stateFile, 'not json at all {');
+        const deps = makeDeps({ panelStateFile: stateFile });
+        expect(() => new SecurityEventHandler(deps)).not.toThrow();
+        expect(deps.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Could not read security panel state file'));
+    });
+
+    it('logs nothing and writes nothing when no state file is configured', () => {
+        const handler = new SecurityEventHandler(makeDeps());
+        handler.handleLine(MAINS_FAILURE_LINE);
+        expect(fs.existsSync(stateFile)).toBe(false);
+    });
+});

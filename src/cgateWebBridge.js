@@ -11,6 +11,7 @@ const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
 const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
+const path = require('path');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
@@ -250,7 +251,13 @@ class CgateWebBridge {
             getHaDiscovery: this._getHaDiscovery,
             cbusname: this.settings.cbusname,
             sendCommand: (command) => this.cgateCommandQueue.add(command),
-            onEventLog: this._onEventLog
+            onEventLog: this._onEventLog,
+            // Panel trouble state survives restarts via a small JSON file next
+            // to the label file; no label file means no writable path is
+            // known, so persistence stays off.
+            panelStateFile: this.settings.cbus_label_file
+                ? path.join(path.dirname(this.settings.cbus_label_file), 'security-panel-state.json')
+                : null
         });
 
         // Republishes state after a Home Assistant or MQTT broker restart

@@ -124,3 +124,48 @@ describe('SecurityPanelState', () => {
     });
 
 });
+
+describe('persistence (toJSON / restore)', () => {
+    const trouble = (condition, active, network = '254') => ({
+        kind: 'panel_trouble', network, condition, active
+    });
+
+    it('round-trips learned conditions through toJSON and restore', () => {
+        const tracker = new SecurityPanelState();
+        tracker.applyReading(trouble('mains', true));
+        tracker.applyReading(trouble('arm_failed', true));
+        tracker.applyReading(trouble('mains', true, '253'));
+
+        const restored = new SecurityPanelState();
+        restored.restore(JSON.parse(JSON.stringify(tracker.toJSON())));
+
+        const states254 = restored.initialStates('254');
+        expect(states254.find((c) => c.condition === 'mains').active).toBe(true);
+        expect(states254.find((c) => c.condition === 'arm_failed').active).toBe(true);
+        expect(states254.find((c) => c.condition === 'battery').active).toBe(false);
+        expect(restored.initialStates('253').find((c) => c.condition === 'mains').active).toBe(true);
+    });
+
+    it('ignores unknown conditions and non-boolean values in the file', () => {
+        const restored = new SecurityPanelState();
+        restored.restore({
+            '254': { mains: true, wat: true, battery: 'yes', tamper: true }
+        });
+        const states = restored.initialStates('254');
+        expect(states.find((c) => c.condition === 'mains').active).toBe(true);
+        expect(states.find((c) => c.condition === 'tamper').active).toBe(true);
+        // 'wat' is not a known condition and 'yes' is not a boolean: both ignored.
+        expect(states).toHaveLength(7);
+        expect(states.find((c) => c.condition === 'battery').active).toBe(false);
+    });
+
+    it('tolerates null, non-object, and malformed network entries', () => {
+        const restored = new SecurityPanelState();
+        expect(() => {
+            restored.restore(null);
+            restored.restore('junk');
+            restored.restore({ '254': null, '253': 'junk' });
+        }).not.toThrow();
+        expect(restored.initialStates('254').every((c) => c.active === false)).toBe(true);
+    });
+});

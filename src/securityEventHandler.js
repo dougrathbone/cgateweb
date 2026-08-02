@@ -8,6 +8,7 @@ const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
 const { describePanelCondition } = require('./securityPanelConditions');
+const fs = require('fs');
 
 /**
  * Which dedupe slot each status-sync trigger consumes. 'resync' has no slot: a
@@ -67,7 +68,7 @@ const SYNC_TRIGGER_SLOTS = {
  * {@link requestStatusSync} so the per-network Sets are shared.
  */
 class SecurityEventHandler {
-    constructor({ eventPublisher, logger, settings, getHaDiscovery, cbusname, sendCommand, onEventLog }) {
+    constructor({ eventPublisher, logger, settings, getHaDiscovery, cbusname, sendCommand, onEventLog, panelStateFile = null }) {
         this.eventPublisher = eventPublisher;
         this.logger = logger;
         this.settings = settings;
@@ -89,6 +90,42 @@ class SecurityEventHandler {
         this._syncState = new Map();
         // Panel-wide trouble conditions, so repeated verbs don't republish.
         this.panelState = new SecurityPanelState();
+        // The panel offers no way to query mains/battery/line/arm-fail/fire,
+        // so the condition state is persisted here across restarts (#42);
+        // null disables persistence (e.g. no writable path).
+        this._panelStateFile = panelStateFile;
+        if (this._panelStateFile) this._loadPanelState();
+    }
+
+    /**
+     * Load a previously persisted panel-state snapshot, if any. A missing file
+     * is normal (first run); a corrupt one is a warning, never fatal.
+     * @private
+     */
+    _loadPanelState() {
+        try {
+            const raw = fs.readFileSync(this._panelStateFile, 'utf8');
+            this.panelState.restore(JSON.parse(raw));
+            this.logger.info(`Restored security panel state from ${this._panelStateFile}`);
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                this.logger.warn(`Could not read security panel state file (${err.message}); starting fresh`);
+            }
+        }
+    }
+
+    /**
+     * Persist the panel-state snapshot. Best-effort: a write failure is a
+     * warning, never fatal to event handling.
+     * @private
+     */
+    _persistPanelState() {
+        if (!this._panelStateFile) return;
+        try {
+            fs.writeFileSync(this._panelStateFile, JSON.stringify(this.panelState.toJSON(), null, 2));
+        } catch (err) {
+            this.logger.warn(`Could not write security panel state file (${err.message})`);
+        }
     }
 
     /**
@@ -275,6 +312,9 @@ class SecurityEventHandler {
         for (const { condition, active } of toPublish) {
             this._publishPanelCondition(network, application, condition, active);
         }
+        // Every panel-state change funnels through here (trouble verbs, disarm
+        // clears, status-report seeds), so this is the one persist point.
+        this._persistPanelState();
     }
 
     /**
