@@ -669,18 +669,25 @@ class CgateWebBridge {
             this.logger.debug(`C-Gate Recv (Evt): ${line}`);
         }
 
-        // Aircon-format lines that weren't consumed above (feature disabled, an
-        // unsupported verb, or a different app) are surfaced in raw capture but
-        // are never valid CBusEvents — skip the parse so they don't spam a
-        // "Could not parse event line" warning on every broadcast.
-        if (this.airconEventHandler.isAirconLine(line)) {
+        // Aircon-format lines that weren't consumed above (an unsupported verb
+        // or a different app) are surfaced in raw capture but are never valid
+        // CBusEvents — skip the parse so they don't spam a "Could not parse
+        // event line" warning on every broadcast. Only worth scanning when the
+        // app is configured: unconfigured aircon traffic is either '#'-comment
+        // lines (already dropped above) or not ours to recognize. Evaluated
+        // once per line rather than per check (and not cached on the instance:
+        // settings is a shared, reloadable object).
+        const airconConfigured = !!this.settings.cbus_aircon_app_id;
+        if (airconConfigured && this.airconEventHandler.isAirconLine(line)) {
             this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${line}`);
             return;
         }
 
-        // Same for unconsumed security lines (feature disabled, an unsupported
-        // verb, or a different app): never valid CBusEvents.
-        if (this.securityEventHandler.isSecurityLine(line)) {
+        // Same for unconsumed security lines, with the same configured gate
+        // (including the '0' kill-switch, matching SecurityEventHandler).
+        const securityAppId = this.settings.cbus_security_app_id;
+        const securityConfigured = !!securityAppId && String(securityAppId) !== '0';
+        if (securityConfigured && this.securityEventHandler.isSecurityLine(line)) {
             this.logger.debug(`Unparsed security line (captured, not a standard event): ${line}`);
             return;
         }

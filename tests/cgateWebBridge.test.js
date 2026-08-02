@@ -776,6 +776,8 @@ describe('CgateWebBridge', () => {
                 const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
                 const warnSpy = jest.spyOn(bridge, 'warn');
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                // The fall-through guard only scans when the app is configured.
+                bridge.settings.cbus_aircon_app_id = '172';
 
                 // An aircon-format line that the handler doesn't consume (unsupported
                 // verb). It must still reach raw capture, but must NOT be run through

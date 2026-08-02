@@ -8,6 +8,13 @@
  * it runs on every event-port line.
  */
 
+// Hoisted "<prefix> " strings: building them per line allocated on every
+// event-port line (isAppEventLine runs up to four times per line).
+const PREFIX_WITH_SPACE = {
+    aircon: 'aircon ',
+    security: 'security '
+};
+
 /**
  * Normalize a raw C-Gate event line for a per-application decoder: trim,
  * strip one leading "# " or "#" comment marker, require the `<prefix> `
@@ -33,7 +40,7 @@ function normalizeAppEventLine(line, prefix) {
     }
     text = text.trim();
 
-    if (!text.startsWith(`${prefix} `)) return null;
+    if (!text.startsWith(PREFIX_WITH_SPACE[prefix] || `${prefix} `)) return null;
 
     const metaIdx = text.indexOf(' #');
     let metadata = null;
@@ -51,14 +58,20 @@ function normalizeAppEventLine(line, prefix) {
  * never valid CBusEvents, so callers use this to keep them out of the
  * standard parser.
  *
+ * Lines arriving via LineProcessor are already trimmed (trimLines default);
+ * trim() is retained so the result is identical for every other input (V8
+ * returns the same string object when there is nothing to trim).
+ *
  * @param {string} line - Raw line from the C-Gate event stream.
  * @param {string} prefix - Application prefix without trailing space.
  * @returns {boolean}
  */
 function isAppEventLine(line, prefix) {
     let s = line.trim();
-    if (s.startsWith('#')) s = s.slice(1).trim();
-    return s.startsWith(`${prefix} `);
+    if (s.charCodeAt(0) === 35) { // '#'
+        s = s.slice(1).trim();
+    }
+    return s.startsWith(PREFIX_WITH_SPACE[prefix] || `${prefix} `);
 }
 
 module.exports = { normalizeAppEventLine, isAppEventLine };
