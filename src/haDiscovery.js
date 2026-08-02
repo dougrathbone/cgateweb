@@ -1,6 +1,7 @@
 // @ts-check
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
+const { parseSecurityZoneLabelKey } = require('./securityZoneLabels');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
@@ -200,12 +201,12 @@ class HaDiscovery {
 
         let republished = 0;
         for (const [labelKey, newLabel] of this.labelMap) {
-            const match = labelKey.match(/^(\d+)\/1\/(\d+)$/);
-            if (!match) continue;
+            const parsed = parseSecurityZoneLabelKey(labelKey);
+            if (!parsed) continue;
             if (previousLabels.get(labelKey) === newLabel) continue;
-            const seenKey = `${match[1]}/${appId}/${match[2]}`;
+            const seenKey = `${parsed.network}/${appId}/${parsed.zone}`;
             this._securityZoneSeen.delete(seenKey);
-            if (this.ensureSecurityZoneDiscovery(match[1], appId, match[2])) {
+            if (this.ensureSecurityZoneDiscovery(parsed.network, appId, parsed.zone)) {
                 republished++;
             }
         }
@@ -213,10 +214,10 @@ class HaDiscovery {
         // Labels that disappeared entirely: drop the Seen key so the zone is
         // re-announced (with its fallback name) on its next event.
         for (const [labelKey] of previousLabels) {
-            const match = labelKey.match(/^(\d+)\/1\/(\d+)$/);
-            if (!match) continue;
+            const parsed = parseSecurityZoneLabelKey(labelKey);
+            if (!parsed) continue;
             if (this.labelMap.has(labelKey)) continue;
-            this._securityZoneSeen.delete(`${match[1]}/${appId}/${match[2]}`);
+            this._securityZoneSeen.delete(`${parsed.network}/${appId}/${parsed.zone}`);
         }
 
         if (republished > 0) {
@@ -594,14 +595,16 @@ class HaDiscovery {
         const { labelMap } = this._labelSnapshot;
         if (!labelMap || labelMap.size === 0) return;
 
-        const prefix = `${networkId}/1/`;
         let supplementCount = 0;
 
         for (const [labelKey] of labelMap) {
-            if (!labelKey.startsWith(prefix)) continue;
-            const zone = labelKey.substring(prefix.length);
+            // The parser validates the key shape and the zone number, so
+            // malformed app-1 entries (e.g. '254/1/FrontDoor') are skipped
+            // instead of producing bogus entities.
+            const parsed = parseSecurityZoneLabelKey(labelKey);
+            if (!parsed || parsed.network !== String(networkId)) continue;
             // ensureSecurityZoneDiscovery is idempotent and honours exclusions.
-            if (this.ensureSecurityZoneDiscovery(networkId, appId, zone)) {
+            if (this.ensureSecurityZoneDiscovery(networkId, appId, parsed.zone)) {
                 supplementCount++;
             }
         }

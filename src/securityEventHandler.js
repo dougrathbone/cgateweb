@@ -3,6 +3,7 @@
 
 const securityDecoder = require('./applicationDecoders/securityDecoder');
 const { isAppEventLine } = require('./applicationDecoders/appEventLine');
+const { securityZoneLabelKey } = require('./securityZoneLabels');
 const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
@@ -379,7 +380,7 @@ class SecurityEventHandler {
         const haDiscovery = this.getHaDiscovery();
         const labelMap = haDiscovery && haDiscovery.labelMap;
         if (!labelMap || typeof labelMap.get !== 'function') return null;
-        return labelMap.get(`${network}/1/${zone}`) || null;
+        return labelMap.get(securityZoneLabelKey(network, zone)) || null;
     }
 
     /**

@@ -1,4 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { securityZoneLabelKey, parseSecurityZoneLabelKey } = require('../src/securityZoneLabels');
 
 describe('HaDiscovery — app 208 security zones', () => {
     let publishFn;
@@ -164,6 +165,21 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(payload.device_class).toBe('door');
         });
 
+        it('skips malformed app-1 label keys instead of announcing bogus entities', () => {
+            const hd = makeWithLabels(new Map([
+                ['254/1/FrontDoor', 'Not A Zone Key'],
+                ['254/1/0', 'Zone Zero'],
+                ['254/1/200', 'Out Of Range'],
+                ['254/1/35', 'Front Door']
+            ]));
+            hd._supplementSecurityZonesFromLabels('254');
+            const topics = publishFn.mock.calls.map(c => c[0]);
+            expect(topics).toContain('homeassistant/binary_sensor/cgateweb_254_208_35/config');
+            expect(topics).not.toContain('homeassistant/binary_sensor/cgateweb_254_208_FrontDoor/config');
+            expect(topics).not.toContain('homeassistant/binary_sensor/cgateweb_254_208_0/config');
+            expect(topics).not.toContain('homeassistant/binary_sensor/cgateweb_254_208_200/config');
+        });
+
         it('does nothing when the security app is disabled', () => {
             const hd = makeWithLabels(new Map([['254/1/35', 'Front Door']]), { cbus_security_app_id: '0' });
             hd._supplementSecurityZonesFromLabels('254');
@@ -323,5 +339,31 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(off.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
             expect(publishFn).not.toHaveBeenCalled();
         });
+    });
+});
+
+describe('securityZoneLabels — label-key convention', () => {
+    it('builds the {net}/1/{zone} key', () => {
+        expect(securityZoneLabelKey('254', '35')).toBe('254/1/35');
+        expect(securityZoneLabelKey(254, 35)).toBe('254/1/35');
+    });
+
+    it('parses valid keys back into their parts', () => {
+        expect(parseSecurityZoneLabelKey('254/1/35')).toEqual({ network: '254', zone: '35' });
+        expect(parseSecurityZoneLabelKey('1/1/1')).toEqual({ network: '1', zone: '1' });
+        expect(parseSecurityZoneLabelKey('254/1/127')).toEqual({ network: '254', zone: '127' });
+    });
+
+    it('round-trips through build and parse', () => {
+        expect(parseSecurityZoneLabelKey(securityZoneLabelKey('254', '35'))).toEqual({ network: '254', zone: '35' });
+    });
+
+    it('rejects malformed keys and out-of-range zones', () => {
+        expect(parseSecurityZoneLabelKey('254/1/FrontDoor')).toBeNull();
+        expect(parseSecurityZoneLabelKey('254/56/35')).toBeNull();
+        expect(parseSecurityZoneLabelKey('254/1/0')).toBeNull();
+        expect(parseSecurityZoneLabelKey('254/1/128')).toBeNull();
+        expect(parseSecurityZoneLabelKey('254/1/')).toBeNull();
+        expect(parseSecurityZoneLabelKey('254/1/35/extra')).toBeNull();
     });
 });

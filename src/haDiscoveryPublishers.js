@@ -3,6 +3,7 @@ const { getDiscoveryTypeForApp, getDiscoveryConfig } = require('./haDiscoveryCon
 const { classifyLightingGroup, typeFromLabelPrefix, classifySecurityZoneDeviceClass } = require('./deviceTypeClassifier');
 const { entityTypeForGroup } = require('./unitTypeClassifier');
 const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
+const { securityZoneLabelKey } = require('./securityZoneLabels');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_PREFIX_WRITE,
@@ -598,7 +599,7 @@ class _HaDiscoveryPublishers {
 
         // Zone labels live under application 1 in the Toolkit project, so an
         // exclusion can be recorded against either key shape.
-        const labelKey = `${network}/1/${zone}`;
+        const labelKey = securityZoneLabelKey(network, zone);
         if (this.exclude.has(key) || this.exclude.has(labelKey)) {
             this.logger.debug(`Excluding security zone ${key} from discovery`);
             const excludedUniqueId = `cgateweb_${network}_${appId}_${zone}`;
@@ -625,7 +626,7 @@ class _HaDiscoveryPublishers {
     _createSecurityZoneDiscovery(networkId, appId, zone) {
         // Zone labels live under application 1 in the Toolkit project (the
         // label importer stores them as {net}/1/{zone} keys).
-        const labelKey = `${networkId}/1/${zone}`;
+        const labelKey = securityZoneLabelKey(networkId, zone);
         const customLabel = this.labelMap.get(labelKey);
         const finalLabel = customLabel || `CBus Security Zone ${networkId}/${appId}/${zone}`;
         if (customLabel) this.labelStats.custom++;
