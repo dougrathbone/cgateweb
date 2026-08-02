@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.22.2] - 2026-08-02
+
+### Fixed
+
+- **Patched a high-severity vulnerability in the development toolchain** (brace-expansion, denial of service via unbounded expansion length) flagged by npm audit. It only affects testing and linting, not the running add-on.
+- Internal: integration tests now fetch C-Gate from a pinned copy hosted on this repository, so releases no longer stall when Schneider rate-limits CI runners. The daily check still verifies the live Schneider download.
+
 ## [1.22.1] - 2026-08-02
 
 ### Fixed
