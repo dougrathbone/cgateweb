@@ -116,7 +116,9 @@ class DeviceStateManager {
         }
 
         if (levelValue !== null) {
-            this.logger.debug(`Level update: ${simpleAddr} = ${levelValue}`);
+            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                this.logger.debug(`Level update: ${simpleAddr} = ${levelValue}`);
+            }
             // FIFO-evict the oldest entry before inserting to keep both maps
             // bounded; _lastSeen tracks the same key space so it must evict in
             // lockstep.
