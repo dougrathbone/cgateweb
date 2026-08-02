@@ -44,9 +44,11 @@
 4. **No internal implementation detail**: no function names, repo file paths, bit layouts, C-Gate response codes, spec section numbers, or commit mechanics. Translate mechanism into user-visible behavior.
 5. Issue references stay, in the form "(#28)" at the end of the bullet's first sentence.
 6. Internal-only changes (refactors, CI, test work, dependency bumps) go in a single short "Internal:" bullet, or are omitted if invisible to users.
+7. **Super concise.** Aim for one line per bullet, two short sentences at most. Summarise the functionality change, not the details of it: what the user can now do, or what behaves differently for them. The how and the why (root cause, diagnosis story, fix mechanics, spec or schema numbers) belong in the issue or the commit message, not the changelog.
+8. Compress caveats to a few words ("Alpha: tested on one panel; arm/disarm not included yet") and drop provenance ("reported by a user", "found in CI") unless it changes what the reader should do.
 
-Good: "**Changing the temperature of an off thermostat no longer turns it on.** Adjusting the target on an off climate card used to start the plant; the command is now ignored with a warning."
-Bad: "Fixed `_sendAirconSetpoint` fallback `HVAC_CODE_BY_MODE.heat` when `modeRaw === 0` (`mqttCommandRouter.js:699`)."
+Good: "**Key switches and bus couplers are now recognised for unit-type classification.** With unit-type classification on, a group driven only by one becomes a binary sensor instead of a light. (#37)"
+Bad: "**Key-input switches and bus couplers are now recognised for unit-type classification** (#37). With "Set entity type from C-Bus unit type" on, a group driven only by a key-input wall switch (`KEY1`, `KEYB2`, `KEYB4`, `KEYGL5`, `KEYE1`–`KEYE4`) or a bus coupler (`BCN4B`) now becomes a `binary_sensor` instead of keeping the default light type and logging "unit types not recognised". Both families are input-only hardware that drives no load. Reported from a live showroom install."
 
 ## Home Assistant Add-on Development
 **Branch**: `develop/homeassistant` - Contains HA add-on development work
