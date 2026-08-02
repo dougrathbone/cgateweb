@@ -19,25 +19,23 @@ const {
     MQTT_STATE_OFF
 } = require('./constants');
 
+// [setting key, discovery type] — the first configured app id that matches
+// the address wins (order preserves the original if-chain).
+const APP_ID_TYPE_TABLE = [
+    ['ha_discovery_cover_app_id', 'cover'],
+    ['ha_discovery_switch_app_id', 'switch'],
+    ['ha_discovery_relay_app_id', 'relay'],
+    ['ha_discovery_pir_app_id', 'pir'],
+    ['ha_discovery_trigger_app_id', 'trigger'],
+    ['ha_discovery_hvac_app_id', 'hvac']
+];
+
 function getDiscoveryTypeForApp(settings, appAddress) {
     const appStr = String(appAddress);
-    if (settings.ha_discovery_cover_app_id && appStr === String(settings.ha_discovery_cover_app_id)) {
-        return 'cover';
-    }
-    if (settings.ha_discovery_switch_app_id && appStr === String(settings.ha_discovery_switch_app_id)) {
-        return 'switch';
-    }
-    if (settings.ha_discovery_relay_app_id && appStr === String(settings.ha_discovery_relay_app_id)) {
-        return 'relay';
-    }
-    if (settings.ha_discovery_pir_app_id && appStr === String(settings.ha_discovery_pir_app_id)) {
-        return 'pir';
-    }
-    if (settings.ha_discovery_trigger_app_id && appStr === String(settings.ha_discovery_trigger_app_id)) {
-        return 'trigger';
-    }
-    if (settings.ha_discovery_hvac_app_id && appStr === String(settings.ha_discovery_hvac_app_id)) {
-        return 'hvac';
+    for (const [settingKey, type] of APP_ID_TYPE_TABLE) {
+        if (settings[settingKey] && appStr === String(settings[settingKey])) {
+            return type;
+        }
     }
     return null;
 }
