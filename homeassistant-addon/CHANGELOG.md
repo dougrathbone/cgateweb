@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.22.0] - 2026-08-02
+
+### Fixed
+
+- **Lights no longer sit at unknown after startup.** The add-on now refreshes every group's level when C-Gate finishes synchronising the network, so entities come up with real values even without "Get all on start" enabled. (#44)
+- **Bridge diagnostics and stale-device entities now come back after an MQTT broker restart**, instead of going missing until the add-on restarted.
+- **The air conditioning option now applies when Home Assistant discovery is off.** MQTT-only installs could not enable aircon readings at all.
+- **Security zone labels now export with proper application names** in the XML label export.
+
+### Changed
+
+- Internal: performance and reliability cleanup across the event pipeline and discovery, faster Live Events rendering, and removal of dead code. No behavior change intended; report anything odd.
+
 ## [1.21.1] - 2026-08-01
 
 ### Fixed
