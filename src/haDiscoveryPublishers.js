@@ -532,6 +532,41 @@ class _HaDiscoveryPublishers {
     }
 
     /**
+     * Shared identity preamble for the discovery creators: resolve the
+     * entity's label (custom label, then optional TREEXML group label, then
+     * the fallback), tally the label-stats bucket it came from, and derive
+     * the unique id, entity-id hint, area and discovery topic.
+     *
+     * @param {Object} spec
+     * @param {string} spec.networkId
+     * @param {string} spec.appId
+     * @param {string} spec.groupId - Address the entity is keyed on.
+     * @param {string} spec.labelKey - Label-map key ("{network}/{app}/{group}"; security zones use their app-1 key).
+     * @param {string} spec.component - HA component (sensor, binary_sensor, climate, …).
+     * @param {string} spec.fallbackLabel - Used when no custom or group label exists.
+     * @param {string|null} [spec.groupLabel] - TREEXML group label (tree-run creators only).
+     * @param {{ labelMap: Map<string, string>, entityIds: Map<string, string>, areas: Map<string, string> }|null} [spec.labels]
+     *   Label lookup source; defaults to the instance maps (event-driven creators).
+     * @returns {{ finalLabel: string, uniqueId: string, entityId: string|undefined, area: string|undefined, discoveryTopic: string }}
+     * @private
+     */
+    _resolveEntityIdentity({ networkId, appId, groupId, labelKey, component, fallbackLabel, groupLabel = null, labels = null }) {
+        const source = labels || { labelMap: this.labelMap, entityIds: this.entityIds, areas: this.areas };
+        const customLabel = source.labelMap.get(labelKey);
+        const finalLabel = customLabel || groupLabel || fallbackLabel;
+        if (customLabel) this.labelStats.custom++;
+        else if (groupLabel) this.labelStats.treexml++;
+        else this.labelStats.fallback++;
+
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
+        const entityId = source.entityIds.get(labelKey);
+        const area = source.areas && source.areas.get(labelKey);
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        return { finalLabel, uniqueId, entityId, area, discoveryTopic };
+    }
+
+    /**
      * Build and publish the temperature sensor discovery payload for one group.
      * State comes from the app-25 temperatureDecoder reading topic
      * (cbus/read/{net}/{app}/{group}/current_temperature, °C = byte/4).
@@ -540,15 +575,11 @@ class _HaDiscoveryPublishers {
      */
     _createTemperatureDiscovery(networkId, appId, group) {
         const labelKey = `${networkId}/${appId}/${group}`;
-        const customLabel = this.labelMap.get(labelKey);
-        const finalLabel = customLabel || `CBus Temperature ${networkId}/${appId}/${group}`;
-        if (customLabel) this.labelStats.custom++;
-        else this.labelStats.fallback++;
-
-        const uniqueId = `cgateweb_${networkId}_${appId}_${group}`;
-        const entityId = this.entityIds.get(labelKey);
-        const area = this.areas && this.areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId: group, labelKey,
+            component: HA_COMPONENT_SENSOR,
+            fallbackLabel: `CBus Temperature ${networkId}/${appId}/${group}`
+        });
 
         const payload = {
             name: null,
@@ -627,15 +658,11 @@ class _HaDiscoveryPublishers {
         // Zone labels live under application 1 in the Toolkit project (the
         // label importer stores them as {net}/1/{zone} keys).
         const labelKey = securityZoneLabelKey(networkId, zone);
-        const customLabel = this.labelMap.get(labelKey);
-        const finalLabel = customLabel || `CBus Security Zone ${networkId}/${appId}/${zone}`;
-        if (customLabel) this.labelStats.custom++;
-        else this.labelStats.fallback++;
-
-        const uniqueId = `cgateweb_${networkId}_${appId}_${zone}`;
-        const entityId = this.entityIds.get(labelKey);
-        const area = this.areas && this.areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId: zone, labelKey,
+            component: HA_COMPONENT_BINARY_SENSOR,
+            fallbackLabel: `CBus Security Zone ${networkId}/${appId}/${zone}`
+        });
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${zone}`;
         const deviceClass = classifySecurityZoneDeviceClass(finalLabel, this.settings);
 
@@ -839,15 +866,11 @@ class _HaDiscoveryPublishers {
      */
     _createNativeAirconDiscovery(networkId, appId, sourceUnit) {
         const labelKey = `${networkId}/${appId}/${sourceUnit}`;
-        const customLabel = this.labelMap.get(labelKey);
-        const finalLabel = customLabel || `CBus HVAC ${networkId}/${appId}/${sourceUnit}`;
-        if (customLabel) this.labelStats.custom++;
-        else this.labelStats.fallback++;
-
-        const uniqueId = `cgateweb_${networkId}_${appId}_${sourceUnit}`;
-        const entityId = this.entityIds.get(labelKey);
-        const area = this.areas && this.areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId: sourceUnit, labelKey,
+            component: HA_COMPONENT_CLIMATE,
+            fallbackLabel: `CBus HVAC ${networkId}/${appId}/${sourceUnit}`
+        });
         const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${sourceUnit}`;
         const writeBase = `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${sourceUnit}`;
@@ -991,7 +1014,7 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _createHvacDiscovery(networkId, appId, groupId, groupLabel) {
-        const { labelMap, entityIds, exclude, areas } = this._labelSnapshot;
+        const { exclude } = this._labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 
         if (exclude.has(labelKey)) {
@@ -999,16 +1022,13 @@ class _HaDiscoveryPublishers {
             return;
         }
 
-        const customLabel = labelMap.get(labelKey);
-        const finalLabel = customLabel || groupLabel || `CBus HVAC Zone ${networkId}/${appId}/${groupId}`;
-        if (customLabel) this.labelStats.custom++;
-        else if (groupLabel) this.labelStats.treexml++;
-        else this.labelStats.fallback++;
-
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const entityId = entityIds.get(labelKey);
-        const area = areas && areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_CLIMATE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId, labelKey,
+            component: HA_COMPONENT_CLIMATE,
+            fallbackLabel: `CBus HVAC Zone ${networkId}/${appId}/${groupId}`,
+            groupLabel,
+            labels: this._labelSnapshot
+        });
 
         const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
 
@@ -1060,7 +1080,7 @@ class _HaDiscoveryPublishers {
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config) {
-        const { labelMap, entityIds, exclude, areas } = this._labelSnapshot;
+        const { exclude } = this._labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 
         if (exclude.has(labelKey)) {
@@ -1068,15 +1088,13 @@ class _HaDiscoveryPublishers {
             return;
         }
 
-        const customLabel = labelMap.get(labelKey);
-        const finalLabel = customLabel || groupLabel || `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`;
-        if (customLabel) this.labelStats.custom++;
-        else if (groupLabel) this.labelStats.treexml++;
-        else this.labelStats.fallback++;
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const entityId = entityIds.get(labelKey);
-        const area = areas && areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${config.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId, labelKey,
+            component: config.component,
+            fallbackLabel: `CBus ${config.defaultType} ${networkId}/${appId}/${groupId}`,
+            groupLabel,
+            labels: this._labelSnapshot
+        });
 
         // HA event entities use a dedicated event topic (not state topic) and must not be retained
         const stateTopic = config.isTrigger
