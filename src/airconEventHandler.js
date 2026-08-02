@@ -115,6 +115,29 @@ class AirconEventHandler {
     }
 
     /**
+     * Edge-triggered warn helper shared by the plant-error and sensor-fault
+     * checks: warns only when the value changes to an active state and rearms
+     * (forgets the key) once it goes inactive again.
+     *
+     * @param {Object} opts
+     * @param {string} opts.key - Dedupe key (network/app/unit).
+     * @param {boolean} opts.active - Whether the condition is currently active.
+     * @param {*} opts.current - The current code/status, for change detection.
+     * @param {Map} opts.map - The per-condition "last warned" map.
+     * @param {string} opts.message - The message to log on a new edge.
+     * @private
+     */
+    _warnOnEdgeTrigger({ key, active, current, map, message }) {
+        if (!active) {
+            map.delete(key);
+            return;
+        }
+        if (map.get(key) === current) return;
+        map.set(key, current);
+        this.logger.warn(message);
+    }
+
+    /**
      * Warn on a non-zero HVAC plant error code (spec §25.6.5) — plant faults are
      * noteworthy. Edge-triggered per unit: logs only when the code changes, and
      * rearms when the plant reports no error (code 0) again.
@@ -125,16 +148,13 @@ class AirconEventHandler {
     _warnOnPlantError(reading) {
         if (reading.errorCode === null || reading.errorCode === undefined) return;
         const unit = reading.sourceUnit || reading.zoneGroup;
-        const key = `${reading.network}/${reading.application}/${unit}`;
-        if (reading.errorCode === 0) {
-            this._lastErrorWarned.delete(key);
-            return;
-        }
-        if (this._lastErrorWarned.get(key) === reading.errorCode) return;
-        this._lastErrorWarned.set(key, reading.errorCode);
-        this.logger.warn(
-            `C-Bus HVAC plant error on unit ${unit}: ${reading.errorDescription} (code ${reading.errorCode})`
-        );
+        this._warnOnEdgeTrigger({
+            key: `${reading.network}/${reading.application}/${unit}`,
+            active: reading.errorCode !== 0,
+            current: reading.errorCode,
+            map: this._lastErrorWarned,
+            message: `C-Bus HVAC plant error on unit ${unit}: ${reading.errorDescription} (code ${reading.errorCode})`
+        });
     }
 
     /**
@@ -148,18 +168,15 @@ class AirconEventHandler {
     _warnOnSensorFault(reading) {
         if (reading.sensorStatus === null || reading.sensorStatus === undefined) return;
         const unit = reading.sourceUnit || reading.zoneGroup;
-        const key = `${reading.network}/${reading.application}/${unit}`;
-        if (reading.sensorStatus < 2) {
-            this._lastSensorWarned.delete(key);
-            return;
-        }
-        if (this._lastSensorWarned.get(key) === reading.sensorStatus) return;
-        this._lastSensorWarned.set(key, reading.sensorStatus);
         const what = reading.sensorStatus >= 3 ? 'total failure' : 'out of calibration';
         const sensorKind = reading.kind === 'humidity' ? 'humidity' : 'temperature';
-        this.logger.warn(
-            `C-Bus HVAC ${sensorKind} sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
-        );
+        this._warnOnEdgeTrigger({
+            key: `${reading.network}/${reading.application}/${unit}`,
+            active: reading.sensorStatus >= 2,
+            current: reading.sensorStatus,
+            map: this._lastSensorWarned,
+            message: `C-Bus HVAC ${sensorKind} sensor on unit ${unit}: ${what} (status ${reading.sensorStatus})`
+        });
     }
 
     /**
