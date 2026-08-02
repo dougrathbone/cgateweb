@@ -873,7 +873,7 @@ input, select, textarea {
 
   // Fetch known areas from HA + labels on load
   function refreshKnownAreas() {
-    fetch(API_BASE + '/api/areas').then(function(r) { return r.json(); }).then(function(data) {
+    api('/api/areas').then(function(data) {
       knownAreas = (data.areas || []);
     }).catch(function() {});
   }
