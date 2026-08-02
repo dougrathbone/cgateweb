@@ -326,6 +326,18 @@ describe('CommandResponseProcessor', () => {
             expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
         });
 
+        it('produces both the discovery refresh and the callback with the same id on one 762', () => {
+            // The command-port path's full effect set: discovery re-fetch here,
+            // plus the callback the bridge uses for the security status sync
+            // and the level resync.
+            const onNetworkSyncComplete = jest.fn();
+            processor.onNetworkSyncComplete = onNetworkSyncComplete;
+            processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
+            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+            expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
+            expect(onNetworkSyncComplete).toHaveBeenCalledTimes(1);
+        });
+
         it('should invoke onNetworkSyncComplete on 762 even with discovery disabled (haDiscovery null)', () => {
             // MQTT-only installs still need their state topics repopulated
             // after a network sync; the callback must not depend on discovery.

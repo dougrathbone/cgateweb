@@ -836,6 +836,39 @@ describe('CgateWebBridge', () => {
                 resyncSpy.mockRestore();
             });
 
+            it('runs all post-sync effects on the event-port 762 path', () => {
+                const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
+                const securitySpy = jest.spyOn(bridge.securityEventHandler, 'requestStatusSync');
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
+
+                expect(bridge.haDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+                expect(securitySpy).toHaveBeenCalledWith('254', 'sync');
+                expect(resyncSpy).toHaveBeenCalledWith('network-sync');
+
+                resyncSpy.mockRestore();
+                securitySpy.mockRestore();
+            });
+
+            it('runs all post-sync effects on the command-port 762 path', () => {
+                // Command-port async event: CommandResponseProcessor invokes the
+                // wired onNetworkSyncComplete callback with the network id; it
+                // must produce the same three effects as the event-port path.
+                const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
+                const securitySpy = jest.spyOn(bridge.securityEventHandler, 'requestStatusSync');
+                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+
+                bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+
+                expect(bridge.haDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
+                expect(securitySpy).toHaveBeenCalledWith('254', 'sync');
+                expect(resyncSpy).toHaveBeenCalledWith('network-sync');
+
+                resyncSpy.mockRestore();
+                securitySpy.mockRestore();
+            });
+
             it('tolerates a 762 line when HA Discovery is not initialized', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 bridge.haDiscovery = null;

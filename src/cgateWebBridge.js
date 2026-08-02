@@ -286,7 +286,7 @@ class CgateWebBridge {
             haDiscovery: null, // Will be set after haDiscovery is initialized
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
-            onNetworkSyncComplete: (_networkId) => this.stateResyncCoordinator.requestResync('network-sync'),
+            onNetworkSyncComplete: (networkId) => this._handleNetworkSyncComplete(networkId),
             logger: this.logger
         });
 
@@ -636,22 +636,11 @@ class CgateWebBridge {
 
         // C-Gate "Network sync ok" status event (code 762, visible at event
         // level 6+): the network finished synchronising, so its tree is now
-        // fully populated. Forward to HA Discovery to re-fetch groups that
-        // were still empty (unsynced) at startup (issue #25). Not a CBusEvent,
-        // so return before the standard parse (avoids a spurious warning).
+        // fully populated. Not a CBusEvent, so return before the standard
+        // parse (avoids a spurious warning).
         const syncedNetworkId = this._parseNetworkSyncComplete(line);
         if (syncedNetworkId) {
-            this.logger.info(`C-Gate event: network ${syncedNetworkId} sync complete`);
-            if (this.haDiscovery) {
-                this.haDiscovery.handleNetworkSyncComplete(syncedNetworkId);
-            }
-            // Post-sync zone-state refresh: deduplicated inside the handler
-            // (one post-762 pair per network per session).
-            this.securityEventHandler.requestStatusSync(syncedNetworkId, 'sync');
-            // Post-sync level refresh: the tree is only fully populated now,
-            // so any startup getall that ran before the sync missed state.
-            // Debounced inside the coordinator (repeated 762s collapse).
-            this.stateResyncCoordinator.requestResync('network-sync');
+            this._handleNetworkSyncComplete(syncedNetworkId);
             return;
         }
 
@@ -700,6 +689,28 @@ class CgateWebBridge {
     }
 
 
+
+    /**
+     * Single entry point for C-Gate's "Network sync ok" (762), reached from
+     * both the event-port line (_processEventLine) and the command-port async
+     * event (CommandResponseProcessor onNetworkSyncComplete). Runs every
+     * post-sync effect exactly once per notification:
+     *   - HA Discovery re-fetches the now fully-populated tree to pick up
+     *     groups that were still empty (unsynced) at startup (issue #25)
+     *   - security zone-state refresh, deduplicated inside the handler
+     *     (one post-762 pair per network per session)
+     *   - lighting level resync: any startup getall that ran before the sync
+     *     missed state (issue #44); debounced inside the coordinator so
+     *     repeated 762s collapse
+     */
+    _handleNetworkSyncComplete(networkId) {
+        this.logger.info(`C-Gate event: network ${networkId} sync complete`);
+        if (this.haDiscovery) {
+            this.haDiscovery.handleNetworkSyncComplete(networkId);
+        }
+        this.securityEventHandler.requestStatusSync(networkId, 'sync');
+        this.stateResyncCoordinator.requestResync('network-sync');
+    }
 
     /**
      * Parses a C-Gate "Network sync ok" status event (event code 762) from an
