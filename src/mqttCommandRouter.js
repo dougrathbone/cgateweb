@@ -374,31 +374,17 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handlePosition(command, topic) {
-        if (!command.getGroup()) {
-            this.logger.warn(`Position command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const cbusPath = this._buildCGatePath(command);
-        const level = command.getLevel();
-
-        if (level !== null) {
-            // Use RAMP command to set cover position
-            // Level is already converted from percentage (0-100) to C-Gate level (0-255)
-            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
-            this._queueCommand(cgateCommand, 'interactive');
-
-            const network = command.getNetwork();
-            const application = command.getApplication();
-            const group = command.getGroup();
-            this.logger.debug(`Setting cover position: ${network}/${application}/${group} to level ${level}`);
-
-            // Start interpolated position updates so HA shows smooth movement
-            // Position payloads always produce a numeric level (or null, excluded above).
-            this._startCoverRamp(network, application, group, /** @type {number} */ (level), null);
-        } else {
-            this.logger.warn(`Invalid position value for topic ${topic}`);
-        }
+        this._queueRampCommand(command, topic, {
+            name: 'Position',
+            priority: 'interactive',
+            invalidText: `Invalid position value for topic ${topic}`,
+            debugLine: (n, a, g, l) => `Setting cover position: ${n}/${a}/${g} to level ${l}`,
+            afterQueue: (level) => {
+                // Start interpolated position updates so HA shows smooth movement
+                // Position payloads always produce a numeric level (or null, excluded above).
+                this._startCoverRamp(command.getNetwork(), command.getApplication(), command.getGroup(), /** @type {number} */ (level), null);
+            }
+        });
     }
 
     /**
@@ -409,23 +395,51 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleTilt(command, topic) {
+        this._queueRampCommand(command, topic, {
+            name: 'Tilt',
+            priority: 'interactive',
+            invalidText: `Invalid tilt value for topic ${topic}`,
+            debugLine: (n, a, g, l) => `Setting cover tilt: ${n}/${a}/${g} to level ${l}`
+        });
+    }
+
+    /**
+     * Shared core for the level-carrying write handlers (position, tilt,
+     * trigger): group guard, RAMP assembly, queue and debug log. The deltas
+     * live in the spec: queue priority, log wording and an optional
+     * after-queue hook (position's ramp tracker).
+     *
+     * @param {CBusCommand} command
+     * @param {string} topic - Original topic for error logging
+     * @param {Object} spec
+     * @param {string} spec.name - Command name for the missing-group warning.
+     * @param {string|null} spec.priority - Queue priority (null = default).
+     * @param {string} spec.invalidText - Warning for an unparseable payload.
+     * @param {(network: string, application: string, group: string, level: string|number) => string} spec.debugLine
+     * @param {(level: string|number) => void} [spec.afterQueue]
+     * @private
+     */
+    _queueRampCommand(command, topic, spec) {
         if (!command.getGroup()) {
-            this.logger.warn(`Tilt command requires device ID on topic ${topic}`);
+            this.logger.warn(`${spec.name} command requires device ID on topic ${topic}`);
             return;
         }
 
-        const cbusPath = this._buildCGatePath(command);
         const level = command.getLevel();
-
-        if (level !== null) {
-            // Use RAMP command to set tilt angle
-            // Level is already converted from percentage (0-100) to C-Gate level (0-255)
-            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
-            this._queueCommand(cgateCommand, 'interactive');
-            this.logger.debug(`Setting cover tilt: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} to level ${level}`);
-        } else {
-            this.logger.warn(`Invalid tilt value for topic ${topic}`);
+        if (level === null || level === undefined) {
+            this.logger.warn(spec.invalidText);
+            return;
         }
+
+        // Level is already converted from percentage (0-100) to C-Gate level (0-255)
+        const cgateCommand = `${CGATE_CMD_RAMP} ${this._buildCGatePath(command)} ${level}${NEWLINE}`;
+        if (spec.priority) {
+            this._queueCommand(cgateCommand, spec.priority);
+        } else {
+            this._queueCommand(cgateCommand);
+        }
+        this.logger.debug(spec.debugLine(command.getNetwork(), command.getApplication(), command.getGroup(), level));
+        if (spec.afterQueue) spec.afterQueue(level);
     }
 
     /**
@@ -510,21 +524,12 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleTrigger(command, topic) {
-        if (!command.getGroup()) {
-            this.logger.warn(`Trigger command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const cbusPath = this._buildCGatePath(command);
-        const level = command.getLevel();
-
-        if (level !== null && level !== undefined) {
-            const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}${NEWLINE}`;
-            this._queueCommand(cgateCommand);
-            this.logger.debug(`Firing trigger: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} at level ${level}`);
-        } else {
-            this.logger.warn(`Invalid trigger payload for topic ${topic}`);
-        }
+        this._queueRampCommand(command, topic, {
+            name: 'Trigger',
+            priority: null,
+            invalidText: `Invalid trigger payload for topic ${topic}`,
+            debugLine: (n, a, g, l) => `Firing trigger: ${n}/${a}/${g} at level ${l}`
+        });
     }
 
     /**
