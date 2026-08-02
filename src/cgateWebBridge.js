@@ -948,20 +948,6 @@ class CgateWebBridge {
         ].filter(Boolean).forEach(l => l.setLevel(level));
     }
 
-    // Legacy method compatibility for tests
-    _connectMqtt() {
-        return this.mqttManager.connect();
-    }
-
-    _connectCommandSocket() {
-        return this.commandConnection.connect();
-    }
-
-    _connectEventSocket() {
-        return this.eventConnection.connect();
-    }
-
-
 }
 
 module.exports = CgateWebBridge;
