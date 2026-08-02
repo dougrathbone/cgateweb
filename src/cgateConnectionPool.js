@@ -69,6 +69,7 @@ class CgateConnectionPool extends EventEmitter {
         this._healthyArray = null; // Cached array of healthy connections
         this.retryCounts = new Array(this.poolSize).fill(0);
         this.pendingReconnects = new Set(); // Tracks indices with scheduled reconnection
+        this._reconnectTimers = new Map(); // index → reconnection timeout handle
         this.connectionInFlight = new Map(); // Tracks in-flight writes per connection
         this.isStarted = false;
         this.isShuttingDown = false;
@@ -151,6 +152,15 @@ class CgateConnectionPool extends EventEmitter {
             clearInterval(this.keepAliveTimer);
             this.keepAliveTimer = null;
         }
+
+        // Cancel any scheduled reconnection attempts so a timer queued before
+        // stop() cannot fire afterwards and resurrect a connection on a
+        // stopped pool (isShuttingDown is reset below, so the callback's own
+        // guard alone could not catch this).
+        for (const handle of this._reconnectTimers.values()) {
+            clearTimeout(handle);
+        }
+        this._reconnectTimers.clear();
         
         // Close all connections
         const closePromises = this.connections.map(conn => {
@@ -347,8 +357,8 @@ class CgateConnectionPool extends EventEmitter {
      * @param {number} index - Connection index
      */
     _scheduleReconnection(connection, index) {
-        if (this.isShuttingDown) return;
-        
+        if (!this.isStarted || this.isShuttingDown) return;
+
         // Prevent multiple reconnection timers for the same index
         if (this.pendingReconnects.has(index)) return;
         this.pendingReconnects.add(index);
@@ -368,9 +378,12 @@ class CgateConnectionPool extends EventEmitter {
             this.logger.warn(`Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${retryCount})`);
         }
         
-        setTimeout(async () => {
+        const handle = setTimeout(async () => {
+            this._reconnectTimers.delete(index);
             this.pendingReconnects.delete(index);
-            if (this.isShuttingDown) return;
+            // Re-check liveness: stop() may have run (and reset isShuttingDown)
+            // while this timer was queued.
+            if (!this.isStarted || this.isShuttingDown) return;
 
             // Clean up old connection before creating replacement
             const oldConn = this.connections[index];
@@ -391,6 +404,7 @@ class CgateConnectionPool extends EventEmitter {
                 // next reconnection attempt via the close handler.
             }
         }, delay);
+        this._reconnectTimers.set(index, handle);
     }
     
     /**

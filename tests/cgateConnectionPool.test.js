@@ -335,6 +335,33 @@ describe('CgateConnectionPool', () => {
 
             pool._createConnection.mockRestore();
         });
+
+        it('should not resurrect a connection when stop() runs before a scheduled reconnect fires', async () => {
+            pool.isStarted = true;
+
+            const conn = { poolIndex: 0, isDestroyed: true };
+            pool.connections[0] = conn;
+
+            const createSpy = jest.spyOn(pool, '_createConnection').mockResolvedValue({ poolIndex: 0 });
+
+            pool._scheduleReconnection(conn, 0);
+            expect(pool.pendingReconnects.has(0)).toBe(true);
+
+            await pool.stop();
+
+            // Advance well past any backoff delay: the queued timer must have
+            // been cancelled by stop(), and even a late fire must not create a
+            // connection on a stopped pool.
+            jest.advanceTimersByTime(120000);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(createSpy).not.toHaveBeenCalled();
+            expect(pool.pendingReconnects.size).toBe(0);
+            expect(pool._reconnectTimers.size).toBe(0);
+
+            createSpy.mockRestore();
+        });
     });
 
     // Helper: configure mock to capture connections and start the pool
