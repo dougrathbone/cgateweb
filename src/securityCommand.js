@@ -3,9 +3,9 @@
 
 /**
  * Command builders for the C-Bus Security application (208 / $D0).
- * Phase 1 is read-only on the bus: the only command is the status request
- * used for initial zone-state sync (spec §5.5.2.1-2). Arm/disarm writes are
- * phase 2 (see docs/SECURITY_INVESTIGATION.md §5).
+ * The bridge is read-only on the bus for this application: the only command
+ * is the status request used for zone-state sync (spec §5.5.2.1-2).
+ * Arm/disarm writes are not implemented (see docs/SECURITY_INVESTIGATION.md §5).
  */
 
 /**

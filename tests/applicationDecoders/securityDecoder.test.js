@@ -1,4 +1,5 @@
 const securityDecoder = require('../../src/applicationDecoders/securityDecoder');
+const { PANEL_TROUBLE_CONDITIONS } = require('../../src/securityPanelConditions');
 
 // Verbatim live captures from a 64-zone Cytech panel (GitHub issue #42, posted
 // 2026-07-27). All lines arrive on the event port as `#`-prefixed comments.
@@ -234,7 +235,7 @@ describe('securityDecoder', () => {
         });
 
         it('exposes the condition list in display order', () => {
-            expect(securityDecoder.PANEL_TROUBLE_CONDITIONS)
+            expect(PANEL_TROUBLE_CONDITIONS)
                 .toEqual(['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire']);
         });
     });

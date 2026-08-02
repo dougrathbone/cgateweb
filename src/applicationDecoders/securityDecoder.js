@@ -2,7 +2,6 @@
 const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
 const { normalizeAppEventLine } = require('./appEventLine');
 const {
-    PANEL_TROUBLE_CONDITIONS,
     PANEL_TROUBLE_VERBS,
     PANEL_TROUBLE_DETAIL_VERBS
 } = require('../securityPanelConditions');
@@ -262,7 +261,8 @@ function decodeLine(line) {
         return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
     }
 
-    // System state verbs (phase 2 builds on these; phase 1 decodes + logs only).
+    // System state verbs (decoded, logged and surfaced to Live Events; the
+    // panel condition sensors build on these — see securityPanelState).
     if (verb === 'arm_ready') {
         return { kind: 'arm_ready', network, application, verb };
     }
@@ -314,6 +314,5 @@ function decodeLine(line) {
 }
 
 module.exports = {
-    appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE,
-    PANEL_TROUBLE_CONDITIONS
+    appId, decodeLine, ZONE_STATE, ZONE_STATE_BY_CODE, ARM_MODE_BY_CODE
 };

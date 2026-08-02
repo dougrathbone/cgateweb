@@ -56,10 +56,11 @@ const SYNC_TRIGGER_SLOTS = {
  * otherwise returns false so the line falls through to raw event capture
  * rather than being silently dropped.
  *
- * Phase 1 scope (zone sensors): zone_sealed/unsealed/open/short events and
- * status reports publish zone state; the remaining system-state verbs
- * (arm_ready, system_arm, alarm_on/off, …) are decoded, logged and surfaced
- * to the Live Events stream only — no MQTT state.
+ * Zone events and status reports publish zone state; panel_trouble readings
+ * and system_arm update the panel condition sensors (see securityPanelState);
+ * the remaining system-state verbs (arm_ready, exit_delay_started, …) are
+ * decoded, logged and surfaced to the Live Events stream only. Arm/disarm
+ * writes are not implemented.
  *
  * This handler also owns the status_request sync dedupe for the whole bridge:
  * every trigger (connect, first traffic, 762 sync-ok) routes through
@@ -192,10 +193,11 @@ class SecurityEventHandler {
             } else if (reading.kind === 'panel_trouble') {
                 this._publishPanelChanges(reading.network, reading.application,
                     this.panelState.applyReading(reading));
+                const description = this._describeSystemEvent(reading);
                 this.logger.info(
-                    `C-Bus Security: ${this._describeSystemEvent(reading)} (${reading.network}/${reading.application})`
+                    `C-Bus Security: ${description} (${reading.network}/${reading.application})`
                 );
-                this._emitSystemEventLog(reading);
+                this._emitSystemEventLog(reading, description);
             } else if (reading.kind === 'status_request') {
                 // Echo of our own request on the event port — consume quietly.
                 if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
@@ -210,12 +212,13 @@ class SecurityEventHandler {
                         this.panelState.applyReading(reading));
                 }
                 // System-state verbs (arm_ready, system_arm, alarm_on/off, …):
-                // phase 2 material — no MQTT state, but log them human-readably
-                // and surface them in the Live Events stream.
+                // no zone MQTT state, but logged human-readably and surfaced
+                // in the Live Events stream.
+                const description = this._describeSystemEvent(reading);
                 this.logger.info(
-                    `C-Bus Security: ${this._describeSystemEvent(reading)} (${reading.network}/${reading.application})`
+                    `C-Bus Security: ${description} (${reading.network}/${reading.application})`
                 );
-                this._emitSystemEventLog(reading);
+                this._emitSystemEventLog(reading, description);
             }
             if (reading.kind !== 'status_request') {
                 this.requestStatusSync(reading.network, 'traffic');
@@ -349,9 +352,11 @@ class SecurityEventHandler {
      * has to render a meaningless level percentage for a security event.
      *
      * @param {SecurityReading} reading
+     * @param {string} description - Human-readable text from _describeSystemEvent
+     *   (computed once by the caller for the INFO log and reused here).
      * @private
      */
-    _emitSystemEventLog(reading) {
+    _emitSystemEventLog(reading, description) {
         let level = 0;
         let type = 'update';
         if (reading.kind === 'alarm_on' || (reading.kind === 'system_arm' && reading.mode !== 0)) {
@@ -362,7 +367,7 @@ class SecurityEventHandler {
         }
         this._emitEventLog(reading.network, reading.application, reading.zone || null, level, type,
             reading.zone ? this._zoneLabel(reading.network, reading.zone) : null,
-            this._describeSystemEvent(reading));
+            description);
     }
 
     /**

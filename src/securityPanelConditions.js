@@ -155,7 +155,6 @@ function describePanelCondition(conditionId, active) {
 
 module.exports = {
     PANEL_CONDITIONS,
-    PANEL_CONDITION_BY_ID,
     PANEL_TROUBLE_CONDITIONS,
     PANEL_TROUBLE_VERBS,
     PANEL_TROUBLE_DETAIL_VERBS,
