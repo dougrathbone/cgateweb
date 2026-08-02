@@ -29,6 +29,10 @@ const { MQTT_RETAINED_STATE_OPTIONS, CGATE_EVENT_NETWORK_SYNC_REGEX } = require(
 const { clampSetting } = require('./utils');
 const { parseRawCaptureTarget } = require('./rawEventCapture');
 
+// Publish options for the raw event capture topic: never retained, prebuilt
+// once (mqtt.js does not mutate the options object) instead of per line.
+const RAW_CAPTURE_MQTT_OPTIONS = Object.freeze({ retain: false, qos: 0 });
+
 /**
  * Main bridge class that connects C-Gate (Clipsal C-Bus automation system) to MQTT.
  * 
@@ -367,12 +371,21 @@ class CgateWebBridge {
      */
     _buildEventLogBuffer() {
         const eventLogMax = Math.max(10, Number(this.settings.eventLogMaxEntries) || 200);
-        this._eventLogBuffer = [];
+        // Circular buffer with a head index: once full, overwriting the oldest
+        // slot is O(1) where Array.shift() was O(n) per event. The array is
+        // only materialized (in order) by getRecent.
+        this._eventLogSize = eventLogMax;
+        this._eventLogBuffer = new Array(eventLogMax);
+        this._eventLogHead = 0;  // slot holding the oldest entry
+        this._eventLogCount = 0; // entries stored (≤ _eventLogSize)
         this._eventLogListeners = new Set();
         this._onEventLog = (entry) => {
-            this._eventLogBuffer.push(entry);
-            if (this._eventLogBuffer.length > eventLogMax) {
-                this._eventLogBuffer.shift();
+            if (this._eventLogCount < this._eventLogSize) {
+                this._eventLogBuffer[(this._eventLogHead + this._eventLogCount) % this._eventLogSize] = entry;
+                this._eventLogCount++;
+            } else {
+                this._eventLogBuffer[this._eventLogHead] = entry;
+                this._eventLogHead = (this._eventLogHead + 1) % this._eventLogSize;
             }
             for (const fn of this._eventLogListeners) {
                 try { fn(entry); } catch (e) { this.logger.debug('Event-log listener threw', { error: e }); }
@@ -383,7 +396,13 @@ class CgateWebBridge {
         this.eventStream = {
             subscribe: (fn) => { this._eventLogListeners.add(fn); },
             unsubscribe: (fn) => { this._eventLogListeners.delete(fn); },
-            getRecent: () => [...this._eventLogBuffer]
+            getRecent: () => {
+                const recent = new Array(this._eventLogCount);
+                for (let i = 0; i < this._eventLogCount; i++) {
+                    recent[i] = this._eventLogBuffer[(this._eventLogHead + i) % this._eventLogSize];
+                }
+                return recent;
+            }
         };
     }
 
@@ -738,7 +757,7 @@ class CgateWebBridge {
             this.mqttManager.publish(
                 `cbus/read/${target.network}/${target.application}/${target.group}/raw`,
                 line,
-                { retain: false, qos: 0 }
+                RAW_CAPTURE_MQTT_OPTIONS
             );
         } catch (e) {
             this.logger.debug(`Raw capture publish failed: ${e.message}`);

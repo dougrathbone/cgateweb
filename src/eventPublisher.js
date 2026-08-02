@@ -33,6 +33,16 @@ const {
     CGATE_LEVEL_MAX
 } = require('./constants');
 
+// Security zone JSON-attributes payloads. Only four zone states exist, so the
+// payload string for each is built once instead of JSON-stringifying per zone
+// per status report. Frozen so the shared strings can't be mutated.
+const SECURITY_ZONE_ATTRIBUTES_PAYLOAD = Object.freeze({
+    sealed: '{"zone_state":"sealed"}',
+    unsealed: '{"zone_state":"unsealed"}',
+    open: '{"zone_state":"open"}',
+    short: '{"zone_state":"short"}'
+});
+
 class EventPublisher {
     /**
      * Creates a new EventPublisher instance.
@@ -50,6 +60,9 @@ class EventPublisher {
         this.settings = options.settings;
         this.publishFn = options.publishFn;
         this.mqttOptions = options.mqttOptions;
+        // Trigger events must never be retained; prebuilt once (mqtt.js does
+        // not mutate the options object) instead of spread per publish.
+        this._triggerMqttOptions = Object.freeze({ ...this.mqttOptions, retain: false });
         this.labelLoader = options.labelLoader || null;
         this.coverRampTracker = options.coverRampTracker || null;
         this.onEventLog = options.onEventLog || null;
@@ -196,7 +209,7 @@ class EventPublisher {
             this._publishIfNeeded(
                 topics.event,
                 eventPayload,
-                { ...this.mqttOptions, retain: false }
+                this._triggerMqttOptions
             );
             return;
         }
@@ -433,11 +446,14 @@ class EventPublisher {
                     reading.zoneState === 'sealed' ? MQTT_STATE_OFF : MQTT_STATE_ON,
                     this.mqttOptions
                 );
-                this._publishIfNeeded(
-                    `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-                    JSON.stringify({ zone_state: reading.zoneState }),
-                    this.mqttOptions
-                );
+                const attributesPayload = SECURITY_ZONE_ATTRIBUTES_PAYLOAD[reading.zoneState];
+                if (attributesPayload) {
+                    this._publishIfNeeded(
+                        `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                        attributesPayload,
+                        this.mqttOptions
+                    );
+                }
             }
         } else if (reading.kind === 'security_panel') {
             // Panel-wide trouble condition (app 208): ON means the trouble is

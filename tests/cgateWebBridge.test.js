@@ -1307,6 +1307,42 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    describe('Live Events ring buffer', () => {
+        it('keeps the most recent entries in order after wrapping', () => {
+            const small = new CgateWebBridge(
+                { ...mockSettings, eventLogMaxEntries: 10 },
+                null,
+                mockCmdSocketFactory,
+                mockEvtSocketFactory
+            );
+
+            for (let i = 1; i <= 25; i++) {
+                small._onEventLog({ ts: i, network: '254', app: '56', group: String(i), level: 255, type: 'on' });
+            }
+
+            const recent = small.eventStream.getRecent();
+            expect(recent).toHaveLength(10);
+            expect(recent.map(e => e.group)).toEqual(['16', '17', '18', '19', '20', '21', '22', '23', '24', '25']);
+        });
+
+        it('returns the partial contents in order before the buffer first fills', () => {
+            const small = new CgateWebBridge(
+                { ...mockSettings, eventLogMaxEntries: 10 },
+                null,
+                mockCmdSocketFactory,
+                mockEvtSocketFactory
+            );
+
+            small._onEventLog({ ts: 1, network: '254', app: '56', group: '1', level: 255, type: 'on' });
+            small._onEventLog({ ts: 2, network: '254', app: '56', group: '2', level: 0, type: 'off' });
+
+            expect(small.eventStream.getRecent().map(e => e.group)).toEqual(['1', '2']);
+            // …and getRecent materializes a fresh array each call
+            small.eventStream.getRecent().push({ group: 'bogus' });
+            expect(small.eventStream.getRecent()).toHaveLength(2);
+        });
+    });
+
     describe('Queue Processing', () => {
         describe('_sendCgateCommand()', () => {
             it('should send commands via connection pool', async () => {
