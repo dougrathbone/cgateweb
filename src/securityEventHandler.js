@@ -2,6 +2,7 @@
 'use strict';
 
 const securityDecoder = require('./applicationDecoders/securityDecoder');
+const { isAppEventLine } = require('./applicationDecoders/appEventLine');
 const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
 const { NEWLINE } = require('./constants');
@@ -97,9 +98,7 @@ class SecurityEventHandler {
      * events or log a spurious "could not parse" warning for status reports).
      */
     isSecurityLine(line) {
-        let s = line.trim();
-        if (s.startsWith('#')) s = s.slice(1).trim();
-        return s.startsWith('security ');
+        return isAppEventLine(line, 'security');
     }
 
     /**

@@ -1,5 +1,6 @@
 // @ts-check
 const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
+const { normalizeAppEventLine } = require('./appEventLine');
 
 /**
  * C-Bus Air Conditioning application (172 / $AC) line decoder.
@@ -132,33 +133,16 @@ function extractSourceUnit(raw) {
  * @returns {object|null} A reading object, or null for unrecognised/malformed lines.
  */
 function decodeLine(line) {
-    // Guard against null / undefined / non-string input
-    if (typeof line !== 'string') return null;
+    // 1. Shared preamble: trim, strip '#', require the "aircon " prefix,
+    //    split trailing metadata.
+    const normalized = normalizeAppEventLine(line, 'aircon');
+    if (!normalized) return null;
 
-    // 1. Trim whitespace
-    let text = line.trim();
+    // 2. Extract sourceUnit from the trailing metadata (aircon-specific).
+    const sourceUnit = normalized.metadata ? extractSourceUnit(normalized.metadata) : null;
 
-    // 2. Strip a single leading "# " or "#" comment marker if present
-    if (text.startsWith('# ')) {
-        text = text.slice(2);
-    } else if (text.startsWith('#')) {
-        text = text.slice(1);
-    }
-    text = text.trim();
-
-    // 3. Must start with "aircon " to be relevant
-    if (!text.startsWith('aircon ')) return null;
-
-    // 4. Extract sourceUnit from trailing metadata BEFORE stripping it
-    const metaIdx = text.indexOf(' #');
-    let sourceUnit = null;
-    if (metaIdx !== -1) {
-        sourceUnit = extractSourceUnit(text.slice(metaIdx));
-        text = text.slice(0, metaIdx);
-    }
-
-    // 5. Tokenize: aircon <verb> <addr> <params...>
-    const tokens = text.trim().split(/\s+/);
+    // 3. Tokenize: aircon <verb> <addr> <params...>
+    const tokens = normalized.text.trim().split(/\s+/);
     // tokens[0] = 'aircon', tokens[1] = verb, tokens[2] = address, tokens[3..] = params
     if (tokens.length < 3) return null;
 

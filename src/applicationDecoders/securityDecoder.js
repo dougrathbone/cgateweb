@@ -1,5 +1,6 @@
 // @ts-check
 const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
+const { normalizeAppEventLine } = require('./appEventLine');
 const {
     PANEL_TROUBLE_CONDITIONS,
     PANEL_TROUBLE_VERBS,
@@ -73,9 +74,52 @@ const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated', 'arm_not_ready'
 ]);
 
+// Zone-event verb → 2-bit state name, hoisted so the dispatch allocates
+// nothing per line.
+const ZONE_STATE_BY_VERB = {
+    zone_sealed: ZONE_STATE.SEALED,
+    zone_unsealed: ZONE_STATE.UNSEALED,
+    zone_open: ZONE_STATE.OPEN,
+    zone_short: ZONE_STATE.SHORT
+};
+
 // Panel-wide trouble conditions and their verbs live in securityPanelConditions
 // so the wire format, the HA entity metadata and the log wording for one
 // condition stay in a single record.
+
+/**
+ * Whether a string is all decimal digits (at least one) — the /^\d+$/ check
+ * without the regex.
+ *
+ * @private
+ */
+function isDigits(s) {
+    if (s.length === 0) return false;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c < 48 || c > 57) return false;
+    }
+    return true;
+}
+
+/**
+ * The last `count` non-empty '/'-separated segments of an address, in order —
+ * the split('/').filter(Boolean) tail without the per-line array.
+ *
+ * @private
+ */
+function lastSegments(addr, count) {
+    const segs = [];
+    let end = addr.length;
+    while (segs.length < count && end > 0) {
+        const slash = addr.lastIndexOf('/', end - 1);
+        const seg = addr.slice(slash + 1, end);
+        if (seg) segs.unshift(seg);
+        if (slash === -1) break;
+        end = slash;
+    }
+    return segs;
+}
 
 /**
  * Parse a C-Bus address //PROJECT/<net>/<app>[/<zone>].
@@ -86,20 +130,20 @@ const ZONE_ADDRESS_VERBS = new Set([
  * @private
  */
 function parseAddress(addr, expectZone) {
-    const parts = addr.split('/').filter(Boolean);
-    if (expectZone && parts.length >= 3) {
-        const zone = parts[parts.length - 1];
-        const application = parts[parts.length - 2];
-        const network = parts[parts.length - 3];
-        if (!/^\d+$/.test(network) || !/^\d+$/.test(application) || !/^\d+$/.test(zone)) return null;
+    const segs = lastSegments(addr, 3);
+    if (expectZone && segs.length >= 3) {
+        const network = segs[segs.length - 3];
+        const application = segs[segs.length - 2];
+        const zone = segs[segs.length - 1];
+        if (!isDigits(network) || !isDigits(application) || !isDigits(zone)) return null;
         const zoneNum = parseInt(zone, 10);
         if (zoneNum < MIN_ZONE || zoneNum > MAX_ZONE) return null;
         return { network, application, zone };
     }
-    if (parts.length >= 2) {
-        const application = parts[parts.length - 1];
-        const network = parts[parts.length - 2];
-        if (!/^\d+$/.test(network) || !/^\d+$/.test(application)) return null;
+    if (segs.length >= 2) {
+        const network = segs[segs.length - 2];
+        const application = segs[segs.length - 1];
+        if (!isDigits(network) || !isDigits(application)) return null;
         return { network, application, zone: null };
     }
     return null;
@@ -175,31 +219,13 @@ function decodeStatusReport2({ network, application, params, verb }) {
  * @returns {object|null} A reading object, or null for unrecognised/malformed lines.
  */
 function decodeLine(line) {
-    // Guard against null / undefined / non-string input
-    if (typeof line !== 'string') return null;
+    // 1. Shared preamble: trim, strip '#', require the "security " prefix,
+    //    split trailing metadata (security has no use for the metadata).
+    const normalized = normalizeAppEventLine(line, 'security');
+    if (!normalized) return null;
 
-    // 1. Trim whitespace
-    let text = line.trim();
-
-    // 2. Strip a single leading "# " or "#" comment marker if present
-    if (text.startsWith('# ')) {
-        text = text.slice(2);
-    } else if (text.startsWith('#')) {
-        text = text.slice(1);
-    }
-    text = text.trim();
-
-    // 3. Must start with "security " to be relevant
-    if (!text.startsWith('security ')) return null;
-
-    // 4. Strip trailing metadata (" #sourceunit=18 OID=…") if present
-    const metaIdx = text.indexOf(' #');
-    if (metaIdx !== -1) {
-        text = text.slice(0, metaIdx);
-    }
-
-    // 5. Tokenize: security <verb> <addr> <params...>
-    const tokens = text.trim().split(/\s+/);
+    // 2. Tokenize: security <verb> <addr> <params...>
+    const tokens = normalized.text.trim().split(/\s+/);
     // tokens[0] = 'security', tokens[1] = verb, tokens[2] = address, tokens[3..] = params
     if (tokens.length < 3) return null;
 
@@ -207,15 +233,15 @@ function decodeLine(line) {
     const addr = tokens[2];
     const params = tokens.slice(3);
 
-    // 6. Parse address //PROJECT/<network>/<application>[/<zone>]
+    // 3. Parse address //PROJECT/<network>/<application>[/<zone>]
     const parsed = parseAddress(addr, ZONE_ADDRESS_VERBS.has(verb));
     if (!parsed) return null;
     const { network, application, zone } = parsed;
 
-    // 7. Dispatch by verb
-    if (verb === 'zone_sealed' || verb === 'zone_unsealed' || verb === 'zone_open' || verb === 'zone_short') {
+    // 4. Dispatch by verb
+    const zoneState = ZONE_STATE_BY_VERB[verb];
+    if (zoneState !== undefined) {
         if (zone === null) return null;
-        const zoneState = ZONE_STATE_BY_CODE[['zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short'].indexOf(verb)];
         return { kind: 'zone', network, application, zone, zoneState, verb };
     }
 

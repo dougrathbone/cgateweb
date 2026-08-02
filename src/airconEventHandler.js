@@ -2,6 +2,7 @@
 'use strict';
 
 const airconDecoder = require('./applicationDecoders/airconDecoder');
+const { isAppEventLine } = require('./applicationDecoders/appEventLine');
 const { buildAirconRefresh } = require('./airconControlRegistry');
 const { NEWLINE } = require('./constants');
 
@@ -61,9 +62,7 @@ class AirconEventHandler {
      * parser (which would log a spurious "could not parse" warning).
      */
     isAirconLine(line) {
-        let s = line.trim();
-        if (s.startsWith('#')) s = s.slice(1).trim();
-        return s.startsWith('aircon ');
+        return isAppEventLine(line, 'aircon');
     }
 
     handleLine(line) {
