@@ -721,6 +721,52 @@ describe('HaDiscovery', () => {
         });
     });
 
+    describe('TreeXML stream stall recovery', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('fails and retries a tree whose stream stalls mid-way (343 seen, 344 never arrives)', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // The stream starts but never completes: data arrives, then silence.
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData('<Network><NetworkNumber>254</NetworkNumber>');
+
+            // The in-flight guard suppresses duplicate requests while streaming.
+            haDiscovery.queueTreeRequest('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // The stall deadline fires and routes to the failure path.
+            jest.advanceTimersByTime(haDiscovery._treeRequestTimeoutMs);
+            expect(haDiscovery.activeTreeSession).toBeNull();
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+
+            // …and the retry re-requests the tree after backoff.
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not fire the stall deadline once the tree completes', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            // The empty-tree failure is already accounted for; advancing past
+            // the stream deadline must not record a second failure.
+            jest.advanceTimersByTime(haDiscovery._treeRequestTimeoutMs);
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+        });
+    });
+
     describe('TreeXML empty-tree retry (network still syncing)', () => {
         beforeEach(() => {
             jest.useFakeTimers();

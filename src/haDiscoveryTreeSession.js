@@ -75,6 +75,13 @@ class _HaDiscoveryTreeSession {
     /** @type {number} */
     _treeRequestTimeoutMs;
 
+    /**
+     * Deadline for a mid-stream TreeXML stall (343 received, 344 never
+     * arrives). Set in handleTreeStart, cleared in handleTreeEnd.
+     * @type {NodeJS.Timeout | null}
+     */
+    _treeStreamDeadlineHandle;
+
     /** @type {number} */
     _maxTreeResyncAttempts;
 
@@ -134,9 +141,13 @@ class _HaDiscoveryTreeSession {
 
     _clearTreeState(networkId) {
         const state = this._treeRequestState.get(networkId);
-        if (!state) return;
-        this._clearTimer(state, 'watchdogHandle');
-        this._clearTimer(state, 'retryHandle');
+        if (state) {
+            this._clearTimer(state, 'watchdogHandle');
+            this._clearTimer(state, 'retryHandle');
+        }
+        if (this.activeTreeSession && this.activeTreeSession.network === String(networkId)) {
+            this._clearTreeStreamDeadline();
+        }
         this._treeRequestState.delete(networkId);
     }
 
@@ -392,9 +403,35 @@ class _HaDiscoveryTreeSession {
             bufferParts: []
         };
 
+        // Session deadline: the request watchdog above only covers "no
+        // response at all". If the stream stalls mid-tree (343 received, 344
+        // never arrives) the session would wedge the in-flight guard in
+        // queueTreeRequest for the rest of the process, so a stalled stream
+        // fails like any other tree failure and is retried.
+        this._clearTreeStreamDeadline();
+        this._treeStreamDeadlineHandle = this._setTimer(this._treeRequestTimeoutMs, () => {
+            this._treeStreamDeadlineHandle = null;
+            const stalledNetwork = this.activeTreeSession ? this.activeTreeSession.network : networkKey;
+            this.activeTreeSession = null;
+            this.treeBufferParts = [];
+            this.treeNetwork = null;
+            this._handleTreeRequestFailure(stalledNetwork, 'tree stream stalled');
+        });
+
         this.treeNetwork = this.activeTreeSession.network;
         this.treeBufferParts = this.activeTreeSession.bufferParts;
         this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork}`);
+    }
+
+    /**
+     * Cancel the mid-stream stall deadline, if any.
+     * @private
+     */
+    _clearTreeStreamDeadline() {
+        if (this._treeStreamDeadlineHandle) {
+            clearTimeout(this._treeStreamDeadlineHandle);
+            this._treeStreamDeadlineHandle = null;
+        }
     }
 
     handleTreeData(statusData) {
@@ -406,6 +443,9 @@ class _HaDiscoveryTreeSession {
     }
 
     handleTreeEnd(_statusData) {
+        // The stream finished (complete or not) — cancel the stall deadline.
+        this._clearTreeStreamDeadline();
+
         if (!this.activeTreeSession) {
             // Backward-compatibility fallback for existing tests/callers that
             // still set treeNetwork/treeBufferParts directly.
