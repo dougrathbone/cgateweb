@@ -454,14 +454,18 @@ describe('LabelLoader', () => {
 
             loader.save({ '254/56/10': 'Via Save' });
 
-            // Wait longer than debounce (500ms) and longer than grace (1000ms)
-            // to confirm only the direct emit fired, not the file-watcher path.
+            // Assert INSIDE the grace window (1000ms): the direct emit from
+            // save() is synchronous, and every watcher event arriving before
+            // this point is suppressed by SELF_WRITE_GRACE_MS by construction,
+            // so a second emit is impossible regardless of event-loop lag.
+            // Waiting longer than the grace (as this test used to) makes the
+            // outcome depend on watcher delivery timing on loaded CI runners.
             setTimeout(() => {
                 expect(handler).toHaveBeenCalledTimes(1);
                 expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Via Save');
                 loader.unwatch();
                 done();
-            }, 1500);
+            }, 800);
         }, 5000);
 
         it('should do nothing when no file path is configured', () => {
