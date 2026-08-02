@@ -348,19 +348,19 @@ describe('SecurityEventHandler', () => {
         expect(consumed).toBe(false);
     });
 
-    it('returns false for a security line that fails to decode so it falls through', () => {
+    it('returns "unparsed" for a security line that fails to decode so the bridge keeps it out of the generic parser', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
         const consumed = handler.handleLine('security some_unknown_verb //MIDSTRM/254/208 1');
-        expect(consumed).toBe(false);
+        expect(consumed).toBe('unparsed');
         expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
     });
 
-    it('returns false for a security line whose application does not match the configured app', () => {
+    it('returns "unparsed" for a security line whose application does not match the configured app', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
         const consumed = handler.handleLine('# security zone_unsealed //MIDSTRM/254/207/58');
-        expect(consumed).toBe(false);
+        expect(consumed).toBe('unparsed');
         expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
     });
 

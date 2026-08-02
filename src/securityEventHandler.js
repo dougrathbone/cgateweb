@@ -2,7 +2,7 @@
 'use strict';
 
 const securityDecoder = require('./applicationDecoders/securityDecoder');
-const { isAppEventLine } = require('./applicationDecoders/appEventLine');
+const { isAppEventLine, LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const { securityZoneLabelKey } = require('./securityZoneLabels');
 const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
@@ -226,12 +226,12 @@ class SecurityEventHandler {
             return true;
         }
         // Recognisable security traffic, but we couldn't decode it or it
-        // targets a different application. Don't consume it — let it fall
-        // through to raw event capture instead of silently dropping it.
+        // targets a different application. Don't consume it — the bridge logs
+        // it as unparsed and keeps it out of the standard parser.
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`Security line not decoded (verb pending support): ${line}`);
         }
-        return false;
+        return LINE_UNPARSED;
     }
 
     /**

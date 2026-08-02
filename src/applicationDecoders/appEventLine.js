@@ -74,4 +74,12 @@ function isAppEventLine(line, prefix) {
     return s.startsWith(PREFIX_WITH_SPACE[prefix] || `${prefix} `);
 }
 
-module.exports = { normalizeAppEventLine, isAppEventLine };
+// Tri-state result of a specialised app handler's handleLine. `true` means the
+// line was consumed; LINE_UNPARSED means it is this app's traffic but was not
+// consumed (the caller should log and keep it out of the generic parser);
+// `false` means the line is not this app's traffic at all (feature disabled
+// included). Returning the state instead of a boolean lets the caller skip a
+// second isAppEventLine classification on its fall-through path.
+const LINE_UNPARSED = 'unparsed';
+
+module.exports = { normalizeAppEventLine, isAppEventLine, LINE_UNPARSED };

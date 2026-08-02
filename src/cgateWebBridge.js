@@ -10,6 +10,7 @@ const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
+const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const DeviceStateManager = require('./deviceStateManager');
@@ -628,7 +629,8 @@ class CgateWebBridge {
 
     /**
      * Delegates native-aircon (app 172) event-line handling to AirconEventHandler.
-     * Returns true when the line was an aircon line and was consumed there.
+     * Returns the handler's tri-state: true (consumed), LINE_UNPARSED (aircon
+     * traffic the handler didn't consume), or false (not aircon traffic).
      */
     _handleAirconLine(line) {
         return this.airconEventHandler.handleLine(line);
@@ -636,18 +638,23 @@ class CgateWebBridge {
 
     /**
      * Delegates security (app 208) event-line handling to SecurityEventHandler.
-     * Returns true when the line was a security line and was consumed there.
+     * Returns the handler's tri-state: true (consumed), LINE_UNPARSED (security
+     * traffic the handler didn't consume), or false (not security traffic).
      */
     _handleSecurityLine(line) {
         return this.securityEventHandler.handleLine(line);
     }
 
     _processEventLine(line) {
-        if (this._handleAirconLine(line)) return;
         // Security lines are `#`-comment-prefixed like aircon lines; consume
         // them before the generic comment-dropping branch so zone events don't
         // publish a bogus OFF and status reports don't warn-spam the parser.
-        if (this._handleSecurityLine(line)) return;
+        // Both handlers classify the line exactly once and report a tri-state,
+        // which the unparsed branches below reuse instead of re-scanning.
+        const airconState = this._handleAirconLine(line);
+        if (airconState === true) return;
+        const securityState = this._handleSecurityLine(line);
+        if (securityState === true) return;
 
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${line}`);
@@ -675,25 +682,17 @@ class CgateWebBridge {
             this.logger.debug(`C-Gate Recv (Evt): ${line}`);
         }
 
-        // Aircon-format lines that weren't consumed above (an unsupported verb
-        // or a different app) are surfaced in raw capture but are never valid
-        // CBusEvents — skip the parse so they don't spam a "Could not parse
-        // event line" warning on every broadcast. Only worth scanning when the
-        // app is configured: unconfigured aircon traffic is either '#'-comment
-        // lines (already dropped above) or not ours to recognize. Evaluated
-        // once per line rather than per check (and not cached on the instance:
-        // settings is a shared, reloadable object).
-        const airconConfigured = !!this.settings.cbus_aircon_app_id;
-        if (airconConfigured && this.airconEventHandler.isAirconLine(line)) {
+        // App lines the handlers recognised but didn't consume (an unsupported
+        // verb or a different app) are surfaced in raw capture but are never
+        // valid CBusEvents — skip the parse so they don't spam a "Could not
+        // parse event line" warning on every broadcast. The handlers already
+        // classified the line, so these reuse their tri-state instead of
+        // re-scanning with isAirconLine/isSecurityLine.
+        if (airconState === LINE_UNPARSED) {
             this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${line}`);
             return;
         }
-
-        // Same for unconsumed security lines, with the same configured gate
-        // (including the '0' kill-switch, matching SecurityEventHandler).
-        const securityAppId = this.settings.cbus_security_app_id;
-        const securityConfigured = !!securityAppId && String(securityAppId) !== '0';
-        if (securityConfigured && this.securityEventHandler.isSecurityLine(line)) {
+        if (securityState === LINE_UNPARSED) {
             this.logger.debug(`Unparsed security line (captured, not a standard event): ${line}`);
             return;
         }

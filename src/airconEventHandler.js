@@ -2,7 +2,7 @@
 'use strict';
 
 const airconDecoder = require('./applicationDecoders/airconDecoder');
-const { isAppEventLine } = require('./applicationDecoders/appEventLine');
+const { isAppEventLine, LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const { buildAirconRefresh } = require('./airconControlRegistry');
 const { NEWLINE } = require('./constants');
 
@@ -106,12 +106,12 @@ class AirconEventHandler {
             return true;
         }
         // Recognisable aircon traffic, but we couldn't decode it or it targets a
-        // different application. Don't consume it — let it fall through to raw
-        // event capture and the standard parser instead of silently dropping it.
+        // different application. Don't consume it — the bridge logs it as
+        // unparsed and keeps it out of the standard parser.
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
             this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
         }
-        return false;
+        return LINE_UNPARSED;
     }
 
     /**
