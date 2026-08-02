@@ -43,4 +43,4 @@ function createErrorHandler(component) {
     return new ErrorHandler(component);
 }
 
-module.exports = { ErrorHandler, createErrorHandler };
+module.exports = { createErrorHandler };
