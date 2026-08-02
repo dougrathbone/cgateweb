@@ -352,12 +352,17 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Cleans up pending relative level operations (timers and listeners).
+     * Cleans up pending relative level operations (timers and listeners) and
+     * any debounced aircon setpoint writes, so no timer fires after shutdown.
      */
     shutdown() {
         if (this.deviceStateManager) {
             this.deviceStateManager.clearAllOperations();
         }
+        for (const pending of this._airconSetpointTimers.values()) {
+            clearTimeout(pending.handle);
+        }
+        this._airconSetpointTimers.clear();
     }
 
     /**

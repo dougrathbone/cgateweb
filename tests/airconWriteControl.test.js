@@ -53,6 +53,18 @@ describe('native HVAC write control (AIRCON commands)', () => {
         expect(queued[0].trim()).toBe('AIRCON SET_ZONE_HVAC_MODE //THEGAFF/254/172 1 0 1 0 0 0 1 3 6400 0');
     });
 
+    it('shutdown() clears pending debounced setpoint timers so nothing fires afterwards', () => {
+        const { router, queued } = makeRouter();
+        router.routeMessage('cbus/write/254/172/202/setpoint', '25');
+        expect(router._airconSetpointTimers.size).toBe(1);
+
+        router.shutdown();
+        expect(router._airconSetpointTimers.size).toBe(0);
+
+        jest.advanceTimersByTime(10000);
+        expect(queued).toHaveLength(0);
+    });
+
     it('publishes the optimistic setpoint immediately while the command is debounced', () => {
         const { router, queued, published } = makeRouter();
         router.routeMessage('cbus/write/254/172/202/setpoint', '25');
