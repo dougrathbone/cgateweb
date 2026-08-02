@@ -601,10 +601,7 @@ class _HaDiscoveryPublishers {
             origin: buildOriginBlock()
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
-        this.discoveryCount++;
+        this._publishEventDrivenConfig(discoveryTopic, payload);
         this.logger.info(`Temperature sensor entity published: ${labelKey} (${finalLabel})`);
     }
 
@@ -687,10 +684,7 @@ class _HaDiscoveryPublishers {
             origin: buildOriginBlock()
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
-        this.discoveryCount++;
+        this._publishEventDrivenConfig(discoveryTopic, payload);
         this.logger.info(`Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`);
     }
 
@@ -792,12 +786,26 @@ class _HaDiscoveryPublishers {
                 origin: buildOriginBlock()
             };
 
-            this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-            this._publishedTopics.add(discoveryTopic);
-            this._eventDrivenDiscoveryTopics.add(discoveryTopic);
-            this.discoveryCount++;
+            this._publishEventDrivenConfig(discoveryTopic, payload);
         }
         this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_CONDITIONS.length} conditions)`);
+    }
+
+    /**
+     * Publish one event-driven discovery config and register it: session-wide
+     * published-topics set (stale cleanup), event-driven set (so tree runs
+     * don't retract it) and the entity counter. Inverse of
+     * {@link _retractEventDrivenConfig}.
+     *
+     * @param {string} topic
+     * @param {Object} payload - Discovery config payload (JSON-stringified here).
+     * @private
+     */
+    _publishEventDrivenConfig(topic, payload) {
+        this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+        this._publishedTopics.add(topic);
+        this._eventDrivenDiscoveryTopics.add(topic);
+        this.discoveryCount++;
     }
 
     /**
@@ -926,10 +934,7 @@ class _HaDiscoveryPublishers {
             origin: buildOriginBlock()
         };
 
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
-        this.discoveryCount++;
+        this._publishEventDrivenConfig(discoveryTopic, payload);
         this.logger.info(`Native HVAC climate entity published: ${labelKey} (${finalLabel})`);
 
         this._createNativeAirconProblemSensors(networkId, appId, sourceUnit, uniqueId, finalLabel, area, readBase);
@@ -982,10 +987,7 @@ class _HaDiscoveryPublishers {
                 }),
                 origin: buildOriginBlock()
             };
-            this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-            this._publishedTopics.add(topic);
-            this._eventDrivenDiscoveryTopics.add(topic);
-            this.discoveryCount++;
+            this._publishEventDrivenConfig(topic, payload);
         }
     }
 
