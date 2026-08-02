@@ -15,17 +15,20 @@ class SseHandler {
         this.eventStream = eventStream;
         this.keepaliveMs = keepaliveMs;
         this.maxConnections = maxConnections;
-        this._activeConnections = 0;
+        // Live connections, each { res, listener, keepaliveInterval }. Tracked
+        // so closeAll() can release event-log listeners and keepalive timers
+        // deterministically on server shutdown instead of relying on the
+        // socket close events that never arrive for an idle SSE stream.
+        this._connections = new Set();
     }
 
     /**
      * Stream recent events followed by live events until the client disconnects.
      */
     handle(req, res) {
-        if (this._activeConnections >= this.maxConnections) {
+        if (this._connections.size >= this.maxConnections) {
             return sendJSON(res, 503, { error: 'Too many event stream connections' });
         }
-        this._activeConnections += 1;
 
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
@@ -60,14 +63,39 @@ class SseHandler {
         }, this.keepaliveMs);
         keepaliveInterval.unref();
 
-        // Clean up on client disconnect
-        req.on('close', () => {
+        const connection = { res, listener, keepaliveInterval };
+        this._connections.add(connection);
+
+        // Clean up on client disconnect or response failure — listen on both
+        // req and res so a destroyed response can't leak the event-log
+        // listener and keepalive timer.
+        const cleanup = () => {
+            if (!this._connections.delete(connection)) return; // already cleaned up
             clearInterval(keepaliveInterval);
-            this._activeConnections = Math.max(0, this._activeConnections - 1);
             if (this.eventStream) {
                 this.eventStream.unsubscribe(listener);
             }
-        });
+        };
+        req.on('close', cleanup);
+        res.on('close', cleanup);
+        res.on('error', cleanup);
+    }
+
+    /**
+     * End every live SSE response and release its listener and keepalive
+     * timer. Called on server shutdown; safe to call with no clients.
+     */
+    closeAll() {
+        for (const connection of [...this._connections]) {
+            this._connections.delete(connection);
+            clearInterval(connection.keepaliveInterval);
+            if (this.eventStream) {
+                this.eventStream.unsubscribe(connection.listener);
+            }
+            try {
+                connection.res.end();
+            } catch { /* already closed */ }
+        }
     }
 }
 

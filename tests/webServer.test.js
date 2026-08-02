@@ -2066,6 +2066,31 @@ describe('WebServer', () => {
             expect(received.join('')).toContain(': keepalive');
         });
 
+        it('close() resolves with a live SSE client and releases its event-log listener', async () => {
+            const listeners = new Set();
+            const mockStream = {
+                subscribe: (fn) => listeners.add(fn),
+                unsubscribe: (fn) => listeners.delete(fn),
+                getRecent: () => []
+            };
+            const sseServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                eventStream: mockStream
+            });
+            await sseServer.start();
+            const ssePort = sseServer._server.address().port;
+
+            await openSSE(ssePort);
+            await waitFor(() => listeners.size === 1, { label: 'the SSE listener to be registered' });
+
+            // Must not hang waiting for the never-ending SSE response, and the
+            // client's event-log listener must be released.
+            await sseServer.close();
+            expect(listeners.size).toBe(0);
+        });
+
         it('filter/search on client side does not affect SSE server-side streaming', async () => {
             // The SSE endpoint streams all events without filtering;
             // filtering is purely a client-side concern.

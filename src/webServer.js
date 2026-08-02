@@ -154,6 +154,12 @@ class WebServer {
             })
             .then(() => new Promise((resolve) => {
                 if (this._server) {
+                    // An SSE response never ends on its own, so server.close()
+                    // would wait for it forever: release the SSE listeners and
+                    // sever live connections first (closeAllConnections is
+                    // available on the ^20.19.0 engines floor).
+                    this._sseHandler.closeAll();
+                    this._server.closeAllConnections();
                     this._server.close(() => {
                         this.logger.info('Web server stopped');
                         resolve(undefined);
