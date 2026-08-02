@@ -37,6 +37,18 @@ class HaBridgeDiagnostics {
         }
     }
 
+    /**
+     * Republish the retained discovery configs. publishNow only sends them
+     * once per session, so after a broker restart without persistence the
+     * entities would stay gone until the add-on restarts. No-op when the
+     * feature is disabled or discovery was never published.
+     */
+    republishDiscovery() {
+        if (!this.settings.ha_bridge_diagnostics_enabled) return;
+        if (!this._discoveryPublished) return;
+        this._publishDiscovery();
+    }
+
     publishNow(reason = 'manual') {
         if (!this.settings.ha_bridge_diagnostics_enabled) {
             return;

@@ -241,6 +241,25 @@ describe('StaleDeviceDetector', () => {
             expect(discoveryCall).toBeDefined();
         });
 
+        it('republishes discovery on broker reconnect (republishDiscovery)', () => {
+            const detector = makeDetector();
+            detector.start();
+            detector.stop();
+            publishFn.mockClear();
+
+            detector.republishDiscovery();
+
+            const discoveryCalls = publishFn.mock.calls.filter(c => c[0].includes('/config'));
+            expect(discoveryCalls).toHaveLength(1);
+            expect(discoveryCalls[0][0]).toBe('homeassistant/sensor/cgateweb_stale_devices/config');
+        });
+
+        it('republishDiscovery is a no-op before start()', () => {
+            const detector = makeDetector();
+            detector.republishDiscovery();
+            expect(publishFn).not.toHaveBeenCalled();
+        });
+
         it('runs an immediate check on start', () => {
             deviceStateManager.getAllLastSeen.mockReturnValue(new Map());
             const detector = makeDetector();

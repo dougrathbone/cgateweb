@@ -34,6 +34,7 @@ class StaleDeviceDetector {
         this.labelLoader = labelLoader || null;
         this.logger = logger || createLogger({ component: 'StaleDeviceDetector' });
         this._timerId = null;
+        this._discoveryPublished = false;
     }
 
     /**
@@ -49,6 +50,7 @@ class StaleDeviceDetector {
         const intervalSec = clampSetting(this.settings.stale_device_check_interval_sec, 60, 3600);
 
         this._publishDiscovery();
+        this._discoveryPublished = true;
         this._check();
 
         if (this._timerId) {
@@ -57,6 +59,17 @@ class StaleDeviceDetector {
         this._timerId = setInterval(() => {
             this._check();
         }, intervalSec * 1000).unref();
+    }
+
+    /**
+     * Republish the retained discovery config. start() only sends it once per
+     * session, so after a broker restart without persistence the entity would
+     * stay gone until the add-on restarts. No-op when start() never ran (or
+     * the feature is disabled).
+     */
+    republishDiscovery() {
+        if (!this._discoveryPublished) return;
+        this._publishDiscovery();
     }
 
     /**

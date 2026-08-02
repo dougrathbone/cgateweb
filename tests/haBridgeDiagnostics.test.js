@@ -50,7 +50,7 @@ describe('HaBridgeDiagnostics', () => {
         );
     });
 
-    test('does not republish discovery after initial call', () => {
+    test('does not republish discovery on every publishNow', () => {
         diagnostics.publishNow('first');
         publishFn.mockClear();
 
@@ -62,6 +62,41 @@ describe('HaBridgeDiagnostics', () => {
             expect.any(String),
             expect.any(Object)
         );
+    });
+
+    test('republishes discovery on broker reconnect (republishDiscovery)', () => {
+        diagnostics.publishNow('first');
+        publishFn.mockClear();
+
+        diagnostics.republishDiscovery();
+
+        expect(publishFn).toHaveBeenCalledTimes(8); // 8 discovery configs only
+        expect(publishFn).toHaveBeenCalledWith(
+            'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
+            expect.any(String),
+            { retain: true, qos: 0 }
+        );
+        // …and regular publishNow still doesn't repeat them afterwards
+        publishFn.mockClear();
+        diagnostics.publishNow('second');
+        expect(publishFn).not.toHaveBeenCalledWith(
+            expect.stringContaining('/config'),
+            expect.any(String),
+            expect.any(Object)
+        );
+    });
+
+    test('republishDiscovery is a no-op before the first publishNow and when disabled', () => {
+        diagnostics.republishDiscovery();
+        expect(publishFn).not.toHaveBeenCalled();
+
+        const disabled = new HaBridgeDiagnostics(
+            { ...settings, ha_bridge_diagnostics_enabled: false },
+            publishFn,
+            getStatusFn
+        );
+        disabled.republishDiscovery();
+        expect(publishFn).not.toHaveBeenCalled();
     });
 
     test('does not publish when disabled', () => {

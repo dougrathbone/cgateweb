@@ -1309,6 +1309,24 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    describe('MQTT reconnect replay', () => {
+        it('republishes diagnostics and stale-device discovery configs on broker reconnect', () => {
+            const diagnosticsSpy = jest.spyOn(bridge.haBridgeDiagnostics, 'republishDiscovery');
+            const staleSpy = jest.spyOn(bridge.staleDeviceDetector, 'republishDiscovery');
+            const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
+
+            bridge.mqttManager.emit('reconnect');
+
+            expect(resyncSpy).toHaveBeenCalledWith('mqtt-reconnect');
+            expect(diagnosticsSpy).toHaveBeenCalled();
+            expect(staleSpy).toHaveBeenCalled();
+
+            diagnosticsSpy.mockRestore();
+            staleSpy.mockRestore();
+            resyncSpy.mockRestore();
+        });
+    });
+
     describe('Live Events ring buffer', () => {
         it('keeps the most recent entries in order after wrapping', () => {
             const small = new CgateWebBridge(

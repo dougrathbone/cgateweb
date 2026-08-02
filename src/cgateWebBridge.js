@@ -444,8 +444,14 @@ class CgateWebBridge {
         });
 
         // A mid-session broker reconnect may have dropped the retained discovery
-        // configs along with the state, so this path republishes both.
-        this.mqttManager.on('reconnect', () => this.stateResyncCoordinator.requestResync('mqtt-reconnect'));
+        // configs along with the state, so this path republishes both. The
+        // diagnostics and stale-device configs bypass HaDiscovery's recorder,
+        // so they are replayed here explicitly.
+        this.mqttManager.on('reconnect', () => {
+            this.stateResyncCoordinator.requestResync('mqtt-reconnect');
+            this.haBridgeDiagnostics.republishDiscovery();
+            this.staleDeviceDetector.republishDiscovery();
+        });
 
         // Data processing handlers - pass connection for per-connection line processing
         this.commandConnectionPool.on('data', (data, connection) => this._handleCommandData(data, connection));
