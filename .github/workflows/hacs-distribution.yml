@@ -180,16 +180,16 @@ jobs:
       fail-fast: false
       matrix:
         cgate:
-          # 3.3.1 is a custom (non-default) download URL, so cgate-install.sh
-          # requires the zip's sha256 (computed from the Schneider download).
+          # Self-hosted copies from the ci-assets release: download.se.com
+          # rate-limits GitHub runner IPs, which failed release pipelines
+          # twice. The daily scheduled cgate-download-check in ci.yml still
+          # verifies the live Schneider URLs and pins.
           - version: "3.3.1"
-            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
             sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
-          # 3.3.2 is the install script's built-in default URL; the empty
-          # sha256 exercises the script's built-in pinned checksum.
           - version: "3.3.2"
-            url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2"
-            sha256: ""
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip"
+            sha256: "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
