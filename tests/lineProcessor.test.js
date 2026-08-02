@@ -1,4 +1,4 @@
-const { LineProcessor, processLines } = require('../src/lineProcessor');
+const { LineProcessor } = require('../src/lineProcessor');
 
 describe('LineProcessor', () => {
     let processor;
@@ -200,42 +200,5 @@ describe('LineProcessor', () => {
             // No lines emitted since there were no newlines
             expect(processedLines).toEqual([]);
         });
-    });
-});
-
-describe('processLines utility function', () => {
-    let processedLines;
-
-    beforeEach(() => {
-        processedLines = [];
-    });
-
-    it('should process complete lines', () => {
-        const remaining = processLines('line1\nline2\n', (line) => processedLines.push(line));
-        expect(processedLines).toEqual(['line1', 'line2']);
-        expect(remaining).toBe('');
-    });
-
-    it('should handle Buffer input', () => {
-        const buffer = Buffer.from('line1\nline2\n');
-        const remaining = processLines(buffer, (line) => processedLines.push(line));
-        expect(processedLines).toEqual(['line1', 'line2']);
-        expect(remaining).toBe('');
-    });
-
-    it('should respect custom options', () => {
-        const remaining = processLines(
-            '  line1  \n  line2  \n',
-            (line) => processedLines.push(line),
-            { trimLines: false }
-        );
-        expect(processedLines).toEqual(['  line1  ', '  line2  ']);
-        expect(remaining).toBe('');
-    });
-
-    it('should return remaining partial buffer for incomplete input', () => {
-        const remaining = processLines('line1\npartial', (line) => processedLines.push(line));
-        expect(processedLines).toEqual(['line1']);
-        expect(remaining).toBe('partial');
     });
 });

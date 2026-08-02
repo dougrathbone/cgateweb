@@ -173,23 +173,6 @@ class LineProcessor {
     }
 }
 
-/**
- * Convenience function for simple line-by-line processing.
- * @param {Buffer|string} data - Data to process
- * @param {function} lineProcessor - Function to call for each line
- * @param {Object} options - Processor options
- * @returns {string} - Remaining partial line buffer
- */
-function processLines(data, lineProcessor, options = {}) {
-    const processor = new LineProcessor(options);
-    processor.processData(data, lineProcessor);
-    const remaining = processor.getBuffer();
-    processor.clearBuffer();
-    processor.close();
-    return remaining;
-}
-
 module.exports = {
-    LineProcessor,
-    processLines
+    LineProcessor
 };
