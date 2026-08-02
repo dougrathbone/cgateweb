@@ -1,6 +1,6 @@
 // @ts-check
 const { createLogger } = require('./logger');
-const { clampSetting, evictOldestFifo, temperatureToCbusLevel } = require('./utils');
+const { clampSetting, evictOldestFifo } = require('./utils');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
@@ -164,15 +164,9 @@ class EventPublisher {
         if (isPirSensor) {
             // PIR sensors: state based on action (motion detected/cleared)
             state = actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF;
-        } else if (isCover) {
-            // Covers: state is open/closed based on raw level, not quantized percent.
-            // rawLevel 1-2 rounds to 0% but the cover IS open.
-            state = rawLevel !== null
-                ? ((rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
-                : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         } else {
-            // Lighting devices: state based on raw level (avoids quantization loss
-            // where rawLevel 1-2 rounds to 0% but the light IS on)
+            // Covers and lighting: state based on raw level, not quantized
+            // percent — rawLevel 1-2 rounds to 0% but the device IS on/open.
             state = rawLevel !== null
                 ? ((rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
                 : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
@@ -468,41 +462,6 @@ class EventPublisher {
     }
 
     /**
-     * Convert a C-Bus level value (0-255) to a temperature in °C.
-     *
-     * HVAC-via-lighting temperature encoding (the ha_discovery_hvac_app_id
-     * lighting-bridge pattern — NOT the native Air Conditioning app 172):
-     *   A lighting group level (0-255) is mapped to a setpoint/temperature using
-     *   a 0.5°C-resolution fixed-point scheme across a 0–50°C range:
-     *     temperature_celsius = level / 2
-     *   This gives: level 0 = 0.0°C, level 100 = 50.0°C, level 50 = 25.0°C
-     *
-     * This mapping is interpreted by the PAC/touchscreen logic that the group
-     * feeds; adjust that logic, not this code, if your resolution differs.
-     * (Native read-only Air Conditioning temperature decoding lives separately
-     * in src/applicationDecoders/airconDecoder.js.)
-     *
-     * @param {number} level - C-Bus raw level (0-255)
-     * @returns {number} Temperature in degrees Celsius
-     * @private
-     */
-    _cbusLevelToTemperature(level) {
-        return level / 2;
-    }
-
-    /**
-     * Convert a temperature in °C to a C-Bus level value (0-255).
-     * Inverse of _cbusLevelToTemperature.
-     *
-     * @param {number} tempCelsius - Temperature in degrees Celsius
-     * @returns {number} C-Bus raw level (0-255), clamped to valid range
-     * @private
-     */
-    _temperatureToCbusLevel(tempCelsius) {
-        return temperatureToCbusLevel(tempCelsius);
-    }
-
-    /**
      * Publish HVAC events to climate-specific MQTT topics.
      *
      * When C-Gate reports a level change on an HVAC group address, we interpret it
@@ -527,7 +486,9 @@ class EventPublisher {
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
 
         if (rawLevel !== null) {
-            const tempCelsius = this._cbusLevelToTemperature(rawLevel);
+            // HVAC-via-lighting temperature encoding: level / 2 across a
+            // 0-50C range at 0.5C resolution (level 0 = 0.0C, 100 = 50.0C).
+            const tempCelsius = rawLevel / 2;
             const tempStr = tempCelsius.toFixed(1);
 
             if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
