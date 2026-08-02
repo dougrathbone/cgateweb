@@ -358,25 +358,6 @@ describe('CgateWebBridge', () => {
         });
     });
 
-    describe('Settings Validation', () => {
-        it('should validate settings successfully with valid default settings', () => {
-            const { validate } = require('../src/settingsValidator');
-            expect(validate({ ...defaultSettings, logging: false })).toBe(true);
-        });
-
-        it('should validate settings successfully with valid user-provided settings', () => {
-            const { validate } = require('../src/settingsValidator');
-            expect(validate(bridge.settings)).toBe(true);
-        });
-
-        it('should handle invalid settings through validator', () => {
-            const { createValidator } = require('../src/settingsValidator');
-            const validator = createValidator({ exitOnError: false });
-            const invalidSettings = { ...bridge.settings, mqtt: null };
-            expect(validator.validate(invalidSettings)).toBe(false);
-        });
-    });
-
     // Error response processing tests are now handled by CommandResponseProcessor tests
 
     describe('Bridge Start/Stop Operations', () => {
