@@ -34,13 +34,16 @@ class StateResyncCoordinator {
      * @param {Object} deps.settings
      * @param {ReturnType<typeof import('./logger').createLogger>} deps.logger
      * @param {() => (Object|null)} deps.getHaDiscovery - late-bound: haDiscovery is built after the bridge constructor
-     * @param {{ sendGetallLevels: Function, sendSecurityStatusRequests: Function }} deps.initializationService
+     * @param {() => ({ sendGetallLevels: Function, sendSecurityStatusRequests: Function }|null)} deps.getInitializationService
+     *   late-bound: the coordinator is built in _buildSubsystems, which runs
+     *   before the bridge assigns its initializationService. Taking the service
+     *   by value there captured undefined and threw on every resync (issue #44).
      */
-    constructor({ settings, logger, getHaDiscovery, initializationService }) {
+    constructor({ settings, logger, getHaDiscovery, getInitializationService }) {
         this.settings = settings;
         this.logger = logger;
         this.getHaDiscovery = getHaDiscovery;
-        this.initializationService = initializationService;
+        this.getInitializationService = getInitializationService;
 
         /** @type {NodeJS.Timeout|null} */
         this._pending = null;
@@ -104,6 +107,15 @@ class StateResyncCoordinator {
         const republishDiscovery = pendingTriggers.some((t) => TRIGGERS_NEEDING_DISCOVERY_REPUBLISH.has(t));
         this._pendingTriggers.clear();
 
+        const initializationService = this.getInitializationService();
+        if (!initializationService) {
+            // Resync runs from a timer, so anything thrown here is an uncaught
+            // exception that takes the whole bridge down. Skipping a refresh is
+            // recoverable; dying is not.
+            this.logger.warn(`State resync (${triggers}) skipped: initialization service unavailable`);
+            return;
+        }
+
         let configs = 0;
         if (republishDiscovery) {
             const haDiscovery = this.getHaDiscovery();
@@ -114,7 +126,7 @@ class StateResyncCoordinator {
         // exactly when someone is likely pressing switches (they just restarted
         // HA). Startup's getall gets away with normal priority because nothing
         // competes with it; here a user command must not queue behind the flood.
-        const netapps = this.initializationService.sendGetallLevels(null, { priority: 'bulk' });
+        const netapps = initializationService.sendGetallLevels(null, { priority: 'bulk' });
 
         // Security panels do not answer lighting-style getall (spec §5.9), so the
         // zone sensors need their own status_request pair or they would go stale
@@ -122,7 +134,7 @@ class StateResyncCoordinator {
         // resolved from ha_discovery_networks, not from the getall pairs: the
         // security app is deliberately absent from those, so an install with
         // ha_discovery_networks set but no getall_networks still resyncs zones.
-        this.initializationService.sendSecurityStatusRequests('resync');
+        initializationService.sendSecurityStatusRequests('resync');
 
         if (netapps.length === 0) {
             this.logger.debug(

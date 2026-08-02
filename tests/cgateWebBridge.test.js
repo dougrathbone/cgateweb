@@ -1484,6 +1484,37 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    // The coordinator is built inside _buildSubsystems, before the bridge
+    // assigns this.initializationService. Passing the property by value there
+    // captured undefined and every resync threw
+    // "Cannot read properties of undefined (reading 'sendGetallLevels')",
+    // killing the process (issue #44). The wiring tests above all stub
+    // requestResync, so nothing exercised the real timer path until now.
+    describe('state resync execution against a real bridge', () => {
+        let bridge;
+        beforeEach(() => {
+            jest.useFakeTimers();
+            bridge = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+        });
+        afterEach(() => {
+            bridge.stateResyncCoordinator.dispose();
+            jest.useRealTimers();
+            jest.restoreAllMocks();
+        });
+
+        it('runs a debounced resync through the bridge initialization service', () => {
+            const getall = jest.spyOn(bridge.initializationService, 'sendGetallLevels').mockReturnValue([]);
+            const security = jest.spyOn(bridge.initializationService, 'sendSecurityStatusRequests')
+                .mockImplementation(() => {});
+
+            bridge.stateResyncCoordinator.requestResync('network-sync');
+            expect(() => jest.runOnlyPendingTimers()).not.toThrow();
+
+            expect(getall).toHaveBeenCalledWith(null, { priority: 'bulk' });
+            expect(security).toHaveBeenCalledWith('resync');
+        });
+    });
+
     describe('reloadSettings()', () => {
         let bridge;
         beforeEach(() => {

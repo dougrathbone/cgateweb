@@ -266,7 +266,9 @@ class CgateWebBridge {
             settings: this.settings,
             logger: this.logger,
             getHaDiscovery: this._getHaDiscovery,
-            initializationService: this.initializationService
+            // Late-bound: initializationService is assigned after
+            // _buildSubsystems returns, so it must be read live, not captured.
+            getInitializationService: () => this.initializationService
         });
 
         // Tracks CNI/PCI connectivity per C-Bus network (see networkInterfaceMonitor).

@@ -34,7 +34,7 @@ describe('StateResyncCoordinator', () => {
             settings,
             logger,
             getHaDiscovery: () => haDiscovery,
-            initializationService
+            getInitializationService: () => initializationService
         });
     });
 
@@ -135,6 +135,15 @@ describe('StateResyncCoordinator', () => {
             jest.advanceTimersByTime(5000);
             expect(commandQueue.add).not.toHaveBeenCalled();
             expect(logger.debug).toHaveBeenCalledWith(expect.stringContaining('no getall'));
+        });
+
+        // The resync fires from a timer, so a throw here is an uncaught
+        // exception that kills the bridge rather than a skipped refresh.
+        it('warns instead of throwing when the init service is not available yet', () => {
+            initializationService = null;
+            coordinator.requestResync('ha-birth');
+            expect(() => jest.advanceTimersByTime(5000)).not.toThrow();
+            expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('initialization service unavailable'));
         });
     });
 
