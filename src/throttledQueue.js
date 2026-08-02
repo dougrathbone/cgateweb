@@ -29,6 +29,15 @@ class ThrottledQueue {
             normal: [],
             bulk: []
         };
+        // Per-priority dequeue head: consumed items free their slot in place
+        // instead of an O(n) Array.shift() per dequeue/drop. Compacted when
+        // the consumed prefix dominates the array, reset when fully drained.
+        this._queueHeads = {
+            critical: 0,
+            interactive: 0,
+            normal: 0,
+            bulk: 0
+        };
         this._priorityOrder = ['critical', 'interactive', 'normal', 'bulk'];
         this._timer = null;
         this._isProcessing = false;
@@ -145,22 +154,48 @@ class ThrottledQueue {
 
     _dequeueOneItem() {
         for (const priority of this._priorityOrder) {
-            const queue = this._queues[priority];
-            if (queue.length > 0) {
+            if (this._queueLength(priority) > 0) {
                 this._length--;
-                return queue.shift();
+                return this._takeFromQueue(priority);
             }
         }
         return undefined;
+    }
+
+    _queueLength(priority) {
+        return this._queues[priority].length - this._queueHeads[priority];
+    }
+
+    /**
+     * Remove and return the head item of one priority queue, advancing the
+     * head index. Compacts the underlying array when the consumed prefix is
+     * at least half of it (and 64+ slots), resets it when fully drained.
+     * @private
+     */
+    _takeFromQueue(priority) {
+        const queue = this._queues[priority];
+        const head = this._queueHeads[priority];
+        const item = queue[head];
+        queue[head] = undefined; // free the slot for GC
+        const newHead = head + 1;
+        if (newHead === queue.length) {
+            this._queues[priority] = [];
+            this._queueHeads[priority] = 0;
+        } else if (newHead >= 64 && newHead * 2 >= queue.length) {
+            this._queues[priority] = queue.slice(newHead);
+            this._queueHeads[priority] = 0;
+        } else {
+            this._queueHeads[priority] = newHead;
+        }
+        return item;
     }
 
     _dropOneItem() {
         // Preserve critical/interactive commands where possible by dropping bulk first.
         const dropOrder = ['bulk', 'normal', 'interactive', 'critical'];
         for (const priority of dropOrder) {
-            const queue = this._queues[priority];
-            if (queue.length > 0) {
-                queue.shift();
+            if (this._queueLength(priority) > 0) {
+                this._takeFromQueue(priority);
                 this._length--;
                 this._droppedCount++;
                 if (this._droppedCount === 1 || this._droppedCount % 100 === 0) {
@@ -182,6 +217,7 @@ class ThrottledQueue {
 
     clear() {
         this._queues = { critical: [], interactive: [], normal: [], bulk: [] };
+        this._queueHeads = { critical: 0, interactive: 0, normal: 0, bulk: 0 };
         this._length = 0;
         this._isProcessing = false;
         this._active = false;
@@ -210,10 +246,10 @@ class ThrottledQueue {
             dropped: this._droppedCount,
             maxSize: this._maxSize,
             byPriority: {
-                critical: this._queues.critical.length,
-                interactive: this._queues.interactive.length,
-                normal: this._queues.normal.length,
-                bulk: this._queues.bulk.length
+                critical: this._queueLength('critical'),
+                interactive: this._queueLength('interactive'),
+                normal: this._queueLength('normal'),
+                bulk: this._queueLength('bulk')
             }
         };
     }
