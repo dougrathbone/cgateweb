@@ -78,10 +78,6 @@ function isValidCgatePassword(pass) {
 }
 
 module.exports = {
-    MIN_TCP_PORT,
-    MAX_TCP_PORT,
-    CGATE_IDENTIFIER_PATTERN,
-    CGATE_PASSWORD_PATTERN,
     isPortInRange,
     isValidMqttAddress,
     isValidCgateProjectName,
