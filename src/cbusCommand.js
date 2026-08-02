@@ -24,6 +24,22 @@ const {
 
 const logger = createLogger({ component: 'CBusCommand' });
 
+// Command types accepted on cbus/write topics, hoisted so validating an
+// inbound message doesn't allocate the list each time.
+const VALID_COMMAND_TYPES = new Set([
+    MQTT_CMD_TYPE_GETALL,
+    MQTT_CMD_TYPE_GETTREE,
+    MQTT_CMD_TYPE_SWITCH,
+    MQTT_CMD_TYPE_RAMP,
+    MQTT_CMD_TYPE_POSITION,       // Cover position (0-100%)
+    MQTT_CMD_TYPE_TILT,           // Cover tilt angle (0-100%)
+    MQTT_CMD_TYPE_STOP,           // Stop cover movement
+    MQTT_CMD_TYPE_TRIGGER,        // Fire a C-Bus trigger group
+    MQTT_CMD_TYPE_HVAC_SETPOINT,  // HVAC temperature setpoint
+    MQTT_CMD_TYPE_HVAC_MODE,      // HVAC operating mode
+    MQTT_CMD_TYPE_HVAC_FAN_MODE   // HVAC fan mode
+]);
+
 /**
  * Represents an MQTT command that will be translated to a C-Gate command.
  * 
@@ -113,20 +129,7 @@ class CBusCommand {
             }
 
             // Validate command type
-            const validCommandTypes = [
-                MQTT_CMD_TYPE_GETALL,
-                MQTT_CMD_TYPE_GETTREE,
-                MQTT_CMD_TYPE_SWITCH,
-                MQTT_CMD_TYPE_RAMP,
-                MQTT_CMD_TYPE_POSITION,       // Cover position (0-100%)
-                MQTT_CMD_TYPE_TILT,           // Cover tilt angle (0-100%)
-                MQTT_CMD_TYPE_STOP,           // Stop cover movement
-                MQTT_CMD_TYPE_TRIGGER,        // Fire a C-Bus trigger group
-                MQTT_CMD_TYPE_HVAC_SETPOINT,  // HVAC temperature setpoint
-                MQTT_CMD_TYPE_HVAC_MODE,      // HVAC operating mode
-                MQTT_CMD_TYPE_HVAC_FAN_MODE   // HVAC fan mode
-            ];
-            if (!validCommandTypes.includes(this._commandType)) {
+            if (!VALID_COMMAND_TYPES.has(this._commandType)) {
                 this._logger.warn(`Invalid MQTT command type: ${this._commandType}`);
                 this._isValid = false;
                 this._parsed = true;
