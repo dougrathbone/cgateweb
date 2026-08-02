@@ -5,11 +5,13 @@ const { sendJSON, sanitizePlainObject, isUnsafeObjectKey } = require('./httpHelp
 const { readRequestBody, parseMultipart } = require('./bodyReader');
 
 const CBUS_APP_NAMES = {
+    1: 'Security Zones',
     56: 'Lighting',
     136: 'Heating',
     172: 'Air Conditioning',
     202: 'Trigger Groups',
-    203: 'Blinds'
+    203: 'Blinds',
+    208: 'Security'
 };
 
 /**
