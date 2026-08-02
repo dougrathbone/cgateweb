@@ -97,4 +97,4 @@ class NetworkInterfaceMonitor {
     }
 }
 
-module.exports = { NetworkInterfaceMonitor, RUNNING_STATE };
+module.exports = { NetworkInterfaceMonitor };
