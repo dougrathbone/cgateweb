@@ -431,6 +431,11 @@ class CgateConnectionPool extends EventEmitter {
             this._healthyArray = Array.from(this.healthyConnections);
         }
 
+        // Single healthy connection: the sort is identity, so skip the copy.
+        if (this._healthyArray.length === 1) {
+            return this._healthyArray;
+        }
+
         return [...this._healthyArray].sort((a, b) => {
             const aWritable = a.isWritable !== false ? 1 : 0;
             const bWritable = b.isWritable !== false ? 1 : 0;
