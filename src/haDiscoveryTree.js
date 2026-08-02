@@ -382,19 +382,6 @@ function collectUnitTypesByGroup(networkData, targetApps) {
     return collectUnitTypeData(networkData, targetApps).index;
 }
 
-// Whole-network diagnostic view: every unrecognised type anywhere on the
-// network, including units bound to no application at all. Discovery
-// deliberately does NOT use this (see collectUnitTypeData: the log line it feeds
-// is about classifiable hardware only) — it is here for callers that genuinely
-// want an inventory of what the classifier does not know.
-/**
- * @param {any} networkData
- * @returns {string[]}
- */
-function unknownUnitTypes(networkData) {
-    return collectUnitTypeData(networkData, [], { scopeUnknownTypesToIndex: false }).unknownTypes;
-}
-
 module.exports = {
     findNetworkData,
     collectUnitGroups,
@@ -405,6 +392,5 @@ module.exports = {
     unitHasDeviceData,
     unitHasUnsyncedGroups,
     collectUnitTypeData,
-    collectUnitTypesByGroup,
-    unknownUnitTypes
+    collectUnitTypesByGroup
 };

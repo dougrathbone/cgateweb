@@ -1,4 +1,4 @@
-const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups, collectUnitTypesByGroup, unknownUnitTypes, collectUnitTypeData } = require('../src/haDiscoveryTree');
+const { findNetworkData, collectUnitGroups, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature, unitHasDeviceData, unitHasUnsyncedGroups, collectUnitTypesByGroup, collectUnitTypeData } = require('../src/haDiscoveryTree');
 
 describe('findNetworkData', () => {
     it('should return null when treeData is null', () => {
@@ -697,21 +697,5 @@ describe('collectUnitTypesByGroup', () => {
         };
 
         expect(collectUnitTypeData(network, ['56']).unknownTypes).toEqual(['WIDGET9000']);
-    });
-
-    it('lists distinct unrecognised unit types', () => {
-        const network = {
-            Unit: [
-                { UnitAddress: '10', Type: 'WIDGET9000' },
-                { UnitAddress: '11', Type: 'WIDGET9000' },
-                { UnitAddress: '12', Type: 'DIMDN8' }
-            ]
-        };
-
-        expect(unknownUnitTypes(network)).toEqual(['WIDGET9000']);
-    });
-
-    it('returns [] for missing network data', () => {
-        expect(unknownUnitTypes(null)).toEqual([]);
     });
 });
