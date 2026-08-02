@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.22.3] - 2026-08-02
+
+### Fixed
+
+- **The add-on no longer crashes and restart-loops shortly after startup.** Once C-Gate finished synchronising a network, the state refresh added in 1.22.0 hit an internal wiring fault and threw `Cannot read properties of undefined (reading 'sendGetallLevels')`, killing the add-on about five seconds into every start. It restarted immediately, so entities still appeared, but the add-on was never stable for more than a few seconds at a time. (#44)
+- **Entities now come back on their own after an MQTT broker restart.** Republishing the discovery configuration and re-requesting state on reconnect was already implemented, but was cut short by the crash above before it could run. Lighting and security entities no longer wait for the next physical C-Bus event to reappear. (#44)
+
 ## [1.22.2] - 2026-08-02
 
 ### Fixed
