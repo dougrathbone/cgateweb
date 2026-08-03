@@ -28,9 +28,18 @@ class LabelLoader extends EventEmitter {
     /**
      * Load labels from the configured JSON file.
      * Returns the label Map. On error or missing file, returns an empty Map.
+     * With `keepOnError`, a missing or unreadable file instead keeps the
+     * previously loaded labels and sets `this._lastLoadError` — used by the
+     * file-watcher reload path, because backup tools (e.g. a Home Assistant
+     * backup) briefly remove or replace the file and must not wipe every
+     * entity name on the network.
+     * @param {Object} [options]
+     * @param {boolean} [options.keepOnError]
      * @returns {Map<string, string>}
      */
-    load() {
+    load(options = {}) {
+        const keepOnError = options.keepOnError === true;
+        this._lastLoadError = null;
         if (!this.filePath) {
             this.logger.debug('No label file configured');
             this._clearAll();
@@ -38,6 +47,11 @@ class LabelLoader extends EventEmitter {
         }
 
         if (!fs.existsSync(this.filePath)) {
+            if (keepOnError) {
+                this._lastLoadError = 'file missing';
+                this.logger.debug(`Label file temporarily unavailable: ${this.filePath} (keeping current labels)`);
+                return this._labels;
+            }
             this.logger.info(`Label file not found: ${this.filePath} (will be created on first save)`);
             this._clearAll();
             return this._labels;
@@ -90,6 +104,11 @@ class LabelLoader extends EventEmitter {
             this.logger.info(`Loaded ${this._labels.size} labels from ${this.filePath}${extrasStr} (source: ${data.source || 'unknown'})`);
             return this._labels;
         } catch (err) {
+            if (keepOnError) {
+                this._lastLoadError = err.message;
+                this.logger.warn(`Label file unreadable (${err.message}); keeping current labels`);
+                return this._labels;
+            }
             this.logger.error(`Failed to load label file ${this.filePath}: ${err.message}`);
             this._clearAll();
             return this._labels;
@@ -214,6 +233,11 @@ class LabelLoader extends EventEmitter {
             clearTimeout(this._debounceTimer);
             this._debounceTimer = null;
         }
+        if (this._reloadRetryTimer) {
+            clearTimeout(this._reloadRetryTimer);
+            this._reloadRetryTimer = null;
+        }
+        this._reloadRetried = false;
         if (this._watcher) {
             this._watcher.close();
             this._watcher = null;
@@ -309,9 +333,28 @@ class LabelLoader extends EventEmitter {
     }
 
     _onFileChanged() {
-        this.logger.info('Label file changed on disk, reloading...');
         const previousSize = this._labels.size;
-        this.load();
+        this.load({ keepOnError: true });
+        if (this._lastLoadError) {
+            // Backup tools (HA backup) briefly remove or replace the label
+            // file. Keep serving the last good labels and retry once shortly
+            // in case no further watch event arrives when the file returns.
+            if (!this._reloadRetried) {
+                this._reloadRetried = true;
+                this.logger.info(`Label file reload skipped (${this._lastLoadError}); keeping current labels and retrying shortly`);
+                clearTimeout(this._reloadRetryTimer);
+                this._reloadRetryTimer = setTimeout(() => {
+                    this._reloadRetryTimer = null;
+                    this._onFileChanged();
+                }, 2000);
+                if (typeof this._reloadRetryTimer.unref === 'function') this._reloadRetryTimer.unref();
+            } else {
+                this.logger.info(`Label file still unavailable after retry (${this._lastLoadError}); keeping current labels`);
+            }
+            return;
+        }
+        this._reloadRetried = false;
+        this.logger.info('Label file changed on disk, reloading...');
         this.logger.info(`Labels reloaded: ${previousSize} -> ${this._labels.size} labels`);
         this.emit('labels-changed', this.getLabelData());
     }

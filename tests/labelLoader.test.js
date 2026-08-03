@@ -475,3 +475,83 @@ describe('LabelLoader', () => {
         });
     });
 });
+
+describe('reload robustness (transient file absence, e.g. HA backup)', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+
+    let tmpDir;
+    let labelFile;
+    beforeEach(() => {
+        jest.useFakeTimers();
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'label-robust-'));
+        labelFile = path.join(tmpDir, 'labels.json');
+    });
+    afterEach(() => {
+        jest.useRealTimers();
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    function seedLoader(labels) {
+        fs.writeFileSync(labelFile, JSON.stringify({ version: 1, labels }));
+        const loader = new LabelLoader(labelFile);
+        loader.load();
+        return loader;
+    }
+
+    it('keeps current labels and does not emit when the file temporarily disappears', () => {
+        const loader = seedLoader({ '254/56/10': 'Kitchen' });
+        const handler = jest.fn();
+        loader.on('labels-changed', handler);
+
+        // A backup tool moves the file away mid-snapshot
+        fs.renameSync(labelFile, `${labelFile}.bak`);
+        loader._onFileChanged();
+
+        expect(loader.getLabelsObject()).toEqual({ '254/56/10': 'Kitchen' });
+        expect(handler).not.toHaveBeenCalled();
+        expect(loader._reloadRetried).toBe(true);
+
+        // The single retry still finds nothing: labels stay, still no emit
+        jest.runOnlyPendingTimers();
+        expect(loader.getLabelsObject()).toEqual({ '254/56/10': 'Kitchen' });
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('recovers on the retry when the file comes back', () => {
+        const loader = seedLoader({ '254/56/10': 'Kitchen' });
+        const handler = jest.fn();
+        loader.on('labels-changed', handler);
+
+        fs.renameSync(labelFile, `${labelFile}.bak`);
+        loader._onFileChanged();
+        expect(loader.getLabelsObject()).toEqual({ '254/56/10': 'Kitchen' });
+
+        // Backup finishes and the file returns before the retry fires
+        fs.renameSync(`${labelFile}.bak`, labelFile);
+        jest.runOnlyPendingTimers();
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Kitchen');
+    });
+
+    it('keeps current labels when the file is briefly unreadable (partial write)', () => {
+        const loader = seedLoader({ '254/56/10': 'Kitchen' });
+        const handler = jest.fn();
+        loader.on('labels-changed', handler);
+
+        fs.writeFileSync(labelFile, '{"version": 1, "labels": {"254/56');
+        loader._onFileChanged();
+
+        expect(loader.getLabelsObject()).toEqual({ '254/56/10': 'Kitchen' });
+        expect(handler).not.toHaveBeenCalled();
+    });
+
+    it('still clears on a missing file at startup load (no keepOnError)', () => {
+        const loader = seedLoader({ '254/56/10': 'Kitchen' });
+        fs.rmSync(labelFile);
+        loader.load();
+        expect(loader.getLabelsObject()).toEqual({});
+    });
+});
