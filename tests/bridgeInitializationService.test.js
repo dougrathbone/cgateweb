@@ -219,7 +219,11 @@ describe('BridgeInitializationService', () => {
             expect(result).toHaveLength(2);
         });
 
-        it('includes trigger, switch, and relay apps when configured', () => {
+        it('includes switch and relay apps when configured, but never the trigger app (402s on level reads)', () => {
+            // The trigger application (202) does not support level reads —
+            // every getall on it returns "402 Parameter level not found" per
+            // group — so it is excluded from getall even when configured.
+            // Trigger state arrives via the event port instead.
             const { bridge } = makeBridge({
                 getall_networks: [254],
                 ha_discovery_trigger_app_id: '202',
@@ -229,10 +233,10 @@ describe('BridgeInitializationService', () => {
             const svc = makeService(bridge);
             const result = svc._resolveGetallNetworks();
             expect(result).toContain('254/56');
-            expect(result).toContain('254/202');
             expect(result).toContain('254/88');
             expect(result).toContain('254/99');
-            expect(result).toHaveLength(4);
+            expect(result).not.toContain('254/202');
+            expect(result).toHaveLength(3);
         });
 
         it('deduplicates app IDs when two settings share the same app ID', () => {

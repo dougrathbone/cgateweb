@@ -447,7 +447,10 @@ class BridgeInitializationService {
             const optionalAppSettings = [
                 'ha_discovery_cover_app_id',
                 'ha_discovery_hvac_app_id',
-                'ha_discovery_trigger_app_id',
+                // Trigger groups (202) are deliberately absent: the trigger
+                // application does not support level reads, so every getall
+                // on it 402s per group ("Parameter level not found"). Trigger
+                // state arrives via the event port instead.
                 'ha_discovery_switch_app_id',
                 'ha_discovery_relay_app_id'
             ];
