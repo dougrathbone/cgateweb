@@ -245,6 +245,11 @@ configuration:
     description: >-
       ID da aplicação Security do C-Bus (predefinição 208) para sensores de zonas de alarme. Publica um sensor binário por zona — sealed é off; unsealed, open ou short é on — e sincroniza o estado das zonas ao ligar. Defina 0 para desativar.
 
+  cbus_security_control_enabled:
+    name: Controlo do alarme
+    description: >-
+      Permitir que o Home Assistant arme e desarme a central de alarme (away, night, home, vacation, disarm). Desativado por predefinição: o comando de armar não transporta nenhum PIN no bus C-Bus, pelo que qualquer coisa que possa publicar no tópico de comandos pode desarmar a sua central. Requer o ID da aplicação de segurança definido.
+
 
   # ── Diagnósticos do Bridge ──
   ha_bridge_diagnostics_enabled:

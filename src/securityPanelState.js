@@ -8,9 +8,27 @@ const {
 } = require('./securityPanelConditions');
 
 /**
+ * C-Bus arm mode → Home Assistant alarm panel state (HA MQTT alarm contract;
+ * arm modes confirmed by the #42 live captures). C-Bus "day/stay" (3) is
+ * armed_home — home during the day.
+ */
+const ALARM_STATE_BY_ARM_MODE = {
+    0: 'disarmed',
+    1: 'armed_away',
+    2: 'armed_night',
+    3: 'armed_home',
+    4: 'armed_vacation'
+};
+
+/**
  * Tracks panel-wide trouble state per C-Bus network so the bridge only
  * publishes actual transitions. A panel repeating `mains_failure` while the
  * power is still out should not republish MQTT state or re-log at INFO.
+ *
+ * Also tracks the HA alarm_control_panel state per network (armed_away,
+ * arming, triggered, …) with the same transitions-only discipline. Unlike the
+ * trouble conditions this needs no persistence: status_report_1's arm-state
+ * prefix re-seeds it on every connect sync.
  *
  * Deliberately separate from SecurityEventHandler: the transition and
  * derived-clear rules are the fiddly part of this feature and are far easier to
@@ -20,6 +38,8 @@ class SecurityPanelState {
     constructor() {
         /** @type {Map<string, Object<string, boolean>>} network → condition → active */
         this._byNetwork = new Map();
+        /** @type {Map<string, { state: string|null, preAlarmState: string|null, blockingZone: string|null }>} */
+        this._alarmByNetwork = new Map();
     }
 
     /**
@@ -118,6 +138,76 @@ class SecurityPanelState {
                 if (typeof state[condition] === 'boolean') target[condition] = state[condition];
             }
         }
+    }
+
+    /**
+     * Apply a decoded reading to the HA alarm panel state tracker and report
+     * the transition, if any. Returns null for readings that carry no alarm
+     * state, for repeats (transitions only), and for alarm_off with no
+     * trackable pre-alarm state — the captures show alarm_off is always
+     * followed by a system_arm broadcast that re-derives the state, so there
+     * is nothing to guess there.
+     *
+     * @param {{kind: string, network: string, mode?: number|null, armState?: number, zone?: string|null}} reading
+     * @returns {{ state: string, blockingZone: string|null }|null}
+     */
+    applyAlarmReading(reading) {
+        if (!reading || reading.network === null || reading.network === undefined) return null;
+        const entry = this._alarmForNetwork(reading.network);
+
+        let target;
+        let blockingZone = null;
+        switch (reading.kind) {
+            case 'system_arm':
+                target = ALARM_STATE_BY_ARM_MODE[reading.mode] || null;
+                break;
+            case 'status_report_1':
+                // The report's arm-state prefix is the one queryable source of
+                // panel state — this is how the entity learns it after startup.
+                target = ALARM_STATE_BY_ARM_MODE[reading.armState] || null;
+                break;
+            case 'exit_delay_started':
+                target = 'arming';
+                break;
+            case 'arm_not_ready':
+                target = 'pending';
+                blockingZone = reading.zone || null;
+                break;
+            case 'arm_ready':
+                target = 'disarmed';
+                break;
+            case 'alarm_on':
+                if (entry.state !== 'triggered') entry.preAlarmState = entry.state;
+                target = 'triggered';
+                break;
+            case 'alarm_off':
+                target = entry.preAlarmState;
+                entry.preAlarmState = null;
+                break;
+            default:
+                return null;
+        }
+        if (target === null || target === undefined) return null;
+
+        if (entry.state === target && entry.blockingZone === blockingZone) return null;
+        entry.state = target;
+        entry.blockingZone = blockingZone;
+        return { state: target, blockingZone };
+    }
+
+    /**
+     * @param {string} network
+     * @returns {{ state: string|null, preAlarmState: string|null, blockingZone: string|null }}
+     * @private
+     */
+    _alarmForNetwork(network) {
+        const key = String(network);
+        let entry = this._alarmByNetwork.get(key);
+        if (!entry) {
+            entry = { state: null, preAlarmState: null, blockingZone: null };
+            this._alarmByNetwork.set(key, entry);
+        }
+        return entry;
     }
 
     /**

@@ -309,6 +309,12 @@ class _HaDiscoveryTreeSession {
         for (const networkId of [...this._treeResyncState.keys()]) {
             this._clearTreeResyncState(networkId);
         }
+        // _clearTreeState only cancels the stream deadline when the active
+        // session's network matches a tracked request, so a stream that
+        // outlived its request state (or one whose network is unknown) would
+        // survive stop() and fire a "tree stream stalled" retry afterwards.
+        // stop() has to mean stopped, so cancel it unconditionally.
+        this._clearTreeStreamDeadline();
         this._networkDiscoveryEntities.clear();
     }
 

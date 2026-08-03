@@ -242,6 +242,11 @@ configuration:
     description: >-
       ID aplikace Security C-Bus (výchozí 208) pro snímače alarmových zón. Publikuje jeden binární snímač na zónu — sealed je vypnuto; unsealed, open nebo short je zapnuto — a synchronizuje stav zón při připojení. Pro vypnutí nastavte 0.
 
+  cbus_security_control_enabled:
+    name: Ovládání alarmu
+    description: >-
+      Povolit Home Assistant aktivovat a deaktivovat zabezpečovací ústřednu (away, night, home, vacation, disarm). Ve výchozím nastavení vypnuto: příkaz aktivace nenese žádný PIN na sběrnici C-Bus, takže cokoliv, co může publikovat na příkazovém tématu, může vaši ústřednu deaktivovat. Vyžaduje nastavené ID aplikace zabezpečení.
+
 
   # ── Diagnostika bridge ──
   ha_bridge_diagnostics_enabled:

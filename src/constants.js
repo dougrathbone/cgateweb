@@ -127,6 +127,7 @@ const HA_MODEL_TRIGGER = 'Trigger Group';
 const HA_MODEL_HVAC = 'HVAC Zone (Air Conditioning)';
 const HA_COMPONENT_EVENT = 'event';
 const HA_COMPONENT_SCENE = 'scene';
+const HA_COMPONENT_ALARM_PANEL = 'alarm_control_panel';
 
 // HA Discovery health states surfaced as the per-network "Discovery" sensor.
 const DISCOVERY_STATE_DISCOVERING = 'discovering';
@@ -161,6 +162,9 @@ const EVENT_REGEX = /^(\w+)\s+(\w+)\s+(?:(?:\/\/\w+\/)?(\d+\/\d+\/\d+))(?:\s+(\d
 // Empty segments stay allowed for getall/gettree forms (e.g. cbus/write/254///gettree);
 // CBusCommand range-checks the numeric values (network 0-254, app/group 0-255).
 const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\d{0,3})\/(\d{0,3})\/(\d{0,3})\/(\w+)/;
+// Security panel arm/disarm command topic. The panel has no numeric group
+// address, so this can't parse as a CBusCommand and is routed directly.
+const SECURITY_ARM_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/panel\/arm$/;
 // Event-port line announcing a network finished syncing ("762 //PROJECT/254
 // Network sync ok"). The leading C-Gate timestamp is optional so the pattern
 // also matches lines already stripped of it. Captures the network id.
@@ -273,6 +277,7 @@ module.exports = {
     HA_MODEL_HVAC,
     HA_COMPONENT_EVENT,
     HA_COMPONENT_SCENE,
+    HA_COMPONENT_ALARM_PANEL,
     DISCOVERY_STATE_DISCOVERING,
     DISCOVERY_STATE_OK,
     DISCOVERY_STATE_PAUSED,
@@ -289,5 +294,6 @@ module.exports = {
     NEWLINE,
     EVENT_REGEX,
     COMMAND_TOPIC_REGEX,
+    SECURITY_ARM_TOPIC_REGEX,
     CGATE_EVENT_NETWORK_SYNC_REGEX
 };

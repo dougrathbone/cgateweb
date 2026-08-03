@@ -108,6 +108,15 @@ describe('HaDiscovery', () => {
     });
 
     afterEach(() => {
+        // trigger() arms a real 8s TREEXML watchdog per network, and the mocked
+        // sendCommand never answers, so without this every test that triggers
+        // discovery leaves a timer that fires long after the file finishes and
+        // then retries eight times with backoff. Jest attributes those stray
+        // logs to whichever file its worker is running at the time ("Cannot log
+        // after tests are done"), which intermittently failed unrelated suites.
+        // Inner describes that use fake timers stop it themselves; stop() is
+        // idempotent, so calling it again here is harmless.
+        haDiscovery.stop();
         jest.restoreAllMocks();
     });
 
@@ -1185,6 +1194,24 @@ describe('HaDiscovery', () => {
             haDiscovery.stop();
             expect(haDiscovery._treeRequestState.size).toBe(0);
 
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+            jest.advanceTimersByTime(120000);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
+        });
+
+        // _clearTreeState only cancels the stream deadline when the active
+        // session's network matches a tracked request. A stream whose request
+        // state has already been cleared used to survive stop() and fire a
+        // "tree stream stalled" retry afterwards.
+        it('stop() clears the tree stream deadline even with no matching request state', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //TESTPROJECT/254');
+            expect(haDiscovery._treeStreamDeadlineHandle).not.toBeNull();
+
+            haDiscovery._treeRequestState.clear();
+            haDiscovery.stop();
+
+            expect(haDiscovery._treeStreamDeadlineHandle).toBeNull();
             const callsBefore = mockSendCommandFn.mock.calls.length;
             jest.advanceTimersByTime(120000);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
@@ -3341,8 +3368,8 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityPanelDiscovery('254', '208');
         publishFn.mockClear();
 
-        // 2 zones + 7 panel conditions
-        expect(d.republishDiscoveryConfigs()).toBe(9);
+        // 2 zones + 7 panel conditions + 1 alarm_control_panel
+        expect(d.republishDiscoveryConfigs()).toBe(10);
     });
 
     it('does not replay a retracted config', () => {

@@ -50,7 +50,9 @@ describe('SecurityEventHandler', () => {
         const handler = new SecurityEventHandler(deps);
         const consumed = handler.handleLine(STATUS_REPORT_1_LINE);
         expect(consumed).toBe(true);
-        expect(deps.eventPublisher.publishReading).toHaveBeenCalledTimes(32);
+        const zoneReadings = deps.eventPublisher.publishReading.mock.calls
+            .filter(c => c[3] && c[3].kind === 'security_zone');
+        expect(zoneReadings).toHaveLength(32);
         expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
             '254', '208', '1', { kind: 'security_zone', zoneState: 'sealed' }
         );
@@ -110,8 +112,9 @@ describe('SecurityEventHandler', () => {
     });
 
     // arm_failed and fire_alarm are deliberately absent: they are panel trouble
-    // conditions now and do publish state (see 'panel trouble conditions').
-    it('consumes arm-progress and alarm verbs without publishing MQTT state', () => {
+    // conditions now and do publish state (see 'panel trouble conditions'). The
+    // arm/alarm verbs here drive the alarm_control_panel state — but no zone state.
+    it('consumes arm-progress and alarm verbs without publishing zone state', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
         for (const line of [
@@ -125,7 +128,9 @@ describe('SecurityEventHandler', () => {
         ]) {
             expect(handler.handleLine(line)).toBe(true);
         }
-        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        const zoneReadings = deps.eventPublisher.publishReading.mock.calls
+            .filter(c => c[3] && c[3].kind === 'security_zone');
+        expect(zoneReadings).toHaveLength(0);
         expect(deps.logger.warn).not.toHaveBeenCalled();
     });
 
@@ -227,6 +232,60 @@ describe('SecurityEventHandler', () => {
             expect(onEventLog).toHaveBeenCalledWith(expect.objectContaining({
                 group: null, description: 'Mains power failure'
             }));
+        });
+    });
+
+    describe('alarm panel state publishing', () => {
+        function alarmReadings(deps) {
+            return deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_alarm');
+        }
+
+        it('publishes the HA alarm state on system_arm, deduped', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(SYSTEM_ARM_LINE); // mode 3 = day/stay
+            handler.handleLine(SYSTEM_ARM_LINE); // repeat — no republish
+            const calls = alarmReadings(deps);
+            expect(calls).toHaveLength(1);
+            expect(calls[0]).toEqual(['254', '208', 'panel',
+                { kind: 'security_alarm', alarmState: 'armed_home', blockingZone: null }]);
+        });
+
+        it('maps disarm and the arm modes to HA states', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 1 #sourceunit=18 OID=');
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            expect(alarmReadings(deps).map(c => c[3].alarmState)).toEqual(['armed_away', 'disarmed']);
+        });
+
+        it('publishes pending with the blocking zone on arm_not_ready', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            expect(alarmReadings(deps)[0][3]).toEqual(
+                { kind: 'security_alarm', alarmState: 'pending', blockingZone: '44' });
+        });
+
+        it('walks exit delay to armed, and triggered back to the pre-alarm state', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine(SYSTEM_ARM_LINE);
+            handler.handleLine('# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(alarmReadings(deps).map(c => c[3].alarmState))
+                .toEqual(['arming', 'armed_home', 'triggered', 'armed_home']);
+        });
+
+        it('seeds the state from a status_report_1 arm-state prefix', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(STATUS_REPORT_1_LINE); // arm state 0
+            const calls = alarmReadings(deps);
+            expect(calls).toHaveLength(1);
+            expect(calls[0][3].alarmState).toBe('disarmed');
         });
     });
 

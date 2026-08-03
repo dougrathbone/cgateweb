@@ -42,6 +42,7 @@ const {
     HA_COMPONENT_CLIMATE,
     HA_COMPONENT_SENSOR,
     HA_COMPONENT_BINARY_SENSOR,
+    HA_COMPONENT_ALARM_PANEL,
     HA_COMPONENT_SCENE,
     HA_DISCOVERY_SUFFIX,
     HA_MODEL_LIGHTING,
@@ -718,6 +719,7 @@ class _HaDiscoveryPublishers {
                     this._securityPanelTopic(this._securityPanelUniqueId(String(network), String(appId), condition.id))
                 );
             }
+            this._retractEventDrivenConfig(this._securityAlarmTopic(String(network), String(appId)));
             this._securityPanelSeen.add(key); // don't re-check on every event
             return false;
         }
@@ -749,6 +751,18 @@ class _HaDiscoveryPublishers {
      */
     _securityPanelTopic(uniqueId) {
         return `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+    }
+
+    /**
+     * Discovery config topic for the panel's alarm_control_panel entity.
+     *
+     * @param {string} networkId
+     * @param {string} appId
+     * @returns {string}
+     * @private
+     */
+    _securityAlarmTopic(networkId, appId) {
+        return `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_ALARM_PANEL}/cgateweb_${networkId}_${appId}_panel/${HA_DISCOVERY_SUFFIX}`;
     }
 
     /**
@@ -789,6 +803,52 @@ class _HaDiscoveryPublishers {
             this._publishEventDrivenConfig(discoveryTopic, payload);
         }
         this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_CONDITIONS.length} conditions)`);
+
+        this._createSecurityAlarmDiscovery(networkId, appId, deviceName);
+    }
+
+    /**
+     * Build and publish the alarm_control_panel entity for the security
+     * panel, on the same device as the trouble sensors. State comes from
+     * securityEventHandler via cbus/read/{net}/{app}/panel/state (HA alarm
+     * states); the arm_not_ready blocking zone rides the attributes topic.
+     * The command topic only exists when cbus_security_control_enabled — an
+     * arm write carries no PIN on the bus, so control is opt-in (the entity
+     * is read-only without it, following the native-aircon precedent).
+     *
+     * @private
+     */
+    _createSecurityAlarmDiscovery(networkId, appId, deviceName) {
+        const uniqueId = `cgateweb_${networkId}_${appId}_panel`;
+        const discoveryTopic = this._securityAlarmTopic(networkId, appId);
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel`;
+        const controlEnabled = !!this.settings.cbus_security_control_enabled;
+
+        const payload = {
+            // Primary entity on the shared panel device: takes the device name.
+            name: null,
+            unique_id: uniqueId,
+
+            state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+            // Arm away/night/home(day-stay)/vacation + disarm; no custom
+            // bypass and no manual trigger on this panel.
+            supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation'],
+            ...(controlEnabled && {
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
+            }),
+
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: [uniqueId],
+                name: deviceName,
+                model: 'C-Bus Security Panel'
+            }),
+            origin: buildOriginBlock()
+        };
+
+        this._publishEventDrivenConfig(discoveryTopic, payload);
+        this.logger.info(`Security panel alarm_control_panel published: ${networkId}/${appId}${controlEnabled ? '' : ' (read-only)'}`);
     }
 
     /**

@@ -239,6 +239,11 @@ configuration:
     description: >-
       C-Bus säkerhetsapplikations-id (standard 208) för larmzonssensorer. Publicerar en binär sensor per zon — sealed är av; unsealed, open eller short är på — och synkroniserar zonernas status vid anslutning. Sätt till 0 för att stänga av.
 
+  cbus_security_control_enabled:
+    name: Larmstyrning
+    description: >-
+      Tillåt Home Assistant att till- och frånkoppla larmcentralen (away, night, home, vacation, disarm). Avstängt som standard: tillkopplingskommandot bär ingen PIN på C-Bus, så allt som kan publicera på kommando-topicen kan frånkoppla ditt larm. Kräver att säkerhetsapplikations-id är inställt.
+
 
   # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:

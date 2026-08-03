@@ -340,6 +340,52 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(publishFn).not.toHaveBeenCalled();
         });
     });
+
+    describe('alarm_control_panel entity', () => {
+        const ALARM_TOPIC = 'homeassistant/alarm_control_panel/cgateweb_254_208_panel/config';
+
+        function alarmPayload() {
+            const call = publishFn.mock.calls.find(c => c[0] === ALARM_TOPIC);
+            return call && JSON.parse(call[1]);
+        }
+
+        it('publishes the alarm panel on the shared device, read-only by default', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            const payload = alarmPayload();
+            expect(payload).toBeDefined();
+            expect(payload.unique_id).toBe('cgateweb_254_208_panel');
+            expect(payload.name).toBeNull(); // primary entity takes the device name
+            expect(payload.state_topic).toBe('cbus/read/254/208/panel/state');
+            expect(payload.json_attributes_topic).toBe('cbus/read/254/208/panel/attributes');
+            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation']);
+            expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
+            expect(payload.device.name).toBe('C-Bus Security Panel 254/208');
+            expect('command_topic' in payload).toBe(false);
+        });
+
+        it('adds the command topic when security control is enabled', () => {
+            const controlled = new HaDiscovery(
+                {
+                    ha_discovery_enabled: true,
+                    ha_discovery_prefix: 'homeassistant',
+                    cbus_security_app_id: '208',
+                    cbus_security_control_enabled: true
+                },
+                publishFn,
+                jest.fn()
+            );
+            controlled.ensureSecurityPanelDiscovery('254', '208');
+            expect(alarmPayload().command_topic).toBe('cbus/write/254/208/panel/arm');
+        });
+
+        it('retracts the alarm panel config when the panel is excluded', () => {
+            d.exclude.add('254/208/panel');
+            expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
+            const call = publishFn.mock.calls.find(c => c[0] === ALARM_TOPIC);
+            expect(call).toBeDefined();
+            expect(call[1]).toBe(''); // empty retained payload removes the entity
+        });
+    });
 });
 
 describe('securityZoneLabels — label-key convention', () => {

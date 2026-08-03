@@ -248,6 +248,11 @@ configuration:
     description: >-
       ID dell'applicazione Security C-Bus (predefinito 208) per i sensori delle zone di allarme. Pubblica un sensore binario per zona — sealed è off; unsealed, open o short è on — e sincronizza lo stato delle zone alla connessione. Impostare 0 per disattivare.
 
+  cbus_security_control_enabled:
+    name: Controllo allarme
+    description: >-
+      Consenti a Home Assistant di inserire e disinserire la centrale di allarme (away, night, home, vacation, disarm). Disattivato per impostazione predefinita: il comando di inserimento non trasporta alcun PIN sul bus C-Bus, quindi qualsiasi cosa possa pubblicare sul topic dei comandi può disinserire la tua centrale. Richiede un ID applicazione sicurezza impostato.
+
 
   # ── Diagnostica del bridge ──
   ha_bridge_diagnostics_enabled:

@@ -100,6 +100,11 @@ const defaultSettings = {
     // binary_sensor per zone (sealed/unsealed) and syncs zone state via
     // security status_request on connect. Empty or '0' disables.
     cbus_security_app_id: '208',
+    // Opt-in: allow Home Assistant to ARM/DISARM the security panel via
+    // `security arm` commands. Off by default — the write carries no PIN on
+    // the bus, so anything that can publish to the command topic can disarm
+    // the panel. Requires cbus_security_app_id to be set.
+    cbus_security_control_enabled: false,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
     ha_bridge_diagnostics_interval_sec: 60,

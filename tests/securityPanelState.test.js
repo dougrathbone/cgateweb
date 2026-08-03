@@ -169,3 +169,81 @@ describe('persistence (toJSON / restore)', () => {
         expect(restored.initialStates('254').every((c) => c.active === false)).toBe(true);
     });
 });
+
+describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
+    let state;
+
+    beforeEach(() => {
+        state = new SecurityPanelState();
+    });
+
+    const reading = (kind, extra = {}, network = '254') => ({ kind, network, ...extra });
+
+    it('maps system_arm modes to HA alarm states', () => {
+        const expected = { 0: 'disarmed', 1: 'armed_away', 2: 'armed_night', 3: 'armed_home', 4: 'armed_vacation' };
+        for (const [mode, alarmState] of Object.entries(expected)) {
+            const tracker = new SecurityPanelState();
+            expect(tracker.applyAlarmReading(reading('system_arm', { mode: Number(mode) })))
+                .toEqual({ state: alarmState, blockingZone: null });
+        }
+    });
+
+    it('seeds the state from a status_report_1 arm-state prefix', () => {
+        expect(state.applyAlarmReading(reading('status_report_1', { armState: 3 })))
+            .toEqual({ state: 'armed_home', blockingZone: null });
+    });
+
+    it('dedupes repeated states (transitions only)', () => {
+        state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+        expect(state.applyAlarmReading(reading('system_arm', { mode: 1 }))).toBeNull();
+    });
+
+    it('walks the captured arm sequence: arm_ready → exit_delay → system_arm', () => {
+        expect(state.applyAlarmReading(reading('arm_ready'))).toEqual({ state: 'disarmed', blockingZone: null });
+        expect(state.applyAlarmReading(reading('exit_delay_started'))).toEqual({ state: 'arming', blockingZone: null });
+        expect(state.applyAlarmReading(reading('system_arm', { mode: 3 }))).toEqual({ state: 'armed_home', blockingZone: null });
+    });
+
+    it('arm_not_ready goes pending with the blocking zone, and re-publishes when the zone changes', () => {
+        expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' })))
+            .toEqual({ state: 'pending', blockingZone: '44' });
+        // Same zone again: deduped
+        expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }))).toBeNull();
+        // A different blocking zone while still pending: new transition
+        expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '45' })))
+            .toEqual({ state: 'pending', blockingZone: '45' });
+    });
+
+    it('alarm_on goes triggered and alarm_off reverts to the pre-alarm state', () => {
+        state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+        expect(state.applyAlarmReading(reading('alarm_on'))).toEqual({ state: 'triggered', blockingZone: null });
+        expect(state.applyAlarmReading(reading('alarm_off'))).toEqual({ state: 'armed_away', blockingZone: null });
+    });
+
+    it('alarm_off with no trackable pre-alarm state stays quiet (the next system_arm re-derives it)', () => {
+        state.applyAlarmReading(reading('alarm_on'));
+        expect(state.applyAlarmReading(reading('alarm_off'))).toBeNull();
+    });
+
+    it('triggered state survives arm_ready noise until a system_arm re-derives', () => {
+        state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+        state.applyAlarmReading(reading('alarm_on'));
+        expect(state.applyAlarmReading(reading('arm_ready'))).toEqual({ state: 'disarmed', blockingZone: null });
+    });
+
+    it('ignores readings that carry no alarm state', () => {
+        expect(state.applyAlarmReading(reading('zone', { zone: '35' }))).toBeNull();
+        expect(state.applyAlarmReading(reading('status_report_2'))).toBeNull();
+        expect(state.applyAlarmReading(null)).toBeNull();
+    });
+
+    it('ignores unknown arm modes', () => {
+        expect(state.applyAlarmReading(reading('system_arm', { mode: 9 }))).toBeNull();
+    });
+
+    it('tracks networks independently', () => {
+        state.applyAlarmReading(reading('system_arm', { mode: 1 }, '254'));
+        expect(state.applyAlarmReading(reading('system_arm', { mode: 3 }, '255')))
+            .toEqual({ state: 'armed_home', blockingZone: null });
+    });
+});

@@ -3,9 +3,9 @@
 
 /**
  * Command builders for the C-Bus Security application (208 / $D0).
- * The bridge is read-only on the bus for this application: the only command
- * is the status request used for zone-state sync (spec §5.5.2.1-2).
- * Arm/disarm writes are not implemented (see docs/SECURITY_INVESTIGATION.md §5).
+ * status_request syncs zone state (read-only); security arm is the only bus
+ * write and is gated behind cbus_security_control_enabled — it carries no
+ * PIN, so anything able to publish it can arm or disarm the panel.
  */
 
 /**
@@ -25,4 +25,21 @@ function buildSecurityStatusRequest({ cbusname, network, application, report }) 
     return `security status_request //${cbusname}/${network}/${application} ${report}`;
 }
 
-module.exports = { buildSecurityStatusRequest };
+/**
+ * Build a `security arm` command (spec §5.5.2.3). Modes: 1 away, 2 night,
+ * 3 day/stay, 4 vacation; 0 disarms. Caveat: the spec marks mode $00 as
+ * reserved, but the live 64-zone Cytech panel (#42) both announces and
+ * accepts 0 as disarm, so disarm is simply mode 0 here.
+ *
+ * @param {Object} opts
+ * @param {string} opts.cbusname - C-Gate project name.
+ * @param {string|number} opts.network - C-Bus network id.
+ * @param {string|number} opts.application - Security application id (e.g. 208).
+ * @param {number} opts.mode - Arm mode: 0 disarm, 1 away, 2 night, 3 day, 4 vacation.
+ * @returns {string}
+ */
+function buildSecurityArmCommand({ cbusname, network, application, mode }) {
+    return `security arm //${cbusname}/${network}/${application} ${mode}`;
+}
+
+module.exports = { buildSecurityStatusRequest, buildSecurityArmCommand };

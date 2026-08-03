@@ -458,6 +458,23 @@ class EventPublisher {
                 reading.active ? MQTT_STATE_ON : MQTT_STATE_OFF,
                 this.mqttOptions
             );
+        } else if (reading.kind === 'security_alarm') {
+            // HA alarm_control_panel state (app 208): one of disarmed,
+            // armed_home/away/night/vacation, arming, pending, triggered.
+            // `group` is "panel", so the base is cbus/read/{net}/{app}/panel.
+            // The blocking zone (arm_not_ready) rides the attributes topic and
+            // is republished on every transition so it clears with the state.
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                reading.alarmState,
+                this.mqttOptions
+            );
+            const attributes = reading.blockingZone ? { blocking_zone: reading.blockingZone } : {};
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                JSON.stringify(attributes),
+                this.mqttOptions
+            );
         }
     }
 

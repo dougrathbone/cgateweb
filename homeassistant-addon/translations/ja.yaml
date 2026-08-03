@@ -243,6 +243,11 @@ configuration:
     description: >-
       アラームゾーンセンサー用の C-Bus セキュリティアプリケーション ID（デフォルト 208）。ゾーンごとにバイナリセンサーを1つ公開します（sealed はオフ、unsealed/open/short はオン）。接続時にゾーン状態を同期します。無効にするには 0 を設定してください。
 
+  cbus_security_control_enabled:
+    name: セキュリティパネル制御
+    description: >-
+      Home Assistant によるアラームパネルの武装・解除（away、night、home、vacation、disarm）を許可します。デフォルトはオフです。武装コマンドは C-Bus 上で PIN を伴わないため、コマンドトピックに発行できるものはすべてパネルを解除できます。セキュリティアプリケーション ID の設定が必要です。
+
 
   # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:

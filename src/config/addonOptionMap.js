@@ -36,6 +36,11 @@ const ADDON_OPTION_MAP = [
     // Assistant discovery, so gating it would make '0' a no-op with discovery
     // off (default '208' would stay in force and zones would publish anyway).
     { src: 'cbus_security_app_id', dst: 'cbus_security_app_id', kind: 'stringifyDefined' },
+    // Deliberately NOT gated on 'haDiscovery' (same reason as
+    // cbus_security_app_id): the command topic works over plain MQTT, so an
+    // MQTT-only install that opts in must not lose the write path with
+    // discovery off.
+    { src: 'cbus_security_control_enabled', dst: 'cbus_security_control_enabled', kind: 'boolDefined' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },

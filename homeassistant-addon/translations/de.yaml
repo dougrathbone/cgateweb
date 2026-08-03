@@ -245,6 +245,11 @@ configuration:
     description: >-
       C-Bus-Sicherheitsanwendungs-ID (Standard 208) für Alarmzonensensoren. Veröffentlicht einen Binärsensor pro Zone — sealed ist aus; unsealed, open oder short ist an — und synchronisiert die Zonenstände beim Verbindungsaufbau. Zum Deaktivieren auf 0 setzen.
 
+  cbus_security_control_enabled:
+    name: Alarmanlagen-Steuerung
+    description: >-
+      Home Assistant erlauben, die Alarmanlage zu schärfen und zu entschärfen (Away, Night, Home, Vacation, Disarm). Standardmäßig deaktiviert: Der Arm-Befehl trägt keine PIN im C-Bus-Netz, daher kann alles, was auf das Befehlstopic veröffentlichen kann, Ihre Alarmanlage entschärfen. Erfordert eine gesetzte Sicherheitsanwendungs-ID.
+
 
   # ── Bridge-Diagnose ──
   ha_bridge_diagnostics_enabled:

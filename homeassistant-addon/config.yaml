@@ -154,6 +154,7 @@ schema:
   # Security application zone sensors (default 208). String so 0 can disable
   # it — an int(1,255) schema would reject the disable value.
   cbus_security_app_id: "str?"
+  cbus_security_control_enabled: "bool?"
   ha_hvac_temperature_unit: "list(C|F)?"
 
   # ── Bridge Diagnostics ──

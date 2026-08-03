@@ -241,6 +241,11 @@ configuration:
     description: >-
       C-Bus Security application id (default 208) for alarm zone sensors. Publishes one binary sensor per zone — sealed is off; unsealed, open or short is on — and syncs the zone states on connect. Set to 0 to disable.
 
+  cbus_security_control_enabled:
+    name: Security Panel Control
+    description: >-
+      Allow Home Assistant to arm and disarm the security panel (away, night, home, vacation, disarm). Off by default: the arm command carries no PIN on the C-Bus network, so anything that can publish to the command topic can disarm your panel. Requires the Security Application ID to be set.
+
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:

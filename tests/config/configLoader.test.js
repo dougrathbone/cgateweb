@@ -449,6 +449,27 @@ describe('ConfigLoader', () => {
             expect(config.cbus_security_app_id).toBe('208');
         });
 
+        test('should map cbus_security_control_enabled as a boolean, even with HA discovery disabled', () => {
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_security_control_enabled: true };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_control_enabled).toBe(true);
+        });
+
+        test('should not set cbus_security_control_enabled when the option is absent (default false applies)', () => {
+            const options = { ...mockAddonOptions };
+            delete options.cbus_security_control_enabled;
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_control_enabled).toBeUndefined();
+        });
+
         test('should map an explicit cbus_security_app_id of 0 to "0" (disables the default-on feature)', () => {
             const options = { ...mockAddonOptions, cbus_security_app_id: 0 };
             fs.existsSync.mockReturnValue(true);

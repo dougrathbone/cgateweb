@@ -10,6 +10,10 @@ describe('security app id default', () => {
     it('defaults cbus_security_app_id to "208" (enabled; 0/empty disables)', () => {
         expect(defaultSettings.cbus_security_app_id).toBe('208');
     });
+
+    it('defaults cbus_security_control_enabled to false (opt-in; bus writes carry no PIN)', () => {
+        expect(defaultSettings.cbus_security_control_enabled).toBe(false);
+    });
 });
 
 describe('raw event capture defaults', () => {

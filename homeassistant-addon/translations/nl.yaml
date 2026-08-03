@@ -245,6 +245,11 @@ configuration:
     description: >-
       C-Bus-beveiligingsapplicatie-id (standaard 208) voor alarmzonesensoren. Publiceert één binaire sensor per zone — sealed is uit; unsealed, open of short is aan — en synchroniseert de zonestatus bij verbinding. Stel in op 0 om uit te schakelen.
 
+  cbus_security_control_enabled:
+    name: Alarmpaneel-bediening
+    description: >-
+      Sta Home Assistant toe het alarmsysteem in- en uit te schakelen (away, night, home, vacation, disarm). Standaard uitgeschakeld: het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het commando-topic kan publiceren kan uw alarmsysteem uitschakelen. Vereist een ingestelde beveiligingsapplicatie-id.
+
 
   # ── Bridge Diagnostiek ──
   ha_bridge_diagnostics_enabled:

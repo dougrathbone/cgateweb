@@ -39,6 +39,7 @@ const {
     CGATE_LEVEL_MAX,
     RAMP_STEP,
     NEWLINE,
+    SECURITY_ARM_TOPIC_REGEX,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C
 } = require('./constants');
@@ -49,7 +50,17 @@ const {
     buildSetZoneHvacMode,
     buildSetWardOff
 } = require('./airconControlRegistry');
+const { buildSecurityArmCommand } = require('./securityCommand');
 
+// HA MQTT alarm command payloads → C-Bus arm mode (spec §5.5.2.3; mode 0
+// disarms on the live panel even though the spec marks $00 reserved).
+const SECURITY_ARM_MODE_BY_PAYLOAD = {
+    DISARM: 0,
+    ARM_AWAY: 1,
+    ARM_NIGHT: 2,
+    ARM_HOME: 3,
+    ARM_VACATION: 4
+};
 // Debounce window for native-aircon setpoint writes (spec §25.12.11: wait a
 // few seconds after the user finishes adjusting, then send a single message).
 const AIRCON_SETPOINT_DEBOUNCE_MS = 3000;
@@ -118,6 +129,15 @@ class MqttCommandRouter extends EventEmitter {
         // Handle manual HA discovery trigger
         if (topic === MQTT_TOPIC_MANUAL_TRIGGER) {
             this._handleDiscoveryTrigger();
+            return;
+        }
+
+        // Security panel arm/disarm: the panel command topic has no numeric
+        // group, so it can't parse as a CBusCommand — routed directly like the
+        // manual discovery trigger.
+        const securityArmMatch = topic.match(SECURITY_ARM_TOPIC_REGEX);
+        if (securityArmMatch) {
+            this._handleSecurityArm(securityArmMatch[1], securityArmMatch[2], payload, topic);
             return;
         }
 
@@ -192,6 +212,41 @@ class MqttCommandRouter extends EventEmitter {
         } else {
             this.logger.warn('Manual HA Discovery trigger received, but feature is disabled in settings');
         }
+    }
+
+    /**
+     * Handles security panel arm/disarm (cbus/write/{net}/{app}/panel/arm).
+     * Gated on cbus_security_control_enabled: an arm write carries no PIN on
+     * the bus, so control is opt-in. The panel confirms with a system_arm (or
+     * arm_not_ready) broadcast, which drives the state machine — no
+     * optimistic state is published here.
+     *
+     * @param {string} network - Network id from the topic.
+     * @param {string} application - Application id from the topic.
+     * @param {string} payload - HA alarm command payload (DISARM, ARM_AWAY, …).
+     * @param {string} topic - Original topic for logging.
+     * @private
+     */
+    _handleSecurityArm(network, application, payload, topic) {
+        if (!this.settings.cbus_security_control_enabled) {
+            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring arm command on ${topic}`);
+            return;
+        }
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0' || String(application) !== String(appId)) {
+            this.logger.warn(`Security arm command for unconfigured application ${application} on topic ${topic}`);
+            return;
+        }
+
+        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[String(payload).trim().toUpperCase()];
+        if (mode === undefined) {
+            this.logger.warn(`Unknown security arm payload "${payload}" on topic ${topic} (expected DISARM|ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
+            return;
+        }
+
+        const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Security arm: ${network}/${application} -> mode ${mode} (${String(payload).trim().toUpperCase()})`);
     }
 
     /**

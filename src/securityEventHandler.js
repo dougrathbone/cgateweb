@@ -225,6 +225,9 @@ class SecurityEventHandler {
                 if (reading.kind === 'status_report_1') {
                     this._publishPanelChanges(reading.network, reading.application,
                         this.panelState.seedFromStatusReport(reading));
+                    // The same prefix carries the arm mode — this is how the
+                    // alarm panel entity learns its state after startup.
+                    this._publishAlarmTransition(reading.network, reading.application, reading);
                 }
                 this._logStatusReportSummary(reading);
             } else if (reading.kind === 'panel_trouble') {
@@ -248,6 +251,10 @@ class SecurityEventHandler {
                     this._publishPanelChanges(reading.network, reading.application,
                         this.panelState.applyReading(reading));
                 }
+                // System-state verbs also drive the HA alarm_control_panel
+                // state machine (system_arm, arm_ready/not_ready,
+                // exit_delay_started, alarm_on/off).
+                this._publishAlarmTransition(reading.network, reading.application, reading);
                 // System-state verbs (arm_ready, system_arm, alarm_on/off, …):
                 // no zone MQTT state, but logged human-readably and surfaced
                 // in the Live Events stream.
@@ -289,6 +296,26 @@ class SecurityEventHandler {
         if (haDiscovery) {
             haDiscovery.ensureSecurityZoneDiscovery(network, application, zone);
         }
+    }
+
+    /**
+     * Track the HA alarm_control_panel state for one reading and publish any
+     * transition through the shared reading path (cbus/read/{net}/{app}/panel/
+     * state + attributes). Repeats dedupe inside the tracker.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _publishAlarmTransition(network, application, reading) {
+        const transition = this.panelState.applyAlarmReading(reading);
+        if (!transition) return;
+        this.eventPublisher.publishReading(network, application, 'panel', {
+            kind: 'security_alarm',
+            alarmState: transition.state,
+            blockingZone: transition.blockingZone
+        });
     }
 
     /**
