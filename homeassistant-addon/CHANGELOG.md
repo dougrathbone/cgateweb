@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.23.0] - 2026-08-04
+
+### Added
+
+- **Your alarm panel now appears in Home Assistant as an alarm panel card.** Alongside the zone sensors, each network gets an `alarm_control_panel` entity on the C-Bus Security Panel device, showing disarmed, armed away/home/night/vacation, arming, pending or triggered. The state always comes from the panel's own broadcasts, so it stays right even when someone arms from a keypad. While the panel refuses to arm, the zone holding it up is published as a `blocking_zone` attribute. (#42)
+- **Optional arm/disarm from Home Assistant**, off by default behind the new `cbus_security_control_enabled` option. Turning it on adds the command topic so Home Assistant's arm and disarm buttons work (day/stay maps to armed home). Please read the warning before enabling it: the C-Bus arm command carries **no PIN**, so anything able to publish to your MQTT broker could disarm your panel. Left off, the entity is read-only. (#42)
+
+### Fixed
+
+- Internal: stopping Home Assistant discovery now always cancels a pending device-tree deadline, so a stopped discovery run can no longer log a spurious "tree stream stalled" retry afterwards.
+
 ## [1.22.4] - 2026-08-03
 
 ### Fixed
