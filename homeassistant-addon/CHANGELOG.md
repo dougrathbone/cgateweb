@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.22.4] - 2026-08-03
+
+### Fixed
+
+- **Entity names no longer vanish during a Home Assistant backup.** The backup briefly removes the label file and the reload used to wipe every label in memory; it now keeps the last known labels and recovers on its own. (#44)
+- **No more 402 error spam for trigger applications.** Trigger groups (app 202) do not support level reads, so they are no longer included in level syncs; their state arrives via events as before. (#44)
+
 ## [1.22.3] - 2026-08-02
 
 ### Fixed
