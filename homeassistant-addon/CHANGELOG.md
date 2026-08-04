@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.23.1] - 2026-08-05
+
+### Fixed
+
+- **The Disarm button never worked, and no longer pretends to.** 1.23.0 advertised arm *and* disarm, but the C-Bus Security specification has no disarm command — it reserves the arm value that 1.23.0 was sending, so the panel simply ignored it. Arming (away, night, home, vacation) works as before. Home Assistant always shows a Disarm button on an alarm panel it can send commands to, so the button is still on screen; it now logs a clear explanation instead of putting an invalid value on the bus. Disarm at your keypad and the entity will follow within a second. Proper support needs the panel's "Emulate Keypad" message and your PIN, which is being scoped separately. (#42)
+- **No more "Cannot write to closing transport" errors during backups.** The Live Events stream kept writing to browser connections that Home Assistant had already torn down. It now notices the connection has gone and cleans up immediately. (#44)
+
+### Changed
+
+- **Moved off the deprecated `config` folder mapping** to `homeassistant_config`, clearing one of the deprecation warnings Home Assistant logs about this add-on. Your C-Bus labels come across automatically: the add-on looks in both the old and new location and keeps using your existing file, so there is nothing for you to do. If you set a custom label file path yourself it keeps working, and the log names the updated path to save when convenient. (#44)
+
+### Known warnings
+
+Home Assistant also logs deprecation warnings for this add-on's `build.yaml` and
+its `armhf`/`armv7`/`i386` architectures. Both are being kept on purpose, and
+they are the same decision: removing `build.yaml` means naming a single base
+image in the Dockerfile, and the only multi-architecture Home Assistant base
+image covers 64-bit alone. Acting on those warnings today would cut off updates
+for anyone running 32-bit Home Assistant, which is not a trade worth making
+while the 32-bit base images are still published. They are harmless log noise
+until then. (#44)
+
 ## [1.23.0] - 2026-08-04
 
 ### Added
