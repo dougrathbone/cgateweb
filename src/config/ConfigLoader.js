@@ -3,7 +3,7 @@ const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 const { defaultSettings } = require('../defaultSettings');
-const { DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
+const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
 
@@ -243,9 +243,12 @@ class ConfigLoader {
         // creates the file rather than erroring (GitHub #3). /share is excluded —
         // mounted read-only in the add-on.
         if (options.cbus_label_file) {
-            config.cbus_label_file = options.cbus_label_file;
+            config.cbus_label_file = this._migrateLegacyConfigPath(options.cbus_label_file);
         } else {
-            const autoDetectPaths = [DEFAULT_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE];
+            // LEGACY_ADDON_LABEL_FILE is probed too: an install that saved
+            // labels while /config was still mounted keeps them after the
+            // switch to /homeassistant (#44).
+            const autoDetectPaths = [DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE];
             for (const p of autoDetectPaths) {
                 if (fs.existsSync(p)) {
                     config.cbus_label_file = p;
@@ -267,6 +270,35 @@ class ConfigLoader {
         }
 
         return config;
+    }
+
+    /**
+     * Redirect a saved /config label path onto the /homeassistant mount.
+     *
+     * Supervisor deprecated the `config` map option; `homeassistant_config`
+     * mounts the same host directory at /homeassistant instead (#44). Users who
+     * set cbus_label_file explicitly followed the old docs and have
+     * "/config/..." saved in their add-on options, which is no longer mounted —
+     * without this their labels would read as missing after an update, exactly
+     * the failure #44 was about.
+     *
+     * Only rewrites when the old path is genuinely gone and the new one exists,
+     * so a standalone install (or anyone who really does have /config) is
+     * untouched.
+     *
+     * @param {string} labelFile - Path from the add-on options.
+     * @returns {string} The path to use.
+     * @private
+     */
+    _migrateLegacyConfigPath(labelFile) {
+        if (typeof labelFile !== 'string' || !labelFile.startsWith('/config/')) return labelFile;
+        if (fs.existsSync(labelFile)) return labelFile;
+
+        const migrated = labelFile.replace('/config/', '/homeassistant/');
+        if (!fs.existsSync(migrated)) return labelFile;
+
+        this.logger.warn(`Label file "${labelFile}" is on the deprecated /config mount and no longer exists; using "${migrated}" instead. Update the cbus_label_file option to silence this.`);
+        return migrated;
     }
 
     /**

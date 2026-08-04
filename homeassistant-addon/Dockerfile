@@ -1,3 +1,8 @@
+# Supplied per-arch by build.yaml. Supervisor warns that build.yaml is
+# deprecated in favour of declaring this here, but a Dockerfile ARG can only
+# carry one default, and the only multi-arch HA base image is amd64/arm64 —
+# hardcoding it would silently drop the 32-bit arches config.yaml still lists.
+# So build.yaml stays until HA stops publishing the 32-bit bases (#44).
 ARG BUILD_FROM
 
 # ----------------------------------------------------------------------------

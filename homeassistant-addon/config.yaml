@@ -1,8 +1,16 @@
 name: "C-Gate Web Bridge"
-version: "1.23.0"
+version: "1.23.1"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
+# Supervisor warns that armhf/armv7/i386 are deprecated arch values (#44). They
+# are kept deliberately: the per-arch base images they build from are still
+# published, and dropping them would cut off updates for anyone on a 32-bit
+# Home Assistant install. Revisit when HA stops publishing those bases.
+#
+# This is also why build.yaml still exists. Its deprecation and this one are
+# coupled — folding the base image into the Dockerfile means one BUILD_FROM
+# default, and only the multi-arch index (amd64/arm64) can serve that role.
 arch:
   - aarch64
   - amd64
@@ -40,8 +48,12 @@ uart: true
 services:
   - mqtt:want
 
+# `homeassistant_config` replaces the deprecated `config` option. It mounts the
+# same host directory, but at /homeassistant rather than /config — see
+# LEGACY_ADDON_LABEL_FILE in src/constants.js for how saved label paths are
+# carried across (#44).
 map:
-  - "config:rw"
+  - "homeassistant_config:rw"
   - "share:ro"
 
 # ─── Options ────────────────────────────────────────────────────────

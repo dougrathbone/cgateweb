@@ -49,9 +49,40 @@ describe('EnvironmentDetector', () => {
             expect(result.isStandalone).toBe(false);
             expect(result.optionsPath).toBe('/data/options.json');
             expect(result.dataPath).toBe('/data');
+            // Only the deprecated mount is present here, so detection falls
+            // back to it (#44).
             expect(result.configPath).toBe('/config');
             expect(result.indicators.hasOptionsFile).toBe(true);
             expect(result.indicators.hasDataDirectory).toBe(true);
+        });
+
+        test('should use the /homeassistant config mount when it is present', () => {
+            fs.existsSync.mockImplementation((filePath) => {
+                return filePath === '/data/options.json'
+                    || filePath === '/data'
+                    || filePath === '/homeassistant';
+            });
+            fs.statSync.mockImplementation((filePath) => ({
+                isFile: () => filePath === '/data/options.json',
+                isDirectory: () => filePath === '/data' || filePath === '/homeassistant'
+            }));
+
+            const result = detector.detect();
+
+            expect(result.configPath).toBe('/homeassistant');
+            expect(result.indicators.hasConfigDirectory).toBe(true);
+        });
+
+        test('should prefer /homeassistant over /config when both are mounted', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.statSync.mockImplementation((filePath) => ({
+                isFile: () => filePath === '/data/options.json',
+                isDirectory: () => filePath !== '/data/options.json'
+            }));
+
+            const result = detector.detect();
+
+            expect(result.configPath).toBe('/homeassistant');
         });
 
         test('should detect addon environment with supervisor token', () => {
@@ -95,7 +126,10 @@ describe('EnvironmentDetector', () => {
             const result2 = detector.detect();
 
             expect(result1).toBe(result2); // Should be the same object reference
-            expect(fs.existsSync).toHaveBeenCalledTimes(3); // Only called once for detection
+            // One probe each for /data/options.json, /data and /homeassistant,
+            // plus the /config fallback probe that runs when /homeassistant is
+            // absent (#44). The point is that detection ran once, not twice.
+            expect(fs.existsSync).toHaveBeenCalledTimes(4);
         });
     });
 

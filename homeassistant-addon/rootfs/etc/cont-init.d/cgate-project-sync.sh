@@ -19,11 +19,16 @@ SHARE_TAG_DIR="${CGATEWEB_SHARE_TAG_DIR:-/share/cgate/tag}"
 DATA_CGATE_DIR="${CGATEWEB_DATA_CGATE_DIR:-/data/cgate}"
 PROJECTS_DIR="${DATA_CGATE_DIR}/Projects"
 # Probed only when SHARE_TAG_DIR is missing (issue #28 follow-up): File
-# Editor's root is /config (shown as /homeassistant in current Home
-# Assistant), so a "share/cgate/tag" folder made there lands at
-# /config/share/cgate/tag, not the top-level /share/cgate/tag this add-on
-# maps (config.yaml: share:ro). Overridable for unit tests.
-CONFIG_SHARE_CGATE_DIR="${CGATEWEB_CONFIG_SHARE_CGATE_DIR:-/config/share/cgate}"
+# Editor's root is the Home Assistant config directory, so a "share/cgate/tag"
+# folder made there lands under it rather than in the top-level /share/cgate/tag
+# this add-on maps (config.yaml: share:ro). That directory is mounted at
+# /homeassistant since the switch off the deprecated `config` map option (#44);
+# /config is still checked so the hint keeps working on an add-on that has not
+# been rebuilt yet. Overridable for unit tests.
+CONFIG_SHARE_CGATE_DIR="${CGATEWEB_CONFIG_SHARE_CGATE_DIR:-/homeassistant/share/cgate}"
+if [ ! -d "${CONFIG_SHARE_CGATE_DIR}" ] && [ -d "/config/share/cgate" ]; then
+    CONFIG_SHARE_CGATE_DIR="/config/share/cgate"
+fi
 CONFIG_SHARE_TAG_DIR="${CONFIG_SHARE_CGATE_DIR}/tag"
 
 # Wait for the Supervisor API before the first bashio::config read: bashio
@@ -85,15 +90,14 @@ _cgateweb_warn_unusable_files() {
     bashio::log.warning "The file you need is <PROJECT>.db from C-Gate's tag/ directory in your Toolkit install, not an XML export."
 }
 
-# issue #28 follow-up: File Editor's root is /config (shown as /homeassistant
-# in current Home Assistant), so a user creating "share/cgate/tag" there via
-# File Editor actually creates /config/share/cgate/tag, not the top-level
-# /share/cgate/tag this add-on maps (config.yaml: share:ro). The add-on cannot
-# see /config at all, so the plain "directory does not exist" message gives no
-# hint this is the mistake. Call it out by name when detected.
+# issue #28 follow-up: File Editor's root is the Home Assistant config
+# directory, so a user creating "share/cgate/tag" there via File Editor actually
+# creates it under that directory, not the top-level /share/cgate/tag this
+# add-on maps (config.yaml: share:ro). Without naming the mistake, the plain
+# "directory does not exist" message gives no hint. Call it out when detected.
 _cgateweb_warn_wrong_share_location() {
     bashio::log.warning "No project tag directory at ${SHARE_TAG_DIR}, but found ${CONFIG_SHARE_TAG_DIR} instead."
-    bashio::log.warning "/config/share (shown as /homeassistant/share in the File Editor add-on) is not the same as the top-level /share this add-on reads."
+    bashio::log.warning "The Home Assistant config directory's 'share' folder (what the File Editor add-on shows) is not the same as the top-level /share this add-on reads."
     bashio::log.warning "Move your project files to ${SHARE_TAG_DIR} (accessible via the Samba, SSH, or File Editor add-ons' top-level 'share' folder) and restart."
 }
 

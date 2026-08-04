@@ -147,9 +147,17 @@ function entityIdFields(component, objectId) {
 }
 
 // === File Paths ===
-// Default label-file path for Home Assistant add-on installs — /config is mounted
-// read-write and persists across updates.
-const DEFAULT_ADDON_LABEL_FILE = '/config/cgateweb-labels.json';
+// Default label-file path for Home Assistant add-on installs — the mapped HA
+// config directory is read-write and persists across updates.
+//
+// Supervisor deprecated the `config` map option in favour of
+// `homeassistant_config`, which mounts the same host directory at
+// /homeassistant instead of /config (#44). Both paths therefore refer to the
+// same file on disk; only the mount point moved. LEGACY is kept so an install
+// that already has labels under /config — or an explicit cbus_label_file
+// pointing there — keeps working after the add-on updates.
+const DEFAULT_ADDON_LABEL_FILE = '/homeassistant/cgateweb-labels.json';
+const LEGACY_ADDON_LABEL_FILE = '/config/cgateweb-labels.json';
 const DEFAULT_ADDON_DATA_LABEL_FILE = '/data/labels.json';
 
 // === System ===
@@ -288,6 +296,7 @@ module.exports = {
 
     // File Paths
     DEFAULT_ADDON_LABEL_FILE,
+    LEGACY_ADDON_LABEL_FILE,
     DEFAULT_ADDON_DATA_LABEL_FILE,
 
     // System

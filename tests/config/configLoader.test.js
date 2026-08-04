@@ -1278,9 +1278,11 @@ describe('ConfigLoader', () => {
             expect(config.mqttRejectUnauthorized).toBeUndefined();
         });
 
-        test('should auto-detect label file when cbus_label_file not set and a path exists', () => {
+        test('should auto-detect a legacy /config label file left by an older add-on version', () => {
+            // Supervisor deprecated the `config` map (mounted at /config) for
+            // `homeassistant_config` (/homeassistant). An install that saved
+            // labels under the old mount must keep them (#44).
             fs.existsSync.mockImplementation((p) => {
-                // Options file exists, and /config/cgateweb-labels.json auto-detected path exists
                 if (p === '/data/options.json') return true;
                 if (p === '/config/cgateweb-labels.json') return true;
                 return false;
@@ -1292,7 +1294,21 @@ describe('ConfigLoader', () => {
             expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
         });
 
-        test('should default cbus_label_file to /config/cgateweb-labels.json when unset and no files exist (fresh addon install)', () => {
+        test('should prefer the /homeassistant label file when both mounts have one', () => {
+            fs.existsSync.mockImplementation((p) => {
+                if (p === '/data/options.json') return true;
+                if (p === '/homeassistant/cgateweb-labels.json') return true;
+                if (p === '/config/cgateweb-labels.json') return true;
+                return false;
+            });
+            fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/homeassistant/cgateweb-labels.json');
+        });
+
+        test('should default cbus_label_file to /homeassistant/cgateweb-labels.json when unset and no files exist (fresh addon install)', () => {
             // Only the options file itself exists — no pre-existing label files anywhere.
             fs.existsSync.mockImplementation((p) => p === '/data/options.json');
             fs.readFileSync.mockReturnValue(JSON.stringify(baseAddonOptions));
@@ -1302,7 +1318,56 @@ describe('ConfigLoader', () => {
             // Even without an existing label file, the addon must fall back to a writable default
             // so the first-time "Import" flow can create the file rather than throwing
             // "No label file path configured". See GitHub issue #3.
-            expect(config.cbus_label_file).toBe('/config/cgateweb-labels.json');
+            expect(config.cbus_label_file).toBe('/homeassistant/cgateweb-labels.json');
+        });
+
+        test('should redirect an explicit /config label path onto the /homeassistant mount', () => {
+            // Users who set cbus_label_file followed the old docs and have
+            // "/config/..." saved. After the map change that path is no longer
+            // mounted, so without the redirect their labels read as missing.
+            fs.existsSync.mockImplementation((p) => {
+                if (p === '/data/options.json') return true;
+                if (p === '/homeassistant/my-labels.json') return true;
+                return false; // /config/my-labels.json is gone with the old mount
+            });
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                ...baseAddonOptions,
+                cbus_label_file: '/config/my-labels.json'
+            }));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/homeassistant/my-labels.json');
+        });
+
+        test('should leave an explicit /config label path alone while it still resolves', () => {
+            fs.existsSync.mockImplementation((p) => {
+                if (p === '/data/options.json') return true;
+                if (p === '/config/my-labels.json') return true;
+                return false;
+            });
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                ...baseAddonOptions,
+                cbus_label_file: '/config/my-labels.json'
+            }));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/config/my-labels.json');
+        });
+
+        test('should not invent a /homeassistant path when neither mount has the file', () => {
+            // Nothing to migrate to: keep what the user configured so the first
+            // Import creates it, rather than silently writing somewhere else.
+            fs.existsSync.mockImplementation((p) => p === '/data/options.json');
+            fs.readFileSync.mockReturnValue(JSON.stringify({
+                ...baseAddonOptions,
+                cbus_label_file: '/config/my-labels.json'
+            }));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_label_file).toBe('/config/my-labels.json');
         });
 
         test('should map ha_discovery_trigger_app_id as string when provided', () => {

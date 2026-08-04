@@ -101,9 +101,9 @@ The supported workflow for managed mode is:
    (accessible via the Samba, SSH, or File Editor add-ons). Create the
    directory if it does not exist.
    > `/share` here is the **top-level** Home Assistant share. It is not the
-   > same as a `share` folder you create inside `/config` (what the File
-   > Editor add-on shows as `/homeassistant`) — files placed there are
-   > invisible to this add-on.
+   > same as a `share` folder you create inside your Home Assistant config
+   > directory (what the File Editor add-on shows as `/homeassistant`) — files
+   > placed there are invisible to this add-on.
 3. Restart the add-on. On startup it copies each `/share/cgate/tag/<NAME>.db`
    into `Projects/<NAME>/<NAME>.db` where C-Gate expects it, and sets
    `project.start=<cgate_project>` so C-Gate loads and starts the project

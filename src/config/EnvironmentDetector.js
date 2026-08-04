@@ -3,6 +3,12 @@ const fs = require('fs');
 const path = require('path');
 const { Logger } = require('../logger');
 
+// Home Assistant config mount. `homeassistant_config:rw` mounts at
+// /homeassistant; the deprecated `config:rw` mounted the same host directory at
+// /config. Both are probed so an in-place update keeps working (#44).
+const HA_CONFIG_PATH = '/homeassistant';
+const LEGACY_HA_CONFIG_PATH = '/config';
+
 /**
  * Detects the installation environment (standalone vs Home Assistant addon)
  * and provides environment-specific information
@@ -69,7 +75,7 @@ class EnvironmentDetector {
             isAddon: false,
             optionsPath: '/data/options.json',
             dataPath: '/data',
-            configPath: '/config',
+            configPath: HA_CONFIG_PATH,
             supervisorToken: null,
             hasOptionsFile: false,
             hasDataDirectory: false,
@@ -84,8 +90,15 @@ class EnvironmentDetector {
         // Check for /data directory
         indicators.hasDataDirectory = this._directoryExists(indicators.dataPath);
         
-        // Check for /config directory (Home Assistant config mount)
+        // Check for the Home Assistant config mount. Supervisor deprecated the
+        // `config` map option (mounted at /config) in favour of
+        // `homeassistant_config` (mounted at /homeassistant), so accept either:
+        // an add-on updated in place can still be running with the old mount.
         indicators.hasConfigDirectory = this._directoryExists(indicators.configPath);
+        if (!indicators.hasConfigDirectory && this._directoryExists(LEGACY_HA_CONFIG_PATH)) {
+            indicators.configPath = LEGACY_HA_CONFIG_PATH;
+            indicators.hasConfigDirectory = true;
+        }
         
         // Check for Supervisor token environment variable
         indicators.supervisorToken = process.env.SUPERVISOR_TOKEN;

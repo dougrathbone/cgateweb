@@ -140,6 +140,11 @@ describe('Addon Configuration Integration', () => {
             buildYaml = yaml.parse(buildContent);
         });
 
+        // Supervisor warns that build.yaml is deprecated, but it is kept on
+        // purpose: a Dockerfile ARG default can only name one base image, and
+        // the only multi-arch HA base is amd64/arm64 — so folding it in would
+        // silently drop the 32-bit arches below (#44). This test is the guard:
+        // every arch config.yaml claims must have a base image to build from.
         test('should have build_from for all supported architectures', () => {
             for (const arch of configYaml.arch) {
                 expect(buildYaml.build_from[arch]).toBeDefined();
@@ -152,6 +157,15 @@ describe('Addon Configuration Integration', () => {
             expect(buildYaml.args.BUILD_DATE).toBeDefined();
             expect(buildYaml.args.BUILD_REF).toBeDefined();
             expect(buildYaml.args.BUILD_VERSION).toBeDefined();
+        });
+    });
+
+    describe('host directory mapping', () => {
+        test('uses homeassistant_config rather than the deprecated config option', () => {
+            // The `config` map option is deprecated; `homeassistant_config`
+            // mounts the same directory at /homeassistant (#44).
+            expect(configYaml.map).toContain('homeassistant_config:rw');
+            expect(configYaml.map).not.toContain('config:rw');
         });
     });
 
