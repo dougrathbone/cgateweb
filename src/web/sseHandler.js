@@ -40,18 +40,52 @@ class SseHandler {
         // Flush headers immediately so the client knows the connection is open
         if (res.flushHeaders) res.flushHeaders();
 
+        const connection = { res, listener: null, keepaliveInterval: null };
+
+        // Clean up on client disconnect or response failure — listen on both
+        // req and res so a destroyed response can't leak the event-log
+        // listener and keepalive timer.
+        const cleanup = () => {
+            if (!this._connections.delete(connection)) return; // already cleaned up
+            clearInterval(connection.keepaliveInterval);
+            if (this.eventStream && connection.listener) {
+                this.eventStream.unsubscribe(connection.listener);
+            }
+        };
+
+        // Every write races the client going away. Home Assistant's ingress
+        // proxy drops the socket during backups, and an event or keepalive
+        // landing in that window wrote into a closing transport — which
+        // Supervisor logs as "Cannot write to closing transport" (#44). The
+        // close/error handlers below can't cover it on their own: the socket
+        // starts refusing writes before 'close' is emitted. So check the
+        // response is still writable, and treat any failure as a disconnect.
+        const write = (chunk) => {
+            if (res.writableEnded || res.destroyed) {
+                cleanup();
+                return false;
+            }
+            try {
+                res.write(chunk);
+                return true;
+            } catch {
+                cleanup();
+                return false;
+            }
+        };
+
         // Replay recent events first
         if (this.eventStream) {
-            const recent = this.eventStream.getRecent();
-            for (const entry of recent) {
-                res.write(`data: ${JSON.stringify(entry)}\n\n`);
+            for (const entry of this.eventStream.getRecent()) {
+                if (!write(`data: ${JSON.stringify(entry)}\n\n`)) return;
             }
         }
 
         // Listener for new events
         const listener = (entry) => {
-            res.write(`data: ${JSON.stringify(entry)}\n\n`);
+            write(`data: ${JSON.stringify(entry)}\n\n`);
         };
+        connection.listener = listener;
 
         if (this.eventStream) {
             this.eventStream.subscribe(listener);
@@ -59,23 +93,13 @@ class SseHandler {
 
         // Keepalive comment every 15 seconds to prevent proxy timeouts
         const keepaliveInterval = setInterval(() => {
-            res.write(': keepalive\n\n');
+            write(': keepalive\n\n');
         }, this.keepaliveMs);
         keepaliveInterval.unref();
+        connection.keepaliveInterval = keepaliveInterval;
 
-        const connection = { res, listener, keepaliveInterval };
         this._connections.add(connection);
 
-        // Clean up on client disconnect or response failure — listen on both
-        // req and res so a destroyed response can't leak the event-log
-        // listener and keepalive timer.
-        const cleanup = () => {
-            if (!this._connections.delete(connection)) return; // already cleaned up
-            clearInterval(keepaliveInterval);
-            if (this.eventStream) {
-                this.eventStream.unsubscribe(listener);
-            }
-        };
         req.on('close', cleanup);
         res.on('close', cleanup);
         res.on('error', cleanup);
