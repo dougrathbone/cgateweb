@@ -244,7 +244,7 @@ configuration:
   cbus_security_control_enabled:
     name: Sterowanie alarmem
     description: >-
-      Zezwól Home Assistant na uzbrajanie i rozbrajanie centrali alarmowej (away, night, home, vacation, disarm). Domyślnie wyłączone: polecenie uzbrojenia nie przenosi żadnego kodu PIN w sieci C-Bus, więc wszystko, co może publikować na temacie poleceń, może rozbroić Twoją centralę. Wymaga ustawionego ID aplikacji bezpieczeństwa.
+      Zezwól Home Assistant na uzbrajanie centrali alarmowej (away, night, home, vacation). Tylko uzbrajanie: C-Bus nie ma polecenia rozbrojenia, więc przycisk Disarm w Home Assistant nic nie robi. Domyślnie wyłączone: polecenie uzbrojenia nie przenosi żadnego kodu PIN w sieci C-Bus, więc wszystko, co może publikować na temacie poleceń, może uzbroić Twoją centralę. Wymaga ustawionego ID aplikacji bezpieczeństwa.
 
 
   # ── Diagnostyka bridge ──

@@ -247,7 +247,7 @@ configuration:
   cbus_security_control_enabled:
     name: Alarmstyring
     description: >-
-      Tillad Home Assistant at til- og frakoble alarmcentralen (away, night, home, vacation, disarm). Slået fra som standard: tilkoblingskommandoen bærer ingen PIN på C-Bus, så alt der kan publicere på kommando-topic'en kan frakoble din alarm. Kræver, at sikkerhedsapplikations-id er angivet.
+      Tillad Home Assistant at tilkoble alarmcentralen (away, night, home, vacation). Kun tilkobling: C-Bus har ingen frakoblingskommando, så Disarm-knappen i Home Assistant gør ingenting. Slået fra som standard: tilkoblingskommandoen bærer ingen PIN på C-Bus, så alt der kan publicere på kommando-topic'en kan tilkoble din alarm. Kræver, at sikkerhedsapplikations-id er angivet.
 
 
   # ── Bridge diagnostik ──

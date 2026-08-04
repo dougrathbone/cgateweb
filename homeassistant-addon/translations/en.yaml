@@ -244,7 +244,7 @@ configuration:
   cbus_security_control_enabled:
     name: Security Panel Control
     description: >-
-      Allow Home Assistant to arm and disarm the security panel (away, night, home, vacation, disarm). Off by default: the arm command carries no PIN on the C-Bus network, so anything that can publish to the command topic can disarm your panel. Requires the Security Application ID to be set.
+      Allow Home Assistant to arm the security panel (away, night, home, vacation). Arming only: C-Bus has no disarm command, so Home Assistant's Disarm button does nothing. Off by default: the arm command carries no PIN on the C-Bus network, so anything that can publish to the command topic can arm your panel. Requires the Security Application ID to be set.
 
 
   # ── Bridge Diagnostics ──

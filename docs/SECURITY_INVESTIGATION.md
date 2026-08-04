@@ -85,7 +85,21 @@ only need `zone_sealed`/`zone_unsealed` and the status reports.
 ### Control messages (spec §5.5.2.3 — "Part B", later phase)
 
 `security arm //PROJECT/254/208 <mode>` with `$01` away, `$02` night/home, `$03` day,
-`$04` vacation, `$FF` highest; disarm is arm code `$00` via the matching command.
+`$04` vacation, `$FF` highest.
+
+**There is no disarm command.** §5.5.2.3 marks arm mode `$00` as *reserved*, so
+`security arm ... 0` is an invalid argument, not a disarm. Disarming over C-Bus
+requires §5.5.2.7 **Emulate Keypad** (`$0A`, args `$A5, <key>`), replaying the
+PIN sequence keypress by keypress — and that message is marked OPTIONAL, so a
+given panel need not implement it.
+
+An earlier revision of this section claimed "disarm is arm code `$00` via the
+matching command". That was wrong: it borrowed the `$00 = disarmed` encoding
+from the §5.5.1.1 System Armed/Disarmed *broadcast*, which is a different
+message travelling the other direction. 1.23.0 shipped a disarm built on that
+mistake; it was inert on a live panel (#42) and removed in 1.23.1. Keep the two
+encodings distinct when reading this spec — the broadcast and the command reuse
+mode numbers with different meanings.
 
 ## 2. What happens today (pre-change behaviour)
 

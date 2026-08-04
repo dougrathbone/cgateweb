@@ -248,7 +248,7 @@ configuration:
   cbus_security_control_enabled:
     name: Alarmpaneel-bediening
     description: >-
-      Sta Home Assistant toe het alarmsysteem in- en uit te schakelen (away, night, home, vacation, disarm). Standaard uitgeschakeld: het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het commando-topic kan publiceren kan uw alarmsysteem uitschakelen. Vereist een ingestelde beveiligingsapplicatie-id.
+      Sta Home Assistant toe het alarmsysteem in te schakelen (away, night, home, vacation). Alleen inschakelen: C-Bus heeft geen uitschakelcommando, dus de Disarm-knop in Home Assistant doet niets. Standaard uitgeschakeld: het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het commando-topic kan publiceren kan uw alarmsysteem inschakelen. Vereist een ingestelde beveiligingsapplicatie-id.
 
 
   # ── Bridge Diagnostiek ──

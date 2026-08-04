@@ -37,14 +37,14 @@ describe('MqttCommandRouter', () => {
         queueSpy.mockRestore();
     });
 
-    describe('security panel arm/disarm (cbus/write/{net}/{app}/panel/arm)', () => {
+    describe('security panel arming (cbus/write/{net}/{app}/panel/arm)', () => {
         beforeEach(() => {
             router.settings.cbus_security_app_id = '208';
             router.settings.cbus_security_control_enabled = true;
         });
 
         it('maps HA command payloads to C-Bus arm modes', () => {
-            const cases = { DISARM: 0, ARM_AWAY: 1, ARM_NIGHT: 2, ARM_HOME: 3, ARM_VACATION: 4 };
+            const cases = { ARM_AWAY: 1, ARM_NIGHT: 2, ARM_HOME: 3, ARM_VACATION: 4 };
             for (const [payload, mode] of Object.entries(cases)) {
                 mockQueue.add.mockClear();
                 router.routeMessage('cbus/write/254/208/panel/arm', payload);
@@ -53,11 +53,30 @@ describe('MqttCommandRouter', () => {
             }
         });
 
-        it('logs every arm/disarm at INFO', () => {
+        it('logs every arm at INFO', () => {
             const infoSpy = jest.spyOn(router.logger, 'info');
-            router.routeMessage('cbus/write/254/208/panel/arm', 'DISARM');
-            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Security arm: 254/208 -> mode 0 (DISARM)'));
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
+            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Security arm: 254/208 -> mode 1 (ARM_AWAY)'));
             infoSpy.mockRestore();
+        });
+
+        // Regression for 1.23.0, which sent `security arm ... 0` for DISARM.
+        // Spec §5.5.2.3 reserves arm mode $00, so that put an invalid argument
+        // on the bus and the panel ignored it (#42). Nothing may reach the queue.
+        it('never puts reserved arm mode 0 on the bus for DISARM', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/208/panel/arm', 'DISARM');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Disarm over C-Bus is not supported'));
+            warnSpy.mockRestore();
+        });
+
+        it('explains DISARM specifically rather than calling it an unknown payload', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/208/panel/arm', ' disarm ');
+            expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Unknown security arm payload'));
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Emulate Keypad'));
+            warnSpy.mockRestore();
         });
 
         it('rejects unknown payloads with a warning and no command', () => {
@@ -71,14 +90,14 @@ describe('MqttCommandRouter', () => {
         it('ignores the command when control is disabled', () => {
             router.settings.cbus_security_control_enabled = false;
             const warnSpy = jest.spyOn(router.logger, 'warn');
-            router.routeMessage('cbus/write/254/208/panel/arm', 'DISARM');
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
             expect(mockQueue.add).not.toHaveBeenCalled();
             expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Security panel control is disabled'));
             warnSpy.mockRestore();
         });
 
         it('ignores arm commands for a different application', () => {
-            router.routeMessage('cbus/write/254/209/panel/arm', 'DISARM');
+            router.routeMessage('cbus/write/254/209/panel/arm', 'ARM_AWAY');
             expect(mockQueue.add).not.toHaveBeenCalled();
         });
 

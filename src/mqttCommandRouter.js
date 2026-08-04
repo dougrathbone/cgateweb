@@ -52,10 +52,17 @@ const {
 } = require('./airconControlRegistry');
 const { buildSecurityArmCommand } = require('./securityCommand');
 
-// HA MQTT alarm command payloads → C-Bus arm mode (spec §5.5.2.3; mode 0
-// disarms on the live panel even though the spec marks $00 reserved).
+// HA MQTT alarm command payloads → C-Bus arm mode (spec §5.5.2.3).
+//
+// Arming only. There is deliberately no DISARM entry: §5.5.2.3 marks arm mode
+// $00 as *reserved*, so `security arm ... 0` is not a disarm — it is an invalid
+// argument. (The $00 = disarmed encoding belongs to the §5.5.1.1 System
+// Armed/Disarmed *broadcast*, which is a different message; conflating the two
+// is what produced the dead disarm button in 1.23.0.) Disarming over C-Bus
+// requires §5.5.2.7 Emulate Keypad, replaying the PIN sequence keypress by
+// keypress — a different feature with its own security tradeoff, tracked
+// separately. Reported and confirmed on a live panel in #42.
 const SECURITY_ARM_MODE_BY_PAYLOAD = {
-    DISARM: 0,
     ARM_AWAY: 1,
     ARM_NIGHT: 2,
     ARM_HOME: 3,
@@ -215,15 +222,18 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles security panel arm/disarm (cbus/write/{net}/{app}/panel/arm).
+     * Handles security panel arming (cbus/write/{net}/{app}/panel/arm).
      * Gated on cbus_security_control_enabled: an arm write carries no PIN on
      * the bus, so control is opt-in. The panel confirms with a system_arm (or
      * arm_not_ready) broadcast, which drives the state machine — no
      * optimistic state is published here.
      *
+     * Arming only — see SECURITY_ARM_MODE_BY_PAYLOAD for why DISARM cannot be
+     * served by this command.
+     *
      * @param {string} network - Network id from the topic.
      * @param {string} application - Application id from the topic.
-     * @param {string} payload - HA alarm command payload (DISARM, ARM_AWAY, …).
+     * @param {string} payload - HA alarm command payload (ARM_AWAY, ARM_HOME, …).
      * @param {string} topic - Original topic for logging.
      * @private
      */
@@ -238,15 +248,23 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
-        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[String(payload).trim().toUpperCase()];
+        const normalised = String(payload).trim().toUpperCase();
+        if (normalised === 'DISARM') {
+            // Called out separately from the generic unknown-payload path: a
+            // hand-rolled HA panel pointed at this topic will send DISARM, and
+            // "unknown payload" would send the user hunting for a typo.
+            this.logger.warn(`Disarm over C-Bus is not supported (spec §5.5.2.3 reserves arm mode 0; disarming needs Emulate Keypad with the PIN); ignoring disarm on ${topic}`);
+            return;
+        }
+        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[normalised];
         if (mode === undefined) {
-            this.logger.warn(`Unknown security arm payload "${payload}" on topic ${topic} (expected DISARM|ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
+            this.logger.warn(`Unknown security arm payload "${payload}" on topic ${topic} (expected ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
             return;
         }
 
         const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
         this._queueCommand(cmd + NEWLINE);
-        this.logger.info(`Security arm: ${network}/${application} -> mode ${mode} (${String(payload).trim().toUpperCase()})`);
+        this.logger.info(`Security arm: ${network}/${application} -> mode ${mode} (${normalised})`);
     }
 
     /**

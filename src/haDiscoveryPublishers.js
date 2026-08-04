@@ -816,6 +816,13 @@ class _HaDiscoveryPublishers {
      * arm write carries no PIN on the bus, so control is opt-in (the entity
      * is read-only without it, following the native-aircon precedent).
      *
+     * Arming only. Home Assistant always renders a Disarm button once a
+     * command_topic exists (supported_features has no disarm flag to withhold),
+     * but C-Bus has no disarm command — §5.5.2.3 reserves arm mode 0 and
+     * disarming needs §5.5.2.7 Emulate Keypad with the PIN. The router ignores
+     * DISARM with an explanatory warning rather than putting a reserved value
+     * on the bus, so the button is inert by design until Emulate Keypad lands.
+     *
      * @private
      */
     _createSecurityAlarmDiscovery(networkId, appId, deviceName) {
@@ -831,8 +838,9 @@ class _HaDiscoveryPublishers {
 
             state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
             json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-            // Arm away/night/home(day-stay)/vacation + disarm; no custom
-            // bypass and no manual trigger on this panel.
+            // Arm away/night/home(day-stay)/vacation; no custom bypass and no
+            // manual trigger on this panel. Disarm is not in this list because
+            // HA has no such flag — see the note above.
             supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation'],
             ...(controlEnabled && {
                 command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`

@@ -242,7 +242,7 @@ configuration:
   cbus_security_control_enabled:
     name: Larmstyrning
     description: >-
-      Tillåt Home Assistant att till- och frånkoppla larmcentralen (away, night, home, vacation, disarm). Avstängt som standard: tillkopplingskommandot bär ingen PIN på C-Bus, så allt som kan publicera på kommando-topicen kan frånkoppla ditt larm. Kräver att säkerhetsapplikations-id är inställt.
+      Tillåt Home Assistant att tillkoppla larmcentralen (away, night, home, vacation). Endast tillkoppling: C-Bus har inget frånkopplingskommando, så Disarm-knappen i Home Assistant gör ingenting. Avstängt som standard: tillkopplingskommandot bär ingen PIN på C-Bus, så allt som kan publicera på kommando-topicen kan tillkoppla ditt larm. Kräver att säkerhetsapplikations-id är inställt.
 
 
   # ── Bridge diagnostik ──

@@ -221,7 +221,7 @@ configuration:
   cbus_security_control_enabled:
     name: 安防面板控制
     description: >-
-      允许 Home Assistant 布防和撤防安防面板（away、night、home、vacation、disarm）。默认关闭：布防命令在 C-Bus 上不携带 PIN 码，因此任何能向命令主题发布消息的实体都能撤防您的面板。需要设置安防应用 ID。
+      允许 Home Assistant 布防安防面板（away、night、home、vacation）。仅布防：C-Bus 没有撤防命令，因此 Home Assistant 的 Disarm 按钮不起作用。默认关闭：布防命令在 C-Bus 上不携带 PIN 码，因此任何能向命令主题发布消息的实体都能布防您的面板。需要设置安防应用 ID。
 
 
   # ── Bridge 诊断 ──

@@ -5,7 +5,10 @@
  * Command builders for the C-Bus Security application (208 / $D0).
  * status_request syncs zone state (read-only); security arm is the only bus
  * write and is gated behind cbus_security_control_enabled — it carries no
- * PIN, so anything able to publish it can arm or disarm the panel.
+ * PIN, so anything able to publish it can arm the panel.
+ *
+ * Arming only: C-Bus has no disarm command (§5.5.2.3 reserves arm mode $00),
+ * and disarming would need §5.5.2.7 Emulate Keypad with the PIN.
  */
 
 /**
@@ -27,15 +30,16 @@ function buildSecurityStatusRequest({ cbusname, network, application, report }) 
 
 /**
  * Build a `security arm` command (spec §5.5.2.3). Modes: 1 away, 2 night,
- * 3 day/stay, 4 vacation; 0 disarms. Caveat: the spec marks mode $00 as
- * reserved, but the live 64-zone Cytech panel (#42) both announces and
- * accepts 0 as disarm, so disarm is simply mode 0 here.
+ * 3 day/stay, 4 vacation, $FF highest level of protection.
+ *
+ * Mode 0 is reserved by the spec and must not be sent — it is not a disarm.
+ * Callers are expected to reject DISARM before reaching this builder.
  *
  * @param {Object} opts
  * @param {string} opts.cbusname - C-Gate project name.
  * @param {string|number} opts.network - C-Bus network id.
  * @param {string|number} opts.application - Security application id (e.g. 208).
- * @param {number} opts.mode - Arm mode: 0 disarm, 1 away, 2 night, 3 day, 4 vacation.
+ * @param {number} opts.mode - Arm mode: 1 away, 2 night, 3 day, 4 vacation.
  * @returns {string}
  */
 function buildSecurityArmCommand({ cbusname, network, application, mode }) {

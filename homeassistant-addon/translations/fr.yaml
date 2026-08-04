@@ -256,7 +256,7 @@ configuration:
   cbus_security_control_enabled:
     name: Contrôle de l'alarme
     description: >-
-      Autoriser Home Assistant à armer et désarmer la centrale d'alarme (away, night, home, vacation, disarm). Désactivé par défaut : la commande d'armement ne transporte aucun code PIN sur le bus C-Bus, donc tout ce qui peut publier sur le topic de commande peut désarmer votre centrale. Nécessite un ID d'application de sécurité défini.
+      Autoriser Home Assistant à armer la centrale d'alarme (away, night, home, vacation). Armement uniquement : C-Bus ne dispose d'aucune commande de désarmement, donc le bouton Disarm de Home Assistant ne fait rien. Désactivé par défaut : la commande d'armement ne transporte aucun code PIN sur le bus C-Bus, donc tout ce qui peut publier sur le topic de commande peut armer votre centrale. Nécessite un ID d'application de sécurité défini.
 
 
   # ── Diagnostics du bridge ──
