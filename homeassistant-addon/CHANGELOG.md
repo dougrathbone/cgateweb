@@ -13,34 +13,31 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 ### Fixed
 
-- **The Disarm button never worked, and no longer pretends to.** 1.23.0 advertised arm *and* disarm, but the C-Bus Security specification has no disarm command — it reserves the arm value that 1.23.0 was sending, so the panel simply ignored it. Arming (away, night, home, vacation) works as before. Home Assistant always shows a Disarm button on an alarm panel it can send commands to, so the button is still on screen; it now logs a clear explanation instead of putting an invalid value on the bus. Disarm at your keypad and the entity will follow within a second. Proper support needs the panel's "Emulate Keypad" message and your PIN, which is being scoped separately. (#42)
-- **No more "Cannot write to closing transport" errors during backups.** The Live Events stream kept writing to browser connections that Home Assistant had already torn down. It now notices the connection has gone and cleans up immediately. (#44)
+- **The alarm panel's Disarm button doesn't work, and no longer pretends to.** C-Bus has no disarm command, so the disarm added in 1.23.0 was ignored by the panel. Arming still works. Home Assistant always draws a Disarm button, so it is still on screen, but it now logs why instead of sending an invalid command. Disarm at your keypad and the panel state follows within a second. (#42, #51)
+- **No more "Cannot write to closing transport" errors during backups.** The Live Events stream kept writing to browser connections Home Assistant had already closed. (#44)
 
 ### Changed
 
-- **Moved off the deprecated `config` folder mapping** to `homeassistant_config`, clearing one of the deprecation warnings Home Assistant logs about this add-on. Your C-Bus labels come across automatically: the add-on looks in both the old and new location and keeps using your existing file, so there is nothing for you to do. If you set a custom label file path yourself it keeps working, and the log names the updated path to save when convenient. (#44)
+- **Switched to the `homeassistant_config` folder mapping**, clearing one of Home Assistant's deprecation warnings. Your labels carry over automatically — nothing to do. (#44)
 
 ### Known warnings
 
-Home Assistant also logs deprecation warnings for this add-on's `build.yaml` and
-its `armhf`/`armv7`/`i386` architectures. Both are being kept on purpose, and
-they are the same decision: removing `build.yaml` means naming a single base
-image in the Dockerfile, and the only multi-architecture Home Assistant base
-image covers 64-bit alone. Acting on those warnings today would cut off updates
-for anyone running 32-bit Home Assistant, which is not a trade worth making
-while the 32-bit base images are still published. They are harmless log noise
-until then. (#44)
+Home Assistant still warns about this add-on's `build.yaml` and its
+`armhf`/`armv7`/`i386` architectures. Both are kept on purpose: fixing them
+means dropping 32-bit support, because the only multi-architecture base image is
+64-bit. Harmless log noise until Home Assistant stops publishing the 32-bit base
+images. (#44)
 
 ## [1.23.0] - 2026-08-04
 
 ### Added
 
-- **Your alarm panel now appears in Home Assistant as an alarm panel card.** Alongside the zone sensors, each network gets an `alarm_control_panel` entity on the C-Bus Security Panel device, showing disarmed, armed away/home/night/vacation, arming, pending or triggered. The state always comes from the panel's own broadcasts, so it stays right even when someone arms from a keypad. While the panel refuses to arm, the zone holding it up is published as a `blocking_zone` attribute. (#42)
-- **Optional arm/disarm from Home Assistant**, off by default behind the new `cbus_security_control_enabled` option. Turning it on adds the command topic so Home Assistant's arm and disarm buttons work (day/stay maps to armed home). Please read the warning before enabling it: the C-Bus arm command carries **no PIN**, so anything able to publish to your MQTT broker could disarm your panel. Left off, the entity is read-only. (#42)
+- **Your alarm panel now shows up as an alarm panel card in Home Assistant.** One entity per network, showing disarmed, armed away/home/night/vacation, arming, pending or triggered. The state always comes from the panel itself, so it stays right when someone arms at a keypad. If the panel refuses to arm, the zone blocking it appears as a `blocking_zone` attribute. (#42)
+- **Optional arming from Home Assistant**, off by default behind the new `cbus_security_control_enabled` option. The C-Bus arm command carries **no PIN**, so anything that can publish to your MQTT broker can arm your panel. Read-only when left off. (Disarm shipped here too, but never worked on real hardware — removed in 1.23.1.) (#42)
 
 ### Fixed
 
-- Internal: stopping Home Assistant discovery now always cancels a pending device-tree deadline, so a stopped discovery run can no longer log a spurious "tree stream stalled" retry afterwards.
+- Internal: stopping Home Assistant discovery now cancels a pending device-tree deadline, so it can no longer log a stray "tree stream stalled" retry afterwards.
 
 ## [1.22.4] - 2026-08-03
 
