@@ -46,6 +46,78 @@ describe('CgateConnection', () => {
         }
     });
 
+    // #52: a user pointed cgateweb at C-Gate's SSL ports (20123/20125). The TLS
+    // alert came through as `Could not parse C-Bus event: ^U^C^C^B^B` and the
+    // connection reconnect-looped forever, re-running discovery each time.
+    describe('TLS listener detection', () => {
+        const { looksLikeTlsRecord } = require('../src/utils');
+        // A real fatal TLS alert: type 0x15, version 0x0303 (TLS 1.2), length 2.
+        const TLS_ALERT = Buffer.from([0x15, 0x03, 0x03, 0x00, 0x02, 0x02, 0x28]);
+
+        function connectAndSend(conn, chunk) {
+            conn.connect();
+            mockSocket.emit('connect');
+            const seen = [];
+            conn.on('data', (d) => seen.push(d));
+            mockSocket.emit('data', chunk);
+            return seen;
+        }
+
+        it('recognises TLS records and not C-Gate protocol lines', () => {
+            expect(looksLikeTlsRecord(TLS_ALERT)).toBe(true);
+            expect(looksLikeTlsRecord(Buffer.from([0x16, 0x03, 0x01, 0x00, 0x9f]))).toBe(true); // handshake
+            expect(looksLikeTlsRecord(Buffer.from('201 Service ready\n'))).toBe(false);
+            expect(looksLikeTlsRecord(Buffer.from('300 //P/254/56/1: level=255\n'))).toBe(false);
+            expect(looksLikeTlsRecord(Buffer.from([0x15, 0x03]))).toBe(false); // too short
+            expect(looksLikeTlsRecord('a string')).toBe(false);
+        });
+
+        it('does not forward TLS bytes to the line parser', () => {
+            const conn = new CgateConnection('event', 'localhost', 20125, settings);
+            const seen = connectAndSend(conn, TLS_ALERT);
+            expect(seen).toHaveLength(0);
+            conn.disconnect();
+        });
+
+        it('names the plaintext port to use instead', () => {
+            const conn = new CgateConnection('event', 'localhost', 20125, settings);
+            const errorSpy = jest.spyOn(conn.logger, 'error');
+            connectAndSend(conn, TLS_ALERT);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('is speaking TLS'));
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('the plaintext equivalent is 20025'));
+            errorSpy.mockRestore();
+            conn.disconnect();
+        });
+
+        it('omits the port hint when the port is not a known SSL port', () => {
+            const conn = new CgateConnection('command', 'localhost', 9999, settings);
+            const errorSpy = jest.spyOn(conn.logger, 'error');
+            connectAndSend(conn, TLS_ALERT);
+            expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('is speaking TLS'));
+            expect(errorSpy).toHaveBeenCalledWith(expect.not.stringContaining('plaintext equivalent'));
+            errorSpy.mockRestore();
+            conn.disconnect();
+        });
+
+        it('passes normal C-Gate data straight through', () => {
+            const conn = new CgateConnection('event', 'localhost', 20025, settings);
+            const line = Buffer.from('# security zone_sealed //P/254/208/1\n');
+            const seen = connectAndSend(conn, line);
+            expect(seen).toEqual([line]);
+            conn.disconnect();
+        });
+
+        it('only inspects the first chunk, so later data is never misread', () => {
+            const conn = new CgateConnection('event', 'localhost', 20025, settings);
+            const seen = connectAndSend(conn, Buffer.from('201 Service ready\n'));
+            // Contrived, but proves the check does not run again mid-stream and
+            // silently swallow legitimate traffic.
+            mockSocket.emit('data', TLS_ALERT);
+            expect(seen).toHaveLength(2);
+            conn.disconnect();
+        });
+    });
+
     describe('Constructor', () => {
         it('should initialize with correct properties', () => {
             expect(connection.type).toBe('command');

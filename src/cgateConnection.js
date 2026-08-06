@@ -9,6 +9,7 @@ const {
     NEWLINE 
 } = require('./constants');
 const { isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
+const { looksLikeTlsRecord } = require('./utils');
 
 class CgateConnection extends EventEmitter {
     /**
@@ -144,7 +145,8 @@ class CgateConnection extends EventEmitter {
         this.connected = true;
         this.reconnectAttempts = 0;
         this.isWritable = true;
-        
+        this._tlsChecked = false;
+
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
@@ -210,8 +212,48 @@ class CgateConnection extends EventEmitter {
 
     _handleData(data) {
         this.lastActivity = Date.now(); // Update activity timestamp for pool health monitoring
+
+        // Checked once per connection: if the peer is a TLS listener, the very
+        // first bytes are a TLS record and nothing after it is usable.
+        if (!this._tlsChecked) {
+            this._tlsChecked = true;
+            if (looksLikeTlsRecord(data)) {
+                this._reportTlsPort();
+                return;
+            }
+        }
+
         // Emit raw data for processing by parent classes
         this.emit('data', data);
+    }
+
+    /**
+     * Explain a TLS listener and drop the socket.
+     *
+     * Without this, pointing cgateweb at one of C-Gate's SSL ports produced
+     * `Could not parse C-Bus event: ^U^C^C^B^B` followed by an endless
+     * disconnect/reconnect loop, with every reconnect re-running discovery. The
+     * reporter on #52 reasonably read that as the add-on struggling with too
+     * many devices, and lost a day to it. The bytes are a TLS alert; the cause
+     * is a port number.
+     *
+     * @private
+     */
+    _reportTlsPort() {
+        // C-Gate's SSL ports are the plaintext ones plus 100: 20023/20123
+        // command, 20024/20124 event, 20025/20125 SCP, 20026/20126 CCP
+        // (C-Gate manual §3, TCP/IP interfaces).
+        const plaintextPort = this.port >= 20123 && this.port <= 20126 ? this.port - 100 : null;
+        const hint = plaintextPort
+            ? ` Port ${this.port} is C-Gate's SSL port for that interface; the plaintext equivalent is ${plaintextPort}.`
+            : '';
+        this.logger.error(
+            `C-Gate ${this.type} port ${this.host}:${this.port} is speaking TLS, but cgateweb connects in plaintext and has no TLS support for C-Gate.${hint} `
+            + 'Point this connection at a plaintext C-Gate port, or disable SSL on it. Until then this connection cannot work and will keep reconnecting.'
+        );
+        if (this.socket && !this.socket.destroyed) {
+            this.socket.destroy();
+        }
     }
 
     _handleTimeout() {
