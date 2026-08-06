@@ -111,6 +111,21 @@ describe('SecurityEventHandler', () => {
         expect(deps.sendCommand).not.toHaveBeenCalled();
     });
 
+    // Same treatment for `security arm` echoes. Reported in #42 as
+    // "Security line not decoded (verb pending support)" noise. Crucially the
+    // echo must not move the alarm state: the panel's exit_delay_started and
+    // system_arm events that follow are the authority.
+    it('consumes our own arm echoes quietly and does not publish alarm state', () => {
+        const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+        const handler = new SecurityEventHandler(deps);
+        const consumed = handler.handleLine('security arm //MIDSTRM/254/208 day #sourceunit=0 OID= sessionId=cmd11 commandId={none}');
+        expect(consumed).toBe(true);
+        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        expect(deps.logger.info).not.toHaveBeenCalled();
+        expect(deps.logger.warn).not.toHaveBeenCalled();
+        expect(deps.sendCommand).not.toHaveBeenCalled();
+    });
+
     // arm_failed and fire_alarm are deliberately absent: they are panel trouble
     // conditions now and do publish state (see 'panel trouble conditions'). The
     // arm/alarm verbs here drive the alarm_control_panel state — but no zone state.

@@ -82,24 +82,52 @@ separate `system_disarmed` verb was not observed. Note the panel uses `system_ar
 The `alarm_control_panel` entity (phase 2) builds on these; zone sensors (phase 1)
 only need `zone_sealed`/`zone_unsealed` and the status reports.
 
-### Control messages (spec §5.5.2.3 — "Part B", later phase)
+### Control messages
 
-`security arm //PROJECT/254/208 <mode>` with `$01` away, `$02` night/home, `$03` day,
-`$04` vacation, `$FF` highest.
+**Read the C-Gate manual for command syntax, not the application spec.** The
+application spec describes what travels on the bus; C-Gate's command interface
+has its own syntax, and the two do not match. Two separate bugs came from
+conflating them — see the post-mortem below before writing another command.
 
-**There is no disarm command.** §5.5.2.3 marks arm mode `$00` as *reserved*, so
-`security arm ... 0` is an invalid argument, not a disarm. Disarming over C-Bus
-requires §5.5.2.7 **Emulate Keypad** (`$0A`, args `$A5, <key>`), replaying the
-PIN sequence keypress by keypress — and that message is marked OPTIONAL, so a
-given panel need not implement it.
+C-Gate manual §4.5.177:
 
-An earlier revision of this section claimed "disarm is arm code `$00` via the
-matching command". That was wrong: it borrowed the `$00 = disarmed` encoding
-from the §5.5.1.1 System Armed/Disarmed *broadcast*, which is a different
-message travelling the other direction. 1.23.0 shipped a disarm built on that
-mistake; it was inert on a live panel (#42) and removed in 1.23.1. Keep the two
-encodings distinct when reading this spec — the broadcast and the command reuse
-mode numbers with different meanings.
+```
+SECURITY ARM app arm-mode
+arm-mode = "away" | "night" (home) | "day" | "vacation" | "highest"
+```
+
+So `security arm //PROJECT/254/208 day`. The spec's numeric mode values
+(`$01`..`$04`, `$FF`) are **not** accepted here; C-Gate answers
+`405 Parameter out of range (bad arm mode)`.
+
+Other C-Gate security commands (manual §4.5.176-182), none used yet:
+`SECURITY DISPLAY_MESSAGE`, `SECURITY EMULATE_KEYPAD`, `SECURITY RAISE_ALARM`,
+`SECURITY REQUEST_ZONE_NAME`, `SECURITY TAMPER [raise|drop]`. There is also a
+queryable `ArmState` object parameter, which could seed panel state without a
+`status_request`.
+
+**There is no disarm command.** No arm-mode keyword disarms, and the spec
+reserves `$00` rather than defining it as disarm. Disarming needs
+`SECURITY EMULATE_KEYPAD`, replaying the PIN keypress by keypress — marked
+OPTIONAL in the spec, so a given panel need not implement it. Tracked in #51.
+
+#### Post-mortem: two bugs, one root cause
+
+Both shipped, both found by the reporter on #42 rather than by us, and both came
+from reading the application spec where the C-Gate manual was the authority:
+
+1. **1.23.0's disarm** sent `security arm ... 0`. An earlier revision of this
+   section claimed "disarm is arm code `$00` via the matching command", which
+   borrowed the `$00 = disarmed` encoding from the §5.5.1.1 System
+   Armed/Disarmed *broadcast* — a different message travelling the other
+   direction. Inert on a live panel; removed in 1.23.1.
+2. **1.23.0/1.23.1's arming** sent the spec's numeric modes. Every arm was
+   rejected with `405`, so the feature never worked at all. Fixed in 1.23.2 by
+   sending C-Gate's keywords.
+
+The numbers were never wrong *for the bus*; they were never right for the
+interface we actually write to. When adding a security command, quote the
+C-Gate manual section in the code comment, as `securityCommand.js` now does.
 
 ## 2. What happens today (pre-change behaviour)
 

@@ -261,6 +261,15 @@ function decodeLine(line) {
         return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
     }
 
+    // Same for our own `security arm` commands ("security arm //PROJECT/254/208
+    // day #sourceunit=0 …"). The echo carries no state worth acting on — the
+    // panel's own exit_delay_started/system_arm events follow and drive the
+    // entity — so it is recognised purely to keep it out of the undecoded log
+    // (#42).
+    if (verb === 'arm') {
+        return { kind: 'arm_command_echo', network, application, mode: params.length > 0 ? params[0] : null, verb };
+    }
+
     // System state verbs (decoded, logged and surfaced to Live Events; the
     // panel condition sensors build on these — see securityPanelState).
     if (verb === 'arm_ready') {

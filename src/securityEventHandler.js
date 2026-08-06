@@ -243,6 +243,13 @@ class SecurityEventHandler {
                 if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
                     this.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
                 }
+            } else if (reading.kind === 'arm_command_echo') {
+                // Echo of our own arm command. Deliberately does not touch the
+                // alarm state: the panel's exit_delay_started/system_arm events
+                // are the authority, so an echo must not pre-empt them (#42).
+                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                    this.logger.debug(`Security arm echo (${reading.network}/${reading.application}, mode ${reading.mode})`);
+                }
             } else {
                 // A disarm clears panic, arm failure and fire even though the
                 // panel sends no dedicated cleared verb for them, and a
@@ -264,7 +271,9 @@ class SecurityEventHandler {
                 );
                 this._emitSystemEventLog(reading, description);
             }
-            if (reading.kind !== 'status_request') {
+            // Echoes of our own commands are not panel traffic, so they must not
+            // trigger a sync — the panel's real events that follow will.
+            if (reading.kind !== 'status_request' && reading.kind !== 'arm_command_echo') {
                 this.requestStatusSync(reading.network, 'traffic');
             }
             return true;

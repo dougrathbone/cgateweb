@@ -43,8 +43,11 @@ describe('MqttCommandRouter', () => {
             router.settings.cbus_security_control_enabled = true;
         });
 
-        it('maps HA command payloads to C-Bus arm modes', () => {
-            const cases = { ARM_AWAY: 1, ARM_NIGHT: 2, ARM_HOME: 3, ARM_VACATION: 4 };
+        // C-Gate manual §4.5.177 takes arm-mode keywords, not the application
+        // spec's numeric values. 1.23.0/1.23.1 sent numbers and every arm came
+        // back "405 Parameter out of range (bad arm mode)" (#42).
+        it('maps HA command payloads to C-Gate arm-mode keywords', () => {
+            const cases = { ARM_AWAY: 'away', ARM_NIGHT: 'night', ARM_HOME: 'day', ARM_VACATION: 'vacation' };
             for (const [payload, mode] of Object.entries(cases)) {
                 mockQueue.add.mockClear();
                 router.routeMessage('cbus/write/254/208/panel/arm', payload);
@@ -53,10 +56,19 @@ describe('MqttCommandRouter', () => {
             }
         });
 
+        it('never sends a numeric arm mode, which C-Gate rejects', () => {
+            for (const payload of ['ARM_AWAY', 'ARM_NIGHT', 'ARM_HOME', 'ARM_VACATION']) {
+                mockQueue.add.mockClear();
+                router.routeMessage('cbus/write/254/208/panel/arm', payload);
+                const sent = mockQueue.add.mock.calls[0][0];
+                expect(sent).not.toMatch(/security arm \S+ \d+\s*$/);
+            }
+        });
+
         it('logs every arm at INFO', () => {
             const infoSpy = jest.spyOn(router.logger, 'info');
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
-            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Security arm: 254/208 -> mode 1 (ARM_AWAY)'));
+            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Security arm: 254/208 -> away (ARM_AWAY)'));
             infoSpy.mockRestore();
         });
 

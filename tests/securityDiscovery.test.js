@@ -378,6 +378,16 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(alarmPayload().command_topic).toBe('cbus/write/254/208/panel/arm');
         });
 
+        // Regression for #42: both default to true in Home Assistant, which then
+        // refuses to publish the command at all and shows "PIN required". C-Bus
+        // arm carries no PIN, so there is no code to enter.
+        it('tells Home Assistant no code is needed to arm or disarm', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            const payload = alarmPayload();
+            expect(payload.code_arm_required).toBe(false);
+            expect(payload.code_disarm_required).toBe(false);
+        });
+
         it('retracts the alarm panel config when the panel is excluded', () => {
             d.exclude.add('254/208/panel');
             expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);

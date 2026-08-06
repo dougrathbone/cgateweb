@@ -842,6 +842,13 @@ class _HaDiscoveryPublishers {
             // manual trigger on this panel. Disarm is not in this list because
             // HA has no such flag — see the note above.
             supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation'],
+            // Home Assistant defaults both of these to true and then refuses to
+            // publish an arm/disarm without a code — it pops "PIN required" and
+            // the command never reaches MQTT at all, which is how 1.23.1 shipped
+            // an arm button that did nothing (#42). C-Bus arm carries no PIN, so
+            // there is no code for the user to enter and nothing to validate.
+            code_arm_required: false,
+            code_disarm_required: false,
             ...(controlEnabled && {
                 command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
             }),

@@ -52,21 +52,29 @@ const {
 } = require('./airconControlRegistry');
 const { buildSecurityArmCommand } = require('./securityCommand');
 
-// HA MQTT alarm command payloads → C-Bus arm mode (spec §5.5.2.3).
+// HA MQTT alarm command payloads → C-Gate arm-mode keyword.
 //
-// Arming only. There is deliberately no DISARM entry: §5.5.2.3 marks arm mode
-// $00 as *reserved*, so `security arm ... 0` is not a disarm — it is an invalid
-// argument. (The $00 = disarmed encoding belongs to the §5.5.1.1 System
-// Armed/Disarmed *broadcast*, which is a different message; conflating the two
-// is what produced the dead disarm button in 1.23.0.) Disarming over C-Bus
-// requires §5.5.2.7 Emulate Keypad, replaying the PIN sequence keypress by
-// keypress — a different feature with its own security tradeoff, tracked
-// separately. Reported and confirmed on a live panel in #42.
+// These are the words C-Gate's command interface expects, not the numeric
+// values the application spec defines. C-Gate manual §4.5.177:
+//
+//     SECURITY ARM app arm-mode
+//     arm-mode = "away" | "night" (home) | "day" | "vacation" | "highest"
+//
+// 1.23.0 and 1.23.1 sent the spec's bus-level numbers ($01..$04) here and every
+// arm was rejected with `405 Parameter out of range (bad arm mode)`, so arming
+// has never worked. The numbers were not wrong for the bus, just never right
+// for the interface we actually write to — read the C-Gate manual for command
+// syntax and the application spec only for what travels on the bus (#42).
+//
+// Arming only. There is deliberately no DISARM entry: C-Gate offers no disarm
+// arm-mode, and the spec reserves $00 rather than defining it as disarm.
+// Disarming needs SECURITY EMULATE_KEYPAD, replaying the PIN keypress by
+// keypress — tracked separately in #51.
 const SECURITY_ARM_MODE_BY_PAYLOAD = {
-    ARM_AWAY: 1,
-    ARM_NIGHT: 2,
-    ARM_HOME: 3,
-    ARM_VACATION: 4
+    ARM_AWAY: 'away',
+    ARM_NIGHT: 'night',
+    ARM_HOME: 'day',
+    ARM_VACATION: 'vacation'
 };
 // Debounce window for native-aircon setpoint writes (spec §25.12.11: wait a
 // few seconds after the user finishes adjusting, then send a single message).
@@ -253,7 +261,7 @@ class MqttCommandRouter extends EventEmitter {
             // Called out separately from the generic unknown-payload path: a
             // hand-rolled HA panel pointed at this topic will send DISARM, and
             // "unknown payload" would send the user hunting for a typo.
-            this.logger.warn(`Disarm over C-Bus is not supported (spec §5.5.2.3 reserves arm mode 0; disarming needs Emulate Keypad with the PIN); ignoring disarm on ${topic}`);
+            this.logger.warn(`Disarm over C-Bus is not supported (C-Gate has no disarm arm-mode; disarming needs Emulate Keypad with the PIN — see issue #51); ignoring disarm on ${topic}`);
             return;
         }
         const mode = SECURITY_ARM_MODE_BY_PAYLOAD[normalised];
@@ -264,7 +272,7 @@ class MqttCommandRouter extends EventEmitter {
 
         const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
         this._queueCommand(cmd + NEWLINE);
-        this.logger.info(`Security arm: ${network}/${application} -> mode ${mode} (${normalised})`);
+        this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${normalised})`);
     }
 
     /**

@@ -7,8 +7,13 @@
  * write and is gated behind cbus_security_control_enabled — it carries no
  * PIN, so anything able to publish it can arm the panel.
  *
- * Arming only: C-Bus has no disarm command (§5.5.2.3 reserves arm mode $00),
- * and disarming would need §5.5.2.7 Emulate Keypad with the PIN.
+ * Arming only: C-Gate offers no disarm arm-mode, and disarming would need
+ * SECURITY EMULATE_KEYPAD with the PIN (#51).
+ *
+ * Note these builders target the **C-Gate command interface**, so they use
+ * C-Gate's syntax and keywords (manual §4.5.176-182) rather than the numeric
+ * encodings in the C-Bus Security application spec. The two differ, and
+ * assuming otherwise is what broke arming in 1.23.0 (#42).
  */
 
 /**
@@ -29,17 +34,20 @@ function buildSecurityStatusRequest({ cbusname, network, application, report }) 
 }
 
 /**
- * Build a `security arm` command (spec §5.5.2.3). Modes: 1 away, 2 night,
- * 3 day/stay, 4 vacation, $FF highest level of protection.
+ * Build a `security arm` command (C-Gate manual §4.5.177).
  *
- * Mode 0 is reserved by the spec and must not be sent — it is not a disarm.
- * Callers are expected to reject DISARM before reaching this builder.
+ * `mode` must be one of C-Gate's arm-mode keywords — `away`, `night` (home),
+ * `day`, `vacation` or `highest`. Anything else, including the application
+ * spec's numeric mode values, is rejected with
+ * `405 Parameter out of range (bad arm mode)`.
+ *
+ * There is no disarm keyword; callers reject DISARM before reaching here.
  *
  * @param {Object} opts
  * @param {string} opts.cbusname - C-Gate project name.
  * @param {string|number} opts.network - C-Bus network id.
  * @param {string|number} opts.application - Security application id (e.g. 208).
- * @param {number} opts.mode - Arm mode: 1 away, 2 night, 3 day, 4 vacation.
+ * @param {string} opts.mode - C-Gate arm-mode keyword.
  * @returns {string}
  */
 function buildSecurityArmCommand({ cbusname, network, application, mode }) {
