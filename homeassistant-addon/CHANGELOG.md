@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.23.2] - 2026-08-06
+
+### Fixed
+
+- **Arming the alarm panel from Home Assistant now works.** It never did. Two things were wrong: Home Assistant was asking for a PIN and refusing to send the command, and the command cgateweb sent was rejected by C-Gate as an invalid arm mode. Away, night, home and vacation all work now. Disarm is still not possible over C-Bus. (#42)
+- **A clear error when C-Gate's port is using SSL.** Pointing the add-on at one of C-Gate's SSL ports (20123, 20125) instead of the plain ones (20023, 20025) used to show only unreadable characters in the log and then reconnect forever, which looks like a busy or failing network. It now tells you the port is using SSL and which port number to use instead. (#52)
+- Tidied up a harmless "line not decoded" debug message logged every time the panel was armed.
+
 ## [1.23.1] - 2026-08-05
 
 ### Fixed
