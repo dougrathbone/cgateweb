@@ -1,5 +1,5 @@
 // @ts-check
-const { categoriseUnitType } = require('./unitTypeClassifier');
+const { categoriseUnitType, isGrouplessInputUnit } = require('./unitTypeClassifier');
 
 function findNetworkData(networkId, treeData) {
     if (!treeData) return null;
@@ -94,8 +94,22 @@ function networkHasDeviceData(networkData) {
 // are units with no application data at all (nothing to judge). Handles both
 // TREEXML shapes (structured Application objects and the flat "56, 255" /
 // Groups "10,11" form).
+//
+// Key-input and bus-coupler units are excluded too. They join application 56 as
+// *senders* and drive no load, so C-Gate reports them with empty <Groups>
+// permanently — not "yet". Before this, every install with wall switches (i.e.
+// nearly all of them) spent three extra TREEXML fetches per startup waiting for
+// groups that were never coming, and logged "C-Gate still syncing?", which reads
+// as missing entities (#37):
+//
+//     <Type>KEYGL5</Type> <Application>56, 255</Application> <Groups></Groups>
+//
+// Only ever narrows the result: the check already requires empty groups, so such
+// a unit that does carry groups was never flagged in the first place.
 function unitHasUnsyncedGroups(unit) {
     if (!unit) return false;
+
+    if (isGrouplessInputUnit(unit.Type)) return false;
 
     if (unit.Application && typeof unit.Application === 'object') {
         const apps = Array.isArray(unit.Application) ? unit.Application : [unit.Application];

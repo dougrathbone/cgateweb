@@ -373,6 +373,52 @@ describe('unitHasUnsyncedGroups', () => {
         expect(unitHasUnsyncedGroups({ UnitAddress: '100' })).toBe(false);
     });
 
+    // #37: a key-input wall switch joins app 56 as a sender and drives no load,
+    // so C-Gate reports it with empty <Groups> forever. Flagging it made every
+    // install with wall switches burn three TREEXML re-fetches per startup and
+    // log "C-Gate still syncing?".
+    describe('input-only units (#37)', () => {
+        it('returns false for a KEYGL5 wall switch with empty Groups', () => {
+            // Verbatim shape from the reporter's TREEXML.
+            expect(unitHasUnsyncedGroups({
+                Type: 'KEYGL5', Address: '10', Application: '56, 255', Groups: ''
+            })).toBe(false);
+        });
+
+        it('returns false for the other confirmed sender families', () => {
+            for (const type of ['KEY1', 'KEYB2', 'KEYB4', 'KEYE2', 'BCN4B']) {
+                expect(unitHasUnsyncedGroups({ Type: type, Application: '56, 255', Groups: '' })).toBe(false);
+            }
+        });
+
+        it('still flags sensor units, which have no field capture yet', () => {
+            // SEN* is 'input' to the entity-type classifier, but nobody has
+            // captured a sensor unit's TREEXML, so whether it legitimately has
+            // no groups is unknown. Keep the conservative treatment until it is.
+            expect(unitHasUnsyncedGroups({ Type: 'SENLL', Application: '56, 255', Groups: '' })).toBe(true);
+            expect(unitHasUnsyncedGroups({ Type: 'SENTEMP', Application: '56, 255', Groups: '' })).toBe(true);
+        });
+
+        it('returns false for a structured input unit with no Group entries', () => {
+            expect(unitHasUnsyncedGroups({
+                Type: 'KEYGL5', Application: { ApplicationAddress: '56' }
+            })).toBe(false);
+        });
+
+        it('still flags a load unit with empty Groups', () => {
+            // The narrowing must not swallow the case the heuristic exists for:
+            // a dimmer or relay whose bindings really have not arrived yet.
+            expect(unitHasUnsyncedGroups({ Type: 'DIMDN8', Application: '56, 255', Groups: '' })).toBe(true);
+            expect(unitHasUnsyncedGroups({ Type: 'RELDN12', Application: '56, 255', Groups: '' })).toBe(true);
+        });
+
+        it('still flags a unit whose type is unknown', () => {
+            // Unrecognised hardware keeps the old behaviour rather than being
+            // assumed group-less.
+            expect(unitHasUnsyncedGroups({ Type: 'WHATSTHIS9', Application: '56, 255', Groups: '' })).toBe(true);
+        });
+    });
+
     it('returns true for a structured unit whose real app carries no Group entries', () => {
         expect(unitHasUnsyncedGroups({
             Application: { ApplicationAddress: '56' }

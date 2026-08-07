@@ -54,6 +54,33 @@ function categoriseUnitType(type) {
     return null;
 }
 
+// Unit families confirmed by field TREEXML to report `<Groups></Groups>`
+// permanently: key-input wall switches and bus couplers. They join application
+// 56 as senders and drive no load, so there are no group bindings to wait for.
+//
+// Deliberately narrower than the 'input' category above, which also covers SEN*
+// sensors. Nobody has captured a sensor unit's TREEXML yet, so whether a SENLL
+// or SENTEMP legitimately carries groups is unknown and it keeps the old
+// treatment. Add a family here only with a capture to back it up.
+const GROUPLESS_INPUT_PATTERNS = [/^KEY/i, /^BCN/i];
+
+/**
+ * Is this a unit type that never reports group addresses, as opposed to one
+ * whose groups may still be syncing?
+ *
+ * Lets the discovery tree stop waiting on wall switches (#37). Unknown types
+ * return false so unrecognised hardware keeps the conservative behaviour.
+ *
+ * @param {string} [type] - Raw TREEXML unit type string.
+ * @returns {boolean}
+ */
+function isGrouplessInputUnit(type) {
+    if (typeof type !== 'string') return false;
+    const trimmed = type.trim();
+    if (!trimmed) return false;
+    return GROUPLESS_INPUT_PATTERNS.some(pattern => pattern.test(trimmed));
+}
+
 /**
  * Resolve the entity type for a group from the unit types driving it.
  *
@@ -119,4 +146,4 @@ function entityTypeForGroup(groupInfo, settings = {}, opts = {}) {
     return null;
 }
 
-module.exports = { categoriseUnitType, entityTypeForGroup };
+module.exports = { categoriseUnitType, entityTypeForGroup, isGrouplessInputUnit };

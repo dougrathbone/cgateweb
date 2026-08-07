@@ -1,6 +1,39 @@
-const { categoriseUnitType, entityTypeForGroup } = require('../src/unitTypeClassifier');
+const { categoriseUnitType, entityTypeForGroup, isGrouplessInputUnit } = require('../src/unitTypeClassifier');
 
 const ON = { ha_discovery_type_from_unit: true };
+
+describe('isGrouplessInputUnit', () => {
+    it('recognises key-input and bus-coupler families', () => {
+        for (const type of ['KEYGL5', 'KEY1', 'KEYB2', 'KEYB4', 'KEYE1', 'KEYE4', 'BCN4B']) {
+            expect(isGrouplessInputUnit(type)).toBe(true);
+        }
+    });
+
+    it('is case- and whitespace-insensitive, matching raw TREEXML text', () => {
+        expect(isGrouplessInputUnit(' keygl5 ')).toBe(true);
+    });
+
+    it('excludes load units', () => {
+        for (const type of ['DIMDN8', 'RELDN12', 'RELAY2']) {
+            expect(isGrouplessInputUnit(type)).toBe(false);
+        }
+    });
+
+    it('excludes sensors, which have no field capture yet', () => {
+        // Narrower than categoriseUnitType's 'input' on purpose — see the
+        // comment on GROUPLESS_INPUT_PATTERNS.
+        expect(categoriseUnitType('SENLL')).toBe('input');
+        expect(isGrouplessInputUnit('SENLL')).toBe(false);
+        expect(isGrouplessInputUnit('SENTEMP')).toBe(false);
+    });
+
+    it('returns false for unknown and non-string types', () => {
+        expect(isGrouplessInputUnit('WHATSTHIS9')).toBe(false);
+        expect(isGrouplessInputUnit('')).toBe(false);
+        expect(isGrouplessInputUnit(undefined)).toBe(false);
+        expect(isGrouplessInputUnit(null)).toBe(false);
+    });
+});
 
 describe('categoriseUnitType', () => {
     it.each([
