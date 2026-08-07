@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.23.3] - 2026-08-07
+
+### Fixed
+
+- **Faster startup, and no more "C-Gate still syncing?" warning about your wall switches.** Key input units such as the KEYGL5 send commands but do not drive any load, so C-Gate correctly reports no groups for them. The add-on mistook that for an unfinished sync and re-fetched the whole device tree three times on every start before giving up, logging a message that looked like entities were missing. It now knows these units have no groups to wait for. Nothing was actually missing, and nothing changes about the entities you get. (#37)
+
 ## [1.23.2] - 2026-08-06
 
 ### Fixed
