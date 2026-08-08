@@ -250,6 +250,11 @@ configuration:
     description: >-
       Zezwól Home Assistant również na rozbrajanie centrali alarmowej. Wymaga Sterowania alarmem. Domyślnie wyłączone. C-Bus nie ma polecenia rozbrojenia, więc kod PIN jest wprowadzany na centrali przez emulację klawiatury: Home Assistant wyświetla własną klawiaturę i wysyła wpisane cyfry przez MQTT. Kod PIN nie jest nigdzie przechowywany, ale przy każdym rozbrojeniu przechodzi przez Twojego brokera MQTT, więc włączaj to tylko na zaufanym brokerze, najlepiej z TLS.
 
+  cbus_measurement_app_id:
+    name: ID aplikacji pomiarowej
+    description: >-
+      ID aplikacji pomiarowej C-Bus (domyślnie 228) dla analogowych/numerycznych odczytów czujników (temperatura, moc, poziom światła itp). Publikuje cbus/read/{network}/228/{device}/{channel}/value i /unit oraz akceptuje wstrzykiwane odczyty na cbus/write/{network}/228/{device}/{channel}/data (ładunek "value,multiplier,units") — np. dla skryptowych/wirtualnych czujników. Domyślnie wyłączone.
+
 
   # ── Diagnostyka bridge ──
   ha_bridge_diagnostics_enabled:

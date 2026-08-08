@@ -262,6 +262,11 @@ configuration:
     description: >-
       Autoriser également Home Assistant à désarmer la centrale d'alarme. Nécessite Contrôle de l'alarme. Désactivé par défaut. C-Bus ne dispose d'aucune commande de désarmement, le code PIN est donc saisi sur la centrale par émulation de clavier : Home Assistant affiche son propre clavier et envoie la saisie via MQTT. Le code PIN n'est stocké nulle part, mais il transite par votre broker MQTT à chaque désarmement ; ne l'activez que sur un broker de confiance, idéalement avec TLS.
 
+  cbus_measurement_app_id:
+    name: ID d'application de mesure
+    description: >-
+      ID de l'application de mesure C-Bus (par défaut 228) pour les relevés analogiques/numériques de capteurs (température, puissance, niveau de lumière, etc). Publie cbus/read/{network}/228/{device}/{channel}/value et /unit, et accepte les relevés injectés sur cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — par exemple pour des capteurs virtuels/scriptés. Désactivé par défaut.
+
 
   # ── Diagnostics du bridge ──
   ha_bridge_diagnostics_enabled:

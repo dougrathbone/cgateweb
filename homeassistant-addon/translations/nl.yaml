@@ -254,6 +254,11 @@ configuration:
     description: >-
       Sta Home Assistant ook toe het alarmsysteem uit te schakelen. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. C-Bus heeft geen uitschakelcommando, dus de pincode wordt via toetsenbordemulatie op het paneel ingevoerd: Home Assistant toont een eigen toetsenblok en stuurt uw invoer via MQTT. De pincode wordt nergens opgeslagen, maar gaat bij elke uitschakeling via uw MQTT-broker. Schakel dit alleen in op een broker die u vertrouwt, bij voorkeur met TLS.
 
+  cbus_measurement_app_id:
+    name: Meettoepassing-ID
+    description: >-
+      C-Bus Meettoepassing-id (standaard 228) voor analoge/numerieke sensormetingen (temperatuur, vermogen, lichtniveau, enz). Publiceert cbus/read/{network}/228/{device}/{channel}/value en /unit, en accepteert geïnjecteerde metingen op cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — bijvoorbeeld voor gescripte/virtuele sensoren. Standaard uitgeschakeld.
+
 
   # ── Bridge Diagnostiek ──
   ha_bridge_diagnostics_enabled:

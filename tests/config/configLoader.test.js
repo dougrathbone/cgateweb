@@ -529,6 +529,37 @@ describe('ConfigLoader', () => {
 
             expect(config.cbus_security_app_id).toBeUndefined();
         });
+
+        test('should map cbus_measurement_app_id to config as a string', () => {
+            const options = { ...mockAddonOptions, cbus_measurement_app_id: 228 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_measurement_app_id).toBe('228');
+        });
+
+        test('should not set cbus_measurement_app_id when option is absent', () => {
+            const options = { ...mockAddonOptions };
+            delete options.cbus_measurement_app_id;
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_measurement_app_id).toBeUndefined();
+        });
+
+        test('should honour cbus_measurement_app_id even when HA discovery is disabled (measurement works over plain MQTT regardless)', () => {
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_measurement_app_id: 228 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_measurement_app_id).toBe('228');
+        });
     });
 
     describe('load() - Standalone Configuration', () => {

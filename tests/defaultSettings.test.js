@@ -20,6 +20,12 @@ describe('security app id default', () => {
     });
 });
 
+describe('measurement app id default', () => {
+    it('defaults cbus_measurement_app_id to null (disabled)', () => {
+        expect(defaultSettings.cbus_measurement_app_id).toBeNull();
+    });
+});
+
 describe('raw event capture defaults', () => {
     it('defaults cbusRawEventLogApps to an empty array (capture off)', () => {
         expect(defaultSettings.cbusRawEventLogApps).toEqual([]);

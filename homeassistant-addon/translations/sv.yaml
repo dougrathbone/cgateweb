@@ -248,6 +248,11 @@ configuration:
     description: >-
       Tillåt även Home Assistant att frånkoppla larmcentralen. Kräver Larmstyrning. Avstängt som standard. C-Bus har inget frånkopplingskommando, så PIN-koden knappas in på centralen via tangentbordsemulering: Home Assistant visar en egen knappsats och skickar det du knappar in över MQTT. PIN-koden lagras ingenstans, men den passerar din MQTT-broker vid varje frånkoppling, så aktivera detta bara på en broker du litar på, helst med TLS.
 
+  cbus_measurement_app_id:
+    name: Mätapplikations-ID
+    description: >-
+      C-Bus mätapplikations-id (standard 228) för analoga/numeriska sensoravläsningar (temperatur, effekt, ljusnivå, etc). Publicerar cbus/read/{network}/228/{device}/{channel}/value och /unit, och accepterar injicerade avläsningar på cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — t.ex. för skriptade/virtuella sensorer. Avstängt som standard.
+
 
   # ── Bridge diagnostik ──
   ha_bridge_diagnostics_enabled:

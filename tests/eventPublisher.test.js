@@ -1038,6 +1038,40 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish value + unit topics for a measurement reading', () => {
+            eventPublisher.publishReading('254', '228', '0/0', {
+                kind: 'measurement',
+                value: 5042,
+                unit: 'W'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/228/0/0/value',
+                '5042',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/228/0/0/unit',
+                'W',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish an empty string for a unitless measurement reading', () => {
+            eventPublisher.publishReading('254', '228', '1/0', {
+                kind: 'measurement',
+                value: 42,
+                unit: null
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/228/1/0/unit',
+                '',
+                mockMqttOptions
+            );
+        });
+
         it('should publish ON + attributes for an unsealed security zone', () => {
             eventPublisher.publishReading('254', '208', '58', {
                 kind: 'security_zone',

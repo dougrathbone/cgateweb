@@ -300,6 +300,74 @@ describe('MqttCommandRouter', () => {
         });
     });
 
+    describe('measurement data injection (cbus/write/{net}/{app}/{device}/{channel}/data)', () => {
+        beforeEach(() => {
+            router.settings.cbus_measurement_app_id = '228';
+        });
+
+        // Confirmed working syntax via live end-to-end testing against real
+        // C-Gate and real DLT input units.
+        it('builds a MEASUREMENT DATA command from a value,multiplier,units payload', () => {
+            router.routeMessage('cbus/write/254/228/0/0/data', '5042,0,38');
+            expect(mockQueue.add).toHaveBeenCalledTimes(1);
+            expect(mockQueue.add).toHaveBeenCalledWith('MEASUREMENT DATA //TestProject/254/228/0/0 5042 0 38\n');
+        });
+
+        it('defaults multiplier to 0 and units to 0 (°C) when omitted', () => {
+            router.routeMessage('cbus/write/254/228/1/0/data', '215');
+            expect(mockQueue.add).toHaveBeenCalledWith('MEASUREMENT DATA //TestProject/254/228/1/0 215 0 0\n');
+        });
+
+        it('handles a negative value (sub-zero temperature)', () => {
+            router.routeMessage('cbus/write/254/228/1/0/data', '-55,-1,0');
+            expect(mockQueue.add).toHaveBeenCalledWith('MEASUREMENT DATA //TestProject/254/228/1/0 -55 -1 0\n');
+        });
+
+        it('logs every injection at INFO', () => {
+            const infoSpy = jest.spyOn(router.logger, 'info');
+            router.routeMessage('cbus/write/254/228/0/0/data', '5042,0,38');
+            expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining('Measurement data: 254/228/0/0 -> 5042'));
+            infoSpy.mockRestore();
+        });
+
+        it('rejects an out-of-range value', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/228/0/0/data', '99999,0,38');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid measurement value'));
+            warnSpy.mockRestore();
+        });
+
+        it('rejects an unknown units code', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/228/0/0/data', '5042,0,100');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown measurement units code'));
+            warnSpy.mockRestore();
+        });
+
+        it('ignores the command when the feature is disabled', () => {
+            router.settings.cbus_measurement_app_id = null;
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/228/0/0/data', '5042,0,38');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unconfigured application'));
+            warnSpy.mockRestore();
+        });
+
+        it('ignores commands for a different application', () => {
+            router.routeMessage('cbus/write/254/229/0/0/data', '5042,0,38');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('does not reach the generic command parser for the 4-segment data topic', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/228/0/0/data', '5042,0,38');
+            expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Invalid MQTT command'));
+            warnSpy.mockRestore();
+        });
+    });
+
     describe('routeMessage()', () => {
         it('should handle manual HA discovery trigger', () => {
             const emitSpy = jest.spyOn(router, 'emit');
