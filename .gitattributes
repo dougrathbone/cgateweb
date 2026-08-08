@@ -1,0 +1,20 @@
+# Normalize line endings to LF regardless of a contributor's local
+# core.autocrlf setting. Without this, Git for Windows' common
+# core.autocrlf=true default silently converts checked-out files to CRLF,
+# which corrupts the "#!/usr/bin/with-contenv bashio" shebang on the add-on's
+# shell scripts (cont-init.d, services.d) and breaks the container at
+# startup with "unable to exec bashio: No such file or directory" -- a
+# failure that only shows up at runtime, not at checkout or build time.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
