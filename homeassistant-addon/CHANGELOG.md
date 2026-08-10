@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.24.0] - 2026-08-10
+
+### Added
+
+- **You can now disarm your alarm from Home Assistant, using its own keypad.** Press Disarm, type your PIN on the keypad Home Assistant shows, and it is entered at the panel for you. C-Bus has no disarm command, so this works by typing the code at the panel one key at a time, exactly as if you had stood at the keypad yourself. Off by default: turn on the new **Security Panel Disarm** option, which also needs Security Panel Control. (#51)
+
+  **Before you enable it, please read this.** Your PIN is not saved anywhere — not in the add-on settings, not in Home Assistant — but it does travel across your MQTT broker each time you disarm. Anyone who can read your broker can read the PIN. Only turn this on if you trust your broker, and use a password and TLS on it if you can. The PIN is never written to the add-on log.
+
+  If your panel needs you to press `#` or Enter after the code, that is not sent yet — please let us know on issue #51 and it can be added.
+
 ## [1.23.3] - 2026-08-07
 
 ### Fixed
