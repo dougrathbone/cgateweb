@@ -247,6 +247,10 @@ configuration:
     name: セキュリティパネル制御
     description: >-
       Home Assistant によるアラームパネルの武装（away、night、home、vacation）を許可します。武装のみ: C-Bus には解除コマンドがないため、Home Assistant の Disarm ボタンは何もしません。デフォルトはオフです。武装コマンドは C-Bus 上で PIN を伴わないため、コマンドトピックに発行できるものはすべてパネルを武装できます。セキュリティアプリケーション ID の設定が必要です。
+  cbus_security_disarm_enabled:
+    name: セキュリティパネルの解除
+    description: >-
+      Home Assistant によるアラームパネルの解除も許可します。セキュリティパネル制御が必要です。デフォルトはオフです。C-Bus には解除コマンドがないため、キーパッドエミュレーションで PIN をパネルに入力します。Home Assistant が独自のキーパッドを表示し、入力内容を MQTT で送信します。PIN はどこにも保存されませんが、解除のたびに MQTT ブローカーを経由します。信頼できるブローカーでのみ、できれば TLS を使って有効にしてください。
 
 
   # ── Bridge 診断 ──

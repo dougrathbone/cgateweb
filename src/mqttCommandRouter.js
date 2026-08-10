@@ -50,7 +50,12 @@ const {
     buildSetZoneHvacMode,
     buildSetWardOff
 } = require('./airconControlRegistry');
-const { buildSecurityArmCommand } = require('./securityCommand');
+const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
+
+// Upper bound on PIN length before we start typing at the panel. Alarm PINs are
+// 4-8 digits in practice; this is a sanity guard so a malformed payload cannot
+// queue hundreds of keypresses, not a protocol limit.
+const SECURITY_MAX_PIN_DIGITS = 16;
 
 // HA MQTT alarm command payloads → C-Gate arm-mode keyword.
 //
@@ -230,49 +235,136 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles security panel arming (cbus/write/{net}/{app}/panel/arm).
-     * Gated on cbus_security_control_enabled: an arm write carries no PIN on
-     * the bus, so control is opt-in. The panel confirms with a system_arm (or
-     * arm_not_ready) broadcast, which drives the state machine — no
-     * optimistic state is published here.
+     * Handles security panel arm/disarm (cbus/write/{net}/{app}/panel/arm).
+     * Gated on cbus_security_control_enabled; disarm additionally on
+     * cbus_security_disarm_enabled. The panel confirms with a system_arm (or
+     * arm_not_ready) broadcast, which drives the state machine — no optimistic
+     * state is published here.
      *
-     * Arming only — see SECURITY_ARM_MODE_BY_PAYLOAD for why DISARM cannot be
-     * served by this command.
+     * Nothing in here may log the payload. With the keypad enabled it carries
+     * the alarm PIN, so only the parsed action and a digit count are ever
+     * logged — see _parseSecurityCommand.
      *
      * @param {string} network - Network id from the topic.
      * @param {string} application - Application id from the topic.
-     * @param {string} payload - HA alarm command payload (ARM_AWAY, ARM_HOME, …).
+     * @param {string} payload - Bare action, or the JSON the command_template emits.
      * @param {string} topic - Original topic for logging.
      * @private
      */
     _handleSecurityArm(network, application, payload, topic) {
         if (!this.settings.cbus_security_control_enabled) {
-            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring arm command on ${topic}`);
+            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring command on ${topic}`);
             return;
         }
         const appId = this.settings.cbus_security_app_id;
         if (!appId || String(appId) === '0' || String(application) !== String(appId)) {
-            this.logger.warn(`Security arm command for unconfigured application ${application} on topic ${topic}`);
+            this.logger.warn(`Security command for unconfigured application ${application} on topic ${topic}`);
             return;
         }
 
-        const normalised = String(payload).trim().toUpperCase();
-        if (normalised === 'DISARM') {
-            // Called out separately from the generic unknown-payload path: a
-            // hand-rolled HA panel pointed at this topic will send DISARM, and
-            // "unknown payload" would send the user hunting for a typo.
-            this.logger.warn(`Disarm over C-Bus is not supported (C-Gate has no disarm arm-mode; disarming needs Emulate Keypad with the PIN — see issue #51); ignoring disarm on ${topic}`);
+        const { action, code } = this._parseSecurityCommand(payload);
+
+        if (action === 'DISARM') {
+            this._handleSecurityDisarm(network, application, code, topic);
             return;
         }
-        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[normalised];
+
+        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[action];
         if (mode === undefined) {
-            this.logger.warn(`Unknown security arm payload "${payload}" on topic ${topic} (expected ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
+            // Deliberately quotes the action, never the payload: the payload may
+            // be JSON carrying a PIN.
+            this.logger.warn(`Unknown security command "${action}" on topic ${topic} (expected DISARM|ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
             return;
         }
 
         const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
         this._queueCommand(cmd + NEWLINE);
-        this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${normalised})`);
+        this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${action})`);
+    }
+
+    /**
+     * Split a panel command payload into its action and code.
+     *
+     * Two shapes reach this topic. With the keypad enabled, Home Assistant's
+     * command_template emits `{"action": "DISARM", "code": "1234"}`. Without it
+     * — and from any hand-rolled panel or script — the payload is the bare
+     * action, `ARM_AWAY`. Both are accepted so enabling disarm does not break
+     * anyone's existing automations.
+     *
+     * A payload that starts with `{` but does not parse is treated as an empty
+     * action rather than being echoed anywhere, on the assumption that a
+     * malformed template still contained a code.
+     *
+     * @param {string} payload
+     * @returns {{action: string, code: string}}
+     * @private
+     */
+    _parseSecurityCommand(payload) {
+        const raw = String(payload === null || payload === undefined ? '' : payload).trim();
+        if (!raw.startsWith('{')) {
+            return { action: raw.toUpperCase(), code: '' };
+        }
+        try {
+            const parsed = JSON.parse(raw);
+            const field = (value) => String(value === null || value === undefined ? '' : value).trim();
+            return {
+                action: field(parsed && parsed.action).toUpperCase(),
+                code: field(parsed && parsed.code)
+            };
+        } catch {
+            this.logger.warn('Security command payload looked like JSON but could not be parsed; ignoring it (payload withheld — it may contain a PIN)');
+            return { action: '', code: '' };
+        }
+    }
+
+    /**
+     * Disarm by replaying the PIN through `security emulate_keypad`, one
+     * keypress per digit, exactly as if typed on the panel's own keypad
+     * (C-Gate manual §4.5.179, issue #51).
+     *
+     * C-Bus has no disarm command, so this is the only route. The panel decides
+     * whether the PIN is right — cgateweb never sees a success or failure
+     * beyond the panel's subsequent broadcast, and deliberately does not guess.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {string} code - Digits typed on Home Assistant's keypad.
+     * @param {string} topic
+     * @private
+     */
+    _handleSecurityDisarm(network, application, code, topic) {
+        if (!this.settings.cbus_security_disarm_enabled) {
+            this.logger.warn(`Security disarm is disabled (set cbus_security_disarm_enabled to enable); ignoring disarm on ${topic}`);
+            return;
+        }
+        if (!code) {
+            this.logger.warn(`Security disarm on ${topic} carried no PIN; the panel cannot be disarmed without one. If Home Assistant did not prompt for a code, re-run discovery so the panel picks up the keypad configuration.`);
+            return;
+        }
+        // Digits only. The keypad emulation can send any ASCII character, so
+        // without this a stray payload could type arbitrary keys at the panel.
+        if (!/^[0-9]+$/.test(code)) {
+            this.logger.warn(`Security disarm on ${topic} rejected: PIN must be digits only (value withheld)`);
+            return;
+        }
+        if (code.length > SECURITY_MAX_PIN_DIGITS) {
+            this.logger.warn(`Security disarm on ${topic} rejected: PIN longer than ${SECURITY_MAX_PIN_DIGITS} digits`);
+            return;
+        }
+
+        for (const digit of code) {
+            const cmd = buildSecurityEmulateKeypadCommand({
+                cbusname: this.cbusname,
+                network,
+                application,
+                // The command takes the ASCII code of the key, not the digit.
+                key: digit.charCodeAt(0)
+            });
+            this._queueCommand(cmd + NEWLINE);
+        }
+        // Digit count, never the digits. Enough to confirm the keypresses went
+        // out and to spot a truncated PIN, without putting it in the log.
+        this.logger.info(`Security disarm: ${network}/${application} -> sent ${code.length} keypresses`);
     }
 
     /**

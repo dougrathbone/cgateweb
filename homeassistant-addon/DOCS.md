@@ -354,7 +354,8 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `cbus_aircon_app_id` | integer | (null) | C-Bus Air Conditioning application id (e.g. `172`) for native thermostat data. Decodes `zone_temperature` (incl. sensor status), `set_zone_hvac_mode` (mode, setpoint, fan speed/mode, flags), `set_ward_on/off`, `zone_hvac_plant_status` (running action + plant error), and — spec-derived, no live captures yet — the humidity verbs (`zone_humidity`, `set_zone_humidity_mode`, `zone_humidity_plant_status`). Topics are keyed by the thermostat's **source unit** (not zone group) to support multiple thermostats: `cbus/read/{network}/172/{sourceUnit}/current_temperature`, `/setpoint`, `/mode` (`off`/`heat`/`cool`/`auto`/`fan_only`), `/state`, `/action`, `/fan_mode`, `/fan_speed`, `/fan_speed_pct`, `/comfort_level`, `/error`, `/error_description`, `/problem`, `/sensor_status`, `/sensor_problem`, `/current_humidity`, `/humidity_mode`, `/humidity_setpoint`, `/humidity_action`. An HA `climate` entity (with fan mode, humidity state) and `problem` binary_sensors for plant/sensor faults are auto-created per thermostat. Off by default. |
 | `cbus_aircon_control_enabled` | boolean | `false` | Opt-in to **control** of native Air Conditioning thermostats (writes to live heating/cooling): enables `cbus/write/{network}/172/{sourceUnit}/setpoint` (°C), `/hvacmode` (`off`/`heat`/`cool`/`auto`/`fan_only`), and `/fanmode` (`automatic`/`continuous`), and adds command topics to the discovered climate entity. Setpoint writes are debounced (3s) per the protocol's echo guidance; flags, per-mode setpoints, and fan state learned from the thermostat are echoed on writes. Also sends `AIRCON REFRESH` when a zone group is first seen. |
 | `cbus_security_app_id` | string | `208` | C-Bus Security application id for alarm zone sensors (read-only). Publishes one `binary_sensor` per zone: `cbus/read/{network}/208/{zone}/state` is `ON` for unsealed/open/short and `OFF` for sealed, with the raw zone state (`sealed`/`unsealed`/`open`/`short`) on `cbus/read/{network}/208/{zone}/attributes`. Zone names come from the zone labels under application 1 in your Toolkit project (import them via C-Bus Labels); a device class (`motion`, `door`, `window`, `garage_door`, `smoke`) is inferred from the name. Zone state is synced on connect via `security status_request` (security panels do not answer getall). Set to `0` to disable. |
-| `cbus_security_control_enabled` | boolean | `false` | Opt-in to **arming** the security panel: adds the `cbus/write/{network}/208/panel/arm` command topic to the `alarm_control_panel` entity (`ARM_AWAY`, `ARM_NIGHT`, `ARM_HOME`, `ARM_VACATION`). **Arming only — C-Bus has no disarm command**, so Home Assistant's Disarm button does nothing (see "Alarm panel" below). Off by default — the arm command carries **no PIN** on the C-Bus network, so anything that can publish to the command topic can arm your panel. The entity is read-only without it. Requires `cbus_security_app_id` to be set. |
+| `cbus_security_control_enabled` | boolean | `false` | Opt-in to **arming** the security panel: adds the `cbus/write/{network}/208/panel/arm` command topic to the `alarm_control_panel` entity (`ARM_AWAY`, `ARM_NIGHT`, `ARM_HOME`, `ARM_VACATION`). Off by default — the arm command carries **no PIN** on the C-Bus network, so anything that can publish to the command topic can arm your panel. The entity is read-only without it. Disarming needs `cbus_security_disarm_enabled` as well. Requires `cbus_security_app_id` to be set. |
+| `cbus_security_disarm_enabled` | boolean | `false` | Opt-in to **disarming** as well, on top of `cbus_security_control_enabled`. C-Bus has no disarm command, so the PIN is typed at the panel via keypad emulation: Home Assistant shows its own numeric keypad and sends what you type in the command payload. **The PIN is not stored anywhere** — not in the add-on options, not in Home Assistant — but it does cross your MQTT broker on every disarm. Only enable on a broker you trust, ideally with TLS. See "Alarm panel" below. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -607,7 +608,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 |--------|-------------------|----------------|-------------------|
 | 56 | Lighting | `light` | Always enabled |
 | 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
-| 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming (no disarm) |
+| 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
@@ -669,9 +670,24 @@ The state machine follows the panel's broadcasts: `system_arm` sets the armed mo
 
 With `cbus_security_control_enabled: true` (off by default) the entity gains a command topic, `cbus/write/{network}/208/panel/arm`, and Home Assistant's **arm** buttons work: `ARM_AWAY` → `away`, `ARM_NIGHT` → `night`, `ARM_HOME` → `day` (day/stay), `ARM_VACATION` → `vacation`. These are C-Gate's own arm-mode keywords (C-Gate manual §4.5.177); the numeric mode values in the C-Bus application spec are not accepted by the command interface and are rejected with `405 Parameter out of range`. The panel confirms with a `system_arm` broadcast, so the displayed state always comes from the panel itself.
 
-> **Disarming is not supported.** The C-Bus Security specification has no disarm command: §5.5.2.3 reserves arm mode `$00`, and disarming is only possible via §5.5.2.7 "Emulate Keypad", which replays your PIN keypress by keypress. Home Assistant always shows a Disarm button once an alarm panel has a command topic, so the button is there but does nothing — cgateweb logs a warning explaining why rather than putting an invalid value on the bus. Disarm at your keypad; the entity will follow the panel's broadcast within a second. (1.23.0 shipped a disarm that appeared to work but was inert on real hardware; removed in 1.23.1.)
-
 > **Security warning:** the C-Bus `security arm` command carries **no PIN** — anything that can publish to the command topic can arm your panel. Only enable control on a broker you trust.
+
+#### Disarming
+
+Disarming is a **second** opt-in, `cbus_security_disarm_enabled: true`, on top of `cbus_security_control_enabled`. The two are separate because they are not equally risky: arming cannot let anyone in.
+
+C-Bus has no disarm command — the specification reserves the arm value that would mean "disarm", and C-Gate offers no disarm arm-mode. The only route is `SECURITY EMULATE_KEYPAD` (C-Gate manual §4.5.179), which presses one key on the panel's keypad per command. So a disarm is simply your PIN typed at the panel, one digit at a time, exactly as if you had entered it yourself.
+
+With disarm enabled, the discovered entity uses **Home Assistant's own keypad**. Pressing Disarm opens the numeric pad, and what you type is sent to cgateweb, which replays it to the panel. The panel decides whether the PIN is right; cgateweb does not check it and cannot know, so the entity's state changes only when the panel broadcasts that it has disarmed.
+
+What this means for your PIN:
+
+- **It is not stored anywhere.** Not in the add-on configuration, not in Home Assistant. The discovery config uses Home Assistant's `REMOTE_CODE` mode, which shows the keypad but skips local validation, so there is no second PIN to keep in sync and nothing on disk to leak.
+- **It does cross MQTT on every disarm**, in the command payload. Anyone able to subscribe to your broker can read it. Use an authenticated broker, and TLS if you can.
+- **It is never written to the log.** cgateweb logs the number of keypresses sent, never the digits, and refuses to echo a malformed payload in case it contained a PIN.
+- Only digits are accepted. Keypad emulation can send any character, so a non-numeric payload is rejected rather than typed at the panel.
+
+If your panel needs a terminating key (some require `#` or Enter after the code) this is not sent yet — please report it on [issue #51](https://github.com/dougrathbone/cgateweb/issues/51) with a log and it can be added.
 
 ## Networking
 

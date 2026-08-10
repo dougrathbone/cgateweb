@@ -244,6 +244,10 @@ configuration:
     name: Alarmstyring
     description: >-
       Tillat Home Assistant å koble til alarmen (away, night, home, vacation). Kun tilkobling: C-Bus har ingen frakoblingskommando, så Disarm-knappen i Home Assistant gjør ingenting. Av som standard: tilkoblingskommandoen bærer ingen PIN på C-Bus, så alt som kan publisere på kommando-topicen kan koble til alarmen din. Krever at sikkerhetsapplikasjons-id er satt.
+  cbus_security_disarm_enabled:
+    name: Frakobling av alarm
+    description: >-
+      Tillat også Home Assistant å koble fra alarmen. Krever Alarmstyring. Av som standard. C-Bus har ingen frakoblingskommando, så PIN-koden tastes inn på sentralen via tastaturemulering: Home Assistant viser sitt eget tastatur og sender det du taster over MQTT. PIN-koden lagres ingen steder, men den går gjennom MQTT-brokeren din ved hver frakobling, så aktiver dette kun på en broker du stoler på, helst med TLS.
 
 
   # ── Bridge diagnostikk ──

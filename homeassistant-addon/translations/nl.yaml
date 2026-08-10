@@ -249,6 +249,10 @@ configuration:
     name: Alarmpaneel-bediening
     description: >-
       Sta Home Assistant toe het alarmsysteem in te schakelen (away, night, home, vacation). Alleen inschakelen: C-Bus heeft geen uitschakelcommando, dus de Disarm-knop in Home Assistant doet niets. Standaard uitgeschakeld: het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het commando-topic kan publiceren kan uw alarmsysteem inschakelen. Vereist een ingestelde beveiligingsapplicatie-id.
+  cbus_security_disarm_enabled:
+    name: Alarm uitschakelen
+    description: >-
+      Sta Home Assistant ook toe het alarmsysteem uit te schakelen. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. C-Bus heeft geen uitschakelcommando, dus de pincode wordt via toetsenbordemulatie op het paneel ingevoerd: Home Assistant toont een eigen toetsenblok en stuurt uw invoer via MQTT. De pincode wordt nergens opgeslagen, maar gaat bij elke uitschakeling via uw MQTT-broker. Schakel dit alleen in op een broker die u vertrouwt, bij voorkeur met TLS.
 
 
   # ── Bridge Diagnostiek ──

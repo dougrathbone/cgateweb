@@ -388,6 +388,63 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(payload.code_disarm_required).toBe(false);
         });
 
+        describe('keypad disarm (#51)', () => {
+            function panelWith(settings) {
+                const discovery = new HaDiscovery(
+                    {
+                        ha_discovery_enabled: true,
+                        ha_discovery_prefix: 'homeassistant',
+                        cbus_security_app_id: '208',
+                        ...settings
+                    },
+                    publishFn,
+                    jest.fn()
+                );
+                discovery.ensureSecurityPanelDiscovery('254', '208');
+                return alarmPayload();
+            }
+
+            it('asks Home Assistant for its keypad without storing a PIN', () => {
+                const payload = panelWith({
+                    cbus_security_control_enabled: true,
+                    cbus_security_disarm_enabled: true
+                });
+                // REMOTE_CODE shows HA's numeric keypad but skips HA-side
+                // validation, so the real PIN never has to be configured
+                // anywhere — only the panel judges it.
+                expect(payload.code).toBe('REMOTE_CODE');
+                expect(payload.code_disarm_required).toBe(true);
+                // Arming still needs no code.
+                expect(payload.code_arm_required).toBe(false);
+            });
+
+            it('passes the typed code through in the command payload', () => {
+                const payload = panelWith({
+                    cbus_security_control_enabled: true,
+                    cbus_security_disarm_enabled: true
+                });
+                expect(payload.command_template).toContain('action');
+                expect(payload.command_template).toContain('code');
+                // tojson, not hand-quoting: a code is user input and a stray
+                // quote would otherwise emit malformed JSON.
+                expect(payload.command_template).toContain('tojson');
+            });
+
+            it('leaves the panel arm-only when disarm is not enabled', () => {
+                const payload = panelWith({ cbus_security_control_enabled: true });
+                expect('code' in payload).toBe(false);
+                expect('command_template' in payload).toBe(false);
+                expect(payload.code_disarm_required).toBe(false);
+            });
+
+            it('ignores disarm without control, since there is no command topic', () => {
+                const payload = panelWith({ cbus_security_disarm_enabled: true });
+                expect('command_topic' in payload).toBe(false);
+                expect('code' in payload).toBe(false);
+                expect(payload.code_disarm_required).toBe(false);
+            });
+        });
+
         it('retracts the alarm panel config when the panel is excluded', () => {
             d.exclude.add('254/208/panel');
             expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);

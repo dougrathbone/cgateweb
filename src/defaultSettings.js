@@ -100,11 +100,22 @@ const defaultSettings = {
     // binary_sensor per zone (sealed/unsealed) and syncs zone state via
     // security status_request on connect. Empty or '0' disables.
     cbus_security_app_id: '208',
-    // Opt-in: allow Home Assistant to ARM/DISARM the security panel via
-    // `security arm` commands. Off by default — the write carries no PIN on
-    // the bus, so anything that can publish to the command topic can disarm
-    // the panel. Requires cbus_security_app_id to be set.
+    // Opt-in: allow Home Assistant to ARM the security panel via `security arm`
+    // commands. Off by default — the write carries no PIN on the bus, so
+    // anything that can publish to the command topic can arm the panel.
+    // Requires cbus_security_app_id to be set.
     cbus_security_control_enabled: false,
+    // Opt-in on top of cbus_security_control_enabled: allow DISARM as well.
+    // Deliberately a second switch rather than part of the first, because the
+    // two directions are not equally risky — arming cannot let anyone in.
+    //
+    // Disarming has no C-Bus command; it is done by replaying the PIN through
+    // `security emulate_keypad` (#51). Home Assistant collects the PIN on its
+    // own keypad and sends it in the MQTT command payload, so the PIN crosses
+    // the broker on every disarm. Nothing stores it, but anyone who can read
+    // that topic can learn it. Only enable on a broker you trust, ideally with
+    // TLS.
+    cbus_security_disarm_enabled: false,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
     ha_bridge_diagnostics_interval_sec: 60,

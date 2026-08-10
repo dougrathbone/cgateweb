@@ -249,6 +249,10 @@ configuration:
     name: Alarmanlagen-Steuerung
     description: >-
       Home Assistant erlauben, die Alarmanlage zu schärfen (Away, Night, Home, Vacation). Nur Schärfen: C-Bus hat keinen Entschärfen-Befehl, daher bewirkt die Disarm-Schaltfläche in Home Assistant nichts. Standardmäßig deaktiviert: Der Arm-Befehl trägt keine PIN im C-Bus-Netz, daher kann alles, was auf das Befehlstopic veröffentlichen kann, Ihre Alarmanlage schärfen. Erfordert eine gesetzte Sicherheitsanwendungs-ID.
+  cbus_security_disarm_enabled:
+    name: Alarmanlage entschärfen
+    description: >-
+      Home Assistant zusätzlich erlauben, die Alarmanlage zu entschärfen. Erfordert Alarmanlagen-Steuerung. Standardmäßig deaktiviert. C-Bus hat keinen Entschärfen-Befehl, daher wird die PIN per Tastaturemulation an der Anlage eingegeben: Home Assistant zeigt ein eigenes Tastenfeld und sendet die Eingabe über MQTT. Die PIN wird nirgends gespeichert, läuft aber bei jedem Entschärfen über Ihren MQTT-Broker. Aktivieren Sie dies nur bei einem vertrauenswürdigen Broker, idealerweise mit TLS.
 
 
   # ── Bridge-Diagnose ──

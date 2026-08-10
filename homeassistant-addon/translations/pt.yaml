@@ -249,6 +249,10 @@ configuration:
     name: Controlo do alarme
     description: >-
       Permitir que o Home Assistant arme a central de alarme (away, night, home, vacation). Apenas armar: o C-Bus não tem nenhum comando para desarmar, pelo que o botão Disarm do Home Assistant não faz nada. Desativado por predefinição: o comando de armar não transporta nenhum PIN no bus C-Bus, pelo que qualquer coisa que possa publicar no tópico de comandos pode armar a sua central. Requer o ID da aplicação de segurança definido.
+  cbus_security_disarm_enabled:
+    name: Desarmar o alarme
+    description: >-
+      Permitir também que o Home Assistant desarme a central de alarme. Requer Controlo do alarme. Desativado por predefinição. O C-Bus não tem comando para desarmar, por isso o PIN é introduzido na central através de emulação de teclado: o Home Assistant mostra o seu próprio teclado e envia o que escrever por MQTT. O PIN não é guardado em lado nenhum, mas atravessa o seu broker MQTT em cada desarme, pelo que só deve ativar isto num broker de confiança, de preferência com TLS.
 
 
   # ── Diagnósticos do Bridge ──

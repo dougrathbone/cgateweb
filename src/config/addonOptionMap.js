@@ -41,6 +41,9 @@ const ADDON_OPTION_MAP = [
     // MQTT-only install that opts in must not lose the write path with
     // discovery off.
     { src: 'cbus_security_control_enabled', dst: 'cbus_security_control_enabled', kind: 'boolDefined' },
+    // Same reasoning again: the disarm write path is plain MQTT, so it must
+    // survive with Home Assistant discovery off.
+    { src: 'cbus_security_disarm_enabled', dst: 'cbus_security_disarm_enabled', kind: 'boolDefined' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },

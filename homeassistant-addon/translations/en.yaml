@@ -245,6 +245,10 @@ configuration:
     name: Security Panel Control
     description: >-
       Allow Home Assistant to arm the security panel (away, night, home, vacation). Arming only: C-Bus has no disarm command, so Home Assistant's Disarm button does nothing. Off by default: the arm command carries no PIN on the C-Bus network, so anything that can publish to the command topic can arm your panel. Requires the Security Application ID to be set.
+  cbus_security_disarm_enabled:
+    name: Security Panel Disarm
+    description: >-
+      Also allow Home Assistant to disarm the security panel. Requires Security Panel Control. Off by default. C-Bus has no disarm command, so the PIN is typed at the panel using keypad emulation: Home Assistant shows its own keypad and sends what you type over MQTT. The PIN is not stored anywhere, but it does cross your MQTT broker on every disarm, so only enable this on a broker you trust, ideally with TLS.
 
 
   # ── Bridge Diagnostics ──

@@ -459,6 +459,18 @@ describe('ConfigLoader', () => {
             expect(config.cbus_security_control_enabled).toBe(true);
         });
 
+        test('should map cbus_security_disarm_enabled as a boolean, even with HA discovery disabled', () => {
+            // Same reasoning as control: the disarm write path is plain MQTT and
+            // must survive with discovery off.
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_security_disarm_enabled: true };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_security_disarm_enabled).toBe(true);
+        });
+
         test('should not set cbus_security_control_enabled when the option is absent (default false applies)', () => {
             const options = { ...mockAddonOptions };
             delete options.cbus_security_control_enabled;

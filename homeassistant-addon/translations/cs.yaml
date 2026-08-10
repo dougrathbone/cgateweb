@@ -246,6 +246,10 @@ configuration:
     name: Ovládání alarmu
     description: >-
       Povolit Home Assistant aktivovat zabezpečovací ústřednu (away, night, home, vacation). Pouze aktivace: C-Bus nemá žádný příkaz k deaktivaci, takže tlačítko Disarm v Home Assistant nic neudělá. Ve výchozím nastavení vypnuto: příkaz aktivace nenese žádný PIN na sběrnici C-Bus, takže cokoliv, co může publikovat na příkazovém tématu, může vaši ústřednu aktivovat. Vyžaduje nastavené ID aplikace zabezpečení.
+  cbus_security_disarm_enabled:
+    name: Deaktivace alarmu
+    description: >-
+      Umožnit Home Assistant také deaktivovat zabezpečovací ústřednu. Vyžaduje Ovládání alarmu. Ve výchozím nastavení vypnuto. C-Bus nemá příkaz k deaktivaci, takže se PIN zadává na ústřednu pomocí emulace klávesnice: Home Assistant zobrazí vlastní klávesnici a odešle zadané číslice přes MQTT. PIN se nikam neukládá, ale při každé deaktivaci prochází vaším MQTT brokerem. Zapínejte pouze na brokeru, kterému důvěřujete, ideálně s TLS.
 
 
   # ── Diagnostika bridge ──

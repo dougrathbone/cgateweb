@@ -41,7 +41,8 @@ function buildSecurityStatusRequest({ cbusname, network, application, report }) 
  * spec's numeric mode values, is rejected with
  * `405 Parameter out of range (bad arm mode)`.
  *
- * There is no disarm keyword; callers reject DISARM before reaching here.
+ * There is no disarm keyword; disarming goes through
+ * buildSecurityEmulateKeypadCommand instead.
  *
  * @param {Object} opts
  * @param {string} opts.cbusname - C-Gate project name.
@@ -54,4 +55,32 @@ function buildSecurityArmCommand({ cbusname, network, application, mode }) {
     return `security arm //${cbusname}/${network}/${application} ${mode}`;
 }
 
-module.exports = { buildSecurityStatusRequest, buildSecurityArmCommand };
+/**
+ * Build a `security emulate_keypad` command (C-Gate manual §4.5.179).
+ *
+ *     SECURITY EMULATE_KEYPAD app key
+ *     key = value from 0 to 127 representing an ASCII character
+ *
+ * One keypress per command, so a PIN is a sequence of these — the panel sees
+ * them as if typed on its own keypad. This is the only route to a disarm; the
+ * arm command has no disarm mode (#51).
+ *
+ * The manual notes the message is OPTIONAL, so a panel may answer
+ * `402 Not supported by this object`.
+ *
+ * @param {Object} opts
+ * @param {string} opts.cbusname - C-Gate project name.
+ * @param {string|number} opts.network - C-Bus network id.
+ * @param {string|number} opts.application - Security application id (e.g. 208).
+ * @param {number} opts.key - ASCII code of the key, 0-127.
+ * @returns {string}
+ */
+function buildSecurityEmulateKeypadCommand({ cbusname, network, application, key }) {
+    return `security emulate_keypad //${cbusname}/${network}/${application} ${key}`;
+}
+
+module.exports = {
+    buildSecurityStatusRequest,
+    buildSecurityArmCommand,
+    buildSecurityEmulateKeypadCommand
+};

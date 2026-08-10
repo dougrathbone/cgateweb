@@ -76,18 +76,18 @@ describe('MqttCommandRouter', () => {
         // Spec §5.5.2.3 reserves arm mode $00, so that put an invalid argument
         // on the bus and the panel ignored it (#42). Nothing may reach the queue.
         it('never puts reserved arm mode 0 on the bus for DISARM', () => {
+            router.settings.cbus_security_disarm_enabled = true;
+            router.routeMessage('cbus/write/254/208/panel/arm', '{"action":"DISARM","code":"1234"}');
+            for (const call of mockQueue.add.mock.calls) {
+                expect(call[0]).not.toMatch(/security arm /);
+            }
+        });
+
+        it('ignores DISARM when disarm is not enabled', () => {
             const warnSpy = jest.spyOn(router.logger, 'warn');
             router.routeMessage('cbus/write/254/208/panel/arm', 'DISARM');
             expect(mockQueue.add).not.toHaveBeenCalled();
-            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Disarm over C-Bus is not supported'));
-            warnSpy.mockRestore();
-        });
-
-        it('explains DISARM specifically rather than calling it an unknown payload', () => {
-            const warnSpy = jest.spyOn(router.logger, 'warn');
-            router.routeMessage('cbus/write/254/208/panel/arm', ' disarm ');
-            expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Unknown security arm payload'));
-            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Emulate Keypad'));
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Security disarm is disabled'));
             warnSpy.mockRestore();
         });
 
@@ -95,7 +95,7 @@ describe('MqttCommandRouter', () => {
             const warnSpy = jest.spyOn(router.logger, 'warn');
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
             expect(mockQueue.add).not.toHaveBeenCalled();
-            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown security arm payload'));
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown security command'));
             warnSpy.mockRestore();
         });
 
@@ -120,6 +120,115 @@ describe('MqttCommandRouter', () => {
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
             expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Invalid MQTT command'));
             warnSpy.mockRestore();
+        });
+    });
+
+    // #51: C-Bus has no disarm command, so a disarm is the PIN replayed through
+    // `security emulate_keypad`, one keypress per digit. Home Assistant's own
+    // keypad collects the PIN and sends it in the command payload.
+    describe('security panel disarm via keypad emulation', () => {
+        const TOPIC = 'cbus/write/254/208/panel/arm';
+        const PIN = '1234';
+
+        beforeEach(() => {
+            router.settings.cbus_security_app_id = '208';
+            router.settings.cbus_security_control_enabled = true;
+            router.settings.cbus_security_disarm_enabled = true;
+        });
+
+        function sentCommands() {
+            return mockQueue.add.mock.calls.map(c => c[0]);
+        }
+
+        it('sends one emulate_keypad per digit, as ASCII codes', () => {
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: PIN }));
+            // '1'..'4' are ASCII 49..52 — the command takes the character code,
+            // not the digit (C-Gate manual §4.5.179).
+            expect(sentCommands()).toEqual([
+                'security emulate_keypad //TestProject/254/208 49\n',
+                'security emulate_keypad //TestProject/254/208 50\n',
+                'security emulate_keypad //TestProject/254/208 51\n',
+                'security emulate_keypad //TestProject/254/208 52\n'
+            ]);
+        });
+
+        it('preserves digit order, including repeated digits', () => {
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '1102' }));
+            expect(sentCommands().map(c => c.trim().split(' ').pop())).toEqual(['49', '49', '48', '50']);
+        });
+
+        // The whole point of REMOTE_CODE is that the PIN is never stored. It
+        // must not end up in the log either.
+        it('never writes the PIN to the log', () => {
+            const infoSpy = jest.spyOn(router.logger, 'info');
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            const errorSpy = jest.spyOn(router.logger, 'error');
+
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '9753' }));
+
+            const logged = [infoSpy, warnSpy, errorSpy]
+                .flatMap(spy => spy.mock.calls.flat())
+                .join(' ');
+            expect(logged).not.toContain('9753');
+            expect(logged).toContain('sent 4 keypresses');
+
+            infoSpy.mockRestore();
+            warnSpy.mockRestore();
+            errorSpy.mockRestore();
+        });
+
+        it('does not echo a malformed JSON payload, which may hold a PIN', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage(TOPIC, '{"action":"DISARM","code":"4321"');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            const logged = warnSpy.mock.calls.flat().join(' ');
+            expect(logged).not.toContain('4321');
+            expect(logged).toContain('payload withheld');
+            warnSpy.mockRestore();
+        });
+
+        it('rejects a non-numeric code without typing it at the panel', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            // Keypad emulation can send any ASCII character, so a non-digit
+            // payload must not be forwarded as keystrokes.
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '12*4' }));
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('digits only'));
+            warnSpy.mockRestore();
+        });
+
+        it('rejects an absurdly long code rather than queueing hundreds of keypresses', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '1'.repeat(64) }));
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('longer than'));
+            warnSpy.mockRestore();
+        });
+
+        it('explains a disarm that arrived with no code at all', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '' }));
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('carried no PIN'));
+            warnSpy.mockRestore();
+        });
+
+        it('sends nothing when disarm is off, even with a valid PIN', () => {
+            router.settings.cbus_security_disarm_enabled = false;
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: PIN }));
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('still accepts bare arm payloads once the template is in play', () => {
+            // Existing automations publish `ARM_AWAY` with no JSON wrapper;
+            // enabling disarm must not break them.
+            router.routeMessage(TOPIC, 'ARM_AWAY');
+            expect(sentCommands()).toEqual(['security arm //TestProject/254/208 away\n']);
+        });
+
+        it('accepts the JSON form for arming, where the code is empty', () => {
+            router.routeMessage(TOPIC, JSON.stringify({ action: 'ARM_AWAY', code: '' }));
+            expect(sentCommands()).toEqual(['security arm //TestProject/254/208 away\n']);
         });
     });
 

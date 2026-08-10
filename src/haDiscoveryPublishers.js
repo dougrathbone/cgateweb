@@ -816,12 +816,18 @@ class _HaDiscoveryPublishers {
      * arm write carries no PIN on the bus, so control is opt-in (the entity
      * is read-only without it, following the native-aircon precedent).
      *
-     * Arming only. Home Assistant always renders a Disarm button once a
-     * command_topic exists (supported_features has no disarm flag to withhold),
-     * but C-Bus has no disarm command — §5.5.2.3 reserves arm mode 0 and
-     * disarming needs §5.5.2.7 Emulate Keypad with the PIN. The router ignores
-     * DISARM with an explanatory warning rather than putting a reserved value
-     * on the bus, so the button is inert by design until Emulate Keypad lands.
+     * Home Assistant always renders a Disarm button once a command_topic exists
+     * (supported_features has no disarm flag to withhold). Whether it does
+     * anything depends on cbus_security_disarm_enabled, a second opt-in on top
+     * of control: C-Bus has no disarm command, so disarming means replaying the
+     * PIN through Emulate Keypad (#51), and that is a bigger decision than
+     * arming.
+     *
+     * With disarm on, the panel uses Home Assistant's own keypad via
+     * `code: REMOTE_CODE`. That is the variant worth having: HA shows a numeric
+     * keypad and passes what was typed straight through to us, so the PIN lives
+     * nowhere in configuration — not in the add-on options, not in HA's. The
+     * cost is that it crosses MQTT on each disarm, which the docs say plainly.
      *
      * @private
      */
@@ -830,6 +836,9 @@ class _HaDiscoveryPublishers {
         const discoveryTopic = this._securityAlarmTopic(networkId, appId);
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel`;
         const controlEnabled = !!this.settings.cbus_security_control_enabled;
+        // Disarm rides on control: without a command topic there is nothing to
+        // send a PIN over.
+        const disarmEnabled = controlEnabled && !!this.settings.cbus_security_disarm_enabled;
 
         const payload = {
             // Primary entity on the shared panel device: takes the device name.
@@ -845,12 +854,24 @@ class _HaDiscoveryPublishers {
             // Home Assistant defaults both of these to true and then refuses to
             // publish an arm/disarm without a code — it pops "PIN required" and
             // the command never reaches MQTT at all, which is how 1.23.1 shipped
-            // an arm button that did nothing (#42). C-Bus arm carries no PIN, so
-            // there is no code for the user to enter and nothing to validate.
+            // an arm button that did nothing (#42). Arming carries no PIN on
+            // C-Bus, so there is never a code to enter for it.
             code_arm_required: false,
-            code_disarm_required: false,
+            code_disarm_required: disarmEnabled,
             ...(controlEnabled && {
                 command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
+            }),
+            ...(disarmEnabled && {
+                // REMOTE_CODE: show HA's numeric keypad but skip HA's local
+                // validation, since only the panel can judge the PIN. A literal
+                // code here would be a second PIN to keep in sync and would
+                // block the real one from ever reaching the panel.
+                code: 'REMOTE_CODE',
+                // tojson rather than hand-quoting: a code is user input, and an
+                // embedded quote would otherwise produce malformed JSON. Arm
+                // actions come through here too with an empty code.
+                command_template:
+                    '{"action": {{ action | tojson }}, "code": {{ (code or "") | tojson }}}'
             }),
 
             qos: 0,
@@ -863,7 +884,8 @@ class _HaDiscoveryPublishers {
         };
 
         this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Security panel alarm_control_panel published: ${networkId}/${appId}${controlEnabled ? '' : ' (read-only)'}`);
+        const mode = !controlEnabled ? 'read-only' : (disarmEnabled ? 'arm + disarm' : 'arm only');
+        this.logger.info(`Security panel alarm_control_panel published: ${networkId}/${appId} (${mode})`);
     }
 
     /**

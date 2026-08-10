@@ -14,6 +14,10 @@ describe('security app id default', () => {
     it('defaults cbus_security_control_enabled to false (opt-in; bus writes carry no PIN)', () => {
         expect(defaultSettings.cbus_security_control_enabled).toBe(false);
     });
+
+    it('defaults cbus_security_disarm_enabled to false (second opt-in; the PIN crosses MQTT)', () => {
+        expect(defaultSettings.cbus_security_disarm_enabled).toBe(false);
+    });
 });
 
 describe('raw event capture defaults', () => {

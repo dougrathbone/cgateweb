@@ -252,6 +252,10 @@ configuration:
     name: Controllo allarme
     description: >-
       Consenti a Home Assistant di inserire la centrale di allarme (away, night, home, vacation). Solo inserimento: C-Bus non ha alcun comando di disinserimento, quindi il pulsante Disarm di Home Assistant non fa nulla. Disattivato per impostazione predefinita: il comando di inserimento non trasporta alcun PIN sul bus C-Bus, quindi qualsiasi cosa possa pubblicare sul topic dei comandi può inserire la tua centrale. Richiede un ID applicazione sicurezza impostato.
+  cbus_security_disarm_enabled:
+    name: Disinserimento allarme
+    description: >-
+      Consenti a Home Assistant anche di disinserire la centrale di allarme. Richiede Controllo allarme. Disattivato per impostazione predefinita. C-Bus non ha un comando di disinserimento, quindi il PIN viene digitato sulla centrale tramite emulazione della tastiera: Home Assistant mostra la propria tastiera e invia quanto digitato via MQTT. Il PIN non viene memorizzato da nessuna parte, ma attraversa il tuo broker MQTT a ogni disinserimento: attivalo solo su un broker di cui ti fidi, preferibilmente con TLS.
 
 
   # ── Diagnostica del bridge ──
