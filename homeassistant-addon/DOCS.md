@@ -423,7 +423,19 @@ Read all of the following before enabling this:
 - **C-Gate has no authentication on these ports.** Any client whose address matches a rule gets that level, with no username and no password. Only expose C-Gate if you actually need to.
 - **`program` also grants the ability to shut C-Gate down.** C-Gate's access levels, increasing, are `none`, `connect`, `monitor`, `operate`, `admin`, `program`, `debug` — so `program` sits *above* `admin`. Granting Toolkit the level it needs necessarily grants the administrative commands, including shutdown. There is no way to separate them.
 - **Subnets use an octet of `255`, not CIDR notation.** `192.168.1.255` means every address on `192.168.1.x`. Prefer listing a single, specific address: a subnet grant is far wider than it looks. The add-on logs a warning for any wildcard octet, and rejects `255.255.255.255` (every address on the internet) outright.
-- **You must also map C-Gate's ports in Home Assistant's Network panel.** The add-on declares `20023/tcp` (command), `20024/tcp` (event) and `20025/tcp` (status change), all **unmapped by default**. Home Assistant can only map ports an add-on declares, so exposing C-Gate requires leaving `cgate_port` at its default **20023** — a custom `cgate_port` cannot be mapped here.
+- **You must also map C-Gate's ports in Home Assistant's Network panel.** The add-on declares `20023/tcp` (command), `20024/tcp` (event) and `20025/tcp` (status change), plus their SSL equivalents `20123`, `20124` and `20125` — all **unmapped by default**. Home Assistant can only map ports an add-on declares, so exposing C-Gate requires leaving `cgate_port` at its default **20023** — a custom `cgate_port` cannot be mapped here.
+
+#### Connecting current C-Bus Toolkit (experimental)
+
+Recent C-Bus Toolkit versions connect to a remote C-Gate over **SSL only**, and the `cgatesites.xml` trick for forcing the plain port no longer applies — v19 does not appear to ship those files at all. That is what has blocked Toolkit against managed C-Gate ([#57](https://github.com/dougrathbone/cgateweb/issues/57), [#58](https://github.com/dougrathbone/cgateweb/issues/58)).
+
+C-Gate itself already listens on its SSL ports inside the container; the add-on simply never declared them, so there was no way to publish them. Since 1.24.2 it does. To try it:
+
+1. Add your PC to `cgate_external_clients` with level `program`.
+2. In Home Assistant's Network panel for this add-on, map **`20123/tcp`**.
+3. Point Toolkit at your Home Assistant host on port `20123`.
+
+This is **unconfirmed** — it opens the path, but whether Toolkit accepts the certificate C-Gate presents has not been tested on real hardware. Please report either outcome on [issue #58](https://github.com/dougrathbone/cgateweb/issues/58); a Toolkit-side error message is the most useful thing to include. It is offered because it costs nothing to try and does not need stunnel or any change on your Home Assistant host.
 - **It is a no-op in remote mode.** With `cgate_mode: remote`, C-Gate runs on another machine and this add-on does not own its access control file. Grant access in that C-Gate's own `access.txt` instead.
 
 The add-on rewrites only its own clearly marked block in `/data/cgate/config/access.txt` on every start; any rules you added by hand outside that block are preserved. The add-on writes `remote` rules only, never `interface` rules — an `interface` rule matches *every* connection arriving on the network interface it names, which silently turns an intended per-client grant into a blanket grant.

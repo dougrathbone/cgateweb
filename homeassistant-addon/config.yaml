@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.24.1"
+version: "1.24.2"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -32,12 +32,23 @@ ports:
   "20023/tcp": null
   "20024/tcp": null
   "20025/tcp": null
+  # C-Gate's SSL equivalents. It already listens on these in managed mode, but
+  # Home Assistant can only publish ports the add-on declares, so without these
+  # entries there was no way to reach them from a PC — which is what blocks
+  # current C-Bus Toolkit, since it connects to a remote C-Gate over SSL only
+  # (#57, #58). Still null by default: declaring a port does not publish it.
+  "20123/tcp": null
+  "20124/tcp": null
+  "20125/tcp": null
 
 ports_description:
   "8080/tcp": "C-Bus Label Editor web interface (optional; ingress works without host mapping — set web_api_key if you expose this port)"
   "20023/tcp": "C-Gate command port (managed mode only). Home Assistant can only map ports declared by the add-on, so exposing C-Gate to external clients requires leaving cgate_port at its default 20023 -- a custom cgate_port cannot be mapped here. C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
   "20024/tcp": "C-Gate event port (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
   "20025/tcp": "C-Gate status change port (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
+  "20123/tcp": "C-Gate command port over SSL (managed mode only). Map this if you want to connect C-Bus Toolkit to the managed C-Gate: current Toolkit versions only reach a remote C-Gate over SSL. Experimental and unconfirmed -- please report success or failure on GitHub issue #58. C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
+  "20124/tcp": "C-Gate event port over SSL (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
+  "20125/tcp": "C-Gate status change port over SSL (managed mode only). C-Gate has NO authentication: list allowed addresses in cgate_external_clients before publishing this."
 
 homeassistant_api: true
 

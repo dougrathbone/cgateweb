@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.24.2] - 2026-08-11
+
+### Added
+
+- **C-Gate's SSL ports can now be mapped, so you can try connecting C-Bus Toolkit.** Recent Toolkit versions only reach a remote C-Gate over SSL, and managed C-Gate was already listening on those ports — the add-on just never declared them, so Home Assistant had no way to publish them. Map `20123/tcp` in the Network panel, add your PC to the external clients list, and point Toolkit at it. This is experimental and unconfirmed: it opens the path, but whether Toolkit accepts C-Gate's certificate has not been tested. Please report either result on issue #58. (#57, #58)
+
 ## [1.24.1] - 2026-08-11
 
 ### Fixed
