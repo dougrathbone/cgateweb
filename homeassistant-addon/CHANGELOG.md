@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.24.1] - 2026-08-11
+
+### Fixed
+
+- **Disarming now actually works.** The PIN added in 1.24.0 was sent to the panel but never submitted, so nothing happened. The code is now followed by a `#` keypress, which is what tells the panel to accept it. (#51)
+- **Your alarm panel shows its state again after restarting Home Assistant.** The card came up blank until the alarm was next armed or disarmed, because the add-on only sends the state when it changes and Home Assistant had forgotten it. It now resends the current state whenever Home Assistant restarts. (#51)
+- **No more repeated "Bad object or device ID" warnings for applications you don't use.** Cover support is on by default, so anyone without cover groups saw a warning at every startup and every poll. It is now explained once, in plain terms, instead. (#51)
+
 ## [1.24.0] - 2026-08-10
 
 ### Added
