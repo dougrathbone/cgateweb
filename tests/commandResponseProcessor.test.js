@@ -577,6 +577,60 @@ describe('CommandResponseProcessor', () => {
             expect(onCommandError).toHaveBeenCalledWith('401', 'Bad object or device ID: //CLIPSAL/254/203/* (Object not found)');
         });
 
+        // #51: ha_discovery_cover_app_id defaults to 203, so an install with no
+        // cover groups warned on every startup and every poll. The explanation
+        // replaces the warning — but only the warning.
+        describe('401 for an application with no groups', () => {
+            const EMPTY_APP = 'Bad object or device ID: //MIDSTRM/254/203/* (Object not found)';
+
+            function processor(onCommandError = jest.fn()) {
+                return new CommandResponseProcessor({
+                    eventPublisher: mockEventPublisher,
+                    haDiscovery: mockHaDiscovery,
+                    onObjectStatus: mockOnObjectStatus,
+                    onCommandError,
+                    logger: mockLogger
+                });
+            }
+
+            it('explains it at INFO instead of warning', () => {
+                processor()._processCommandErrorResponse('401', EMPTY_APP);
+                expect(mockLogger.warn).not.toHaveBeenCalled();
+                expect(mockLogger.info).toHaveBeenCalledWith(
+                    expect.stringContaining('application 203 has no groups on network 254')
+                );
+            });
+
+            it('says it once, however many polls hit it', () => {
+                const p = processor();
+                for (let i = 0; i < 5; i++) p._processCommandErrorResponse('401', EMPTY_APP);
+                expect(mockLogger.info).toHaveBeenCalledTimes(1);
+                expect(mockLogger.warn).not.toHaveBeenCalled();
+            });
+
+            it('still reports each distinct application', () => {
+                const p = processor();
+                p._processCommandErrorResponse('401', EMPTY_APP);
+                p._processCommandErrorResponse('401', 'Bad object or device ID: //MIDSTRM/254/220/* (Object not found)');
+                expect(mockLogger.info).toHaveBeenCalledTimes(2);
+            });
+
+            // The callback is what stops the periodic poll for the empty app,
+            // so quietening the log must not quieten that.
+            it('still fires onCommandError so the poll gets stopped', () => {
+                const onCommandError = jest.fn();
+                processor(onCommandError)._processCommandErrorResponse('401', EMPTY_APP);
+                expect(onCommandError).toHaveBeenCalledWith('401', EMPTY_APP);
+            });
+
+            it('leaves a genuine 401 for a single object warning as before', () => {
+                // No trailing /*: this is a real missing object, not an empty
+                // application, and the operator should still see it.
+                processor()._processCommandErrorResponse('401', 'Bad object or device ID: //MIDSTRM/254/56/99 (Object not found)');
+                expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error 401'));
+            });
+        });
+
         it('should not throw when onCommandError is not set', () => {
             expect(() => {
                 processor._processCommandErrorResponse('401', 'Some error');

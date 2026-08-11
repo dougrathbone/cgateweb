@@ -184,6 +184,15 @@ class SecurityEventHandler {
             state[slot] = true;
         }
 
+        // A sync exists to reseed consumers that have lost state, so the report
+        // it provokes must publish even when nothing has changed. Without this
+        // the transition dedupe swallows it and Home Assistant's alarm card
+        // stays blank after a restart (#51). Not done for 'traffic', which is
+        // routine panel activity, not a request to resend.
+        if (trigger !== 'traffic') {
+            this.panelState.forgetAlarmState(network);
+        }
+
         for (const report of [1, 2]) {
             const cmd = buildSecurityStatusRequest({
                 cbusname: this.cbusname,

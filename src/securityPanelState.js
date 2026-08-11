@@ -196,6 +196,29 @@ class SecurityPanelState {
     }
 
     /**
+     * Forget the last published alarm state for a network, so the next reading
+     * counts as a transition and publishes even if the value has not changed.
+     *
+     * Needed because "publish transitions only" and "resend everything after
+     * Home Assistant restarts" are in direct conflict. HA drops entity state on
+     * restart, the bridge keeps running, and the resync's status_report_1 then
+     * reports the same armed state it already knew — so nothing was published
+     * and the alarm card sat blank until the panel next actually changed (#51).
+     *
+     * preAlarmState is deliberately kept: it is not published state, it is how
+     * alarm_off knows what to revert to, and a resync should not lose it.
+     *
+     * @param {string|number} network - Stringified internally, as elsewhere here.
+     */
+    forgetAlarmState(network) {
+        if (network === null || network === undefined) return;
+        const entry = this._alarmByNetwork.get(String(network));
+        if (!entry) return;
+        entry.state = null;
+        entry.blockingZone = null;
+    }
+
+    /**
      * @param {string} network
      * @returns {{ state: string|null, preAlarmState: string|null, blockingZone: string|null }}
      * @private

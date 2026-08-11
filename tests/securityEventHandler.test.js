@@ -481,6 +481,45 @@ describe('SecurityEventHandler', () => {
             expect(deps.sendCommand).toHaveBeenCalledTimes(8); // 4 pairs
         });
 
+        // #51: HA drops entity state when it restarts, the bridge does not, and
+        // the alarm state publishes on transitions only. So the resync's
+        // status_report_1 reported the same state it already knew, published
+        // nothing, and the alarm card stayed blank until the panel next changed.
+        it('republishes unchanged alarm state after a resync', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(STATUS_REPORT_1_LINE);
+            const alarmPublishes = () => deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_alarm');
+            expect(alarmPublishes()).toHaveLength(1);
+
+            // Same report again with no resync: correctly deduped.
+            handler.handleLine(STATUS_REPORT_1_LINE);
+            expect(alarmPublishes()).toHaveLength(1);
+
+            // After a resync it must go out again even though nothing changed.
+            handler.requestStatusSync('254', 'resync');
+            handler.handleLine(STATUS_REPORT_1_LINE);
+            expect(alarmPublishes()).toHaveLength(2);
+        });
+
+        it('does not republish alarm state for routine panel traffic', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(STATUS_REPORT_1_LINE);
+            const before = deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_alarm').length;
+
+            // A zone event triggers a 'traffic' sync, which is ordinary activity
+            // rather than a request to resend, so the dedupe must still hold.
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            handler.handleLine(STATUS_REPORT_1_LINE);
+
+            expect(deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_alarm')).toHaveLength(before);
+        });
+
         it('does not let a resync consume the early or post-762 slots', () => {
             const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
             const handler = new SecurityEventHandler(deps);

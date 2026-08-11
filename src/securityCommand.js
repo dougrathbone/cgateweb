@@ -65,6 +65,12 @@ function buildSecurityArmCommand({ cbusname, network, application, mode }) {
  * them as if typed on its own keypad. This is the only route to a disarm; the
  * arm command has no disarm mode (#51).
  *
+ * The key is emitted in C-Gate's `$xx` hex form rather than as a bare decimal.
+ * The two are the same number — `$31` is 49 is ASCII `1` — but the bare form
+ * leaves the radix to C-Gate to guess, and the field report on #51 had a
+ * decimal key accepted without error while the panel ignored the keypress.
+ * `$xx` is what was verified working there, and it cannot be misread.
+ *
  * The manual notes the message is OPTIONAL, so a panel may answer
  * `402 Not supported by this object`.
  *
@@ -76,7 +82,8 @@ function buildSecurityArmCommand({ cbusname, network, application, mode }) {
  * @returns {string}
  */
 function buildSecurityEmulateKeypadCommand({ cbusname, network, application, key }) {
-    return `security emulate_keypad //${cbusname}/${network}/${application} ${key}`;
+    const hexKey = `$${key.toString(16).toUpperCase().padStart(2, '0')}`;
+    return `security emulate_keypad //${cbusname}/${network}/${application} ${hexKey}`;
 }
 
 module.exports = {

@@ -140,21 +140,35 @@ describe('MqttCommandRouter', () => {
             return mockQueue.add.mock.calls.map(c => c[0]);
         }
 
-        it('sends one emulate_keypad per digit, as ASCII codes', () => {
+        // Verified against real hardware on #51: keys go as C-Gate's $xx hex,
+        // and the code is not submitted until the # key follows it. 1.24.0 sent
+        // bare decimals and no terminator, and the panel simply ignored it.
+        it('types the PIN then presses #, all as $xx hex keys', () => {
             router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: PIN }));
-            // '1'..'4' are ASCII 49..52 — the command takes the character code,
-            // not the digit (C-Gate manual §4.5.179).
+            // '1'..'4' are $31..$34, '#' is $23.
             expect(sentCommands()).toEqual([
-                'security emulate_keypad //TestProject/254/208 49\n',
-                'security emulate_keypad //TestProject/254/208 50\n',
-                'security emulate_keypad //TestProject/254/208 51\n',
-                'security emulate_keypad //TestProject/254/208 52\n'
+                'security emulate_keypad //TestProject/254/208 $31\n',
+                'security emulate_keypad //TestProject/254/208 $32\n',
+                'security emulate_keypad //TestProject/254/208 $33\n',
+                'security emulate_keypad //TestProject/254/208 $34\n',
+                'security emulate_keypad //TestProject/254/208 $23\n'
             ]);
+        });
+
+        it('always finishes with the accept key, whatever the PIN length', () => {
+            for (const code of ['12', '123456']) {
+                mockQueue.add.mockClear();
+                router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code }));
+                const sent = sentCommands();
+                expect(sent).toHaveLength(code.length + 1);
+                expect(sent[sent.length - 1]).toBe('security emulate_keypad //TestProject/254/208 $23\n');
+            }
         });
 
         it('preserves digit order, including repeated digits', () => {
             router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '1102' }));
-            expect(sentCommands().map(c => c.trim().split(' ').pop())).toEqual(['49', '49', '48', '50']);
+            expect(sentCommands().map(c => c.trim().split(' ').pop()))
+                .toEqual(['$31', '$31', '$30', '$32', '$23']);
         });
 
         // The whole point of REMOTE_CODE is that the PIN is never stored. It
@@ -170,7 +184,7 @@ describe('MqttCommandRouter', () => {
                 .flatMap(spy => spy.mock.calls.flat())
                 .join(' ');
             expect(logged).not.toContain('9753');
-            expect(logged).toContain('sent 4 keypresses');
+            expect(logged).toContain('sent 4 digits + accept key');
 
             infoSpy.mockRestore();
             warnSpy.mockRestore();

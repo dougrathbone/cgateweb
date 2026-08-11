@@ -56,6 +56,9 @@ class CommandResponseProcessor {
         // so the bridge can refresh entity levels with the tree now fully
         // populated. Signature: (networkId).
         this.onNetworkSyncComplete = onNetworkSyncComplete || null;
+        // network/app pairs already reported as having no groups, so the
+        // explanation is logged once rather than on every poll (#51).
+        this._emptyApplicationsSeen = new Set();
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -322,30 +325,76 @@ class CommandResponseProcessor {
      * @param {string} statusData - Error details from C-Gate
      */
     _processCommandErrorResponse(responseCode, statusData) {
-        const baseMessage = `C-Gate Command Error ${responseCode}:`;
-        let hint = '';
+        // Only the log line is replaced for this case, never the callback below:
+        // that is what stops the periodic poll for the empty application.
+        const handledQuietly = responseCode === '401' && this._reportEmptyApplication(statusData);
 
-        let isWarn = false;
-        switch (responseCode) {
-            case '400': hint = ' (Bad Request/Syntax Error)'; break;
-            case '401': hint = ' (Object Not Found or Unauthorized)'; isWarn = true; break;
-            case '404': hint = ' (Not Found - Check Object Path)'; isWarn = true; break;
-            case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
-            case '500': hint = ' (Internal Server Error)'; break;
-            case '503': hint = ' (Service Unavailable)'; break;
-        }
+        if (!handledQuietly) {
+            const baseMessage = `C-Gate Command Error ${responseCode}:`;
+            let hint = '';
 
-        const detail = statusData ? statusData : 'No details provided';
-        const message = `${baseMessage}${hint} - ${detail}`;
-        if (isWarn) {
-            this.logger.warn(message);
-        } else {
-            this.logger.error(message);
+            let isWarn = false;
+            switch (responseCode) {
+                case '400': hint = ' (Bad Request/Syntax Error)'; break;
+                case '401': hint = ' (Object Not Found or Unauthorized)'; isWarn = true; break;
+                case '404': hint = ' (Not Found - Check Object Path)'; isWarn = true; break;
+                case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
+                case '500': hint = ' (Internal Server Error)'; break;
+                case '503': hint = ' (Service Unavailable)'; break;
+            }
+
+            const detail = statusData ? statusData : 'No details provided';
+            const message = `${baseMessage}${hint} - ${detail}`;
+            if (isWarn) {
+                this.logger.warn(message);
+            } else {
+                this.logger.error(message);
+            }
         }
 
         if (this.onCommandError) {
             this.onCommandError(responseCode, statusData);
         }
+    }
+
+    /**
+     * Absorb the 401 from a level getall against an application that has no
+     * groups on this network, e.g.
+     *
+     *     401 Bad object or device ID: //MIDSTRM/254/203/* (Object not found)
+     *
+     * ha_discovery_cover_app_id defaults to 203, so every install without cover
+     * groups got this warning at each startup and each periodic poll (#51). It
+     * is not a fault: the wildcard simply matched nothing. Same family as the
+     * 402 trigger-application spam fixed in 1.22.4, but 401 rather than 402
+     * because the application has no objects at all rather than objects that
+     * refuse level reads.
+     *
+     * Said once per network/application, at INFO, naming the setting to change.
+     * Repeats are dropped so a periodic poll cannot reintroduce the noise.
+     *
+     * Only replaces the log line. The caller still fires onCommandError, which
+     * is what stops the periodic poll for this application — swallowing it
+     * would leave the poll running forever against nothing.
+     *
+     * @param {string} statusData
+     * @returns {boolean} true when handled and the caller should not log.
+     * @private
+     */
+    _reportEmptyApplication(statusData) {
+        const match = /\/\/[^/\s]+\/(\d+)\/(\d+)\/\*/.exec(statusData || '');
+        if (!match) return false;
+
+        const [, networkId, appId] = match;
+        const key = `${networkId}/${appId}`;
+        if (this._emptyApplicationsSeen.has(key)) return true;
+        this._emptyApplicationsSeen.add(key);
+
+        this.logger.info(
+            `C-Bus application ${appId} has no groups on network ${networkId}, so its state poll returns nothing. `
+            + 'This is harmless. If you do not use that application, clearing its app-id setting stops the poll entirely.'
+        );
+        return true;
     }
 }
 

@@ -57,6 +57,12 @@ const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('
 // queue hundreds of keypresses, not a protocol limit.
 const SECURITY_MAX_PIN_DIGITS = 16;
 
+// Key that submits a typed code at the panel. Confirmed on real hardware in
+// #51: without it the panel just holds the digits, and ENTER ($0D) does
+// nothing. `#` is also the key that forces an arm past open zones, so the panel
+// treats it as the general accept.
+const SECURITY_KEYPAD_ACCEPT = '#';
+
 // HA MQTT alarm command payloads → C-Gate arm-mode keyword.
 //
 // These are the words C-Gate's command interface expects, not the numeric
@@ -352,19 +358,24 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
-        for (const digit of code) {
+        // The digits, then the accept key. Without the terminator the panel
+        // holds the digits and waits, so 1.24.0's disarm looked like it did
+        // nothing at all (#51). ENTER was tried on real hardware first and had
+        // no effect; `#` is what actually submits the code.
+        const keys = [...code, SECURITY_KEYPAD_ACCEPT];
+        for (const character of keys) {
             const cmd = buildSecurityEmulateKeypadCommand({
                 cbusname: this.cbusname,
                 network,
                 application,
-                // The command takes the ASCII code of the key, not the digit.
-                key: digit.charCodeAt(0)
+                // The command takes the ASCII code of the key, not the character.
+                key: character.charCodeAt(0)
             });
             this._queueCommand(cmd + NEWLINE);
         }
         // Digit count, never the digits. Enough to confirm the keypresses went
         // out and to spot a truncated PIN, without putting it in the log.
-        this.logger.info(`Security disarm: ${network}/${application} -> sent ${code.length} keypresses`);
+        this.logger.info(`Security disarm: ${network}/${application} -> sent ${code.length} digits + accept key`);
     }
 
     /**

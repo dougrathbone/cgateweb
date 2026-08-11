@@ -687,7 +687,7 @@ What this means for your PIN:
 - **It is never written to the log.** cgateweb logs the number of keypresses sent, never the digits, and refuses to echo a malformed payload in case it contained a PIN.
 - Only digits are accepted. Keypad emulation can send any character, so a non-numeric payload is rejected rather than typed at the panel.
 
-If your panel needs a terminating key (some require `#` or Enter after the code) this is not sent yet — please report it on [issue #51](https://github.com/dougrathbone/cgateweb/issues/51) with a log and it can be added.
+The code is followed by a `#` keypress, which is what submits it — the panel otherwise just holds the digits and waits. This was confirmed on real hardware; Enter (`$0D`) had no effect. If your panel expects something else, please report it on [issue #51](https://github.com/dougrathbone/cgateweb/issues/51) with a log.
 
 ## Networking
 
