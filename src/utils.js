@@ -69,4 +69,40 @@ function looksLikeTlsRecord(data) {
     return TLS_CONTENT_TYPES.has(data[0]) && data[1] === 0x03 && data[2] <= 0x04;
 }
 
-module.exports = { clampSetting, evictOldestFifo, temperatureToCbusLevel, looksLikeTlsRecord };
+// `security emulate_keypad <address> <key>` — the key argument is one character
+// of the user's alarm PIN. Anchored on the verb so only that argument is
+// touched; the address and C-Gate's trailing metadata are left readable.
+const EMULATE_KEYPAD_KEY = /(security\s+emulate_keypad\s+\S+\s+)(\S+)/gi;
+
+/**
+ * Strip secrets from a raw C-Gate protocol line before it is logged.
+ *
+ * Disarming types the PIN at the panel one keypress per command (#51), and
+ * C-Gate echoes each of those commands back on both the command and event
+ * ports. Those echoes are logged verbatim at debug level, so a debug log
+ * captured while disarming contained the whole PIN, one digit per line — even
+ * though none of the security code paths log the code themselves. Reported by
+ * the user who found it in his own logs.
+ *
+ * Applied at the two raw-line log sites rather than at each caller, so a future
+ * sensitive command cannot bypass it by logging somewhere new.
+ *
+ * @param {string} line - Raw C-Gate line, inbound or outbound.
+ * @returns {string} The line with any keypad key replaced by `***`.
+ */
+function redactCgateLine(line) {
+    if (typeof line !== 'string' || !line) return line;
+    // No cheap indexOf pre-check here: it has to match the case-insensitive
+    // regex below or an echo in a different case slips through unredacted,
+    // which is exactly the leak this exists to close. Only reached when debug
+    // logging is on, so one regex per line costs nothing that matters.
+    return line.replace(EMULATE_KEYPAD_KEY, '$1***');
+}
+
+module.exports = {
+    clampSetting,
+    evictOldestFifo,
+    temperatureToCbusLevel,
+    looksLikeTlsRecord,
+    redactCgateLine
+};

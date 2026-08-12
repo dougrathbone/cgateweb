@@ -564,6 +564,25 @@ describe('CommandResponseProcessor', () => {
             );
         });
 
+        // #51: the PIN reached the log through this raw echo, not through any
+        // security code path. Asserted here rather than only on the helper,
+        // because the leak was a missing call site.
+        it('redacts a keypad PIN from the raw command debug log', () => {
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                haDiscovery: mockHaDiscovery,
+                onObjectStatus: mockOnObjectStatus,
+                logger: mockLogger
+            });
+            p.processLine('security emulate_keypad //MIDSTRM/254/208 $31 #sourceunit=0 sessionId=cmd9');
+            const logged = mockLogger.debug.mock.calls.flat().join(' ');
+            expect(logged).not.toContain('$31');
+            expect(logged).toContain('***');
+            // Still useful for debugging: address and session survive.
+            expect(logged).toContain('//MIDSTRM/254/208');
+            expect(logged).toContain('sessionId=cmd9');
+        });
+
         it('should invoke onCommandError callback when set', () => {
             const onCommandError = jest.fn();
             const p = new CommandResponseProcessor({

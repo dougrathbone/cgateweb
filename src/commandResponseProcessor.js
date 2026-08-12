@@ -9,6 +9,7 @@ const {
     CGATE_RESPONSE_SYSTEM_EVENT,
     CGATE_RESPONSE_NETWORK_SYNC_OK
 } = require('./constants');
+const { redactCgateLine } = require('./utils');
 
 // Strips C-Gate's leading async-event timestamp ("20260504-193110.569 " or
 // "20260720-102130 " — milliseconds are optional, §4.3 event format).
@@ -93,7 +94,9 @@ class CommandResponseProcessor {
      */
     processLine(line) {
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`C-Gate Recv (Cmd): ${line}`);
+            // Redacted: C-Gate echoes our keypad commands back here, and each
+            // one carries a digit of the user's alarm PIN (#51).
+            this.logger.debug(`C-Gate Recv (Cmd): ${redactCgateLine(line)}`);
         }
 
         try {
@@ -130,14 +133,14 @@ class CommandResponseProcessor {
         const trimmed = stripped.trim();
         const responseCode = trimmed.substring(0, 3);
         if (trimmed.length < 3 || !this._isValidResponseCode(responseCode)) {
-            this.logger.debug(`Skipping non-response line: ${line}`);
+            this.logger.debug(`Skipping non-response line: ${redactCgateLine(line)}`);
             return null;
         }
         const separator = trimmed.charAt(3);
         if (separator && separator !== '-' && separator !== ' ') {
             // Position 3 must be the start of the data section, not another
             // digit (which would mean the "code" is part of a 4+ digit number).
-            this.logger.debug(`Skipping non-response line: ${line}`);
+            this.logger.debug(`Skipping non-response line: ${redactCgateLine(line)}`);
             return null;
         }
         // Strip the separator and any surrounding whitespace.

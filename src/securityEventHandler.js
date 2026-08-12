@@ -6,6 +6,7 @@ const { isAppEventLine, LINE_UNPARSED } = require('./applicationDecoders/appEven
 const { securityZoneLabelKey } = require('./securityZoneLabels');
 const SecurityPanelState = require('./securityPanelState');
 const { buildSecurityStatusRequest } = require('./securityCommand');
+const { redactCgateLine } = require('./utils');
 const { NEWLINE } = require('./constants');
 const { describePanelCondition } = require('./securityPanelConditions');
 const fs = require('fs');
@@ -252,6 +253,11 @@ class SecurityEventHandler {
                 if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
                     this.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
                 }
+            } else if (reading.kind === 'keypad_command_echo') {
+                // Never logs the key: it is a digit of the user's PIN (#51).
+                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+                    this.logger.debug(`Security keypad echo (${reading.network}/${reading.application})`);
+                }
             } else if (reading.kind === 'arm_command_echo') {
                 // Echo of our own arm command. Deliberately does not touch the
                 // alarm state: the panel's exit_delay_started/system_arm events
@@ -282,7 +288,9 @@ class SecurityEventHandler {
             }
             // Echoes of our own commands are not panel traffic, so they must not
             // trigger a sync — the panel's real events that follow will.
-            if (reading.kind !== 'status_request' && reading.kind !== 'arm_command_echo') {
+            if (reading.kind !== 'status_request'
+                && reading.kind !== 'arm_command_echo'
+                && reading.kind !== 'keypad_command_echo') {
                 this.requestStatusSync(reading.network, 'traffic');
             }
             return true;
@@ -291,7 +299,7 @@ class SecurityEventHandler {
         // targets a different application. Don't consume it — the bridge logs
         // it as unparsed and keeps it out of the standard parser.
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`Security line not decoded (verb pending support): ${line}`);
+            this.logger.debug(`Security line not decoded (verb pending support): ${redactCgateLine(line)}`);
         }
         return LINE_UNPARSED;
     }

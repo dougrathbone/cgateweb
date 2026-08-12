@@ -28,7 +28,7 @@ const { discoverIngressEntry } = require('./ingressDiscovery');
 const { createLogger } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS, CGATE_EVENT_NETWORK_SYNC_REGEX } = require('./constants');
-const { clampSetting } = require('./utils');
+const { clampSetting, redactCgateLine } = require('./utils');
 const { parseRawCaptureTarget } = require('./rawEventCapture');
 
 // Publish options for the raw event capture topic: never retained, prebuilt
@@ -666,12 +666,12 @@ class CgateWebBridge {
         if (securityState === true) return;
 
         if (line.startsWith('#')) {
-            this.logger.debug(`Ignoring comment from event port: ${line}`);
+            this.logger.debug(`Ignoring comment from event port: ${redactCgateLine(line)}`);
             return;
         }
 
         if (line.startsWith('clock ')) {
-            this.logger.debug(`Ignoring clock event from event port: ${line}`);
+            this.logger.debug(`Ignoring clock event from event port: ${redactCgateLine(line)}`);
             return;
         }
 
@@ -688,7 +688,9 @@ class CgateWebBridge {
         this._publishRawEventCapture(line);
 
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`C-Gate Recv (Evt): ${line}`);
+            // Redacted: keypad command echoes reach the event port too, each
+            // carrying a digit of the user's alarm PIN (#51).
+            this.logger.debug(`C-Gate Recv (Evt): ${redactCgateLine(line)}`);
         }
 
         // App lines the handlers recognised but didn't consume (an unsupported
@@ -698,11 +700,11 @@ class CgateWebBridge {
         // classified the line, so these reuse their tri-state instead of
         // re-scanning with isAirconLine/isSecurityLine.
         if (airconState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${line}`);
+            this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${redactCgateLine(line)}`);
             return;
         }
         if (securityState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed security line (captured, not a standard event): ${line}`);
+            this.logger.debug(`Unparsed security line (captured, not a standard event): ${redactCgateLine(line)}`);
             return;
         }
 
@@ -773,7 +775,7 @@ class CgateWebBridge {
         const target = parseRawCaptureTarget(line, this.settings.cbusRawEventLogApps);
         if (!target) return;
 
-        this.logger.info(`C-Gate raw capture [app ${target.application}]: ${line}`);
+        this.logger.info(`C-Gate raw capture [app ${target.application}]: ${redactCgateLine(line)}`);
         try {
             this.mqttManager.publish(
                 `cbus/read/${target.network}/${target.application}/${target.group}/raw`,

@@ -1,4 +1,4 @@
-const { clampSetting, evictOldestFifo, temperatureToCbusLevel } = require('../src/utils');
+const { clampSetting, evictOldestFifo, temperatureToCbusLevel, redactCgateLine } = require('../src/utils');
 
 describe('clampSetting', () => {
     it('uses default when value is undefined', () => {
@@ -67,5 +67,55 @@ describe('temperatureToCbusLevel', () => {
     it('clamps to the valid 0-255 range', () => {
         expect(temperatureToCbusLevel(-5)).toBe(0);
         expect(temperatureToCbusLevel(200)).toBe(255);
+    });
+});
+
+// #51: disarming types the PIN one keypress per command, and C-Gate echoes each
+// command back on both ports where raw lines are logged at debug level. A debug
+// log captured during a disarm therefore held the whole PIN, one digit per line.
+describe('redactCgateLine', () => {
+    it('hides the key on a keypad command echo', () => {
+        expect(redactCgateLine('security emulate_keypad //MIDSTRM/254/208 $31'))
+            .toBe('security emulate_keypad //MIDSTRM/254/208 ***');
+    });
+
+    it('keeps the address and trailing metadata readable', () => {
+        // Losing the address or session id would make the redaction useless for
+        // debugging the very feature it protects.
+        const line = 'security emulate_keypad //MIDSTRM/254/208 $31 #sourceunit=0 OID= sessionId=cmd9 commandId={none}';
+        expect(redactCgateLine(line))
+            .toBe('security emulate_keypad //MIDSTRM/254/208 *** #sourceunit=0 OID= sessionId=cmd9 commandId={none}');
+    });
+
+    it('hides a decimal key too, not just the hex form', () => {
+        expect(redactCgateLine('security emulate_keypad //P/254/208 49')).toBe('security emulate_keypad //P/254/208 ***');
+    });
+
+    it('redacts every occurrence if several share a line', () => {
+        const out = redactCgateLine('security emulate_keypad //P/254/208 $31 | security emulate_keypad //P/254/208 $32');
+        expect(out).not.toContain('$31');
+        expect(out).not.toContain('$32');
+    });
+
+    it('leaves other security traffic untouched', () => {
+        // Arm mode and zone state are not secrets and are needed in logs.
+        for (const line of [
+            'security arm //MIDSTRM/254/208 day',
+            '# security zone_sealed //MIDSTRM/254/208/1 #sourceunit=18',
+            'security status_request //MIDSTRM/254/208 1'
+        ]) {
+            expect(redactCgateLine(line)).toBe(line);
+        }
+    });
+
+    it('passes through ordinary lines and non-strings unchanged', () => {
+        expect(redactCgateLine('300 //P/254/56/1: level=255')).toBe('300 //P/254/56/1: level=255');
+        expect(redactCgateLine('')).toBe('');
+        expect(redactCgateLine(undefined)).toBeUndefined();
+        expect(redactCgateLine(null)).toBeNull();
+    });
+
+    it('is case-insensitive, since C-Gate echoes verbs as sent', () => {
+        expect(redactCgateLine('SECURITY EMULATE_KEYPAD //P/254/208 $31')).toContain('***');
     });
 });

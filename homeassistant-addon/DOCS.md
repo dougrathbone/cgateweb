@@ -340,7 +340,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_enabled` | boolean | `true` | Enable automatic device discovery |
 | `ha_discovery_prefix` | string | `homeassistant` | MQTT discovery topic prefix |
 | `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
-| `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID for covers (blinds/shutters). Set to `203` (Enable Control) by default. Leave empty to disable. |
+| `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID whose groups become `cover` entities (blinds/shutters). Defaults to `203`, which C-Bus calls **Enable Control** — a general-purpose application, not a covers-only one. If you use 203 for something else (disabling keypad keys is common), those groups will appear as covers; set this to empty to turn cover discovery off, or point it at whichever app your blinds actually use. |
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional). Leave empty to disable switch discovery. |
 | `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity, a companion `button` entity, and (when `ha_discovery_scene_enabled` is `true`) a `scene` entity. Leave empty to disable. |
 | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity for each C-Bus trigger group in addition to the `event` and `button` entities. Set to `false` to suppress scene entities. |
@@ -425,22 +425,28 @@ Read all of the following before enabling this:
 - **Subnets use an octet of `255`, not CIDR notation.** `192.168.1.255` means every address on `192.168.1.x`. Prefer listing a single, specific address: a subnet grant is far wider than it looks. The add-on logs a warning for any wildcard octet, and rejects `255.255.255.255` (every address on the internet) outright.
 - **You must also map C-Gate's ports in Home Assistant's Network panel.** The add-on declares `20023/tcp` (command), `20024/tcp` (event) and `20025/tcp` (status change), plus their SSL equivalents `20123`, `20124` and `20125` — all **unmapped by default**. Home Assistant can only map ports an add-on declares, so exposing C-Gate requires leaving `cgate_port` at its default **20023** — a custom `cgate_port` cannot be mapped here.
 
-#### Connecting current C-Bus Toolkit (experimental)
-
-Recent C-Bus Toolkit versions connect to a remote C-Gate over **SSL only**, and the `cgatesites.xml` trick for forcing the plain port no longer applies — v19 does not appear to ship those files at all. That is what has blocked Toolkit against managed C-Gate ([#57](https://github.com/dougrathbone/cgateweb/issues/57), [#58](https://github.com/dougrathbone/cgateweb/issues/58)).
-
-C-Gate itself already listens on its SSL ports inside the container; the add-on simply never declared them, so there was no way to publish them. Since 1.24.2 it does. To try it:
-
-1. Add your PC to `cgate_external_clients` with level `program`.
-2. In Home Assistant's Network panel for this add-on, map **`20123/tcp`**.
-3. Point Toolkit at your Home Assistant host on port `20123`.
-
-This is **unconfirmed** — it opens the path, but whether Toolkit accepts the certificate C-Gate presents has not been tested on real hardware. Please report either outcome on [issue #58](https://github.com/dougrathbone/cgateweb/issues/58); a Toolkit-side error message is the most useful thing to include. It is offered because it costs nothing to try and does not need stunnel or any change on your Home Assistant host.
 - **It is a no-op in remote mode.** With `cgate_mode: remote`, C-Gate runs on another machine and this add-on does not own its access control file. Grant access in that C-Gate's own `access.txt` instead.
 
 The add-on rewrites only its own clearly marked block in `/data/cgate/config/access.txt` on every start; any rules you added by hand outside that block are preserved. The add-on writes `remote` rules only, never `interface` rules — an `interface` rule matches *every* connection arriving on the network interface it names, which silently turns an intended per-client grant into a blanket grant.
 
 **If a client is refused even though it is listed:** when C-Gate refuses a connection it logs the peer address it actually saw. Compare that with the address you configured — they can differ. This add-on runs with `host_network: false`, so incoming connections traverse Docker's bridge network. A LAN client's source address is expected to be preserved through the port mapping, but this has not been confirmed on real Home Assistant OS hardware. If C-Gate reports some other address (a Docker gateway address, say), that is the address your rule has to match — and please report it on [GitHub issue #37](https://github.com/dougrathbone/cgateweb/issues/37).
+
+### Connecting C-Bus Toolkit to managed C-Gate
+
+Current C-Bus Toolkit versions reach a remote C-Gate over **SSL only**, and the old `cgatesites.xml` trick for forcing the plain port is gone — v19 does not ship those files. That blocked Toolkit against managed C-Gate for a while, and the suggested workaround was stunnel on the Home Assistant host, which is not something you should have to do.
+
+You don't. C-Gate already listens on its SSL ports inside the container; the add-on just never declared them, so Home Assistant had no way to publish them. Since 1.24.2 it does, and this is **confirmed working** by two users on real hardware.
+
+1. Add your PC's address to `cgate_external_clients` with level `program` — Toolkit needs `program` to write to a network.
+2. In the add-on's **Network** panel, reveal the disabled ports and map **`20123/tcp`** (the SSL command port). Map `20124` and `20125` too if you want the event streams.
+3. Restart the add-on so the access rules are written.
+4. In Toolkit: **Disconnect C-Gate**, then **Connect to Remote C-Gate**, and give it your Home Assistant host's address with port `20123`.
+
+You do **not** need to edit any XML, and you do **not** need to put anything extra in `/share/cgate/tag/` beyond the project `.db` you already have there. Both are dead ends that cost earlier reporters time.
+
+**If Toolkit connects but shows only "topology" and reports "No Catalog Available":** Toolkit is talking to C-Gate but your project has no synchronised units for it to show. Check that the project's network connection method matches how it is really connected in managed mode (for a USB interface, the serial/COM interface rather than a CNI), then sync the network. The add-on's own log is a quick way to tell which side the problem is on: if its TreeXML fetch reports units, C-Gate knows your hardware and the issue is Toolkit-side; if the tree comes back empty, the project never synced.
+
+> **Remember what mapping this port means.** C-Gate has no authentication beyond the address list, and `program` sits above `admin` in its access levels, so it also permits shutting C-Gate down. Map to a single specific address, never a subnet, and never expose it to the internet.
 
 ## Finding Your C-Bus Network ID
 
@@ -628,6 +634,10 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 
 The app ID values above are the C-Bus standard defaults. Some installations use non-standard IDs — check your C-Bus Toolkit project if a device type is not being discovered.
 
+**Application 203 is "Enable Control", not "covers".** cgateweb treats it as covers because that is its most common use in homes, but the application itself is general purpose — installers also use it for things like disabling keypad buttons under certain conditions. If your 203 groups are not blinds, clear `ha_discovery_cover_app_id` rather than letting them appear as cover entities.
+
+**Phantom groups do not report state.** A C-Bus group that is not assigned to any output unit channel — a "phantom" group, common for logic-only groups such as an Enable Control flag — does not exist on the network as far as `GET` and `GETALL` are concerned, so its state cannot be read. cgateweb can send to it, but it will never receive a level back, and if it is the only group on an application you will see the "application has no groups on network" message at startup. Assigning the group to a spare relay or dimmer channel in Toolkit makes it queryable, if you need its state in Home Assistant.
+
 ### Trigger groups note
 
 Each trigger group address is published as **two** Home Assistant entities:
@@ -696,7 +706,9 @@ What this means for your PIN:
 
 - **It is not stored anywhere.** Not in the add-on configuration, not in Home Assistant. The discovery config uses Home Assistant's `REMOTE_CODE` mode, which shows the keypad but skips local validation, so there is no second PIN to keep in sync and nothing on disk to leak.
 - **It does cross MQTT on every disarm**, in the command payload. Anyone able to subscribe to your broker can read it. Use an authenticated broker, and TLS if you can.
-- **It is never written to the log.** cgateweb logs the number of keypresses sent, never the digits, and refuses to echo a malformed payload in case it contained a PIN.
+- **It is not written to the log.** cgateweb logs the number of keypresses sent, never the digits, and refuses to echo a malformed payload in case it contained a PIN. Keypad commands are also redacted out of the raw protocol logging, which C-Gate echoes back.
+
+  > **If you captured a debug log while disarming on 1.24.0, 1.24.1 or 1.24.2, treat it as containing your PIN.** Those versions redacted the PIN from cgateweb's own messages but not from the raw C-Gate protocol lines logged at debug level, where each keypress appeared individually. Fixed in 1.24.3. Debug logging is off by default, so this only affects you if you turned it on and kept the output — delete any such log, or change your PIN if you shared one.
 - Only digits are accepted. Keypad emulation can send any character, so a non-numeric payload is rejected rather than typed at the panel.
 
 The code is followed by a `#` keypress, which is what submits it — the panel otherwise just holds the digits and waits. This was confirmed on real hardware; Enter (`$0D`) had no effect. If your panel expects something else, please report it on [issue #51](https://github.com/dougrathbone/cgateweb/issues/51) with a log.

@@ -5,6 +5,7 @@ const airconDecoder = require('./applicationDecoders/airconDecoder');
 const { isAppEventLine, LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const { buildAirconRefresh } = require('./airconControlRegistry');
 const { NEWLINE } = require('./constants');
+const { redactCgateLine } = require('./utils');
 
 /**
  * Decoded aircon reading produced by airconDecoder.decodeLine. The exact
@@ -109,7 +110,7 @@ class AirconEventHandler {
         // different application. Don't consume it — the bridge logs it as
         // unparsed and keeps it out of the standard parser.
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`Aircon line not natively decoded (verb pending support): ${line}`);
+            this.logger.debug(`Aircon line not natively decoded (verb pending support): ${redactCgateLine(line)}`);
         }
         return LINE_UNPARSED;
     }

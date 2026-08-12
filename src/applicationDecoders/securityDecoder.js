@@ -270,6 +270,15 @@ function decodeLine(line) {
         return { kind: 'arm_command_echo', network, application, mode: params.length > 0 ? params[0] : null, verb };
     }
 
+    // Our own `security emulate_keypad` commands echo back the same way. Beyond
+    // the log noise, these must be recognised for a second reason: the argument
+    // is one character of the user's alarm PIN, and every path that logs an
+    // undecoded line would have written it out verbatim (#51). Deliberately does
+    // not carry the key.
+    if (verb === 'emulate_keypad') {
+        return { kind: 'keypad_command_echo', network, application, verb };
+    }
+
     // System state verbs (decoded, logged and surfaced to Live Events; the
     // panel condition sensors build on these — see securityPanelState).
     if (verb === 'arm_ready') {
