@@ -340,7 +340,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_enabled` | boolean | `true` | Enable automatic device discovery |
 | `ha_discovery_prefix` | string | `homeassistant` | MQTT discovery topic prefix |
 | `ha_discovery_networks` | list | `[254]` | Networks to scan for discovery (uses `getall_networks` if empty) |
-| `ha_discovery_cover_app_id` | integer | `203` | C-Bus app ID whose groups become `cover` entities (blinds/shutters). Defaults to `203`, which C-Bus calls **Enable Control** — a general-purpose application, not a covers-only one. If you use 203 for something else (disabling keypad keys is common), those groups will appear as covers; set this to empty to turn cover discovery off, or point it at whichever app your blinds actually use. |
+| `ha_discovery_cover_app_id` | integer | (unset) | C-Bus app ID whose groups become `cover` entities (blinds/shutters). **Off unless you set it.** `203` is the usual choice, but note C-Bus calls 203 **Enable Control** — a general-purpose application, not a covers-only one. If your 203 groups are something else (disabling keypad buttons is a common use), do not set this, or point it at whichever app your blinds actually use. Motorised covers on the Lighting application are auto-detected by name regardless of this setting. |
 | `ha_discovery_switch_app_id` | integer | (null) | C-Bus app ID for switches (optional). Leave empty to disable switch discovery. |
 | `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity, a companion `button` entity, and (when `ha_discovery_scene_enabled` is `true`) a `scene` entity. Leave empty to disable. |
 | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity for each C-Bus trigger group in addition to the `event` and `button` entities. Set to `false` to suppress scene entities. |
@@ -628,13 +628,13 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
 | 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
-| 203 | Enable Control (covers) | `cover` | `ha_discovery_cover_app_id: 203` (default) |
+| 203 | Enable Control (often covers) | `cover` | Opt-in via `ha_discovery_cover_app_id: 203` |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
 | Custom | Lighting-compatible HVAC group (PAC/touchscreen-exposed) | `climate` | Opt-in via `ha_discovery_hvac_app_id` |
 
 The app ID values above are the C-Bus standard defaults. Some installations use non-standard IDs — check your C-Bus Toolkit project if a device type is not being discovered.
 
-**Application 203 is "Enable Control", not "covers".** cgateweb treats it as covers because that is its most common use in homes, but the application itself is general purpose — installers also use it for things like disabling keypad buttons under certain conditions. If your 203 groups are not blinds, clear `ha_discovery_cover_app_id` rather than letting them appear as cover entities.
+**Application 203 is "Enable Control", not "covers".** Pointing `ha_discovery_cover_app_id` at 203 is the common choice because blinds usually live there in homes, but the application itself is general purpose — installers also use it for things like disabling keypad buttons. If your 203 groups are not blinds, leave the setting unset rather than having them appear as cover entities.
 
 **Phantom groups do not report state.** A C-Bus group that is not assigned to any output unit channel — a "phantom" group, common for logic-only groups such as an Enable Control flag — does not exist on the network as far as `GET` and `GETALL` are concerned, so its state cannot be read. cgateweb can send to it, but it will never receive a level back, and if it is the only group on an application you will see the "application has no groups on network" message at startup. Assigning the group to a spare relay or dimmer channel in Toolkit makes it queryable, if you need its state in Home Assistant.
 
