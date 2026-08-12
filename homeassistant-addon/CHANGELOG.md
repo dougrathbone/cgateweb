@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.24.3] - 2026-08-13
+
+### Fixed
+
+- **Your alarm PIN no longer appears in debug logs.** Disarming types the code at the panel one key at a time, and C-Gate echoes each keypress back, which the add-on was writing into its debug log. If you enabled debug logging and disarmed on 1.24.0, 1.24.1 or 1.24.2, treat any log you kept from it as containing your PIN — delete it, or change your PIN if you shared it anywhere. Debug logging is off by default, so most people are unaffected. Reported by a user who spotted it in his own logs. (#51)
+
+### Changed
+
+- **Connecting C-Bus Toolkit to managed C-Gate is now documented properly**, and confirmed working by two users. Map the SSL command port `20123`, add your PC to the external clients list, then use Toolkit's "Connect to Remote C-Gate". You do not need to edit any XML, install stunnel, or add anything to the `tag` folder. There is also a note on what to check if Toolkit connects but shows no devices. (#57, #58)
+- **Clearer documentation for application 203.** It is C-Bus "Enable Control", a general-purpose application that this add-on treats as covers because that is its usual use in homes. If yours is used for something else, such as disabling keypad buttons, you can now see why those groups turn up as covers and how to stop it. Also explains why a group that is not assigned to an output unit cannot report its state. (#51)
+
 ## [1.24.2] - 2026-08-11
 
 ### Added
