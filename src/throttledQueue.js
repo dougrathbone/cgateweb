@@ -1,6 +1,6 @@
 // @ts-check
 const { createLogger } = require('./logger');
-const { clampSetting } = require('./utils');
+const { clampSetting, redactCgateLine } = require('./utils');
 
 class ThrottledQueue {
     /**
@@ -97,7 +97,7 @@ class ThrottledQueue {
         try {
             result = this._processFn(item);
         } catch (error) {
-            this._logger.error(`Error processing ${this._name} item:`, { error, item });
+            this._logger.error(`Error processing ${this._name} item:`, { error, item: redactCgateLine(String(item)) });
             this._finishProcess();
             return;
         }
@@ -105,7 +105,7 @@ class ThrottledQueue {
         if (result && typeof result.then === 'function') {
             result
                 .catch((error) => {
-                    this._logger.error(`Error processing ${this._name} item:`, { error, item });
+                    this._logger.error(`Error processing ${this._name} item:`, { error, item: redactCgateLine(String(item)) });
                 })
                 .finally(() => this._finishProcess());
             return;

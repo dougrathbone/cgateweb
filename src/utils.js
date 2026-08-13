@@ -84,8 +84,9 @@ const EMULATE_KEYPAD_KEY = /(security\s+emulate_keypad\s+\S+\s+)(\S+)/gi;
  * though none of the security code paths log the code themselves. Reported by
  * the user who found it in his own logs.
  *
- * Applied at the two raw-line log sites rather than at each caller, so a future
- * sensitive command cannot bypass it by logging somewhere new.
+ * Applied wherever a raw C-Gate line is logged, published or written to disk,
+ * rather than at each caller, so a future sensitive command cannot bypass it by
+ * appearing somewhere new.
  *
  * @param {string} line - Raw C-Gate line, inbound or outbound.
  * @returns {string} The line with any keypad key replaced by `***`.
@@ -99,10 +100,39 @@ function redactCgateLine(line) {
     return line.replace(EMULATE_KEYPAD_KEY, '$1***');
 }
 
+// The `code` field of a Home Assistant alarm command payload
+// ({"action":"DISARM","code":"1234"}), and `pin` in case a hand-rolled panel
+// uses that name. Only the value is replaced, so the action stays readable --
+// which is the whole point of logging the payload in the first place.
+//
+// One-or-more, not zero-or-more: an arm carries `"code":""` because the template
+// always emits the field, and rewriting that to `***` would suggest a PIN was
+// sent when none was. An empty code is not a secret, so it is left alone.
+const MQTT_SECRET_FIELD = /("(?:code|pin)"\s*:\s*)"(?:[^"\\]|\\.)+"/gi;
+
+/**
+ * Strip secrets from an inbound MQTT payload before it is logged.
+ *
+ * The counterpart to redactCgateLine, for the other direction. 1.24.3 closed
+ * the C-Gate echo paths but left the payload Home Assistant sends us: a disarm
+ * arrives as JSON carrying the PIN, and both the "MQTT Recv" debug line and the
+ * "Invalid MQTT command" warning printed it verbatim. The warning is the worse
+ * of the two, since it fires at the default log level -- any topic typo on a
+ * hand-built alarm card put the PIN straight into an ordinary log (#51).
+ *
+ * @param {string} payload - Raw MQTT payload.
+ * @returns {string} The payload with any code/pin value replaced by `***`.
+ */
+function redactMqttPayload(payload) {
+    if (typeof payload !== 'string' || !payload) return payload;
+    return payload.replace(MQTT_SECRET_FIELD, '$1"***"');
+}
+
 module.exports = {
     clampSetting,
     evictOldestFifo,
     temperatureToCbusLevel,
     looksLikeTlsRecord,
-    redactCgateLine
+    redactCgateLine,
+    redactMqttPayload
 };

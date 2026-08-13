@@ -778,8 +778,11 @@ class CgateWebBridge {
         this.logger.info(`C-Gate raw capture [app ${target.application}]: ${redactCgateLine(line)}`);
         try {
             this.mqttManager.publish(
+                // Redacted like the log line above. Redacting one and not the
+                // other was the original 1.24.3 miss: this publishes off-box to
+                // every broker subscriber, so it is the worse of the two (#51).
                 `cbus/read/${target.network}/${target.application}/${target.group}/raw`,
-                line,
+                redactCgateLine(line),
                 RAW_CAPTURE_MQTT_OPTIONS
             );
         } catch (e) {
@@ -793,8 +796,13 @@ class CgateWebBridge {
         try {
             await this.commandConnectionPool.execute(command);
         } catch (error) {
-            this.logger.error('Failed to send C-Gate command:', { command, error });
-            const trimmed = String(command || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+            // Redacted both here and in the published warning below: a failed
+            // send is exactly how a keypad command with a PIN digit ends up in
+            // the log and on the broker (#51). Logger redaction is key-name
+            // based, so `command` is not covered by it.
+            const safeCommand = redactCgateLine(String(command || ''));
+            this.logger.error('Failed to send C-Gate command:', { command: safeCommand, error });
+            const trimmed = safeCommand.replace(/\s+/g, ' ').trim().slice(0, 120);
             const detail = error && error.message ? error.message : String(error);
             this.mqttManager.publish(
                 'hello/cgateweb/warnings',

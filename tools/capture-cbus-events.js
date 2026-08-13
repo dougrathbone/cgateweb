@@ -38,6 +38,17 @@ function nowIso() {
     return new Date().toISOString();
 }
 
+// `security emulate_keypad <address> <key>` — the key is one character of the
+// user's alarm PIN, and disarming sends one command per digit. This tool writes
+// every line to a file and tells the user to send that file to a maintainer, so
+// it must not capture the code (#51). Deliberately inlined rather than importing
+// src/utils: this script only uses node: builtins so it can be copied to a
+// machine that has no checkout.
+function redactKeypadKey(line) {
+    if (typeof line !== 'string' || !line) return line;
+    return line.replace(/(security\s+emulate_keypad\s+\S+\s+)(\S+)/gi, '$1***');
+}
+
 function fileTimestamp() {
     // 2026-06-03T10-15-42 — filesystem-safe.
     return nowIso().replace(/:/g, '-').replace(/\..+$/, '');
@@ -94,9 +105,10 @@ class Capture {
 
     record(source, data) {
         this.count += 1;
-        this.stream.write(`${nowIso()}\t${source}\t${data}\n`);
+        const safe = redactKeypadKey(data);
+        this.stream.write(`${nowIso()}\t${source}\t${safe}\n`);
         // Compact console echo (truncate very long lines).
-        const shown = data.length > 160 ? `${data.slice(0, 157)}...` : data;
+        const shown = safe.length > 160 ? `${safe.slice(0, 157)}...` : safe;
         stdout.write(`  ${source.padEnd(4)} | ${shown}\n`);
     }
 

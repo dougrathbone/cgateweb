@@ -3,7 +3,7 @@ const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
-const { temperatureToCbusLevel } = require('./utils');
+const { temperatureToCbusLevel, redactMqttPayload } = require('./utils');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_TOPIC_PREFIX_READ,
@@ -150,7 +150,8 @@ class MqttCommandRouter extends EventEmitter {
      */
     routeMessage(topic, payload) {
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`MQTT Recv: ${topic} -> ${payload}`);
+            // Redacted: a disarm payload carries the alarm PIN (#51).
+            this.logger.debug(`MQTT Recv: ${topic} -> ${redactMqttPayload(payload)}`);
         }
 
         // Handle manual HA discovery trigger
@@ -179,7 +180,10 @@ class MqttCommandRouter extends EventEmitter {
         // Parse MQTT command
         const command = new CBusCommand(topic, payload);
         if (!command.isValid()) {
-            this.logger.warn(`Invalid MQTT command: ${topic} -> ${payload}`);
+            // Redacted, and this one matters most: it fires at the default log
+            // level, so a topic typo on a hand-built alarm card used to put the
+            // PIN into an ordinary log (#51).
+            this.logger.warn(`Invalid MQTT command: ${topic} -> ${redactMqttPayload(payload)}`);
             return;
         }
 

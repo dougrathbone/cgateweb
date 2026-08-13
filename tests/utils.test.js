@@ -1,4 +1,4 @@
-const { clampSetting, evictOldestFifo, temperatureToCbusLevel, redactCgateLine } = require('../src/utils');
+const { clampSetting, evictOldestFifo, temperatureToCbusLevel, redactCgateLine, redactMqttPayload } = require('../src/utils');
 
 describe('clampSetting', () => {
     it('uses default when value is undefined', () => {
@@ -117,5 +117,45 @@ describe('redactCgateLine', () => {
 
     it('is case-insensitive, since C-Gate echoes verbs as sent', () => {
         expect(redactCgateLine('SECURITY EMULATE_KEYPAD //P/254/208 $31')).toContain('***');
+    });
+});
+
+// #51 follow-up: 1.24.3 closed the C-Gate echo paths but left the payload Home
+// Assistant sends us. The "Invalid MQTT command" warning is the worst of these
+// because it fires at the default log level.
+describe('redactMqttPayload', () => {
+    it('hides the code in an alarm command payload', () => {
+        expect(redactMqttPayload('{"action":"DISARM","code":"1234"}'))
+            .toBe('{"action":"DISARM","code":"***"}');
+    });
+
+    it('keeps the action readable, which is why the payload is logged at all', () => {
+        expect(redactMqttPayload('{"action":"DISARM","code":"1234"}')).toContain('DISARM');
+    });
+
+    it('handles pin as well as code, for hand-rolled panels', () => {
+        expect(redactMqttPayload('{"pin":"9999"}')).toBe('{"pin":"***"}');
+    });
+
+    it('copes with whitespace and key order from a Jinja template', () => {
+        const out = redactMqttPayload('{ "code" : "4321", "action": "DISARM" }');
+        expect(out).not.toContain('4321');
+        expect(out).toContain('DISARM');
+    });
+
+    it('redacts a code containing an escaped quote', () => {
+        expect(redactMqttPayload('{"code":"12\\"34"}')).not.toContain('34');
+    });
+
+    it('leaves ordinary payloads alone', () => {
+        for (const p of ['ON', 'OFF', '50,4s', 'ARM_AWAY', '{"action":"ARM_AWAY","code":""}']) {
+            expect(redactMqttPayload(p)).toBe(p);
+        }
+    });
+
+    it('passes through non-strings unchanged', () => {
+        expect(redactMqttPayload('')).toBe('');
+        expect(redactMqttPayload(undefined)).toBeUndefined();
+        expect(redactMqttPayload(null)).toBeNull();
     });
 });
