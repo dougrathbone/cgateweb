@@ -85,6 +85,9 @@ class HaDiscovery {
         this._treeRetryInitialDelayMs = (settings && settings.haDiscoveryTreeRetryInitialDelayMs) || 2000;
         this._treeRetryMaxDelayMs = (settings && settings.haDiscoveryTreeRetryMaxDelayMs) || 60000;
         this._treeRequestTimeoutMs = (settings && settings.haDiscoveryTreeRequestTimeoutMs) || 8000;
+        // Defaults to the request timeout so existing installs see no change.
+        this._treeStreamStallMs = (settings && settings.haDiscoveryTreeStreamStallMs)
+            || this._treeRequestTimeoutMs;
 
         // Re-fetch budget for trees that were accepted (they carry device
         // data) but still contain units with empty <Groups> because C-Gate

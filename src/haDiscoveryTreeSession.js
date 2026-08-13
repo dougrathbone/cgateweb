@@ -74,6 +74,7 @@ class _HaDiscoveryTreeSession {
 
     /** @type {number} */
     _treeRequestTimeoutMs;
+    _treeStreamStallMs;
 
     /**
      * Deadline for a mid-stream TreeXML stall (343 received, 344 never
@@ -409,24 +410,42 @@ class _HaDiscoveryTreeSession {
             bufferParts: []
         };
 
-        // Session deadline: the request watchdog above only covers "no
-        // response at all". If the stream stalls mid-tree (343 received, 344
-        // never arrives) the session would wedge the in-flight guard in
-        // queueTreeRequest for the rest of the process, so a stalled stream
-        // fails like any other tree failure and is retried.
+        this._armTreeStreamDeadline(networkKey);
+
+        this.treeNetwork = this.activeTreeSession.network;
+        this.treeBufferParts = this.activeTreeSession.bufferParts;
+        this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork}`);
+    }
+
+    /**
+     * Arm (or re-arm) the mid-stream stall deadline.
+     *
+     * The request watchdog only covers "no response at all". This covers a
+     * stream that starts and then stops: 343 received, 344 never arrives. Left
+     * unhandled that wedges the in-flight guard in queueTreeRequest for the rest
+     * of the process, so a stall is failed and retried like any other tree
+     * failure.
+     *
+     * Re-armed on every data chunk, which is the point. Armed once at stream
+     * start it measured *total transfer time*, not idle time, so a legitimately
+     * large TREEXML on a slow C-Gate or a serial PCI was killed part-way
+     * through and — after the retry budget — left discovery paused, on exactly
+     * the big installs that need it most.
+     *
+     * @param {string} [fallbackNetwork] - Used only if the session has gone by
+     *   the time the timer fires.
+     * @private
+     */
+    _armTreeStreamDeadline(fallbackNetwork) {
         this._clearTreeStreamDeadline();
-        this._treeStreamDeadlineHandle = this._setTimer(this._treeRequestTimeoutMs, () => {
+        this._treeStreamDeadlineHandle = this._setTimer(this._treeStreamStallMs, () => {
             this._treeStreamDeadlineHandle = null;
-            const stalledNetwork = this.activeTreeSession ? this.activeTreeSession.network : networkKey;
+            const stalledNetwork = this.activeTreeSession ? this.activeTreeSession.network : fallbackNetwork;
             this.activeTreeSession = null;
             this.treeBufferParts = [];
             this.treeNetwork = null;
             this._handleTreeRequestFailure(stalledNetwork, 'tree stream stalled');
         });
-
-        this.treeNetwork = this.activeTreeSession.network;
-        this.treeBufferParts = this.activeTreeSession.bufferParts;
-        this.logger.info(`Started receiving TreeXML. Network: ${this.treeNetwork}`);
     }
 
     /**
@@ -446,6 +465,9 @@ class _HaDiscoveryTreeSession {
             this.handleTreeStart('');
         }
         this.activeTreeSession.bufferParts.push(statusData);
+        // Progress resets the stall clock, so the deadline measures silence
+        // rather than how long a big tree takes to arrive.
+        this._armTreeStreamDeadline(this.activeTreeSession.network);
     }
 
     handleTreeEnd(_statusData) {
@@ -503,7 +525,7 @@ class _HaDiscoveryTreeSession {
         const parseEpoch = this._treeParseEpoch.get(networkForTree) || 0;
         this._parsingNetworks.add(networkForTree);
 
-        this._parseTreeXml(treeXmlData, (err, result) => {
+        const onTreeParsed = (err, result) => {
             try {
                 if ((this._treeParseEpoch.get(networkForTree) || 0) !== parseEpoch) {
                     this.logger.debug(`Ignoring stale TreeXML parse for network ${networkForTree}`);
@@ -600,7 +622,26 @@ class _HaDiscoveryTreeSession {
             } finally {
                 this._parsingNetworks.delete(networkForTree);
             }
-        });
+        };
+
+        // The try/finally above only runs once parseString has called back. If
+        // it throws synchronously instead - which xml2js can do on input it
+        // rejects before starting - _parsingNetworks keeps this network forever,
+        // and queueTreeRequest's in-flight guard then silently skips every
+        // future TREEXML for it, including a manual gettree. Discovery for that
+        // network is dead until the process restarts, with no error after the
+        // first. Same failure the parse-error path was written to prevent, just
+        // reached a different way.
+        try {
+            this._parseTreeXml(treeXmlData, onTreeParsed);
+        } catch (e) {
+            this._parsingNetworks.delete(networkForTree);
+            this.logger.error(
+                `TreeXML parse for network ${networkForTree} threw before completing: ${e && e.message ? e.message : e}`,
+                { xmlLength: treeXmlData.length, xmlPreview: treeXmlData.slice(0, 200) }
+            );
+            this._handleTreeRequestFailure(networkForTree, 'tree parse threw');
+        }
     }
 
     /**

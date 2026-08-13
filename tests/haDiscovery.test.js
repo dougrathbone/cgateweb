@@ -1216,6 +1216,63 @@ describe('HaDiscovery', () => {
             jest.advanceTimersByTime(120000);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
         });
+
+        // The deadline used to be armed once at stream start, so it measured
+        // total transfer time rather than idle time: a big TREEXML on slow
+        // hardware was killed part-way through and, after the retry budget,
+        // left discovery paused.
+        it('a stream that keeps delivering data is never treated as stalled', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //TESTPROJECT/254');
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+
+            // 30s of steady progress, well past the 8s stall window.
+            for (let i = 0; i < 10; i++) {
+                jest.advanceTimersByTime(3000);
+                haDiscovery.handleTreeData(`347-<Unit><Address>${i}</Address></Unit>`);
+            }
+
+            // Still streaming: no failure, no retry, session intact.
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(callsBefore);
+            expect(haDiscovery.activeTreeSession).not.toBeNull();
+            expect(haDiscovery.activeTreeSession.network).toBe('254');
+        });
+
+        // A synchronous throw from the parser skipped the try/finally that
+        // clears _parsingNetworks, so queueTreeRequest's in-flight guard then
+        // silently dropped every later TREEXML for that network - including a
+        // manual gettree - for the rest of the process.
+        it('a parser that throws synchronously does not wedge the network', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //TESTPROJECT/254');
+            haDiscovery.handleTreeData('347-<Network></Network>');
+
+            jest.spyOn(haDiscovery, '_parseTreeXml').mockImplementation(() => {
+                throw new Error('synthetic synchronous parse failure');
+            });
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            expect(haDiscovery._parsingNetworks.has('254')).toBe(false);
+
+            // The real proof: a later request is actually sent, not swallowed.
+            haDiscovery._parseTreeXml.mockRestore();
+            const callsBefore = mockSendCommandFn.mock.calls.length;
+            haDiscovery.queueTreeRequest('254');
+            expect(mockSendCommandFn.mock.calls.length).toBeGreaterThan(callsBefore);
+        });
+
+        it('still fails a stream that goes silent mid-transfer', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //TESTPROJECT/254');
+            haDiscovery.handleTreeData('347-<Network>');
+
+            // Data arrived, then nothing. The clock restarted on that chunk, so
+            // the stall is measured from it.
+            jest.advanceTimersByTime(9000);
+
+            expect(haDiscovery.activeTreeSession).toBeNull();
+            expect(haDiscovery._treeStreamDeadlineHandle).toBeNull();
+        });
     });
 
     describe('Discovery health diagnostic sensor', () => {

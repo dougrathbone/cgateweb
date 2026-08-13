@@ -210,6 +210,12 @@ const defaultSettings = {
     haDiscoveryTreeRetryInitialDelayMs: 2000,
     haDiscoveryTreeRetryMaxDelayMs: 60000,
     haDiscoveryTreeRequestTimeoutMs: 8000,
+    // How long a TREEXML stream may go *silent* mid-transfer before it counts
+    // as stalled. Distinct from the request timeout above, which covers "no
+    // response at all": this clock is reset by every data chunk, so it bounds
+    // idle time rather than total transfer time. Raise it only if a very large
+    // tree on slow hardware still reports "tree stream stalled".
+    haDiscoveryTreeStreamStallMs: 8000,
     // HA Discovery empty-Groups re-fetch tuning (issue #25). A TREEXML can be
     // accepted (real devices present) while other units still have empty
     // <Groups> because C-Gate hasn't finished syncing group bindings. These
