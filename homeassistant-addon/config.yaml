@@ -27,6 +27,15 @@ ingress_port: 8080
 panel_icon: "mdi:label-outline"
 panel_title: "C-Bus Labels"
 
+# Supervisor restarts the add-on when this probe fails. The Dockerfile also has
+# a HEALTHCHECK against the same port, but Supervisor does not consume Docker
+# healthchecks for add-ons - it uses this key - so without it a wedged add-on
+# was left running and Home Assistant still showed it as "Started". The web
+# server binds only after settings load and MQTT/C-Gate wiring is up, so a
+# refused connection here is a real failure rather than a slow start. The
+# Dockerfile's 180s start-period covers managed mode downloading C-Gate.
+watchdog: "tcp://[HOST]:[PORT:8080]"
+
 ports:
   "8080/tcp": null
   "20023/tcp": null
