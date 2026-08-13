@@ -96,6 +96,24 @@
       "./uninstall-service.js": {
         "statements": 75,
         "lines": 75
+      },
+      "./src/web/": {
+        "statements": 85,
+        "branches": 75,
+        "functions": 80,
+        "lines": 89
+      },
+      "./src/config/": {
+        "statements": 92,
+        "branches": 87,
+        "functions": 92,
+        "lines": 93
+      },
+      "./src/applicationDecoders/": {
+        "statements": 92,
+        "branches": 83,
+        "functions": 97,
+        "lines": 97
       }
     }
   }

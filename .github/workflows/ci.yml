@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   version-sync:
+    timeout-minutes: 5
     name: package.json / config.yaml version sync
     runs-on: ubuntu-latest
     steps:
@@ -45,6 +46,7 @@ jobs:
         fi
 
   validate-addon:
+    timeout-minutes: 5
     name: Validate add-on config & translations
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +69,7 @@ jobs:
       run: npm run typecheck
 
   static-checks:
+    timeout-minutes: 10
     name: Lint workflows, shell scripts & Dockerfiles
     runs-on: ubuntu-latest
     env:
@@ -248,6 +251,7 @@ jobs:
         esac
 
   test:
+    timeout-minutes: 15
     name: Lint, Test & Coverage
     runs-on: ubuntu-latest
     needs: version-sync
@@ -286,6 +290,7 @@ jobs:
         retention-days: 7
 
   addon-image:
+    timeout-minutes: 30
     name: Build add-on image (${{ matrix.arch }})
     runs-on: ubuntu-latest
     # Build the real add-on image for every architecture the add-on ships to,
@@ -357,6 +362,11 @@ jobs:
         docker run --rm --platform "$platform" --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
           set -e
           command -v node
+          # java and nc are the arch-dependent pieces: the
+          # OpenJDK-17-else-8 fallback is the most fragile line in the
+          # Dockerfile, and HEALTHCHECK is useless without nc.
+          command -v java && java -version 2>&1 | head -1
+          command -v nc
           test -f /run.sh
           test -f /app/index.js
           test -d /app/node_modules
@@ -476,6 +486,7 @@ jobs:
   # ("Integration test (C-Gate)") means branch protection needs no change when we
   # add or remove matrix versions.
   integration:
+    timeout-minutes: 5
     name: Integration test (C-Gate)
     runs-on: ubuntu-latest
     needs: [integration-download, integration-upload]

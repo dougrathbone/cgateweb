@@ -22,6 +22,7 @@ concurrency:
 
 jobs:
   version-sync:
+    timeout-minutes: 5
     name: Verify version sync (tag / package.json / config.yaml)
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +52,7 @@ jobs:
         fi
 
   validate-addon:
+    timeout-minutes: 5
     name: Validate add-on config & translations
     runs-on: ubuntu-latest
     steps:
@@ -66,6 +68,7 @@ jobs:
     - run: npm run typecheck
 
   static-checks:
+    timeout-minutes: 10
     name: Lint workflows, shell scripts & Dockerfiles
     runs-on: ubuntu-latest
     env:
@@ -75,11 +78,18 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
     - name: ShellCheck add-on scripts
       run: |
+        shopt -s extglob
+        # Must stay identical to ci.yml's list. It had drifted: the release gate
+        # was not linting rootfs/usr/bin or rootfs/usr/lib, so the scripts that
+        # do serial-device recovery and diagnostics were checked on PRs but not
+        # on the tag that actually ships them.
         shellcheck --shell=bash --severity=warning --exclude=SC1008 \
           homeassistant-addon/run.sh \
           homeassistant-addon/rootfs/etc/cont-init.d/*.sh \
           homeassistant-addon/rootfs/etc/services.d/*/run \
-          homeassistant-addon/rootfs/etc/services.d/*/finish
+          homeassistant-addon/rootfs/etc/services.d/*/finish \
+          homeassistant-addon/rootfs/usr/bin/!(*.js) \
+          homeassistant-addon/rootfs/usr/lib/cgateweb/*.sh
     - name: actionlint
       # Same retry rationale as ci.yml: a transient GitHub release CDN blip must
       # not be the reason a tagged release fails to publish.
@@ -98,6 +108,7 @@ jobs:
         /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
 
   test:
+    timeout-minutes: 15
     needs: version-sync
     strategy:
       matrix:
@@ -114,6 +125,7 @@ jobs:
     - run: npm test -- --coverage
 
   addon-image:
+    timeout-minutes: 30
     name: Build add-on image (${{ matrix.arch }})
     runs-on: ubuntu-latest
     strategy:
@@ -165,6 +177,11 @@ jobs:
         docker run --rm --platform "$platform" --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
           set -e
           command -v node
+          # java and nc are the two arch-dependent pieces: the
+          # OpenJDK-17-else-8 fallback is the most fragile line in the
+          # Dockerfile, and HEALTHCHECK is useless without nc.
+          command -v java && java -version 2>&1 | head -1
+          command -v nc
           test -f /run.sh
           test -f /app/index.js
           test -d /app/node_modules
@@ -239,6 +256,7 @@ jobs:
       timeout-minutes: 15
 
   integration:
+    timeout-minutes: 5
     name: Integration test (C-Gate)
     runs-on: ubuntu-latest
     needs: [integration-download, integration-upload]
@@ -262,6 +280,7 @@ jobs:
         echo "All required C-Gate integration tests passed."
 
   build-and-deploy:
+    timeout-minutes: 20
     # Only publish to the distribution repo from semver tags. workflow_dispatch
     # still runs the quality gates above for manual verification, but must not
     # push timestamp versions onto distribution main.
