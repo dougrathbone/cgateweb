@@ -886,6 +886,42 @@ class _HaDiscoveryPublishers {
         this._publishEventDrivenConfig(discoveryTopic, payload);
         const mode = !controlEnabled ? 'read-only' : (disarmEnabled ? 'arm + disarm' : 'arm only');
         this.logger.info(`Security panel alarm_control_panel published: ${networkId}/${appId} (${mode})`);
+
+        // The bypass button is a control write (Emulate Keypad '#'), so it
+        // only exists when control is enabled — without it the button could
+        // never work.
+        if (controlEnabled) {
+            this._createSecurityBypassDiscovery(networkId, appId, deviceName);
+        }
+    }
+
+    /**
+     * Build and publish the "Bypass open zones" button on the security panel
+     * device. Pressing it sends the '#' keypress via `security emulate_keypad`,
+     * which is what the physical keypad uses to bypass open zones when arming
+     * stalls at arm_not_ready (issue #42).
+     *
+     * @private
+     */
+    _createSecurityBypassDiscovery(networkId, appId, deviceName) {
+        const uniqueId = `cgateweb_${networkId}_${appId}_panel_bypass`;
+        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+
+        const payload = {
+            name: 'Bypass open zones',
+            unique_id: uniqueId,
+            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/bypass`,
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: [`cgateweb_${networkId}_${appId}_panel`],
+                name: deviceName,
+                model: 'C-Bus Security Panel'
+            }),
+            origin: buildOriginBlock()
+        };
+
+        this._publishEventDrivenConfig(discoveryTopic, payload);
+        this.logger.info(`Security panel zone-bypass button published: ${networkId}/${appId}`);
     }
 
     /**

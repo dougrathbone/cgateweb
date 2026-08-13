@@ -378,6 +378,42 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(alarmPayload().command_topic).toBe('cbus/write/254/208/panel/arm');
         });
 
+        describe('zone bypass button (#42)', () => {
+            const BYPASS_TOPIC = 'homeassistant/button/cgateweb_254_208_panel_bypass/config';
+
+            function bypassPayload() {
+                const call = publishFn.mock.calls.find(c => c[0] === BYPASS_TOPIC);
+                return call && JSON.parse(call[1]);
+            }
+
+            function panelWithControl(controlEnabled) {
+                return new HaDiscovery(
+                    {
+                        ha_discovery_enabled: true,
+                        ha_discovery_prefix: 'homeassistant',
+                        cbus_security_app_id: '208',
+                        cbus_security_control_enabled: controlEnabled
+                    },
+                    publishFn,
+                    jest.fn()
+                );
+            }
+
+            it('publishes no bypass button while control is disabled (the button could never work)', () => {
+                d.ensureSecurityPanelDiscovery('254', '208');
+                expect(bypassPayload()).toBeUndefined();
+            });
+
+            it('publishes the bypass button on the panel device when control is enabled', () => {
+                panelWithControl(true).ensureSecurityPanelDiscovery('254', '208');
+                const payload = bypassPayload();
+                expect(payload).toBeDefined();
+                expect(payload.name).toBe('Bypass open zones');
+                expect(payload.command_topic).toBe('cbus/write/254/208/panel/bypass');
+                expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
+            });
+        });
+
         // Regression for #42: both default to true in Home Assistant, which then
         // refuses to publish the command at all and shows "PIN required". C-Bus
         // arm carries no PIN, so there is no code to enter.

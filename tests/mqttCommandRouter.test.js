@@ -123,6 +123,34 @@ describe('MqttCommandRouter', () => {
         });
     });
 
+    describe('security zone bypass (cbus/write/{net}/{app}/panel/bypass)', () => {
+        beforeEach(() => {
+            router.settings.cbus_security_app_id = '208';
+            router.settings.cbus_security_control_enabled = true;
+        });
+
+        it('sends the # keypress via emulate_keypad in $hex form when control is enabled', () => {
+            // '#' is ASCII 0x23; the $hex form is the verified-working C-Gate
+            // key encoding (#51). This is the virtual bypass key (#42).
+            router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
+            expect(mockQueue.add).toHaveBeenCalledWith('security emulate_keypad //TestProject/254/208 $23\n');
+        });
+
+        it('warns and sends nothing when control is disabled', () => {
+            router.settings.cbus_security_control_enabled = false;
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Security panel control is disabled'));
+            warnSpy.mockRestore();
+        });
+
+        it('ignores bypass for a different application', () => {
+            router.routeMessage('cbus/write/254/209/panel/bypass', 'PRESS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+    });
+
     // #51: C-Bus has no disarm command, so a disarm is the PIN replayed through
     // `security emulate_keypad`, one keypress per digit. Home Assistant's own
     // keypad collects the PIN and sends it in the command payload.

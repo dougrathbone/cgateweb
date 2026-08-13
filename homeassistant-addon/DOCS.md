@@ -694,6 +694,10 @@ With `cbus_security_control_enabled: true` (off by default) the entity gains a c
 
 > **Security warning:** the C-Bus `security arm` command carries **no PIN** — anything that can publish to the command topic can arm your panel. Only enable control on a broker you trust.
 
+#### Bypassing open zones
+
+When arming stalls at `pending` because a zone is open (`arm_not_ready` names it in the attributes), the physical keypad's `#` key bypasses the open zones and lets the arm continue. With `cbus_security_control_enabled: true`, the panel device gains a **Bypass open zones** button that sends that same `#` keypress via `SECURITY EMULATE_KEYPAD`, so the arm flow (arm → bypass → armed) can be completed from Home Assistant without walking to the keypad.
+
 #### Disarming
 
 Disarming is a **second** opt-in, `cbus_security_disarm_enabled: true`, on top of `cbus_security_control_enabled`. The two are separate because they are not equally risky: arming cannot let anyone in.

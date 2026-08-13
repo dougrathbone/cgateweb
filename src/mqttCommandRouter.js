@@ -40,6 +40,7 @@ const {
     RAMP_STEP,
     NEWLINE,
     SECURITY_ARM_TOPIC_REGEX,
+    SECURITY_BYPASS_TOPIC_REGEX,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C
 } = require('./constants');
@@ -167,6 +168,14 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
+        // Security panel zone bypass (the virtual '#' keypad key, issue #42):
+        // same no-numeric-group shape as the arm topic.
+        const securityBypassMatch = topic.match(SECURITY_BYPASS_TOPIC_REGEX);
+        if (securityBypassMatch) {
+            this._handleSecurityBypass(securityBypassMatch[1], securityBypassMatch[2], topic);
+            return;
+        }
+
         // Parse MQTT command
         const command = new CBusCommand(topic, payload);
         if (!command.isValid()) {
@@ -286,6 +295,36 @@ class MqttCommandRouter extends EventEmitter {
         const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${action})`);
+    }
+
+    /**
+     * Handles the zone-bypass button (cbus/write/{net}/{app}/panel/bypass).
+     * Sends the '#' keypress through `security emulate_keypad`, which is what
+     * the physical keypad uses to bypass open zones when arming stalls at
+     * arm_not_ready (#42). Gated on cbus_security_control_enabled like every
+     * other panel write.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {string} topic - For log context only.
+     * @private
+     */
+    _handleSecurityBypass(network, application, topic) {
+        if (!this.settings.cbus_security_control_enabled) {
+            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring command on ${topic}`);
+            return;
+        }
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0' || String(application) !== String(appId)) {
+            this.logger.warn(`Security command for unconfigured application ${application} on topic ${topic}`);
+            return;
+        }
+
+        const cmd = buildSecurityEmulateKeypadCommand({
+            cbusname: this.cbusname, network, application, key: SECURITY_KEYPAD_ACCEPT.charCodeAt(0)
+        });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Security zone bypass keypress (#) sent: ${network}/${application}`);
     }
 
     /**

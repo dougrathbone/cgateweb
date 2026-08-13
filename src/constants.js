@@ -173,6 +173,9 @@ const COMMAND_TOPIC_REGEX = /^cbus\/write\/(\d{0,3})\/(\d{0,3})\/(\d{0,3})\/(\w+
 // Security panel arm/disarm command topic. The panel has no numeric group
 // address, so this can't parse as a CBusCommand and is routed directly.
 const SECURITY_ARM_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/panel\/arm$/;
+// Security panel zone-bypass button topic (the virtual '#' keypad key used to
+// bypass open zones during arming, issue #42).
+const SECURITY_BYPASS_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/panel\/bypass$/;
 // Event-port line announcing a network finished syncing ("762 //PROJECT/254
 // Network sync ok"). The leading C-Gate timestamp is optional so the pattern
 // also matches lines already stripped of it. Captures the network id.
@@ -304,5 +307,6 @@ module.exports = {
     EVENT_REGEX,
     COMMAND_TOPIC_REGEX,
     SECURITY_ARM_TOPIC_REGEX,
+    SECURITY_BYPASS_TOPIC_REGEX,
     CGATE_EVENT_NETWORK_SYNC_REGEX
 };
