@@ -408,49 +408,15 @@ jobs:
     - name: Install podman-compose
       run: pip3 install podman-compose
 
-    # A 1KB ranged request, not the full 57MB: just enough to see whether
-    # Schneider is serving this runner a zip or bouncing it to the identity
-    # provider. Running the 15-minute integration test only to have the
-    # in-container download hit the same wall wastes a quarter hour and, worse,
-    # reports a third party's IP throttle as a failure of a required check.
-    - name: Probe C-Gate availability for this runner
-      id: probe
-      env:
-        URL: ${{ matrix.cgate.url }}
-      run: |
-        set -uo pipefail
-        CURL_EXIT=0
-        curl -sSL --max-time 120 --connect-timeout 30 -r 0-1023 -o probe.bin \
-          -w '%{http_code}\n%{url_effective}\n%{content_type}\n' \
-          "${URL}" > probe-meta.txt 2>/dev/null || CURL_EXIT=$?
-        mkdir -p classify-out
-        HTTP_STATUS=$(sed -n 1p probe-meta.txt) \
-          FINAL_URL=$(sed -n 2p probe-meta.txt) \
-          CONTENT_TYPE=$(sed -n 3p probe-meta.txt) \
-          BODY_FILE=probe.bin CURL_EXIT="${CURL_EXIT}" \
-          CLASSIFY_OUT_DIR=classify-out \
-          node tools/classify-cgate-download.js
-        echo "classification=$(cat classify-out/classification)" >> "$GITHUB_OUTPUT"
-        echo "reason=$(cat classify-out/reason)" >> "$GITHUB_OUTPUT"
-
-    - name: Skip when Schneider is throttling this runner
-      if: steps.probe.outputs.classification == 'rate-limited' || steps.probe.outputs.classification == 'unavailable'
-      env:
-        REASON: ${{ steps.probe.outputs.reason }}
-        VERSION: ${{ matrix.cgate.version }}
-      run: |
-        echo "::warning::Skipped the C-Gate ${VERSION} integration test: ${REASON}"
-        {
-          echo "### C-Gate ${VERSION} integration test skipped"
-          echo ""
-          echo "${REASON}"
-          echo ""
-          echo "The installer and the pinned checksum were not exercised this run."
-          echo "Users are unaffected: they download from their own IP, not a shared CI one."
-        } >> "$GITHUB_STEP_SUMMARY"
-
+    # No availability probe here. These zips come from this repo's own
+    # ci-assets release (see the matrix above), not from Schneider, so there is
+    # no third-party IP throttle to tolerate. The probe that used to guard these
+    # steps skipped them on anything other than a clean 200 while the job still
+    # reported success - so a required check could pass having run no
+    # integration test at all. The daily cgate-download-check job still probes
+    # the live Schneider URL; that is what it is for, and it is deliberately not
+    # a required check.
     - name: Set up managed-download options for C-Gate ${{ matrix.cgate.version }}
-      if: steps.probe.outputs.classification == 'ok'
       env:
         CGATE_URL: ${{ matrix.cgate.url }}
         CGATE_SHA256: ${{ matrix.cgate.sha256 }}
@@ -458,19 +424,8 @@ jobs:
         node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;o.cgate_download_sha256=process.env.CGATE_SHA256||'';fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
 
     - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
-      if: steps.probe.outputs.classification == 'ok'
       run: node test-env/integration-test.js
       timeout-minutes: 15
-
-    # 'moved' or 'corrupt' means the portal genuinely changed and fresh installs
-    # are breaking for users. That must stay a hard failure.
-    - name: Fail on a genuine Schneider change
-      if: steps.probe.outputs.classification == 'moved' || steps.probe.outputs.classification == 'corrupt'
-      env:
-        REASON: ${{ steps.probe.outputs.reason }}
-      run: |
-        echo "::error::C-Gate download is genuinely broken, not throttled: ${REASON}"
-        exit 1
 
   # Exercises a C-Gate version that is NOT openly downloadable (3.3.3, 3.7.x) by
   # fetching a self-hosted zip and installing it via upload mode. Activates only

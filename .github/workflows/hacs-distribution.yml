@@ -302,6 +302,8 @@ jobs:
         echo "Version: $VERSION"
 
     - name: Build distribution structure
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
       run: |
         # HA addon repos require: repository.yaml at root, each addon in a subfolder
         mkdir -p distribution/cgateweb
@@ -330,8 +332,21 @@ jobs:
         cp package.json distribution/cgateweb/
         cp package-lock.json distribution/cgateweb/
 
-        # Update version in config.yaml
-        sed -i "s/version: .*/version: \"${{ steps.version.outputs.version }}\"/" distribution/cgateweb/config.yaml
+        # Update version in config.yaml. Anchored and addressed on purpose: a
+        # bare s/version: .*/ rewrites EVERY line containing "version: ",
+        # including a comment or a ports_description string, which would emit a
+        # second top-level version key into the file users install. Restricting
+        # it to the first matching line at the top of the document keeps it to
+        # the real key. Passed via env rather than interpolated into the script.
+        node -e "
+          const fs = require('fs');
+          const p = 'distribution/cgateweb/config.yaml';
+          const lines = fs.readFileSync(p, 'utf8').split('\n');
+          const i = lines.findIndex((l) => /^version:/.test(l));
+          if (i === -1) { console.error('no top-level version key in ' + p); process.exit(1); }
+          lines[i] = 'version: \"' + process.env.VERSION + '\"';
+          fs.writeFileSync(p, lines.join('\n'));
+        "
 
         # Copy repository-level branding and documentation
         cp homeassistant-addon/logo.png distribution/
@@ -348,6 +363,31 @@ jobs:
           printf '%s\n' 'url: https://github.com/dougrathbone/cgateweb-homeassistant'
           printf '%s\n' 'maintainer: Doug Rathbone <doug@dougrathbone.com>'
         } > distribution/repository.yaml
+
+    # Validate what we are about to publish, not just what we started from.
+    # The source tree was already validated earlier in this workflow, but the
+    # rendered copy has since been assembled and had its version rewritten -
+    # and that rewrite is the one step capable of corrupting config.yaml. Users
+    # install this file, so it is the one worth gating on.
+    - name: Validate the rendered distribution config
+      env:
+        CGATEWEB_ADDON_DIR: distribution/cgateweb
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        node tools/validate-addon-config.js
+        node tools/validate-schema-i18n.js
+        # And prove the rewrite produced exactly one version key, set correctly.
+        COUNT=$(grep -c '^version:' distribution/cgateweb/config.yaml)
+        if [[ "$COUNT" != "1" ]]; then
+          echo "::error::rendered config.yaml has ${COUNT} top-level version keys, expected 1"
+          exit 1
+        fi
+        if ! grep -qx "version: \"${VERSION}\"" distribution/cgateweb/config.yaml; then
+          echo "::error::rendered config.yaml version is not ${VERSION}"
+          grep '^version:' distribution/cgateweb/config.yaml
+          exit 1
+        fi
+        echo "Rendered distribution config validated at version ${VERSION}."
 
     - name: Checkout or initialize distribution repository
       env:

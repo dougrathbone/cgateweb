@@ -17,8 +17,13 @@ const fs = require('fs');
 const path = require('path');
 const YAML = require('yaml');
 
-const CONFIG_PATH = path.join(__dirname, '..', 'homeassistant-addon', 'config.yaml');
-const EN_PATH = path.join(__dirname, '..', 'homeassistant-addon', 'translations', 'en.yaml');
+// Overridable so the release workflow can re-run this against the RENDERED
+// distribution copy, not just the source tree. The rendered file is what
+// users install, and it is the one the version rewrite touches.
+const ADDON_DIR = process.env.CGATEWEB_ADDON_DIR
+    || path.join(__dirname, '..', 'homeassistant-addon');
+const CONFIG_PATH = path.join(ADDON_DIR, 'config.yaml');
+const EN_PATH = path.join(ADDON_DIR, 'translations', 'en.yaml');
 
 // Returns { missing, extra } comparing schema keys to en.yaml configuration keys.
 function diffSchemaAgainstTranslations(config, enDoc) {
