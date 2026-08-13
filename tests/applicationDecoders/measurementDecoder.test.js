@@ -44,7 +44,8 @@ describe('measurementDecoder — decodeLine', () => {
             value: 123.4,
             unit: 'W',
             unitCode: 38,
-            deviceClass: 'power'
+            deviceClass: 'power',
+            stateClass: 'measurement'
         });
     });
 
@@ -85,7 +86,8 @@ describe('measurementDecoder — decodeLine', () => {
             value: 21.5,
             unit: '°C',
             unitCode: 0,
-            deviceClass: 'temperature'
+            deviceClass: 'temperature',
+            stateClass: 'measurement'
         });
     });
 
@@ -126,11 +128,20 @@ describe('measurementDecoder — decodeChannelData (pure)', () => {
         expect(reading.deviceClass).toBe('energy');
     });
 
-    it('covers every documented unit code without throwing', () => {
-        for (const code of Object.keys(UNIT_TABLE)) {
-            const reading = decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: Number(code) });
+    // Spelled out rather than derived from UNIT_TABLE: iterating the table under
+    // test means dropping a row still passes, which defeats the point.
+    // Codes 0-39 plus $FE (254) and $FF (255) — the complete §28.5.1.2 table.
+    const EXPECTED_UNIT_CODES = [...Array(40).keys(), 254, 255];
+
+    it('defines exactly the 42 unit codes the spec documents', () => {
+        expect(Object.keys(UNIT_TABLE).map(Number).sort((a, b) => a - b)).toEqual(EXPECTED_UNIT_CODES);
+    });
+
+    it('decodes every documented unit code without throwing', () => {
+        for (const code of EXPECTED_UNIT_CODES) {
+            const reading = decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: code });
             expect(reading).not.toBeNull();
-            expect(reading.unitCode).toBe(Number(code));
+            expect(reading.unitCode).toBe(code);
         }
     });
 
@@ -138,6 +149,30 @@ describe('measurementDecoder — decodeChannelData (pure)', () => {
         expect(decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: 254 }).deviceClass).toBeNull();
         expect(decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: 255 }).deviceClass).toBeNull();
         expect(decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: 9 }).deviceClass).toBeNull();
+    });
+
+    // The spec calls unit code $1A "Humidity, generic percentages & linear
+    // ratios", so a tank level or valve position shares it — claiming
+    // device_class humidity would misrepresent those.
+    it('leaves percent (code 26) without a device_class, since the spec shares it', () => {
+        const reading = decodeChannelData({ device: 0, channel: 0, value: 55, multiplier: 0, unitsCode: 26 });
+        expect(reading.unit).toBe('%');
+        expect(reading.deviceClass).toBeNull();
+    });
+
+    // Home Assistant rejects device_class energy paired with state_class
+    // measurement, so Wh has to carry a total state class instead.
+    it('pairs the energy device_class with total_increasing, not measurement', () => {
+        const wh = decodeChannelData({ device: 0, channel: 0, value: 1200, multiplier: 0, unitsCode: 37 });
+        expect(wh.deviceClass).toBe('energy');
+        expect(wh.stateClass).toBe('total_increasing');
+    });
+
+    it('defaults every other unit code to state_class measurement', () => {
+        for (const code of EXPECTED_UNIT_CODES.filter(c => c !== 37)) {
+            const reading = decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 0, unitsCode: code });
+            expect(reading.stateClass).toBe('measurement');
+        }
     });
 
     it('coerces numeric device/channel to strings', () => {
@@ -163,5 +198,41 @@ describe('measurementDecoder — decodeChannelData (pure)', () => {
     it('returns null for non-integer value/multiplier', () => {
         expect(decodeChannelData({ device: 0, channel: 0, value: 1.5, multiplier: 0, unitsCode: 0 })).toBeNull();
         expect(decodeChannelData({ device: 0, channel: 0, value: 1, multiplier: 1.5, unitsCode: 0 })).toBeNull();
+    });
+
+    // Regression: the multiplier is a signed byte, so -128..-101 are spec-legal,
+    // but toFixed() only accepts 0-100 fraction digits and throws RangeError
+    // past that. The event path has no try/catch, so such a line took the whole
+    // bridge down via the uncaughtException handler instead of being decoded.
+    describe('extreme negative multipliers (toFixed range boundary)', () => {
+        const decodeAt = (multiplier) =>
+            decodeChannelData({ device: 0, channel: 0, value: 215, multiplier, unitsCode: 0 });
+
+        it('decodes at the toFixed limit (-100)', () => {
+            const reading = decodeAt(-100);
+            expect(reading).not.toBeNull();
+            expect(reading.value).toBeCloseTo(215e-100, 110);
+        });
+
+        it('decodes one past the toFixed limit (-101) instead of throwing', () => {
+            let reading;
+            expect(() => { reading = decodeAt(-101); }).not.toThrow();
+            expect(reading).not.toBeNull();
+            expect(reading.value).toBeCloseTo(215e-101, 111);
+        });
+
+        it('decodes at the signed-byte floor (-128) instead of throwing', () => {
+            let reading;
+            expect(() => { reading = decodeAt(-128); }).not.toThrow();
+            expect(reading).not.toBeNull();
+            expect(Number.isFinite(reading.value)).toBe(true);
+            expect(reading.value).toBeCloseTo(215e-128, 138);
+        });
+
+        // Same path reached through a real event line, since C-Gate echoes back
+        // what the write path sends.
+        it('does not throw on a full event line carrying an extreme multiplier', () => {
+            expect(() => decodeLine('measurement data //HOME/254/228/0/0 215 -128 0')).not.toThrow();
+        });
     });
 });

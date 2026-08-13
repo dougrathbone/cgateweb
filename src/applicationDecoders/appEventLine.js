@@ -12,7 +12,8 @@
 // event-port line (isAppEventLine runs up to four times per line).
 const PREFIX_WITH_SPACE = {
     aircon: 'aircon ',
-    security: 'security '
+    security: 'security ',
+    measurement: 'measurement '
 };
 
 /**

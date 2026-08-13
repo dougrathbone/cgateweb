@@ -1,10 +1,11 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { decodeChannelData } = require('../src/applicationDecoders/measurementDecoder');
 
 describe('HaDiscovery — app 228 measurement sensors', () => {
     let publishFn;
     let d;
 
-    const reading = { unit: 'W', deviceClass: 'power' };
+    const reading = { unit: 'W', deviceClass: 'power', stateClass: 'measurement' };
 
     beforeEach(() => {
         publishFn = jest.fn();
@@ -29,6 +30,35 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(payload.state_topic).toBe('cbus/read/254/228/0/0/value');
         expect(payload.unique_id).toBe('cgateweb_254_228_0_0');
         expect(payload.device.name).toBe('CBus Measurement 254/228/0/0');
+    });
+
+    // Home Assistant rejects device_class energy alongside state_class
+    // measurement: the entity may never be created, and cannot feed the Energy
+    // dashboard that DOCS.md points users at. Driven from the real decoder
+    // output so the two halves cannot drift apart.
+    it('publishes an energy sensor with total_increasing, not measurement', () => {
+        const wh = decodeChannelData({ device: 2, channel: 0, value: 1200, multiplier: 0, unitsCode: 37 });
+        d.ensureMeasurementDiscovery('254', '228', '2', '0', wh);
+        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_2_0/config');
+        const payload = JSON.parse(call[1]);
+        expect(payload.device_class).toBe('energy');
+        expect(payload.unit_of_measurement).toBe('Wh');
+        expect(payload.state_class).toBe('total_increasing');
+    });
+
+    it('keeps state_class measurement for a non-energy reading from the decoder', () => {
+        const watts = decodeChannelData({ device: 3, channel: 0, value: 5042, multiplier: 0, unitsCode: 38 });
+        d.ensureMeasurementDiscovery('254', '228', '3', '0', watts);
+        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_3_0/config');
+        const payload = JSON.parse(call[1]);
+        expect(payload.device_class).toBe('power');
+        expect(payload.state_class).toBe('measurement');
+    });
+
+    it('falls back to state_class measurement when the reading carries none', () => {
+        d.ensureMeasurementDiscovery('254', '228', '4', '0', { unit: 'lx', deviceClass: 'illuminance' });
+        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_4_0/config');
+        expect(JSON.parse(call[1]).state_class).toBe('measurement');
     });
 
     it('omits device_class/unit_of_measurement for a unitless reading', () => {

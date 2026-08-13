@@ -25,6 +25,10 @@ const appId = DEFAULT_CBUS_APP_MEASUREMENT;
 // deviceClass is only set where the mapping to a Home Assistant device_class is
 // unambiguous; every other code is a plain sensor (deviceClass: null) rather
 // than a guessed one.
+//
+// stateClass overrides the default 'measurement' where Home Assistant requires
+// a different one: device_class 'energy' is only valid with a total state
+// class, and pairing it with 'measurement' makes HA reject the entity outright.
 const UNIT_TABLE = {
     0: { unit: '°C', deviceClass: 'temperature' },       // $00
     1: { unit: 'A', deviceClass: 'current' },                 // $01
@@ -52,7 +56,10 @@ const UNIT_TABLE = {
     23: { unit: 'N', deviceClass: null },                     // $17
     24: { unit: 'Ω', deviceClass: null },                // $18 Ohms
     25: { unit: 'Pa', deviceClass: 'pressure' },               // $19
-    26: { unit: '%', deviceClass: 'humidity' },                // $1A
+    // $1A. No device_class: the spec calls this "Humidity, generic percentages
+    // & linear ratios", so a tank level or valve position shares the code and
+    // would otherwise announce itself to Home Assistant as a humidity sensor.
+    26: { unit: '%', deviceClass: null },
     27: { unit: 'dB', deviceClass: null },                    // $1B
     28: { unit: 'ppm', deviceClass: null },                   // $1C
     29: { unit: 'rpm', deviceClass: null },                   // $1D
@@ -63,7 +70,7 @@ const UNIT_TABLE = {
     34: { unit: 'sr', deviceClass: null },                    // $22
     35: { unit: 'T', deviceClass: null },                     // $23
     36: { unit: 'V', deviceClass: 'voltage' },                 // $24
-    37: { unit: 'Wh', deviceClass: 'energy' },                 // $25
+    37: { unit: 'Wh', deviceClass: 'energy', stateClass: 'total_increasing' }, // $25
     38: { unit: 'W', deviceClass: 'power' },                   // $26
     39: { unit: 'Wb', deviceClass: null },                    // $27
     254: { unit: null, deviceClass: null },                   // $FE No units
@@ -118,18 +125,27 @@ function decodeLine(line) {
  * input so the caller can drop the reading cleanly.
  *
  * @param {{network?: string|number, application?: string|number, device: string|number, channel: string|number, value: number, multiplier: number, unitsCode: number}} args
- * @returns {{kind: 'measurement', network: string|null, application: string, device: string, channel: string, value: number, unit: string|null, unitCode: number, deviceClass: string|null}|null}
+ * @returns {{kind: 'measurement', network: string|null, application: string, device: string, channel: string, value: number, unit: string|null, unitCode: number, deviceClass: string|null, stateClass: string}|null}
  */
 function decodeChannelData({ network, application, device, channel, value, multiplier, unitsCode }) {
     if (!Number.isInteger(value) || value < -32768 || value > 32767) return null;
     if (!Number.isInteger(multiplier) || multiplier < -128 || multiplier > 127) return null;
     if (!Number.isInteger(unitsCode) || !Object.prototype.hasOwnProperty.call(UNIT_TABLE, unitsCode)) return null;
 
+    // toFixed only accepts 0-100 fraction digits and throws RangeError beyond
+    // that, but the spec's multiplier is a full signed byte — so a legal
+    // multiplier of -101 or lower used to crash the bridge (the event path has
+    // no try/catch). Round through toFixed where it is defined, since it is
+    // what keeps 215 x 10^-1 at 21.5 rather than 21.500000000000004; past that
+    // the value is ~1e-101 and float noise is irrelevant, so scale directly.
+    const digits = -multiplier;
     const scaled = multiplier >= 0
         ? value * Math.pow(10, multiplier)
-        : Number((value / Math.pow(10, -multiplier)).toFixed(-multiplier));
+        : digits <= 100
+            ? Number((value / Math.pow(10, digits)).toFixed(digits))
+            : value * Math.pow(10, multiplier);
 
-    const { unit, deviceClass } = UNIT_TABLE[unitsCode];
+    const { unit, deviceClass, stateClass } = UNIT_TABLE[unitsCode];
     return {
         kind: 'measurement',
         network: network !== undefined && network !== null ? String(network) : null,
@@ -139,7 +155,8 @@ function decodeChannelData({ network, application, device, channel, value, multi
         value: scaled,
         unit,
         unitCode: unitsCode,
-        deviceClass
+        deviceClass,
+        stateClass: stateClass || 'measurement'
     };
 }
 

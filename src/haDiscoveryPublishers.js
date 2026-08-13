@@ -668,7 +668,10 @@ class _HaDiscoveryPublishers {
             ...(entityId && entityIdFields(HA_COMPONENT_SENSOR, entityId)),
 
             state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${device}/${channel}/${MQTT_TOPIC_SUFFIX_VALUE}`,
-            state_class: 'measurement',
+            // From the reading, not hardcoded: Home Assistant rejects
+            // device_class 'energy' paired with state_class 'measurement', so
+            // Wh readings carry 'total_increasing' instead (see UNIT_TABLE).
+            state_class: (reading && reading.stateClass) || 'measurement',
             ...(reading && reading.deviceClass ? { device_class: reading.deviceClass } : {}),
             ...(reading && reading.unit ? { unit_of_measurement: reading.unit } : {}),
 
