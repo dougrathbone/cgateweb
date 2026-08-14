@@ -21,284 +21,32 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  version-sync:
-    timeout-minutes: 5
-    name: Verify version sync (tag / package.json / config.yaml)
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Verify versions match
-      run: |
-        pkg_version=$(node -p "require('./package.json').version")
-        cfg_version=$(grep -E '^version:' homeassistant-addon/config.yaml | sed -E 's/^version:[[:space:]]*"?([^"]+)"?$/\1/')
-        echo "package.json version: ${pkg_version}"
-        echo "config.yaml  version: ${cfg_version}"
-        if [[ "${pkg_version}" != "${cfg_version}" ]]; then
-          echo "::error::package.json version (${pkg_version}) does not match homeassistant-addon/config.yaml version (${cfg_version})."
-          echo "::error::Bump both files together before tagging (see CLAUDE.md release process)."
-          exit 1
-        fi
-        # On a tag push, the tag must also match the source version so a mistyped
-        # tag cannot publish a mismatched distribution release.
-        if [[ $GITHUB_REF == refs/tags/* ]]; then
-          tag_version=${GITHUB_REF#refs/tags/}
-          tag_version=${tag_version#v}
-          echo "git tag       version: ${tag_version}"
-          if [[ "${tag_version}" != "${pkg_version}" ]]; then
-            echo "::error::Git tag version (${tag_version}) does not match package.json version (${pkg_version})."
-            echo "::error::Tag the commit that bumps package.json/config.yaml (e.g. git tag v${pkg_version})."
-            exit 1
-          fi
-        fi
-
-  validate-addon:
-    timeout-minutes: 5
-    name: Validate add-on config & translations
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-      with:
-        node-version: 22.x
-        cache: 'npm'
-    - run: npm ci
-    - run: npm run validate:addon-config
-    - run: npm run validate:translations
-    - run: npm run validate:schema-i18n
-    - run: npm run typecheck
-
-  static-checks:
-    timeout-minutes: 10
-    name: Lint workflows, shell scripts & Dockerfiles
-    runs-on: ubuntu-latest
-    env:
-      ACTIONLINT_VERSION: "1.7.12"
-      HADOLINT_VERSION: "2.14.0"
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: ShellCheck add-on scripts
-      run: |
-        shopt -s extglob
-        # Must stay identical to ci.yml's list. It had drifted: the release gate
-        # was not linting rootfs/usr/bin or rootfs/usr/lib, so the scripts that
-        # do serial-device recovery and diagnostics were checked on PRs but not
-        # on the tag that actually ships them.
-        shellcheck --shell=bash --severity=warning --exclude=SC1008 \
-          homeassistant-addon/run.sh \
-          homeassistant-addon/rootfs/etc/cont-init.d/*.sh \
-          homeassistant-addon/rootfs/etc/services.d/*/run \
-          homeassistant-addon/rootfs/etc/services.d/*/finish \
-          homeassistant-addon/rootfs/usr/bin/!(*.js) \
-          homeassistant-addon/rootfs/usr/lib/cgateweb/*.sh
-    - name: actionlint
-      # Same retry rationale as ci.yml: a transient GitHub release CDN blip must
-      # not be the reason a tagged release fails to publish.
-      run: |
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
-          --connect-timeout 30 --max-time 300 -o /tmp/actionlint.tar.gz \
-          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-        tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
-        /tmp/actionlint -color
-    - name: hadolint
-      run: |
-        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
-          --connect-timeout 30 --max-time 300 -o /tmp/hadolint \
-          "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
-        chmod +x /tmp/hadolint
-        /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
-
-  test:
-    timeout-minutes: 15
-    needs: version-sync
-    strategy:
-      matrix:
-        node-version: [20.x, 22.x]
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-    - run: npm ci
-    - run: npm run lint -- --max-warnings=0
-    - run: npm test -- --coverage
-
-  addon-image:
-    timeout-minutes: 30
-    name: Build add-on image (${{ matrix.arch }})
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [amd64, aarch64, armv7]
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - name: Set up QEMU (multi-arch emulation)
-      if: matrix.arch != 'amd64'
-      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
-    - name: Assemble add-on build context
-      run: |
-        mkdir -p ctx
-        cp -r homeassistant-addon/rootfs ctx/
-        cp homeassistant-addon/run.sh ctx/
-        cp homeassistant-addon/Dockerfile ctx/
-        cp -r src public ctx/
-        cp index.js package.json package-lock.json ctx/
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
-    - name: Build image
-      env:
-        DOCKER_BUILDKIT: 1
-      run: |
-        case "${{ matrix.arch }}" in
-          amd64) platform=linux/amd64 ;;
-          aarch64) platform=linux/arm64 ;;
-          armv7) platform=linux/arm/v7 ;;
-          *) echo "Unknown arch ${{ matrix.arch }}"; exit 1 ;;
-        esac
-        docker buildx build \
-          --platform "$platform" \
-          --build-arg BUILD_FROM=ghcr.io/home-assistant/${{ matrix.arch }}-base:3.21 \
-          --build-arg BUILD_ARCH=${{ matrix.arch }} \
-          --build-arg BUILD_VERSION=ci \
-          --build-arg BUILD_DATE=ci \
-          --build-arg BUILD_REF="${GITHUB_SHA}" \
-          --load \
-          -t cgateweb-addon:ci-${{ matrix.arch }} \
-          ctx
-    - name: Smoke-check image contents
-      run: |
-        case "${{ matrix.arch }}" in
-          amd64) platform=linux/amd64 ;;
-          aarch64) platform=linux/arm64 ;;
-          armv7) platform=linux/arm/v7 ;;
-        esac
-        docker run --rm --platform "$platform" --entrypoint /bin/bash cgateweb-addon:ci-${{ matrix.arch }} -c '
-          set -e
-          command -v node
-          # java and nc are the two arch-dependent pieces: the
-          # OpenJDK-17-else-8 fallback is the most fragile line in the
-          # Dockerfile, and HEALTHCHECK is useless without nc.
-          command -v java && java -version 2>&1 | head -1
-          command -v nc
-          test -f /run.sh
-          test -f /app/index.js
-          test -d /app/node_modules
-          node -e "require(\"/app/package.json\")"
-        '
-
-  integration-download:
-    name: Integration download ${{ matrix.cgate.version }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        cgate:
-          # Self-hosted copies from the ci-assets release: download.se.com
-          # rate-limits GitHub runner IPs, which failed release pipelines
-          # twice. The daily scheduled cgate-download-check in ci.yml still
-          # verifies the live Schneider URLs and pins.
-          - version: "3.3.1"
-            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
-            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
-          - version: "3.3.2"
-            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip"
-            sha256: "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-      with:
-        node-version: 20.x
-        cache: 'npm'
-    - run: npm ci
-    - name: Install podman-compose
-      run: pip3 install podman-compose
-    - name: Set up managed-download options for C-Gate ${{ matrix.cgate.version }}
-      env:
-        CGATE_URL: ${{ matrix.cgate.url }}
-        CGATE_SHA256: ${{ matrix.cgate.sha256 }}
-      run: |
-        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;o.cgate_download_sha256=process.env.CGATE_SHA256||'';fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
-    - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
-      run: node test-env/integration-test.js
-      timeout-minutes: 15
-
-  integration-upload:
-    name: Integration upload (hosted)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: test
-    if: vars.CGATE_UPLOAD_TEST_URL != ''
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-      with:
-        node-version: 20.x
-        cache: 'npm'
-    - run: npm ci
-    - name: Install podman-compose
-      run: pip3 install podman-compose
-    - name: Fetch hosted C-Gate zip into the upload share volume
-      env:
-        CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
-      run: |
-        mkdir -p test-env/volumes/share/cgate
-        curl -fSL --retry 3 --retry-all-errors --retry-delay 10 \
-          --max-time 600 --connect-timeout 30 \
-          -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
-    - name: Set up managed-upload test options
-      run: cp test-env/options-managed-upload.json test-env/active-options.json
-    - name: Run integration test (upload mode - hosted C-Gate)
-      run: node test-env/integration-test.js
-      timeout-minutes: 15
-
-  integration:
-    timeout-minutes: 5
-    name: Integration test (C-Gate)
-    runs-on: ubuntu-latest
-    needs: [integration-download, integration-upload]
-    if: always()
-    steps:
-    - name: Verify all C-Gate version integration tests passed
-      env:
-        DOWNLOAD_RESULT: ${{ needs.integration-download.result }}
-        UPLOAD_RESULT: ${{ needs.integration-upload.result }}
-      run: |
-        echo "download-mode legs: $DOWNLOAD_RESULT"
-        echo "upload-mode leg:    $UPLOAD_RESULT (skipped is OK when no hosted artifact is configured)"
-        if [[ "$DOWNLOAD_RESULT" != "success" ]]; then
-          echo "::error::One or more download-mode C-Gate integration tests failed."
-          exit 1
-        fi
-        if [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
-          echo "::error::The upload-mode C-Gate integration test failed."
-          exit 1
-        fi
-        echo "All required C-Gate integration tests passed."
+  # The same gate PRs run, called rather than copied. It used to be duplicated
+  # here and had already drifted: this workflow was shellchecking fewer scripts
+  # than ci.yml, so the serial-recovery helpers were linted on PRs but not on
+  # the tag that shipped them. Sharing it makes that class of gap impossible.
+  #
+  # run-expensive is pinned true: a release always builds every architecture and
+  # runs every integration leg, whatever the diff happens to contain.
+  quality:
+    name: quality
+    uses: ./.github/workflows/quality.yml
+    with:
+      run-expensive: true
 
   build-and-deploy:
     timeout-minutes: 20
     # Only publish to the distribution repo from semver tags. workflow_dispatch
-    # still runs the quality gates above for manual verification, but must not
+    # still runs the quality gate above for manual verification, but must not
     # push timestamp versions onto distribution main.
     #
-    # always() is required: integration-upload is often skipped (no hosted
-    # artifact var), and a plain `if:` without always() causes this job to be
-    # skipped whenever any upstream job was skipped — even when integration
-    # itself succeeded via its own always() gate.
-    if: >-
-      always() &&
-      startsWith(github.ref, 'refs/tags/v') &&
-      needs.version-sync.result == 'success' &&
-      needs.validate-addon.result == 'success' &&
-      needs.static-checks.result == 'success' &&
-      needs.test.result == 'success' &&
-      needs.addon-image.result == 'success' &&
-      needs.integration.result == 'success'
-    needs: [version-sync, validate-addon, static-checks, test, addon-image, integration]
+    # `needs: quality` alone enforces the gate now: if any job inside the called
+    # workflow fails, quality fails and this job is skipped. The previous
+    # always() plus six explicit result checks existed because integration-upload
+    # is usually skipped, and a skipped upstream used to skip this job too. With
+    # one upstream that reports success on skips, the plain form is correct.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: quality
     runs-on: ubuntu-latest
 
     steps:
@@ -384,7 +132,7 @@ jobs:
         } > distribution/repository.yaml
 
     # Validate what we are about to publish, not just what we started from.
-    # The source tree was already validated earlier in this workflow, but the
+    # The source tree was already validated by the quality gate, but the
     # rendered copy has since been assembled and had its version rewritten -
     # and that rewrite is the one step capable of corrupting config.yaml. Users
     # install this file, so it is the one worth gating on.
@@ -437,6 +185,10 @@ jobs:
         git config user.email 'actions@github.com'
 
     - name: Deploy to distribution repository
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+        SOURCE_REPO: ${{ github.repository }}
+        SOURCE_SHA: ${{ github.sha }}
       run: |
         cd hacs-repo
 
@@ -454,9 +206,9 @@ jobs:
           exit 0
         fi
 
-        git commit -m "Release v${{ steps.version.outputs.version }}
+        git commit -m "Release v${VERSION}
 
-        Source: ${{ github.repository }}@${{ github.sha }}"
+        Source: ${SOURCE_REPO}@${SOURCE_SHA}"
 
         if ! git push -u origin main; then
           echo "Failed to push to distribution repository"

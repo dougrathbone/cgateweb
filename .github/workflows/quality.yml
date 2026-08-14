@@ -1,0 +1,460 @@
+# .github/workflows/quality.yml
+#
+# The shared quality gate, called by both ci.yml (pushes and PRs) and
+# hacs-distribution.yml (tagged releases).
+#
+# It exists because these jobs used to be copy-pasted into both workflows and
+# had already drifted apart: the release gate was linting fewer shell scripts
+# than the PR gate, so the serial-recovery scripts were checked on PRs but not
+# on the tag that actually shipped them. Anything a PR is gated on, a release is
+# now gated on by construction.
+#
+# Job names are load-bearing. GitHub reports a called workflow's jobs as
+# "<caller job name> / <job name>", and several of these are required status
+# checks on master, so renaming a job here silently breaks branch protection
+# until the required contexts are updated to match.
+
+name: Quality gate
+
+on:
+  workflow_call:
+    inputs:
+      run-expensive:
+        description: >-
+          Run the multi-arch image builds and the C-Gate integration legs.
+          Callers set this false for changes that cannot affect the built image
+          or the bridge's behaviour (docs only). Defaults to true so a caller
+          that forgets to pass it gets the full suite rather than a quiet
+          no-op.
+        type: boolean
+        required: false
+        default: true
+      expensive-skip-reason:
+        description: Shown in the summary when run-expensive is false.
+        type: string
+        required: false
+        default: 'no build-relevant files changed'
+
+permissions:
+  contents: read
+
+jobs:
+  version-sync:
+    timeout-minutes: 5
+    name: package.json / config.yaml version sync
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Verify versions match
+      run: |
+        pkg_version=$(node -p "require('./package.json').version")
+        cfg_version=$(grep -E '^version:' homeassistant-addon/config.yaml | sed -E 's/^version:[[:space:]]*"?([^"]+)"?$/\1/')
+        echo "package.json version: ${pkg_version}"
+        echo "config.yaml  version: ${cfg_version}"
+        if [[ "${pkg_version}" != "${cfg_version}" ]]; then
+          echo "::error::package.json version (${pkg_version}) does not match homeassistant-addon/config.yaml version (${cfg_version})."
+          echo "::error::Bump both files together before pushing (see CLAUDE.md release process)."
+          exit 1
+        fi
+        # On a tag push the tag must match the source version too, so a mistyped
+        # tag cannot publish a mismatched distribution release. A no-op on
+        # branch pushes and PRs, which is why this lives in the shared gate
+        # rather than being duplicated into the release workflow.
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          tag_version=${GITHUB_REF#refs/tags/}
+          tag_version=${tag_version#v}
+          echo "git tag       version: ${tag_version}"
+          if [[ "${tag_version}" != "${pkg_version}" ]]; then
+            echo "::error::Git tag version (${tag_version}) does not match package.json version (${pkg_version})."
+            echo "::error::Tag the commit that bumps package.json/config.yaml (e.g. git tag v${pkg_version})."
+            exit 1
+          fi
+        fi
+
+  validate-addon:
+    timeout-minutes: 5
+    name: Validate add-on config & translations
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+    - name: Use Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: 22.x
+        cache: 'npm'
+    - name: Install dependencies
+      run: npm ci
+    - name: Validate config.yaml options/schema upgrade safety
+      run: npm run validate:addon-config
+    - name: Validate translation key parity
+      run: npm run validate:translations
+    - name: Validate schema <-> translation parity
+      run: npm run validate:schema-i18n
+    - name: Typecheck (tsc --noEmit)
+      run: npm run typecheck
+
+  static-checks:
+    timeout-minutes: 10
+    name: Lint workflows, shell scripts & Dockerfiles
+    runs-on: ubuntu-latest
+    env:
+      ACTIONLINT_VERSION: "1.7.12"
+      HADOLINT_VERSION: "2.14.0"
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: ShellCheck add-on scripts
+      # shellcheck is preinstalled on ubuntu-latest. SC1008 is excluded because
+      # the s6-overlay scripts use the '#!/usr/bin/with-contenv bashio' shebang.
+      # rootfs/usr/bin holds both shell helpers (extensionless) and node
+      # scripts, so extglob excludes *.js rather than listing each helper --
+      # that way a new shell helper is linted without editing this workflow.
+      run: |
+        shopt -s extglob
+        shellcheck --shell=bash --severity=warning --exclude=SC1008 \
+          homeassistant-addon/run.sh \
+          homeassistant-addon/rootfs/etc/cont-init.d/*.sh \
+          homeassistant-addon/rootfs/etc/services.d/*/run \
+          homeassistant-addon/rootfs/etc/services.d/*/finish \
+          homeassistant-addon/rootfs/usr/bin/!(*.js) \
+          homeassistant-addon/rootfs/usr/lib/cgateweb/*.sh
+
+    - name: actionlint
+      # Retry the release download: a 5xx or reset from the GitHub release CDN
+      # has nothing to do with the code under test, and without --retry it fails
+      # a required check. --retry-all-errors is needed because -f turns an HTTP
+      # error into exit 22, which plain --retry does not consider retryable.
+      run: |
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
+          --connect-timeout 30 --max-time 300 -o /tmp/actionlint.tar.gz \
+          "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+        /tmp/actionlint -color
+
+    - name: hadolint
+      run: |
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
+          --connect-timeout 30 --max-time 300 -o /tmp/hadolint \
+          "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+        chmod +x /tmp/hadolint
+        /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
+
+  test:
+    timeout-minutes: 15
+    name: Lint, Test & Coverage
+    runs-on: ubuntu-latest
+    needs: version-sync
+
+    strategy:
+      matrix:
+        node-version: [20.x, 22.x]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Lint
+      run: npm run lint -- --max-warnings=0
+
+    - name: Unit tests with coverage
+      # Jest enforces the thresholds in package.json: a global gate plus
+      # per-directory ratchets for src/web, src/config and
+      # src/applicationDecoders, so a single module cannot rot behind a healthy
+      # average. Deliberately NOT gated on run-expensive - unit tests are fast
+      # and a docs change that somehow breaks them should still fail.
+      run: npm test -- --coverage --coverageReporters=text --coverageReporters=lcov
+
+    - name: Upload coverage report
+      if: matrix.node-version == '22.x'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      with:
+        name: coverage-report
+        path: coverage/lcov.info
+        retention-days: 7
+
+  addon-image:
+    timeout-minutes: 30
+    name: Build add-on image (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    # Build the real add-on image for every architecture the add-on ships to,
+    # so arch-specific breakage (base image tags, native modules under
+    # emulation) is caught in CI rather than on users' devices. Non-amd64
+    # builds run under QEMU binfmt emulation.
+    #
+    # The JOB always runs even when run-expensive is false, and gates its steps
+    # instead. "Build add-on image (amd64)" is a required status check, and a
+    # skipped job does not satisfy one - skipping the job outright would leave
+    # every docs-only PR permanently unmergeable.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, aarch64, armv7]
+    steps:
+    - name: Note that the build was skipped
+      if: ${{ !inputs.run-expensive }}
+      env:
+        REASON: ${{ inputs.expensive-skip-reason }}
+        ARCH: ${{ matrix.arch }}
+      run: |
+        echo "::notice::Skipped the ${ARCH} image build: ${REASON}."
+        {
+          echo "### ${ARCH} image build skipped"
+          echo ""
+          echo "${REASON}, so the built image cannot have changed."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Checkout repository
+      if: ${{ inputs.run-expensive }}
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Set up QEMU (multi-arch emulation)
+      if: ${{ inputs.run-expensive && matrix.arch != 'amd64' }}
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
+
+    - name: Assemble add-on build context
+      # The production homeassistant-addon/Dockerfile expects package.json,
+      # src/, public/, index.js and the add-on files (rootfs/, run.sh) all in
+      # one context directory — the same layout the distribution workflow ships
+      # to users. Mirror that here so CI builds the real image, not a copy.
+      if: ${{ inputs.run-expensive }}
+      run: |
+        mkdir -p ctx
+        cp -r homeassistant-addon/rootfs ctx/
+        cp homeassistant-addon/run.sh ctx/
+        cp homeassistant-addon/Dockerfile ctx/
+        cp -r src public ctx/
+        cp index.js package.json package-lock.json ctx/
+
+    - name: Set up Docker Buildx
+      if: ${{ inputs.run-expensive }}
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+    - name: Build image
+      # BuildKit + BUILDPLATFORM lets the npm install stage run on the host
+      # arch (pure JS deps), avoiding QEMU SIGILL during npm ci on aarch64.
+      if: ${{ inputs.run-expensive }}
+      env:
+        DOCKER_BUILDKIT: 1
+        ARCH: ${{ matrix.arch }}
+      run: |
+        case "${ARCH}" in
+          amd64) platform=linux/amd64 ;;
+          aarch64) platform=linux/arm64 ;;
+          armv7) platform=linux/arm/v7 ;;
+          *) echo "Unknown arch ${ARCH}"; exit 1 ;;
+        esac
+        docker buildx build \
+          --platform "$platform" \
+          --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ARCH}-base:3.21" \
+          --build-arg "BUILD_ARCH=${ARCH}" \
+          --build-arg BUILD_VERSION=ci \
+          --build-arg BUILD_DATE=ci \
+          --build-arg BUILD_REF="${GITHUB_SHA}" \
+          --load \
+          -t "cgateweb-addon:ci-${ARCH}" \
+          ctx
+
+    - name: Smoke-check image contents
+      # Override the s6/bashio entrypoint (which needs the HA Supervisor) and
+      # assert the image is structurally sound: Node present, app files and
+      # production dependencies installed, and the entrypoint script in place.
+      # For non-amd64 the container runs under QEMU emulation.
+      if: ${{ inputs.run-expensive }}
+      env:
+        ARCH: ${{ matrix.arch }}
+      run: |
+        case "${ARCH}" in
+          amd64) platform=linux/amd64 ;;
+          aarch64) platform=linux/arm64 ;;
+          armv7) platform=linux/arm/v7 ;;
+        esac
+        docker run --rm --platform "$platform" --entrypoint /bin/bash "cgateweb-addon:ci-${ARCH}" -c '
+          set -e
+          command -v node
+          # java and nc are the arch-dependent pieces: the OpenJDK-17-else-8
+          # fallback is the most fragile line in the Dockerfile, and the
+          # HEALTHCHECK is inert without nc.
+          command -v java && java -version 2>&1 | head -1
+          command -v nc
+          test -f /run.sh
+          test -f /app/index.js
+          test -d /app/node_modules
+          node -e "require(\"/app/package.json\")"
+        '
+
+  # Boot the full managed stack against each openly-downloadable C-Gate version
+  # so version-specific regressions (e.g. the 3.7.x TREEXML addressing bug, #23)
+  # are caught. Only 3.3.0-3.3.2 are downloadable without a Schneider login;
+  # newer versions (3.3.3, 3.7.x) are exercised by the upload leg below.
+  #
+  # The zips come from this repo's `ci-assets` release, NOT from Schneider
+  # directly: download.se.com rate-limits GitHub runner IPs (idp.se.com
+  # "rate limit reached" HTML page), which failed release pipelines twice.
+  # The daily scheduled cgate-download-check in ci.yml still verifies the live
+  # Schneider URLs and pins, so portal changes are still caught there.
+  #
+  # Unlike addon-image this job may skip wholesale: it is not itself a required
+  # check. The aggregator below is, and it understands a skipped leg.
+  integration-download:
+    name: Integration download ${{ matrix.cgate.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: test
+    if: ${{ inputs.run-expensive }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cgate:
+          # Both legs verify the download against the same sha256 pins the
+          # add-on uses in production (a custom URL requires the sha, which
+          # also keeps the pins honest if ci-assets is ever re-uploaded).
+          - version: "3.3.1"
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
+            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
+          - version: "3.3.2"
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip"
+            sha256: "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: 20.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+
+    # No availability probe here. These zips come from this repo's own
+    # ci-assets release (see the matrix above), not from Schneider, so there is
+    # no third-party IP throttle to tolerate. The probe that used to guard these
+    # steps skipped them on anything other than a clean 200 while the job still
+    # reported success - so a required check could pass having run no
+    # integration test at all.
+    - name: Set up managed-download options for C-Gate ${{ matrix.cgate.version }}
+      env:
+        CGATE_URL: ${{ matrix.cgate.url }}
+        CGATE_SHA256: ${{ matrix.cgate.sha256 }}
+      run: |
+        node -e "const fs=require('fs');const o=require('./test-env/options-managed-download.json');o.cgate_download_url=process.env.CGATE_URL;o.cgate_download_sha256=process.env.CGATE_SHA256||'';fs.writeFileSync('test-env/active-options.json',JSON.stringify(o,null,2));"
+
+    - name: Run integration test (download C-Gate ${{ matrix.cgate.version }})
+      run: node test-env/integration-test.js
+      timeout-minutes: 15
+
+  # Exercises a C-Gate version that is NOT openly downloadable (3.3.3, 3.7.x) by
+  # fetching a self-hosted zip and installing it via upload mode. Activates only
+  # when the CGATE_UPLOAD_TEST_URL repository variable points at a hosted zip
+  # (e.g. a release asset on this repo); otherwise the job is skipped, which the
+  # aggregator below treats as a pass.
+  integration-upload:
+    name: Integration upload (hosted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: test
+    if: ${{ inputs.run-expensive && vars.CGATE_UPLOAD_TEST_URL != '' }}
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Use Node.js 20.x
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: 20.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install podman-compose
+      run: pip3 install podman-compose
+
+    - name: Fetch hosted C-Gate zip into the upload share volume
+      env:
+        CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
+      run: |
+        mkdir -p test-env/volumes/share/cgate
+        curl -fSL --retry 3 --retry-all-errors --retry-delay 10 \
+          --max-time 600 --connect-timeout 30 \
+          -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
+
+    - name: Set up managed-upload test options
+      run: cp test-env/options-managed-upload.json test-env/active-options.json
+
+    - name: Run integration test (upload mode - hosted C-Gate)
+      run: node test-env/integration-test.js
+      timeout-minutes: 15
+
+  # Required status check. Keeping this single, stable job name means branch
+  # protection needs no change when we add or remove matrix versions.
+  #
+  # It must distinguish three states, which is why it does not simply require
+  # 'success' from its upstreams:
+  #   - a leg failed                          -> fail
+  #   - a leg was skipped because there is no  -> pass (integration-upload has
+  #     hosted artifact configured                 no CGATE_UPLOAD_TEST_URL)
+  #   - every leg was skipped because the      -> pass, and say so plainly so a
+  #     change could not affect them               green tick is not mistaken
+  #                                                for "the suite ran"
+  integration:
+    timeout-minutes: 5
+    name: Integration test (C-Gate)
+    runs-on: ubuntu-latest
+    needs: [integration-download, integration-upload]
+    if: always()
+
+    steps:
+    - name: Verify all C-Gate version integration tests passed
+      env:
+        DOWNLOAD_RESULT: ${{ needs.integration-download.result }}
+        UPLOAD_RESULT: ${{ needs.integration-upload.result }}
+        RUN_EXPENSIVE: ${{ inputs.run-expensive }}
+        REASON: ${{ inputs.expensive-skip-reason }}
+      run: |
+        echo "download-mode legs: $DOWNLOAD_RESULT"
+        echo "upload-mode leg:    $UPLOAD_RESULT (skipped is OK when no hosted artifact is configured)"
+
+        if [[ "$RUN_EXPENSIVE" != "true" ]]; then
+          # Nothing was meant to run. Fail loudly if something ran anyway and
+          # failed, rather than rubber-stamping the result.
+          if [[ "$DOWNLOAD_RESULT" == "failure" || "$UPLOAD_RESULT" == "failure" ]]; then
+            echo "::error::An integration leg failed even though the suite was meant to be skipped."
+            exit 1
+          fi
+          echo "::notice::Integration tests skipped: ${REASON}."
+          {
+            echo "### C-Gate integration tests skipped"
+            echo ""
+            echo "${REASON}, so the bridge and the installer cannot have changed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        if [[ "$DOWNLOAD_RESULT" != "success" ]]; then
+          echo "::error::One or more download-mode C-Gate integration tests failed."
+          exit 1
+        fi
+        if [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
+          echo "::error::The upload-mode C-Gate integration test failed."
+          exit 1
+        fi
+        echo "All required C-Gate integration tests passed."
