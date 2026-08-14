@@ -54,6 +54,7 @@ const {
 } = require('./airconControlRegistry');
 const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
 const { buildMeasurementDataCommand } = require('./measurementCommand');
+const RateLimiter = require('./web/rateLimiter');
 const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
 // Upper bound on PIN length before we start typing at the panel. Alarm PINs are
@@ -129,10 +130,39 @@ class MqttCommandRouter extends EventEmitter {
         this._coverRampTracker = options.coverRampTracker
             || new CoverRampTracker(this.settings.coverRampUpdateIntervalMs || 500);
 
+        // Brute-force limit on disarm, keyed by network/application. Built
+        // lazily on first disarm so the settings object can be mutated after
+        // construction (which the tests and the add-on config reload both do).
+        this._disarmLimiter = null;
+
         this.logger = createLogger({
             component: 'MqttCommandRouter',
             level: 'info'
         });
+    }
+
+    /**
+     * Sliding-window limiter for disarm attempts. Shares the web API's
+     * implementation rather than repeating the window logic - see
+     * RateLimiter for why the eviction order there is worth having once.
+     *
+     * The tracked-key cap matters here too: an attacker can address any
+     * network/application pair, so without it the map would grow with each one
+     * tried. The pairs are already bounded by CBusEvent's range check on the
+     * read side and by the topic regex here, but the cap makes it explicit.
+     *
+     * @returns {RateLimiter}
+     * @private
+     */
+    _getDisarmLimiter() {
+        const maxRequests = this.settings.securityDisarmMaxAttempts ?? 10;
+        const windowMs = this.settings.securityDisarmAttemptWindowMs ?? 600000;
+        if (!this._disarmLimiter
+            || this._disarmLimiter.maxRequests !== maxRequests
+            || this._disarmLimiter.windowMs !== windowMs) {
+            this._disarmLimiter = new RateLimiter({ windowMs, maxRequests, maxTrackedSources: 256 });
+        }
+        return this._disarmLimiter;
     }
 
     /**
@@ -457,6 +487,18 @@ class MqttCommandRouter extends EventEmitter {
         }
         if (code.length > SECURITY_MAX_PIN_DIGITS) {
             this.logger.warn(`Security disarm on ${topic} rejected: PIN longer than ${SECURITY_MAX_PIN_DIGITS} digits`);
+            return;
+        }
+        // Counted last, so a malformed payload cannot burn a real user's
+        // allowance - only a well-formed guess costs an attempt.
+        //
+        // Every attempt counts, right PIN or wrong: cgateweb cannot tell them
+        // apart, since only the panel judges the code and it answers with a
+        // broadcast rather than a reply. Guessing that from the state machine
+        // would mean the limiter could be reset by anything that looked like a
+        // disarm, which is the wrong way for that to fail.
+        if (this._getDisarmLimiter().isLimitedByKey(`${network}/${application}`)) {
+            this.logger.warn(`Security disarm on ${topic} rejected: too many disarm attempts for ${network}/${application}; refusing further PIN entry for now. If this was not you, someone is guessing your alarm code over MQTT.`);
             return;
         }
 

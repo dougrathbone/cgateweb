@@ -127,6 +127,21 @@ const defaultSettings = {
     // who wants bypass should not have to enable PIN-over-MQTT disarm, which is
     // the more dangerous of the two, just to get it.
     cbus_security_bypass_enabled: false,
+    // Brute-force limit on disarm attempts, per network/application, in a
+    // sliding window. cgateweb cannot tell a right PIN from a wrong one - only
+    // the panel knows - so every attempt counts, successful or not.
+    //
+    // Without this, anything able to publish to the panel command topic can
+    // walk the whole PIN space: the bridge would happily type thousands of
+    // codes per minute at the panel through Emulate Keypad. 10 per 10 minutes
+    // is far more than a household generates (a wrong entry or two, then the
+    // right one) and turns a 4-digit exhaustive search into roughly a week of
+    // continuous attempts, on a topic anyone watching would notice.
+    //
+    // Runtime tunables rather than add-on options on purpose: this is a safety
+    // floor, and a UI field inviting people to raise it defeats the point.
+    securityDisarmMaxAttempts: 10,
+    securityDisarmAttemptWindowMs: 600000,
 
     // C-Bus Measurement app ID (default 228/$E4); null disables. Gates BOTH
     // directions: decoding "measurement data ..." event lines to

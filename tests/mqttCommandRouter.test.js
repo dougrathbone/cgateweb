@@ -238,6 +238,96 @@ describe('MqttCommandRouter', () => {
             return mockQueue.add.mock.calls.map(c => c[0]);
         }
 
+        // cgateweb cannot tell a right PIN from a wrong one - only the panel
+        // can - so without a limit anything able to publish to this topic could
+        // walk the whole PIN space through Emulate Keypad at whatever rate the
+        // command queue allows.
+        describe('brute-force limiting', () => {
+            const disarm = (code = PIN) => router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code }));
+
+            beforeEach(() => {
+                router.settings.securityDisarmMaxAttempts = 3;
+                router.settings.securityDisarmAttemptWindowMs = 600000;
+            });
+
+            it('lets attempts through up to the limit', () => {
+                for (let i = 0; i < 3; i += 1) {
+                    mockQueue.add.mockClear();
+                    disarm();
+                    expect(sentCommands()).toHaveLength(PIN.length + 1);
+                }
+            });
+
+            it('refuses further attempts once the limit is reached', () => {
+                for (let i = 0; i < 3; i += 1) disarm();
+                mockQueue.add.mockClear();
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+                disarm();
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('too many disarm attempts'));
+                warnSpy.mockRestore();
+            });
+
+            it('counts a correct PIN too', () => {
+                // There is no "successful disarm" signal to reset on: the panel
+                // answers with a broadcast, not a reply. Inferring success from
+                // the state machine would let anything that looked like a
+                // disarm clear the counter, which fails in the wrong direction.
+                for (let i = 0; i < 3; i += 1) disarm('9999');
+                mockQueue.add.mockClear();
+                disarm(PIN);
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+
+            it('limits per network/application, not globally', () => {
+                for (let i = 0; i < 3; i += 1) disarm();
+                mockQueue.add.mockClear();
+                router.settings.cbus_security_app_id = '208';
+                router.routeMessage('cbus/write/253/208/panel/arm', JSON.stringify({ action: 'DISARM', code: PIN }));
+                expect(sentCommands()).toHaveLength(PIN.length + 1);
+            });
+
+            it('lets attempts through again once the window passes', () => {
+                const realNow = Date.now;
+                let t = 1_000_000;
+                Date.now = () => t;
+                try {
+                    for (let i = 0; i < 3; i += 1) disarm();
+                    mockQueue.add.mockClear();
+                    disarm();
+                    expect(mockQueue.add).not.toHaveBeenCalled();
+
+                    t += 600001;
+                    mockQueue.add.mockClear();
+                    disarm();
+                    expect(sentCommands()).toHaveLength(PIN.length + 1);
+                } finally {
+                    Date.now = realNow;
+                }
+            });
+
+            it('does not spend an attempt on a payload that never reaches the panel', () => {
+                // A malformed or over-long code is rejected before the counter,
+                // so a broken automation cannot lock out the household.
+                for (let i = 0; i < 10; i += 1) {
+                    router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: 'abcd' }));
+                    router.routeMessage(TOPIC, JSON.stringify({ action: 'DISARM', code: '' }));
+                }
+                mockQueue.add.mockClear();
+                disarm();
+                expect(sentCommands()).toHaveLength(PIN.length + 1);
+            });
+
+            it('defaults to a limit even with nothing configured', () => {
+                delete router.settings.securityDisarmMaxAttempts;
+                delete router.settings.securityDisarmAttemptWindowMs;
+                for (let i = 0; i < 10; i += 1) disarm();
+                mockQueue.add.mockClear();
+                disarm();
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+        });
+
         // Verified against real hardware on #51: keys go as C-Gate's $xx hex,
         // and the code is not submitted until the # key follows it. 1.24.0 sent
         // bare decimals and no terminator, and the panel simply ignored it.

@@ -2,8 +2,13 @@
 
 
 /**
- * Sliding-window rate limiter for mutating API requests, keyed by client
- * socket address.
+ * Sliding-window rate limiter, keyed by an arbitrary string.
+ *
+ * Two callers: the web API keys on the client socket address (isLimited), and
+ * the security panel keys on network/application to bound PIN-guessing against
+ * the alarm (isLimitedByKey). Sharing one implementation is deliberate - the
+ * eviction order here is subtle enough that a second copy would eventually get
+ * it wrong, and the first attempt at this one already did.
  */
 
 // Upper bound on how many distinct client addresses are tracked at once.
@@ -38,7 +43,17 @@ class RateLimiter {
      * @returns {boolean}
      */
     isLimited(req) {
-        const source = String(req.socket?.remoteAddress || 'unknown');
+        return this.isLimitedByKey(String(req.socket?.remoteAddress || 'unknown'));
+    }
+
+    /**
+     * Record an event against an arbitrary key and report whether that key is
+     * over the limit. `isLimited` is the HTTP-shaped wrapper around this.
+     *
+     * @param {string} source - Anything stable that identifies the actor.
+     * @returns {boolean}
+     */
+    isLimitedByKey(source) {
         const now = Date.now();
         const windowStart = now - this.windowMs;
 
