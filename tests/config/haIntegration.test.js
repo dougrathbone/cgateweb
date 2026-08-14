@@ -87,45 +87,6 @@ describe('HAIntegration', () => {
         });
     });
 
-    describe('getHAApiConfig', () => {
-        test('should return API config in HA addon environment', () => {
-            // Mock HA addon detection
-            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
-            
-            process.env.SUPERVISOR_TOKEN = 'test-token';
-            process.env.SUPERVISOR_HOST = 'supervisor:80';
-            process.env.INGRESS_URL = '/api/hassio_ingress/test';
-            process.env.INGRESS_ENTRY = '/cgateweb';
-
-            const config = haIntegration.getHAApiConfig();
-
-            expect(config).toEqual({
-                token: 'test-token',
-                baseUrl: 'http://supervisor:80',
-                ingressUrl: '/api/hassio_ingress/test',
-                ingressEntry: '/cgateweb'
-            });
-        });
-
-        test('should return null in standalone environment', () => {
-            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(false);
-
-            const config = haIntegration.getHAApiConfig();
-
-            expect(config).toBeNull();
-        });
-
-        test('should use default supervisor host if not specified', () => {
-            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
-            process.env.SUPERVISOR_TOKEN = 'test-token';
-            delete process.env.SUPERVISOR_HOST;
-
-            const config = haIntegration.getHAApiConfig();
-
-            expect(config.baseUrl).toBe('http://supervisor');
-        });
-    });
-
     describe('setupIngress', () => {
         test('should configure ingress when environment variables are present', () => {
             haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
@@ -174,39 +135,6 @@ describe('HAIntegration', () => {
         });
     });
 
-    describe('getAddonHealth', () => {
-        test('should return health status in HA addon environment', () => {
-            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
-            
-            // Mock process.uptime()
-            const originalUptime = process.uptime;
-            process.uptime = jest.fn().mockReturnValue(123.45);
-
-            const health = haIntegration.getAddonHealth();
-
-            expect(health).toEqual(
-                expect.objectContaining({
-                    status: 'healthy',
-                    version: expect.any(String),
-                    environment: 'homeassistant-addon',
-                    uptime: 123.45,
-                    timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
-                })
-            );
-
-            // Restore
-            process.uptime = originalUptime;
-        });
-
-        test('should return null in standalone environment', () => {
-            haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(false);
-
-            const health = haIntegration.getAddonHealth();
-
-            expect(health).toBeNull();
-        });
-    });
-
     describe('initialize', () => {
         test('should apply all optimizations in HA addon environment', () => {
             haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
@@ -216,17 +144,13 @@ describe('HAIntegration', () => {
                 ingressEntry: '/cgateweb',
                 basePath: '/cgateweb'
             });
-            haIntegration.getHAApiConfig = jest.fn().mockReturnValue({ token: 'test' });
-            haIntegration.getAddonHealth = jest.fn().mockReturnValue({ status: 'healthy' });
 
             const result = haIntegration.initialize();
 
             expect(result.isAddon).toBe(true);
             expect(result.optimizationsApplied).toContain('logging');
             expect(result.optimizationsApplied).toContain('ingress');
-            expect(result.apiConfig).toEqual({ token: 'test' });
             expect(result.ingressConfig).toBeDefined();
-            expect(result.health).toEqual({ status: 'healthy' });
 
             expect(haIntegration.optimizeLogging).toHaveBeenCalled();
             expect(haIntegration.setupIngress).toHaveBeenCalled();
@@ -249,8 +173,6 @@ describe('HAIntegration', () => {
             haIntegration.isHomeAssistantAddon = jest.fn().mockReturnValue(true);
             haIntegration.optimizeLogging = jest.fn();
             haIntegration.setupIngress = jest.fn().mockReturnValue(null); // No ingress
-            haIntegration.getHAApiConfig = jest.fn().mockReturnValue({ token: 'test' });
-            haIntegration.getAddonHealth = jest.fn().mockReturnValue({ status: 'healthy' });
 
             const result = haIntegration.initialize();
 

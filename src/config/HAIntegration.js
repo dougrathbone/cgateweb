@@ -36,22 +36,6 @@ class HAIntegration {
     }
 
     /**
-     * Get Home Assistant API configuration
-     */
-    getHAApiConfig() {
-        if (!this.isHomeAssistantAddon()) {
-            return null;
-        }
-
-        return {
-            token: process.env.SUPERVISOR_TOKEN,
-            baseUrl: process.env.SUPERVISOR_HOST ? `http://${process.env.SUPERVISOR_HOST}` : 'http://supervisor',
-            ingressUrl: process.env.INGRESS_URL,
-            ingressEntry: process.env.INGRESS_ENTRY
-        };
-    }
-
-    /**
      * Optimize logging for Home Assistant addon environment
      */
     optimizeLogging() {
@@ -59,41 +43,17 @@ class HAIntegration {
             return;
         }
 
-        // In HA addon environment, we want:
-        // 1. No timestamp prefixes (HA handles timestamping)
-        // 2. Simplified format for better integration with HA logs
-        // 3. Proper log level mapping to HA's logging system
-
-        const originalConsoleLog = console.log;
-        const originalConsoleWarn = console.warn;
-        const originalConsoleError = console.error;
-        const originalConsoleDebug = console.debug;
-
-        // Override console methods to provide cleaner HA addon logging
-        console.log = (...args) => {
-            const message = args.join(' ');
-            // Remove timestamp if present (HA adds its own)
-            const cleanMessage = message.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+/, '');
-            originalConsoleLog(cleanMessage);
-        };
-
-        console.warn = (...args) => {
-            const message = args.join(' ');
-            const cleanMessage = message.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+/, '');
-            originalConsoleWarn(cleanMessage);
-        };
-
-        console.error = (...args) => {
-            const message = args.join(' ');
-            const cleanMessage = message.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+/, '');
-            originalConsoleError(cleanMessage);
-        };
-
-        console.debug = (...args) => {
-            const message = args.join(' ');
-            const cleanMessage = message.replace(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+/, '');
-            originalConsoleDebug(cleanMessage);
-        };
+        // Home Assistant timestamps every line itself, so a timestamp we
+        // print is a duplicate one the user has to read past. Strip a leading
+        // ISO timestamp from anything that goes to the console.
+        //
+        // Four identical wrappers, one per level, is what this was; the only
+        // thing that varied was which original function to call.
+        const ISO_TIMESTAMP_PREFIX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\s+/;
+        for (const level of ['log', 'warn', 'error', 'debug']) {
+            const original = console[level];
+            console[level] = (...args) => original(args.join(' ').replace(ISO_TIMESTAMP_PREFIX, ''));
+        }
 
         this.logger.info('Optimized logging for Home Assistant addon environment');
     }
@@ -125,24 +85,6 @@ class HAIntegration {
     }
 
     /**
-     * Get addon health status for Home Assistant monitoring
-     */
-    getAddonHealth() {
-        if (!this.isHomeAssistantAddon()) {
-            return null;
-        }
-
-        // Return basic health information that HA can monitor
-        return {
-            status: 'healthy',
-            timestamp: new Date().toISOString(),
-            version: require('../../package.json').version,
-            environment: 'homeassistant-addon',
-            uptime: process.uptime()
-        };
-    }
-
-    /**
      * Initialize all HA-specific optimizations
      */
     initialize() {
@@ -171,9 +113,7 @@ class HAIntegration {
         return {
             isAddon: true,
             optimizationsApplied: optimizations,
-            apiConfig: this.getHAApiConfig(),
-            ingressConfig,
-            health: this.getAddonHealth()
+            ingressConfig
         };
     }
 }

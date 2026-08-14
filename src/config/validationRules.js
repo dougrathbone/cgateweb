@@ -17,7 +17,6 @@ const MIN_TCP_PORT = 1;
 const MAX_TCP_PORT = 65535;
 
 // Accepts "host:port" or "mqtt://host:port".
-const MQTT_ADDRESS_PATTERN = /^(mqtt:\/\/)?[\w.-]+:\d+$/;
 
 // C-Gate project / username: alphanumeric + underscore only (matches EVENT_REGEX \w+).
 const CGATE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_]{1,32}$/;
@@ -36,18 +35,6 @@ function isPortInRange(port) {
         return true;
     }
     return port >= MIN_TCP_PORT && port <= MAX_TCP_PORT;
-}
-
-/**
- * True when a string looks like a valid MQTT broker address.
- * @param {*} address
- * @returns {boolean}
- */
-function isValidMqttAddress(address) {
-    if (typeof address !== 'string') {
-        return false;
-    }
-    return MQTT_ADDRESS_PATTERN.test(address);
 }
 
 /**
@@ -79,7 +66,6 @@ function isValidCgatePassword(pass) {
 
 module.exports = {
     isPortInRange,
-    isValidMqttAddress,
     isValidCgateProjectName,
     isValidCgateUsername,
     isValidCgatePassword
