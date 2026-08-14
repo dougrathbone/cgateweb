@@ -462,6 +462,45 @@ class _HaDiscoveryPublishers {
     }
 
     /**
+     * Shared skeleton for the event-driven `ensure*Discovery` entry points:
+     * bail if discovery is off or this key was already handled, honour
+     * `exclude` by retracting what an earlier run published, record the key
+     * either way, otherwise publish.
+     *
+     * The ordering is load-bearing. In particular the excluded branch must
+     * still record the key - otherwise every later event for an excluded
+     * entity re-runs the check and re-publishes an empty retraction.
+     *
+     * Callers keep their own argument validation: the arity and which
+     * arguments may legitimately be absent differ between them.
+     *
+     * @param {Object} spec
+     * @param {string} spec.key - Identity in the `seen` set.
+     * @param {Set<string>} spec.seen - Per-kind idempotence set.
+     * @param {string[]} [spec.excludeKeys] - Address forms an exclusion may use (default: [key]).
+     * @param {string} spec.describe - Subject of the "Excluding ..." debug line.
+     * @param {() => void} spec.retract - Clear earlier publishes; called only when excluded.
+     * @param {() => void} spec.create - Publish; called only when not excluded.
+     * @returns {boolean} true if something was published this call.
+     * @private
+     */
+    _ensureEventDrivenEntity({ key, seen, excludeKeys, describe, retract, create }) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (seen.has(key)) return false;
+
+        if ((excludeKeys || [key]).some(candidate => this.exclude.has(candidate))) {
+            this.logger.debug(`Excluding ${describe} from discovery`);
+            retract();
+            seen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        create();
+        seen.add(key);
+        return true;
+    }
+
+    /**
      * Publish a Home Assistant binary_sensor (device_class=connectivity) for a
      * C-Bus network's CNI/PCI link, once per network. ON = the interface is
      * connected, OFF = the CNI/PCI link to the C-Bus network is down. Fed by the
@@ -520,20 +559,15 @@ class _HaDiscoveryPublishers {
         if (network === null || network === undefined || appId === null || appId === undefined || group === null || group === undefined) return false;
 
         const key = `${network}/${appId}/${group}`;
-        if (this._temperatureSeen.has(key)) return false;
-
-        if (this.exclude.has(key)) {
-            this.logger.debug(`Excluding temperature group ${key} from discovery`);
-            const excludedUniqueId = `cgateweb_${network}_${appId}_${group}`;
-            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._retractEventDrivenConfig(excludedTopic);
-            this._temperatureSeen.add(key); // don't re-check on every event
-            return false;
-        }
-
-        this._createTemperatureDiscovery(String(network), String(appId), String(group));
-        this._temperatureSeen.add(key);
-        return true;
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._temperatureSeen,
+            describe: `temperature group ${key}`,
+            retract: () => this._retractEventDrivenConfig(
+                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_${group}/${HA_DISCOVERY_SUFFIX}`
+            ),
+            create: () => this._createTemperatureDiscovery(String(network), String(appId), String(group))
+        });
     }
 
     /**
@@ -630,20 +664,15 @@ class _HaDiscoveryPublishers {
             || device === null || device === undefined || channel === null || channel === undefined) return false;
 
         const key = `${network}/${appId}/${device}/${channel}`;
-        if (this._measurementSeen.has(key)) return false;
-
-        if (this.exclude.has(key)) {
-            this.logger.debug(`Excluding measurement channel ${key} from discovery`);
-            const excludedUniqueId = `cgateweb_${network}_${appId}_${device}_${channel}`;
-            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._retractEventDrivenConfig(excludedTopic);
-            this._measurementSeen.add(key); // don't re-check on every event
-            return false;
-        }
-
-        this._createMeasurementDiscovery(String(network), String(appId), String(device), String(channel), reading);
-        this._measurementSeen.add(key);
-        return true;
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._measurementSeen,
+            describe: `measurement channel ${key}`,
+            retract: () => this._retractEventDrivenConfig(
+                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_${device}_${channel}/${HA_DISCOVERY_SUFFIX}`
+            ),
+            create: () => this._createMeasurementDiscovery(String(network), String(appId), String(device), String(channel), reading)
+        });
     }
 
     /**
@@ -707,23 +736,18 @@ class _HaDiscoveryPublishers {
         if (network === null || network === undefined || appId === null || appId === undefined || zone === null || zone === undefined) return false;
 
         const key = `${network}/${appId}/${zone}`;
-        if (this._securityZoneSeen.has(key)) return false;
-
-        // Zone labels live under application 1 in the Toolkit project, so an
-        // exclusion can be recorded against either key shape.
-        const labelKey = securityZoneLabelKey(network, zone);
-        if (this.exclude.has(key) || this.exclude.has(labelKey)) {
-            this.logger.debug(`Excluding security zone ${key} from discovery`);
-            const excludedUniqueId = `cgateweb_${network}_${appId}_${zone}`;
-            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._retractEventDrivenConfig(excludedTopic);
-            this._securityZoneSeen.add(key); // don't re-check on every event
-            return false;
-        }
-
-        this._createSecurityZoneDiscovery(String(network), String(appId), String(zone));
-        this._securityZoneSeen.add(key);
-        return true;
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._securityZoneSeen,
+            // Zone labels live under application 1 in the Toolkit project, so
+            // an exclusion can be recorded against either key shape.
+            excludeKeys: [key, securityZoneLabelKey(network, zone)],
+            describe: `security zone ${key}`,
+            retract: () => this._retractEventDrivenConfig(
+                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/cgateweb_${network}_${appId}_${zone}/${HA_DISCOVERY_SUFFIX}`
+            ),
+            create: () => this._createSecurityZoneDiscovery(String(network), String(appId), String(zone))
+        });
     }
 
     /**
@@ -793,23 +817,20 @@ class _HaDiscoveryPublishers {
         if (network === null || network === undefined || appId === null || appId === undefined) return false;
 
         const key = `${network}/${appId}/panel`;
-        if (this._securityPanelSeen.has(key)) return false;
-
-        if (this.exclude.has(key)) {
-            this.logger.debug(`Excluding security panel ${network}/${appId} from discovery`);
-            for (const condition of PANEL_CONDITIONS) {
-                this._retractEventDrivenConfig(
-                    this._securityPanelTopic(this._securityPanelUniqueId(String(network), String(appId), condition.id))
-                );
-            }
-            this._retractEventDrivenConfig(this._securityAlarmTopic(String(network), String(appId)));
-            this._securityPanelSeen.add(key); // don't re-check on every event
-            return false;
-        }
-
-        this._createSecurityPanelDiscovery(String(network), String(appId));
-        this._securityPanelSeen.add(key);
-        return true;
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._securityPanelSeen,
+            describe: `security panel ${network}/${appId}`,
+            retract: () => {
+                for (const condition of PANEL_CONDITIONS) {
+                    this._retractEventDrivenConfig(
+                        this._securityPanelTopic(this._securityPanelUniqueId(String(network), String(appId), condition.id))
+                    );
+                }
+                this._retractEventDrivenConfig(this._securityAlarmTopic(String(network), String(appId)));
+            },
+            create: () => this._createSecurityPanelDiscovery(String(network), String(appId))
+        });
     }
 
     /**
@@ -1074,23 +1095,20 @@ class _HaDiscoveryPublishers {
         if (appId === null || appId === undefined || sourceUnit === null || sourceUnit === undefined) return false;
 
         const key = `${network}/${appId}/${sourceUnit}`;
-        if (this._nativeAirconSeen.has(key)) return false;
-
-        if (this.exclude.has(key)) {
-            this.logger.debug(`Excluding native HVAC unit ${key} from discovery`);
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._nativeAirconSeen,
+            describe: `native HVAC unit ${key}`,
             // Clear any entities published on an earlier run (climate + problem
             // sensors) so they disappear from HA once the user excludes it (e.g.
             // a PAC/controller mirroring the real thermostats).
-            for (const topic of this._nativeAirconDiscoveryTopics(network, appId, sourceUnit)) {
-                this._retractEventDrivenConfig(topic);
-            }
-            this._nativeAirconSeen.add(key); // don't re-check on every event
-            return false;
-        }
-
-        this._createNativeAirconDiscovery(String(network), String(appId), String(sourceUnit));
-        this._nativeAirconSeen.add(key);
-        return true;
+            retract: () => {
+                for (const topic of this._nativeAirconDiscoveryTopics(network, appId, sourceUnit)) {
+                    this._retractEventDrivenConfig(topic);
+                }
+            },
+            create: () => this._createNativeAirconDiscovery(String(network), String(appId), String(sourceUnit))
+        });
     }
 
     /**
