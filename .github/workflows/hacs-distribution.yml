@@ -131,6 +131,20 @@ jobs:
           printf '%s\n' 'maintainer: Doug Rathbone <doug@dougrathbone.com>'
         } > distribution/repository.yaml
 
+    # The validate step below runs tools/ scripts that require the `yaml`
+    # devDependency. This job otherwise never installs anything - it only
+    # copies files - so without this it fails on "Cannot find module 'yaml'".
+    # That is exactly how v1.25.0's first publish attempt died: the validation
+    # is tag-only, so it had never actually executed until a real release.
+    - name: Set up Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: 22.x
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
     # Validate what we are about to publish, not just what we started from.
     # The source tree was already validated by the quality gate, but the
     # rendered copy has since been assembled and had its version rewritten -
