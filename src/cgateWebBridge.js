@@ -643,7 +643,19 @@ class CgateWebBridge {
 
     _handleEventData(data) {
         this.eventLineProcessor.processData(data, (line) => {
-            this._processEventLine(line);
+            // Mirrors the try/catch on the command path. Without it a throw
+            // from any decoder reaches process.on('uncaughtException') in
+            // index.js, which stops the bridge and exits - LineProcessor
+            // deliberately re-throws with context, and CgateConnection emits
+            // 'data' synchronously, so nothing in between catches it. That put
+            // the two most complex and most externally-exposed parsers
+            // (aircon and security) on the one data path with no safety net,
+            // and C-Gate is unauthenticated on the LAN.
+            try {
+                this._processEventLine(line);
+            } catch (e) {
+                this.error(`Error processing event data line: ${e.message}`, { line: redactCgateLine(line) });
+            }
         });
     }
 
