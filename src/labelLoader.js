@@ -7,6 +7,19 @@ const { createLogger } = require('./logger');
 const LABEL_FILE_VERSION = 1;
 const DEBOUNCE_MS = 500;
 
+/**
+ * Hydrate one of the label file's optional "address -> value" sections into a
+ * Map, treating anything that is not an object (absent, null, a string) as
+ * empty. Every section but `labels` is optional, and `labels` is already
+ * checked by _validate.
+ *
+ * @param {*} value
+ * @returns {Map<string, any>}
+ */
+function sectionToMap(value) {
+    return new Map(value && typeof value === 'object' ? Object.entries(value) : []);
+}
+
 class LabelLoader extends EventEmitter {
     /**
      * @param {string|null} filePath - Path to the JSON label file (null = disabled)
@@ -62,38 +75,11 @@ class LabelLoader extends EventEmitter {
             const data = JSON.parse(raw);
             this._validate(data);
 
-            this._labels = new Map();
-            for (const [key, value] of Object.entries(data.labels)) {
-                this._labels.set(key, value);
-            }
-
-            this._typeOverrides = new Map();
-            if (data.type_overrides && typeof data.type_overrides === 'object') {
-                for (const [key, value] of Object.entries(data.type_overrides)) {
-                    this._typeOverrides.set(key, value);
-                }
-            }
-
-            this._entityIds = new Map();
-            if (data.entity_ids && typeof data.entity_ids === 'object') {
-                for (const [key, value] of Object.entries(data.entity_ids)) {
-                    this._entityIds.set(key, value);
-                }
-            }
-
-            this._exclude = new Set();
-            if (Array.isArray(data.exclude)) {
-                for (const addr of data.exclude) {
-                    this._exclude.add(addr);
-                }
-            }
-
-            this._areas = new Map();
-            if (data.areas && typeof data.areas === 'object') {
-                for (const [key, value] of Object.entries(data.areas)) {
-                    this._areas.set(key, value);
-                }
-            }
+            this._labels = sectionToMap(data.labels);
+            this._typeOverrides = sectionToMap(data.type_overrides);
+            this._entityIds = sectionToMap(data.entity_ids);
+            this._areas = sectionToMap(data.areas);
+            this._exclude = new Set(Array.isArray(data.exclude) ? data.exclude : []);
 
             const extras = [];
             if (this._typeOverrides.size > 0) extras.push(`${this._typeOverrides.size} type overrides`);
@@ -160,10 +146,7 @@ class LabelLoader extends EventEmitter {
         fs.writeFileSync(this.filePath, JSON.stringify(fileData, null, 2) + '\n', 'utf8');
         this._lastSaveTime = Date.now();
 
-        this._labels = new Map();
-        for (const [key, value] of Object.entries(fileData.labels)) {
-            this._labels.set(key, value);
-        }
+        this._labels = sectionToMap(fileData.labels);
 
         if (fileData.type_overrides) {
             this._typeOverrides = new Map(Object.entries(fileData.type_overrides));
@@ -297,11 +280,7 @@ class LabelLoader extends EventEmitter {
      * @returns {Object} Current labels as a plain object (for JSON serialization)
      */
     getLabelsObject() {
-        const obj = {};
-        for (const [key, value] of this._labels) {
-            obj[key] = value;
-        }
-        return obj;
+        return Object.fromEntries(this._labels);
     }
 
     /**
