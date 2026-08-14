@@ -248,6 +248,10 @@ configuration:
     name: Frakobling av alarm
     description: >-
       Tillat også Home Assistant å koble fra alarmen. Krever Alarmstyring. Av som standard. C-Bus har ingen frakoblingskommando, så PIN-koden tastes inn på sentralen via tastaturemulering: Home Assistant viser sitt eget tastatur og sender det du taster over MQTT. PIN-koden lagres ingen steder, men den går gjennom MQTT-brokeren din ved hver frakobling, så aktiver dette kun på en broker du stoler på, helst med TLS.
+  cbus_security_bypass_enabled:
+    name: Tvungen tilkobling med åpne soner
+    description: >-
+      Tillat Home Assistant å tvinge tilkobling når en sone er åpen, med sentralens #-tast. Krever Alarmstyring. Av som standard. Bevisst skilt fra tilkobling: et alarmsystem tilkoblet forbi en åpen dør ser tilkoblet ut, men dekker ikke den døren, så det bør være et bevisst valg. Skjer aldri automatisk.
 
   cbus_measurement_app_id:
     name: Måleapplikasjons-ID

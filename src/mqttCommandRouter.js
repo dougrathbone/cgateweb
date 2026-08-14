@@ -309,7 +309,7 @@ class MqttCommandRouter extends EventEmitter {
             // so it routes to the same place as the bypass button rather than
             // being a second implementation. Reported on #62 by the user who
             // was already driving it this way from his own project.
-            this._sendBypassKeypress(network, application);
+            this._sendBypassKeypress(network, application, topic);
             return;
         }
 
@@ -331,7 +331,7 @@ class MqttCommandRouter extends EventEmitter {
      * Sends the '#' keypress through `security emulate_keypad`, which is what
      * the physical keypad uses to bypass open zones when arming stalls at
      * arm_not_ready (#42). Gated on cbus_security_control_enabled like every
-     * other panel write.
+     * other panel write, and additionally on cbus_security_bypass_enabled.
      *
      * @param {string} network
      * @param {string} application
@@ -349,7 +349,7 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
-        this._sendBypassKeypress(network, application);
+        this._sendBypassKeypress(network, application, topic);
     }
 
     /**
@@ -359,19 +359,35 @@ class MqttCommandRouter extends EventEmitter {
      * on its own topic, and Home Assistant's `arm_custom_bypass` action on the
      * alarm panel itself (#62). Both end up here so the two cannot drift.
      *
-     * Callers are responsible for the control-enabled and application checks -
-     * both entry points already do them for their own error messages.
+     * The cbus_security_bypass_enabled check lives HERE rather than in the two
+     * callers, deliberately. Forcing an arm past an open zone is a different
+     * promise from arming - the alarm reports armed while that door is not
+     * actually covered - so it gets its own opt-in on top of control. Putting
+     * the check at the single point both routes funnel through means a future
+     * third caller cannot miss it, which is exactly how the first cut of this
+     * feature ended up ungated: the HA arm_custom_bypass action was added as a
+     * second entry point and inherited only the arm gate.
+     *
+     * Callers remain responsible for the control-enabled and application checks
+     * - both entry points already do them for their own error messages.
      *
      * @param {string} network
      * @param {string} application
+     * @param {string} topic - For log context only.
+     * @returns {boolean} false if bypass is disabled and nothing was sent.
      * @private
      */
-    _sendBypassKeypress(network, application) {
+    _sendBypassKeypress(network, application, topic) {
+        if (!this.settings.cbus_security_bypass_enabled) {
+            this.logger.warn(`Security zone bypass is disabled (set cbus_security_bypass_enabled to allow arming past open zones); ignoring command on ${topic}`);
+            return false;
+        }
         const cmd = buildSecurityEmulateKeypadCommand({
             cbusname: this.cbusname, network, application, key: SECURITY_KEYPAD_ACCEPT.charCodeAt(0)
         });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Security zone bypass keypress (#) sent: ${network}/${application}`);
+        return true;
     }
 
     /**

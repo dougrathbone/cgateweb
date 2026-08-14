@@ -253,6 +253,10 @@ configuration:
     name: Alarm uitschakelen
     description: >-
       Sta Home Assistant ook toe het alarmsysteem uit te schakelen. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. C-Bus heeft geen uitschakelcommando, dus de pincode wordt via toetsenbordemulatie op het paneel ingevoerd: Home Assistant toont een eigen toetsenblok en stuurt uw invoer via MQTT. De pincode wordt nergens opgeslagen, maar gaat bij elke uitschakeling via uw MQTT-broker. Schakel dit alleen in op een broker die u vertrouwt, bij voorkeur met TLS.
+  cbus_security_bypass_enabled:
+    name: Inschakelen forceren bij open zones
+    description: >-
+      Sta Home Assistant toe het inschakelen te forceren terwijl een zone open is, met de #-toets van het paneel. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. Bewust gescheiden van inschakelen: een alarm dat is ingeschakeld met een open deur lijkt ingeschakeld maar bewaakt die deur niet, dus dat hoort een bewuste keuze te zijn. Gebeurt nooit automatisch.
 
   cbus_measurement_app_id:
     name: Meettoepassing-ID

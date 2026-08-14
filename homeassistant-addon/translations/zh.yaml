@@ -226,6 +226,10 @@ configuration:
     name: 安防面板撤防
     description: >-
       同时允许 Home Assistant 撤防安防面板。需要先启用安防面板控制。默认关闭。C-Bus 没有撤防命令，因此通过键盘模拟在面板上输入 PIN 码：Home Assistant 显示自己的键盘并通过 MQTT 发送您输入的内容。PIN 码不会保存在任何地方，但每次撤防都会经过您的 MQTT 代理，因此请仅在您信任的代理上启用，最好配合 TLS。
+  cbus_security_bypass_enabled:
+    name: 忽略未闭合区域强制布防
+    description: >-
+      允许 Home Assistant 在区域未闭合时，使用面板的 # 键强制布防。需要先启用安防面板控制。默认关闭。这与布防特意分开：忽略未关闭的门强制布防后，警报看起来已布防，但并未防护该门，因此应当是有意识的选择。绝不会自动执行。
 
   cbus_measurement_app_id:
     name: 测量应用 ID

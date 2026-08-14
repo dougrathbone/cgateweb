@@ -256,6 +256,10 @@ configuration:
     name: Desarmado de la alarma
     description: >-
       Permitir también que Home Assistant desarme la central de alarma. Requiere Control de la alarma. Desactivado por defecto. C-Bus no tiene comando de desarmado, por lo que el PIN se teclea en la central mediante emulación de teclado: Home Assistant muestra su propio teclado y envía lo que escribe por MQTT. El PIN no se almacena en ningún sitio, pero atraviesa su broker MQTT en cada desarmado, así que actívelo solo en un broker de confianza, preferiblemente con TLS.
+  cbus_security_bypass_enabled:
+    name: Forzar armado con zonas abiertas
+    description: >-
+      Permitir que Home Assistant fuerce el armado con una zona abierta, usando la tecla # de la central. Requiere Control de la alarma. Desactivado por defecto. Está separado del armado a propósito: una alarma armada con una puerta abierta parece armada pero no cubre esa puerta, así que debe ser una decisión consciente. Nunca es automático.
 
   cbus_measurement_app_id:
     name: ID de aplicación de medición

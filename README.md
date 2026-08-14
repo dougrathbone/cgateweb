@@ -99,7 +99,7 @@ Opt in by pointing a setting at the application id your project uses:
 
 Application ids vary between installations — check your project in C-Bus Toolkit, or publish to `cbus/write/{net}///gettree` and read the JSON that comes back.
 
-Writes are **opt-in** for anything that controls real plant or security: air conditioning needs `cbus_aircon_control_enabled`, and arming the alarm needs `cbus_security_control_enabled` (with disarming behind `cbus_security_disarm_enabled` on top).
+Writes are **opt-in** for anything that controls real plant or security: air conditioning needs `cbus_aircon_control_enabled`, and arming the alarm needs `cbus_security_control_enabled` (with disarming behind `cbus_security_disarm_enabled`, and forcing an arm past an open zone behind `cbus_security_bypass_enabled`, on top).
 
 If a group gets the wrong entity type, override it per group in your labels file or through the built-in web UI. The full precedence rules, per-group overrides, and the opt-in unit-type classification are all in [DOCS.md](homeassistant-addon/DOCS.md#home-assistant-discovery).
 

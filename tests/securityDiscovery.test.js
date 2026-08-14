@@ -357,7 +357,9 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(payload.name).toBeNull(); // primary entity takes the device name
             expect(payload.state_topic).toBe('cbus/read/254/208/panel/state');
             expect(payload.json_attributes_topic).toBe('cbus/read/254/208/panel/attributes');
-            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation', 'arm_custom_bypass']);
+            // arm_custom_bypass is absent here on purpose: it maps to the '#'
+            // force-arm keypress, which needs cbus_security_bypass_enabled.
+            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation']);
             expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
             expect(payload.device.name).toBe('C-Bus Security Panel 254/208');
             expect('command_topic' in payload).toBe(false);
@@ -386,13 +388,14 @@ describe('HaDiscovery — app 208 security zones', () => {
                 return call && JSON.parse(call[1]);
             }
 
-            function panelWithControl(controlEnabled) {
+            function panelWith({ control = false, bypass = false } = {}) {
                 return new HaDiscovery(
                     {
                         ha_discovery_enabled: true,
                         ha_discovery_prefix: 'homeassistant',
                         cbus_security_app_id: '208',
-                        cbus_security_control_enabled: controlEnabled
+                        cbus_security_control_enabled: control,
+                        cbus_security_bypass_enabled: bypass
                     },
                     publishFn,
                     jest.fn()
@@ -404,13 +407,39 @@ describe('HaDiscovery — app 208 security zones', () => {
                 expect(bypassPayload()).toBeUndefined();
             });
 
-            it('publishes the bypass button on the panel device when control is enabled', () => {
-                panelWithControl(true).ensureSecurityPanelDiscovery('254', '208');
+            // Both entity and card action are withheld rather than published
+            // and then refused, so Home Assistant never shows a control that
+            // does nothing.
+            it('publishes no bypass button when control is on but bypass is not', () => {
+                panelWith({ control: true }).ensureSecurityPanelDiscovery('254', '208');
+                expect(bypassPayload()).toBeUndefined();
+            });
+
+            it('withholds arm_custom_bypass from the alarm card unless bypass is enabled', () => {
+                panelWith({ control: true }).ensureSecurityPanelDiscovery('254', '208');
+                expect(alarmPayload().supported_features).not.toContain('arm_custom_bypass');
+            });
+
+            it('publishes the bypass button on the panel device when both are enabled', () => {
+                panelWith({ control: true, bypass: true }).ensureSecurityPanelDiscovery('254', '208');
                 const payload = bypassPayload();
                 expect(payload).toBeDefined();
                 expect(payload.name).toBe('Bypass open zones');
                 expect(payload.command_topic).toBe('cbus/write/254/208/panel/bypass');
                 expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
+            });
+
+            it('offers arm_custom_bypass on the alarm card when both are enabled', () => {
+                panelWith({ control: true, bypass: true }).ensureSecurityPanelDiscovery('254', '208');
+                expect(alarmPayload().supported_features).toContain('arm_custom_bypass');
+            });
+
+            it('does not enable bypass from the bypass setting alone', () => {
+                // Bypass rides on control: without a command path there is
+                // nothing for the button to write to.
+                panelWith({ bypass: true }).ensureSecurityPanelDiscovery('254', '208');
+                expect(bypassPayload()).toBeUndefined();
+                expect(alarmPayload().supported_features).not.toContain('arm_custom_bypass');
             });
         });
 

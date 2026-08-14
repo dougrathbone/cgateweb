@@ -253,6 +253,10 @@ configuration:
     name: Alarmanlage entschärfen
     description: >-
       Home Assistant zusätzlich erlauben, die Alarmanlage zu entschärfen. Erfordert Alarmanlagen-Steuerung. Standardmäßig deaktiviert. C-Bus hat keinen Entschärfen-Befehl, daher wird die PIN per Tastaturemulation an der Anlage eingegeben: Home Assistant zeigt ein eigenes Tastenfeld und sendet die Eingabe über MQTT. Die PIN wird nirgends gespeichert, läuft aber bei jedem Entschärfen über Ihren MQTT-Broker. Aktivieren Sie dies nur bei einem vertrauenswürdigen Broker, idealerweise mit TLS.
+  cbus_security_bypass_enabled:
+    name: Scharfschalten trotz offener Zonen
+    description: >-
+      Home Assistant erlauben, das Scharfschalten bei offener Zone über die #-Taste der Anlage zu erzwingen. Erfordert Alarmanlagen-Steuerung. Standardmäßig deaktiviert. Bewusst getrennt vom Scharfschalten: eine trotz offener Tür scharfe Anlage wirkt scharf, überwacht diese Tür aber nicht - das sollte eine bewusste Entscheidung sein. Geschieht nie automatisch.
 
   cbus_measurement_app_id:
     name: Messanwendungs-ID

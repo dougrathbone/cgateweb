@@ -116,6 +116,18 @@ const defaultSettings = {
     // that topic can learn it. Only enable on a broker you trust, ideally with
     // TLS.
     cbus_security_disarm_enabled: false,
+    // Opt-in on top of cbus_security_control_enabled: allow forcing an arm past
+    // an open zone (the panel's '#' key), via the alarm card's custom-bypass
+    // action or the bypass button.
+    //
+    // Its own switch rather than riding on control, because "arm the alarm" and
+    // "arm the alarm even though a door is open" are different promises - the
+    // second leaves the owner believing a zone is covered when it is not.
+    // Deliberately NOT folded into cbus_security_disarm_enabled either: someone
+    // who wants bypass should not have to enable PIN-over-MQTT disarm, which is
+    // the more dangerous of the two, just to get it.
+    cbus_security_bypass_enabled: false,
+
     // C-Bus Measurement app ID (default 228/$E4); null disables. Gates BOTH
     // directions: decoding "measurement data ..." event lines to
     // cbus/read/{net}/228/{device}/{channel}/value+unit, and injecting

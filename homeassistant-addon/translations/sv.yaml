@@ -247,6 +247,10 @@ configuration:
     name: Frånkoppling av larm
     description: >-
       Tillåt även Home Assistant att frånkoppla larmcentralen. Kräver Larmstyrning. Avstängt som standard. C-Bus har inget frånkopplingskommando, så PIN-koden knappas in på centralen via tangentbordsemulering: Home Assistant visar en egen knappsats och skickar det du knappar in över MQTT. PIN-koden lagras ingenstans, men den passerar din MQTT-broker vid varje frånkoppling, så aktivera detta bara på en broker du litar på, helst med TLS.
+  cbus_security_bypass_enabled:
+    name: Tvinga tillkoppling med öppna zoner
+    description: >-
+      Tillåt Home Assistant att tvinga tillkoppling när en zon är öppen, med centralens #-tangent. Kräver Larmstyrning. Avstängt som standard. Medvetet skilt från tillkoppling: ett larm som tillkopplats förbi en öppen dörr ser tillkopplat ut men bevakar inte den dörren, så det bör vara ett medvetet val. Sker aldrig automatiskt.
 
   cbus_measurement_app_id:
     name: Mätapplikations-ID

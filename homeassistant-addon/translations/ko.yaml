@@ -239,6 +239,10 @@ configuration:
     name: 보안 패널 해제
     description: >-
       Home Assistant가 보안 패널을 해제하는 것도 허용합니다. 보안 패널 제어가 필요합니다. 기본값은 꺼짐입니다. C-Bus에는 해제 명령이 없으므로 키패드 에뮬레이션으로 패널에 PIN을 입력합니다. Home Assistant가 자체 키패드를 표시하고 입력한 값을 MQTT로 전송합니다. PIN은 어디에도 저장되지 않지만 해제할 때마다 MQTT 브로커를 거치므로 신뢰할 수 있는 브로커에서만, 가급적 TLS와 함께 사용하세요.
+  cbus_security_bypass_enabled:
+    name: 열린 구역 무시하고 강제 설정
+    description: >-
+      구역이 열려 있어도 패널의 # 키를 사용해 강제로 설정하도록 Home Assistant에 허용합니다. 보안 패널 제어가 필요합니다. 기본값은 꺼짐입니다. 설정과 의도적으로 분리했습니다. 열린 문을 무시하고 설정된 경보는 설정된 것처럼 보이지만 그 문을 감시하지 않으므로 의식적인 선택이어야 합니다. 자동으로 실행되지 않습니다.
 
   cbus_measurement_app_id:
     name: 측정 애플리케이션 ID

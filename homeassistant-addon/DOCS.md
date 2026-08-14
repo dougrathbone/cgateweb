@@ -356,6 +356,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `cbus_security_app_id` | string | `208` | C-Bus Security application id for alarm zone sensors (read-only). Publishes one `binary_sensor` per zone: `cbus/read/{network}/208/{zone}/state` is `ON` for unsealed/open/short and `OFF` for sealed, with the raw zone state (`sealed`/`unsealed`/`open`/`short`) on `cbus/read/{network}/208/{zone}/attributes`. Zone names come from the zone labels under application 1 in your Toolkit project (import them via C-Bus Labels); a device class (`motion`, `door`, `window`, `garage_door`, `smoke`) is inferred from the name. Zone state is synced on connect via `security status_request` (security panels do not answer getall). Set to `0` to disable. |
 | `cbus_security_control_enabled` | boolean | `false` | Opt-in to **arming** the security panel: adds the `cbus/write/{network}/208/panel/arm` command topic to the `alarm_control_panel` entity (`ARM_AWAY`, `ARM_NIGHT`, `ARM_HOME`, `ARM_VACATION`). Off by default — the arm command carries **no PIN** on the C-Bus network, so anything that can publish to the command topic can arm your panel. The entity is read-only without it. Disarming needs `cbus_security_disarm_enabled` as well. Requires `cbus_security_app_id` to be set. |
 | `cbus_security_disarm_enabled` | boolean | `false` | Opt-in to **disarming** as well, on top of `cbus_security_control_enabled`. C-Bus has no disarm command, so the PIN is typed at the panel via keypad emulation: Home Assistant shows its own numeric keypad and sends what you type in the command payload. **The PIN is not stored anywhere** — not in the add-on options, not in Home Assistant — but it does cross your MQTT broker on every disarm. Only enable on a broker you trust, ideally with TLS. See "Alarm panel" below. |
+| `cbus_security_bypass_enabled` | boolean | `false` | Opt-in to **forcing an arm past an open zone**, on top of `cbus_security_control_enabled`. Adds the `arm custom bypass` action to the alarm card and the "Bypass open zones" button, both of which send the panel's `#` key. Off by default and separate from arming, because an alarm armed past an open door reports **armed** while that door is not covered. Never automatic — cgateweb will not bypass a zone on your behalf. |
 | `cbus_measurement_app_id` | integer | (null) | C-Bus Measurement application id (`228`) for analogue/numeric sensor readings (temperature, power, light level, energy, etc). Decodes `measurement data ...` events and publishes `cbus/read/{network}/228/{device}/{channel}/value` (the decoded number) and `/unit` (e.g. `W`, `°C`, `lx`; empty if unitless/custom), with a `sensor` entity auto-created per device/channel. Also gates the write path: publish `value,multiplier,units` to `cbus/write/{network}/228/{device}/{channel}/data` to inject a reading onto C-Bus (e.g. from a scripted/virtual sensor) — cgateweb sends the native `MEASUREMENT DATA` command. One setting gates both directions, since — unlike Air Conditioning/Security — this isn't a hardware-control write; it's how a measurement source (physical or scripted) gets its own data onto the bus. Off by default. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
@@ -627,7 +628,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 |--------|-------------------|----------------|-------------------|
 | 56 | Lighting | `light` | Always enabled |
 | 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
-| 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming |
+| 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming and `cbus_security_bypass_enabled: true` for force-arm |
 | 228 | Measurement | `sensor` per device/channel (unit/device_class from the reading) | Opt-in via `cbus_measurement_app_id: 228` — also enables the write path |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (often covers) | `cover` | Opt-in via `ha_discovery_cover_app_id: 203` |
@@ -698,12 +699,16 @@ With `cbus_security_control_enabled: true` (off by default) the entity gains a c
 
 #### Bypassing open zones
 
-When arming stalls at `pending` because a zone is open (`arm_not_ready` names it in the attributes), the physical keypad's `#` key bypasses the open zones and lets the arm continue. With `cbus_security_control_enabled: true` there are two ways to send that same `#` keypress from Home Assistant, so the arm flow (arm → bypass → armed) completes without walking to the keypad:
+When arming stalls at `pending` because a zone is open (`arm_not_ready` names it in the attributes), the physical keypad's `#` key bypasses the open zones and lets the arm continue.
 
-- **On the alarm card itself** — the panel supports Home Assistant's **arm custom bypass** action, which is the tidier option if you already drive the panel from a dashboard card.
+This is a **third** opt-in, `cbus_security_bypass_enabled: true`, on top of `cbus_security_control_enabled`. It is separate from arming because it makes a different promise: an alarm armed past an open door reports **armed** to you and to Home Assistant, while that door is not actually covered. Turning on arming should not quietly hand out "arm anyway" as well.
+
+With both enabled there are two ways to send the `#` keypress from Home Assistant, so the arm flow (arm → bypass → armed) completes without walking to the keypad:
+
+- **On the alarm card itself** — the panel offers Home Assistant's **arm custom bypass** action, which is the tidier option if you already drive the panel from a dashboard card.
 - **A separate "Bypass open zones" button** on the panel device, which is easier to call from a script or put on its own dashboard.
 
-Both send exactly the same `SECURITY EMULATE_KEYPAD` command; use whichever suits your setup.
+Both send exactly the same `SECURITY EMULATE_KEYPAD` command; use whichever suits your setup. Neither appears at all while `cbus_security_bypass_enabled` is off, so you never get a control that silently does nothing.
 
 > This is deliberately never automatic. Bypassing an open zone is a security decision, and only the person who can see the open window should make it — the add-on will not force an arm on your behalf just because a zone is unsealed.
 

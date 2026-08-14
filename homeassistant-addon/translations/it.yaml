@@ -256,6 +256,10 @@ configuration:
     name: Disinserimento allarme
     description: >-
       Consenti a Home Assistant anche di disinserire la centrale di allarme. Richiede Controllo allarme. Disattivato per impostazione predefinita. C-Bus non ha un comando di disinserimento, quindi il PIN viene digitato sulla centrale tramite emulazione della tastiera: Home Assistant mostra la propria tastiera e invia quanto digitato via MQTT. Il PIN non viene memorizzato da nessuna parte, ma attraversa il tuo broker MQTT a ogni disinserimento: attivalo solo su un broker di cui ti fidi, preferibilmente con TLS.
+  cbus_security_bypass_enabled:
+    name: Forza inserimento con zone aperte
+    description: >-
+      Consenti a Home Assistant di forzare l'inserimento con una zona aperta, usando il tasto # della centrale. Richiede Controllo allarme. Disattivato per impostazione predefinita. Volutamente separato dall'inserimento: un allarme inserito con una porta aperta sembra inserito ma non copre quella porta, quindi deve essere una scelta consapevole. Non avviene mai automaticamente.
 
   cbus_measurement_app_id:
     name: ID applicazione di misura

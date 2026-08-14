@@ -249,6 +249,10 @@ configuration:
     name: Security Panel Disarm
     description: >-
       Also allow Home Assistant to disarm the security panel. Requires Security Panel Control. Off by default. C-Bus has no disarm command, so the PIN is typed at the panel using keypad emulation: Home Assistant shows its own keypad and sends what you type over MQTT. The PIN is not stored anywhere, but it does cross your MQTT broker on every disarm, so only enable this on a broker you trust, ideally with TLS.
+  cbus_security_bypass_enabled:
+    name: Force Arm Past Open Zones
+    description: >-
+      Allow Home Assistant to force the alarm to arm when a zone is open, using the panel's # key. Requires Security Panel Control. Off by default. This is separate from arming on purpose: an alarm armed past an open door looks armed but is not covering that door, so it should be a deliberate choice. It is never automatic - the add-on will not bypass a zone on your behalf.
 
   cbus_measurement_app_id:
     name: Measurement Application ID

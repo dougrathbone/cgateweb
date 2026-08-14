@@ -249,6 +249,10 @@ configuration:
     name: Rozbrajanie alarmu
     description: >-
       Zezwól Home Assistant również na rozbrajanie centrali alarmowej. Wymaga Sterowania alarmem. Domyślnie wyłączone. C-Bus nie ma polecenia rozbrojenia, więc kod PIN jest wprowadzany na centrali przez emulację klawiatury: Home Assistant wyświetla własną klawiaturę i wysyła wpisane cyfry przez MQTT. Kod PIN nie jest nigdzie przechowywany, ale przy każdym rozbrojeniu przechodzi przez Twojego brokera MQTT, więc włączaj to tylko na zaufanym brokerze, najlepiej z TLS.
+  cbus_security_bypass_enabled:
+    name: Wymuś uzbrojenie mimo otwartych stref
+    description: >-
+      Zezwól Home Assistant na wymuszenie uzbrojenia przy otwartej strefie, klawiszem # centrali. Wymaga Sterowania alarmem. Domyślnie wyłączone. Celowo oddzielone od uzbrajania: alarm uzbrojony mimo otwartych drzwi wygląda na uzbrojony, ale ich nie chroni, więc powinna to być świadoma decyzja. Nigdy nie dzieje się automatycznie.
 
   cbus_measurement_app_id:
     name: ID aplikacji pomiarowej

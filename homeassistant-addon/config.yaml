@@ -188,6 +188,7 @@ schema:
   cbus_security_app_id: "str?"
   cbus_security_control_enabled: "bool?"
   cbus_security_disarm_enabled: "bool?"
+  cbus_security_bypass_enabled: "bool?"
   # Measurement application (default 228/$E4). Gates both reading
   # "measurement data ..." events to MQTT and injecting readings via
   # cbus/write/.../data — see docs/Measurement Application.md.

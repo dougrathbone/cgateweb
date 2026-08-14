@@ -250,6 +250,10 @@ configuration:
     name: Deaktivace alarmu
     description: >-
       Umožnit Home Assistant také deaktivovat zabezpečovací ústřednu. Vyžaduje Ovládání alarmu. Ve výchozím nastavení vypnuto. C-Bus nemá příkaz k deaktivaci, takže se PIN zadává na ústřednu pomocí emulace klávesnice: Home Assistant zobrazí vlastní klávesnici a odešle zadané číslice přes MQTT. PIN se nikam neukládá, ale při každé deaktivaci prochází vaším MQTT brokerem. Zapínejte pouze na brokeru, kterému důvěřujete, ideálně s TLS.
+  cbus_security_bypass_enabled:
+    name: Vynucené zajištění při otevřených zónách
+    description: >-
+      Umožnit Home Assistant vynutit zajištění, i když je zóna otevřená, pomocí klávesy # na ústředně. Vyžaduje Ovládání alarmu. Ve výchozím nastavení vypnuto. Záměrně oddělené od zajištění: alarm zajištěný přes otevřené dveře vypadá zajištěný, ale tyto dveře nehlídá, takže to má být vědomé rozhodnutí. Nikdy se neděje automaticky.
 
   cbus_measurement_app_id:
     name: ID měřicí aplikace

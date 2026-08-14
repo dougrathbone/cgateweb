@@ -44,6 +44,7 @@ const ADDON_OPTION_MAP = [
     // Same reasoning again: the disarm write path is plain MQTT, so it must
     // survive with Home Assistant discovery off.
     { src: 'cbus_security_disarm_enabled', dst: 'cbus_security_disarm_enabled', kind: 'boolDefined' },
+    { src: 'cbus_security_bypass_enabled', dst: 'cbus_security_bypass_enabled', kind: 'boolDefined' },
     // Deliberately NOT gated on 'haDiscovery' (same reason as
     // cbus_aircon_app_id/cbus_security_app_id): both the read and write paths
     // work over plain MQTT, so an MQTT-only install that opts in must not

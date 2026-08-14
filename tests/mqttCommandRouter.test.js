@@ -41,6 +41,10 @@ describe('MqttCommandRouter', () => {
         beforeEach(() => {
             router.settings.cbus_security_app_id = '208';
             router.settings.cbus_security_control_enabled = true;
+            // Forcing an arm past an open zone is a second opt-in on top of
+            // control, so the ARM_CUSTOM_BYPASS routing tests below have to
+            // turn it on explicitly. Everything else here is unaffected.
+            router.settings.cbus_security_bypass_enabled = true;
         });
 
         // C-Gate manual §4.5.177 takes arm-mode keywords, not the application
@@ -116,6 +120,10 @@ describe('MqttCommandRouter', () => {
             const fromButton = mockQueue.add.mock.calls.map(c => c[0]);
             mockQueue.add.mockClear();
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            // Asserted non-empty as well as equal: when bypass is gated off
+            // both routes send nothing, and "equal" alone would pass while
+            // testing nothing at all.
+            expect(fromButton).toHaveLength(1);
             expect(mockQueue.add.mock.calls.map(c => c[0])).toEqual(fromButton);
         });
 
@@ -123,6 +131,24 @@ describe('MqttCommandRouter', () => {
             router.settings.cbus_security_control_enabled = false;
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
             expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('ignores ARM_CUSTOM_BYPASS when control is on but bypass is not', () => {
+            // The gate that this whole setting exists for. Control being on
+            // means "you may arm the alarm"; it must not silently also mean
+            // "you may arm it past an open door".
+            router.settings.cbus_security_bypass_enabled = false;
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Security zone bypass is disabled'));
+            warnSpy.mockRestore();
+        });
+
+        it('still arms normally when bypass is disabled', () => {
+            router.settings.cbus_security_bypass_enabled = false;
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
+            expect(mockQueue.add).toHaveBeenCalledWith('security arm //TestProject/254/208 away\n');
         });
 
         it('ignores the command when control is disabled', () => {
@@ -153,6 +179,7 @@ describe('MqttCommandRouter', () => {
         beforeEach(() => {
             router.settings.cbus_security_app_id = '208';
             router.settings.cbus_security_control_enabled = true;
+            router.settings.cbus_security_bypass_enabled = true;
         });
 
         it('sends the # keypress via emulate_keypad in $hex form when control is enabled', () => {
@@ -173,6 +200,23 @@ describe('MqttCommandRouter', () => {
 
         it('ignores bypass for a different application', () => {
             router.routeMessage('cbus/write/254/209/panel/bypass', 'PRESS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('warns and sends nothing when bypass is disabled but control is on', () => {
+            router.settings.cbus_security_bypass_enabled = false;
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Security zone bypass is disabled'));
+            warnSpy.mockRestore();
+        });
+
+        it('is off unless explicitly enabled', () => {
+            // Default-deny is the point of the setting: an install that only
+            // turned on control must not get force-arm thrown in.
+            delete router.settings.cbus_security_bypass_enabled;
+            router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
             expect(mockQueue.add).not.toHaveBeenCalled();
         });
     });

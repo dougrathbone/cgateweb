@@ -922,6 +922,10 @@ class _HaDiscoveryPublishers {
         // Disarm rides on control: without a command topic there is nothing to
         // send a PIN over.
         const disarmEnabled = controlEnabled && !!this.settings.cbus_security_disarm_enabled;
+        // Same shape as disarm: a second opt-in riding on control. Withheld
+        // from supported_features rather than accepted-and-ignored, so the
+        // alarm card never offers a "force arm" the bridge will refuse.
+        const bypassEnabled = controlEnabled && !!this.settings.cbus_security_bypass_enabled;
 
         const payload = {
             // Primary entity on the shared panel device: takes the device name.
@@ -939,8 +943,11 @@ class _HaDiscoveryPublishers {
             // (arm while excluding chosen zones), but it is the closest native
             // action and it is what the panel actually offers, so the bypass
             // appears on the alarm card itself instead of only as a separate
-            // button entity (#62).
-            supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation', 'arm_custom_bypass'],
+            // button entity (#62). Present only with cbus_security_bypass_enabled.
+            supported_features: [
+                'arm_home', 'arm_away', 'arm_night', 'arm_vacation',
+                ...(bypassEnabled ? ['arm_custom_bypass'] : [])
+            ],
             // Home Assistant defaults both of these to true and then refuses to
             // publish an arm/disarm without a code — it pops "PIN required" and
             // the command never reaches MQTT at all, which is how 1.23.1 shipped
@@ -974,13 +981,15 @@ class _HaDiscoveryPublishers {
         };
 
         this._publishEventDrivenConfig(discoveryTopic, payload);
-        const mode = !controlEnabled ? 'read-only' : (disarmEnabled ? 'arm + disarm' : 'arm only');
+        const mode = !controlEnabled
+            ? 'read-only'
+            : [disarmEnabled ? 'arm + disarm' : 'arm only', bypassEnabled ? '+ bypass' : ''].filter(Boolean).join(' ');
         this.logger.info(`Security panel alarm_control_panel published: ${networkId}/${appId} (${mode})`);
 
-        // The bypass button is a control write (Emulate Keypad '#'), so it
-        // only exists when control is enabled — without it the button could
-        // never work.
-        if (controlEnabled) {
+        // The bypass button is a control write (Emulate Keypad '#') behind its
+        // own opt-in, so it only exists when both are on — otherwise it would
+        // be a button that always logs "disabled" and does nothing.
+        if (bypassEnabled) {
             this._createSecurityBypassDiscovery(networkId, appId, deviceName);
         }
     }
