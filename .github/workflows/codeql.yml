@@ -1,0 +1,107 @@
+# .github/workflows/codeql.yml
+#
+# CodeQL as an advanced (committed) setup rather than GitHub's default setup.
+#
+# Default setup never produced a check run on pull requests from forks, and
+# "CodeQL" is a required status check on master - so every outside contribution
+# was permanently unmergeable and had to be admin-merged. Checked against three
+# separate head SHAs on PR #60: no CodeQL check appeared on any of them.
+#
+# An advanced setup runs as an ordinary workflow, so it triggers on fork PRs
+# like every other check here. Fork PRs get a read-only GITHUB_TOKEN and cannot
+# write security events, which is why the analyze job below tolerates a failed
+# SARIF upload rather than failing the build - see the comment on that step.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  schedule:
+    # Weekly, so a newly published CodeQL query finds existing code even when
+    # nothing has been pushed. Offset from ci.yml's daily 04:23 so the two do
+    # not contend for runners.
+    - cron: '41 5 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      # Needed to upload results. NOT granted on pull requests from forks -
+      # GitHub caps the token at read-only there regardless of what is
+      # requested, which the upload step below accounts for.
+      security-events: write
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Deliberately narrower than the default setup, which also listed
+        # 'javascript' and 'typescript'. Those are legacy aliases of
+        # javascript-typescript and analysing them separately just triples the
+        # runtime for identical results.
+        #
+        # python is here for test-env/mock-supervisor/server.py - the only
+        # Python in the tree, but it is a test double for the Supervisor API
+        # and worth scanning.
+        language: [ 'actions', 'javascript-typescript', 'python' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef  # codeql-bundle-v2.26.3
+      with:
+        languages: ${{ matrix.language }}
+        # Matches what the default setup used, so switching does not silently
+        # change which queries run.
+        queries: security-extended
+
+    - name: Perform CodeQL Analysis
+      id: analysis
+      uses: github/codeql-action/analyze@c16c0f3f2812ec4bb3750a5ed64873fe2ce0fbef  # codeql-bundle-v2.26.3
+      with:
+        category: "/language:${{ matrix.language }}"
+        # A fork PR's token cannot write security events, so the upload 403s.
+        # Failing on that would recreate exactly the problem this file exists to
+        # solve: a required check outside contributors cannot pass. The analysis
+        # itself still runs and still fails the job on a query error, so a real
+        # finding in a fork PR is not silently swallowed - it just lands in the
+        # job log rather than the Security tab until the branch is pushed here.
+        upload: ${{ github.event.pull_request.head.repo.full_name == github.repository && 'always' || 'never' }}
+
+  # Single stable required check, the same pattern as "Integration test
+  # (C-Gate)". Branch protection names this one job, so adding or removing a
+  # language above needs no change to the protected-branch settings.
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: analyze
+    if: always()
+
+    steps:
+    - name: Verify every language was analysed
+      env:
+        RESULT: ${{ needs.analyze.result }}
+      run: |
+        echo "analyze matrix result: ${RESULT}"
+        if [[ "${RESULT}" != "success" ]]; then
+          echo "::error::CodeQL analysis did not succeed for every language."
+          exit 1
+        fi
+        echo "CodeQL analysis completed for every configured language."
