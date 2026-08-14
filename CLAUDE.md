@@ -189,5 +189,7 @@ When the user approves a batch of improvements:
 2. Make **one commit per item** with a focused, narrative commit message (the "why", not just the "what"). Easier to review and easier to revert.
 3. Order commits so risky/big items go **last** - small infrastructure changes first build confidence in the test suite and CI.
 4. After all items are committed locally, push them as a batch and watch CI. The version bump goes in a separate `chore: release vX.Y.Z` commit at the end, with the CHANGELOG entry summarizing the batch.
+
+   **CHANGELOG entries must be very concise** — one sentence per bullet, a second only when the reader has to do something, no backticks, no root-cause narration, no "reported by a user". The full rules are in `AGENT.md` under "Changelog Format"; they are easy to drift from, because the commit message you just wrote is long and detailed and the changelog bullet is not. Match the density of the 1.22.0-and-later entries, not the older ones. The same brevity applies to replies on GitHub issues and PRs.
 5. Tag and push the tag - that triggers the HACS distribution workflow.
 6. Backfill the source-repo GitHub Release with the CHANGELOG section.

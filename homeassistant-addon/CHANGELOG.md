@@ -13,123 +13,114 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 ### Added
 
-- **Native support for the C-Bus Measurement application (analogue sensors like power, light level, and more).** Set `cbus_measurement_app_id` (default 228) to publish readings to `cbus/read/{network}/228/{device}/{channel}/value` and `/unit`, with a Home Assistant sensor entity for each device/channel. It also works the other way: `cbus/write/{network}/228/{device}/{channel}/data` (payload `value,multiplier,units`) lets you inject a reading onto C-Bus — handy for a scripted or virtual sensor (e.g. a solar inverter's power output) that has no physical C-Bus hardware of its own. Off by default.
-- **Forcing the alarm to arm past an open zone is now its own setting**, `cbus_security_bypass_enabled`. It used to come along with `cbus_security_control_enabled`. If you turned on alarm control and want the "arm anyway" option, turn this on too. Separate because an alarm armed past an open door says **armed** while that door is not being watched, and that should be a choice you make on purpose. (#42, #62)
+- **Analogue sensors on C-Bus now become Home Assistant sensors.** Turn on the Measurement application option to publish readings such as power, temperature and light level, one entity per device and channel. You can also inject your own readings onto C-Bus for a sensor that has no C-Bus hardware of its own. Off by default. (#60)
+- **Forcing the alarm to arm past an open zone is now its own option.** It used to come with Security Panel Control, so turn it on separately if you want it. (#42, #62)
 
 ### Fixed
 
-- **The log now says when your project file is being ignored.** If C-Gate's own copy of a project is newer than the one in `/share/cgate/tag`, the share copy is skipped so a running C-Gate is never overwritten. That is normal, but the old message ("Skipped 1 project(s)") read like routine housekeeping, and a user spent a fortnight replacing a `.db` that C-Gate was never going to read. The add-on now names the project, says which file is actually live, and tells you how to make your copy win. (#58)
-- **Measurement sensors no longer show up as a light at a nonsense brightness.** With the measurement feature switched off — the default — a reading from a measurement device was being read as a lighting level, so a 22.06°C temperature sensor appeared as ON at 865%. Those readings are now left alone unless you enable the feature, and the add-on logs a one-line hint telling you the setting to turn on if it sees measurement traffic. If you saw this, the bad values were retained on your broker: clear `cbus/read/{network}/228/...` topics once after upgrading. Reported by a user with a real sensor on the bus. (#60)
-- **A limit on alarm disarm attempts.** Disarming replays your PIN at the panel, and there was nothing stopping something from trying every possible code. Now capped at 10 attempts per 10 minutes per network, which is well above normal use. A rejected attempt (wrong format, no code) does not count, so a broken automation cannot lock you out.
-- **A malformed message from C-Gate can no longer stop the bridge.** An error while handling one event line is now logged and skipped instead of taking the whole add-on down.
-- **Better protection against a malicious project file.** A `.cbz` whose contents claim no size is now rejected on import rather than being unpacked.
-- **The web interface stays responsive under a flood of requests.** Its rate limiter slowed down badly when it saw a large number of distinct clients; it no longer does.
+- **Measurement sensors no longer appear as a light at a nonsense brightness.** Clear any stale readings left on your broker after upgrading. (#60)
+- **The log now tells you when your project file in the share folder is being ignored**, which file C-Gate is really using, and how to make yours replace it. (#58)
+- **A malformed message from C-Gate can no longer stop the add-on.**
+
+### Security
+
+- **Alarm disarm attempts are now limited** to ten every ten minutes per network, so a PIN cannot be guessed over MQTT.
+- **Hardened against malformed input.** Project files that misreport their contents are rejected on import, out-of-range C-Bus addresses are ignored, and the web interface stays responsive when flooded with requests.
 
 ## [1.24.3] - 2026-08-13
 
 ### Fixed
 
-- **Your alarm PIN no longer appears in debug logs.** Disarming types the code at the panel one key at a time, and C-Gate echoes each keypress back, which the add-on was writing into its debug log. If you enabled debug logging and disarmed on 1.24.0, 1.24.1 or 1.24.2, treat any log you kept from it as containing your PIN — delete it, or change your PIN if you shared it anywhere. Debug logging is off by default, so most people are unaffected. Reported by a user who spotted it in his own logs. (#51)
+- **Your alarm PIN no longer appears in debug logs.** If you used debug logging while disarming on 1.24.0 to 1.24.2, delete those logs or change your PIN. (#51)
 
 ### Changed
 
-- **Connecting C-Bus Toolkit to managed C-Gate is now documented properly**, and confirmed working by two users. Map the SSL command port `20123`, add your PC to the external clients list, then use Toolkit's "Connect to Remote C-Gate". You do not need to edit any XML, install stunnel, or add anything to the `tag` folder. There is also a note on what to check if Toolkit connects but shows no devices. (#57, #58)
-- **Clearer documentation for application 203.** It is C-Bus "Enable Control", a general-purpose application that this add-on treats as covers because that is its usual use in homes. If yours is used for something else, such as disabling keypad buttons, you can now see why those groups turn up as covers and how to stop it. Also explains why a group that is not assigned to an output unit cannot report its state. (#51)
+- **Connecting C-Bus Toolkit to managed C-Gate is now documented.** Map the SSL command port and add your PC to the external clients list. No XML editing or extra files needed. (#57, #58)
+- **Clearer documentation for the Enable Control application**, including why its groups appear as covers. (#51)
 
 ## [1.24.2] - 2026-08-11
 
 ### Added
 
-- **C-Gate's SSL ports can now be mapped, so you can try connecting C-Bus Toolkit.** Recent Toolkit versions only reach a remote C-Gate over SSL, and managed C-Gate was already listening on those ports — the add-on just never declared them, so Home Assistant had no way to publish them. Map `20123/tcp` in the Network panel, add your PC to the external clients list, and point Toolkit at it. This is experimental and unconfirmed: it opens the path, but whether Toolkit accepts C-Gate's certificate has not been tested. Please report either result on issue #58. (#57, #58)
+- **C-Gate's SSL ports can now be mapped**, so C-Bus Toolkit can connect to a managed C-Gate. Experimental. (#57, #58)
 
 ## [1.24.1] - 2026-08-11
 
 ### Fixed
 
-- **Disarming now actually works.** The PIN added in 1.24.0 was sent to the panel but never submitted, so nothing happened. The code is now followed by a `#` keypress, which is what tells the panel to accept it. (#51)
-- **Your alarm panel shows its state again after restarting Home Assistant.** The card came up blank until the alarm was next armed or disarmed, because the add-on only sends the state when it changes and Home Assistant had forgotten it. It now resends the current state whenever Home Assistant restarts. (#51)
-- **No more repeated "Bad object or device ID" warnings for applications you don't use.** If you had configured an application id whose groups do not exist on your network — a cover app id being the usual case — it warned at every startup and every poll. It is now explained once, in plain terms, instead. (#51)
+- **Disarming now actually works.** The PIN added in 1.24.0 was sent but never submitted to the panel. (#51)
+- **Your alarm panel shows its state again after restarting Home Assistant.** (#51)
+- **No more repeated bad object warnings for applications you do not use.** (#51)
 
 ## [1.24.0] - 2026-08-10
 
 ### Added
 
-- **You can now disarm your alarm from Home Assistant, using its own keypad.** Press Disarm, type your PIN on the keypad Home Assistant shows, and it is entered at the panel for you. C-Bus has no disarm command, so this works by typing the code at the panel one key at a time, exactly as if you had stood at the keypad yourself. Off by default: turn on the new **Security Panel Disarm** option, which also needs Security Panel Control. (#51)
-
-  **Before you enable it, please read this.** Your PIN is not saved anywhere — not in the add-on settings, not in Home Assistant — but it does travel across your MQTT broker each time you disarm. Anyone who can read your broker can read the PIN. Only turn this on if you trust your broker, and use a password and TLS on it if you can. The PIN is never written to the add-on log.
-
-  If your panel needs you to press `#` or Enter after the code, that is not sent yet — please let us know on issue #51 and it can be added.
+- **You can now disarm your alarm from Home Assistant**, using its own keypad. Off by default, and your PIN crosses your MQTT broker on each disarm, so only enable it on a broker you trust. (#51)
 
 ## [1.23.3] - 2026-08-07
 
 ### Fixed
 
-- **Faster startup, and no more "C-Gate still syncing?" warning about your wall switches.** Key input units such as the KEYGL5 send commands but do not drive any load, so C-Gate correctly reports no groups for them. The add-on mistook that for an unfinished sync and re-fetched the whole device tree three times on every start before giving up, logging a message that looked like entities were missing. It now knows these units have no groups to wait for. Nothing was actually missing, and nothing changes about the entities you get. (#37)
+- **Faster startup, and no more sync warnings about your wall switches.** Key input units drive no load, so the add-on no longer waits for groups they will never have. (#37)
 
 ## [1.23.2] - 2026-08-06
 
 ### Fixed
 
-- **Arming the alarm panel from Home Assistant now works.** It never did. Two things were wrong: Home Assistant was asking for a PIN and refusing to send the command, and the command cgateweb sent was rejected by C-Gate as an invalid arm mode. Away, night, home and vacation all work now. Disarm is still not possible over C-Bus. (#42)
-- **A clear error when C-Gate's port is using SSL.** Pointing the add-on at one of C-Gate's SSL ports (20123, 20125) instead of the plain ones (20023, 20025) used to show only unreadable characters in the log and then reconnect forever, which looks like a busy or failing network. It now tells you the port is using SSL and which port number to use instead. (#52)
-- Tidied up a harmless "line not decoded" debug message logged every time the panel was armed.
+- **Arming the alarm panel from Home Assistant now works.** Away, night, home and vacation all work. Disarm is not possible over C-Bus. (#42)
+- **A clear error when the add-on is pointed at one of C-Gate's SSL ports** instead of the plain ones, rather than an endless reconnect. (#52)
+- Internal: tidied a harmless debug message logged whenever the panel was armed.
 
 ## [1.23.1] - 2026-08-05
 
 ### Fixed
 
-- **The alarm panel's Disarm button doesn't work, and no longer pretends to.** C-Bus has no disarm command, so the disarm added in 1.23.0 was ignored by the panel. Arming still works. Home Assistant always draws a Disarm button, so it is still on screen, but it now logs why instead of sending an invalid command. Disarm at your keypad and the panel state follows within a second. (#42, #51)
-- **No more "Cannot write to closing transport" errors during backups.** The Live Events stream kept writing to browser connections Home Assistant had already closed. (#44)
+- **The alarm panel's Disarm button no longer pretends to work.** C-Bus has no disarm command. Arming still works, and the state follows within a second if you disarm at your keypad. (#42, #51)
+- **No more transport errors during backups** from the Live Events stream. (#44)
 
 ### Changed
 
-- **Switched to the `homeassistant_config` folder mapping**, clearing one of Home Assistant's deprecation warnings. Your labels carry over automatically — nothing to do. (#44)
-
-### Known warnings
-
-Home Assistant still warns about this add-on's `build.yaml` and its
-`armhf`/`armv7`/`i386` architectures. Both are kept on purpose: fixing them
-means dropping 32-bit support, because the only multi-architecture base image is
-64-bit. Harmless log noise until Home Assistant stops publishing the 32-bit base
-images. (#44)
+- **Switched to the Home Assistant config folder mapping**, clearing a deprecation warning. Your labels carry over automatically. (#44)
+- Home Assistant still warns about this add-on's 32-bit architectures. Kept on purpose so 32-bit installs keep working. (#44)
 
 ## [1.23.0] - 2026-08-04
 
 ### Added
 
-- **Your alarm panel now shows up as an alarm panel card in Home Assistant.** One entity per network, showing disarmed, armed away/home/night/vacation, arming, pending or triggered. The state always comes from the panel itself, so it stays right when someone arms at a keypad. If the panel refuses to arm, the zone blocking it appears as a `blocking_zone` attribute. (#42)
-- **Optional arming from Home Assistant**, off by default behind the new `cbus_security_control_enabled` option. The C-Bus arm command carries **no PIN**, so anything that can publish to your MQTT broker can arm your panel. Read-only when left off. (Disarm shipped here too, but never worked on real hardware — removed in 1.23.1.) (#42)
+- **Your alarm panel now appears as an alarm panel card in Home Assistant**, one per network, with the state always coming from the panel itself. (#42)
+- **Optional arming from Home Assistant**, off by default. The C-Bus arm command carries no PIN, so anything that can publish to your broker can arm your panel. (#42)
 
 ### Fixed
 
-- Internal: stopping Home Assistant discovery now cancels a pending device-tree deadline, so it can no longer log a stray "tree stream stalled" retry afterwards.
+- Internal: stopping discovery now cancels a pending device-tree deadline.
 
 ## [1.22.4] - 2026-08-03
 
 ### Fixed
 
-- **Entity names no longer vanish during a Home Assistant backup.** The backup briefly removes the label file and the reload used to wipe every label in memory; it now keeps the last known labels and recovers on its own. (#44)
-- **No more 402 error spam for trigger applications.** Trigger groups (app 202) do not support level reads, so they are no longer included in level syncs; their state arrives via events as before. (#44)
+- **Entity names no longer vanish during a Home Assistant backup.** (#44)
+- **No more error spam for trigger applications**, which do not support level reads. (#44)
 
 ## [1.22.3] - 2026-08-02
 
 ### Fixed
 
-- **The add-on no longer crashes and restart-loops shortly after startup.** Once C-Gate finished synchronising a network, the state refresh added in 1.22.0 hit an internal wiring fault and threw `Cannot read properties of undefined (reading 'sendGetallLevels')`, killing the add-on about five seconds into every start. It restarted immediately, so entities still appeared, but the add-on was never stable for more than a few seconds at a time. (#44)
-- **Entities now come back on their own after an MQTT broker restart.** Republishing the discovery configuration and re-requesting state on reconnect was already implemented, but was cut short by the crash above before it could run. Lighting and security entities no longer wait for the next physical C-Bus event to reappear. (#44)
+- **The add-on no longer crashes and restart-loops shortly after startup.** (#44)
+- **Entities come back on their own after an MQTT broker restart.** (#44)
 
 ## [1.22.2] - 2026-08-02
 
 ### Fixed
 
-- **Patched a high-severity vulnerability in the development toolchain** (brace-expansion, denial of service via unbounded expansion length) flagged by npm audit. It only affects testing and linting, not the running add-on.
-- Internal: integration tests now fetch C-Gate from a pinned copy hosted on this repository, so releases no longer stall when Schneider rate-limits CI runners. The daily check still verifies the live Schneider download.
+- **Patched a high-severity vulnerability in the development toolchain.** It does not affect the running add-on.
+- Internal: integration tests now fetch C-Gate from a pinned copy, so releases no longer stall on rate limits.
 
 ## [1.22.1] - 2026-08-02
 
 ### Fixed
 
-- **Security panel trouble state now survives a restart.** Mains power, battery, phone line, arm failure and fire conditions used to reset to healthy on every add-on restart because the panel offers no way to query them; the last known state is now kept on disk and restored on startup. (#42)
+- **Security panel trouble state now survives a restart.** (#42)
 
 ## [1.22.0] - 2026-08-02
 

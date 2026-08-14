@@ -35,6 +35,8 @@
 
 **Commit Messages**: Do not mention "Amp", "Claude", or AI assistants in commit messages. Keep commit messages professional and focused on the technical changes being made.
 
+**Replies to users (GitHub issues, PR comments, PR reviews)**: Very concise. Plain text - no markdown, no bold, no bullets-as-decoration. Hyphens, never em dashes. Lead with the finding or the answer; cut the narration of how you got there. Ask for the one artefact you need rather than listing everything the user could send. Say plainly when a previous diagnosis of yours was wrong.
+
 ## Changelog Format
 `homeassistant-addon/CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) and is written for the person upgrading, not the developer. Every release entry MUST follow these rules:
 
@@ -44,8 +46,11 @@
 4. **No internal implementation detail**: no function names, repo file paths, bit layouts, C-Gate response codes, spec section numbers, or commit mechanics. Translate mechanism into user-visible behavior.
 5. Issue references stay, in the form "(#28)" at the end of the bullet's first sentence.
 6. Internal-only changes (refactors, CI, test work, dependency bumps) go in a single short "Internal:" bullet, or are omitted if invisible to users.
-7. **Super concise.** Aim for one line per bullet, two short sentences at most. Summarise the functionality change, not the details of it: what the user can now do, or what behaves differently for them. The how and the why (root cause, diagnosis story, fix mechanics, spec or schema numbers) belong in the issue or the commit message, not the changelog.
+7. **Very concise. This is the rule that keeps getting broken.** One sentence per bullet. A second short sentence ONLY when the reader must do something (delete a log, clear a topic, change a setting). Never a third, never a second paragraph, never a nested block. Summarise the functionality change, not the details of it: what the user can now do, or what behaves differently. The how and the why (root cause, diagnosis story, fix mechanics, spec or schema numbers) belong in the issue or the commit message.
+   Before committing a changelog entry, re-read it and delete every clause that explains, justifies, or narrates. If a bullet runs past about 30 words, it is wrong.
 8. Compress caveats to a few words ("Alpha: tested on one panel; arm/disarm not included yet") and drop provenance ("reported by a user", "found in CI") unless it changes what the reader should do.
+
+Every release entry from 1.22.0 onward has been rewritten to this standard - match the density you see there, not the older entries further down the file.
 
 Good: "**Key switches and bus couplers are now recognised for unit-type classification.** With unit-type classification on, a group driven only by one becomes a binary sensor instead of a light. (#37)"
 Bad: "**Key-input switches and bus couplers are now recognised for unit-type classification** (#37). With "Set entity type from C-Bus unit type" on, a group driven only by a key-input wall switch (`KEY1`, `KEYB2`, `KEYB4`, `KEYGL5`, `KEYE1`–`KEYE4`) or a bus coupler (`BCN4B`) now becomes a `binary_sensor` instead of keeping the default light type and logging "unit types not recognised". Both families are input-only hardware that drives no load. Reported from a live showroom install."
