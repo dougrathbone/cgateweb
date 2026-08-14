@@ -121,16 +121,32 @@ class CbusProjectParser {
         // Pre-flight against zip-bomb uploads: sum every entry's declared
         // uncompressed size before we decompress anything. ZIP headers
         // include the uncompressed size so this check costs nothing.
+        //
+        // The declared size is attacker-controlled, and a declared 0 used to
+        // slip past this loop entirely - it was skipped rather than treated as
+        // unknown. Worse, adm-zip's own guard fails in the SAME direction:
+        // methods/inflater.js only sets maxOutputLength when expectedLength > 0,
+        // so declaring zero also switched off the library's output cap. Two
+        // independent defences, both disabled by one attacker-chosen value.
+        // 51KB inflated to 50MB in testing; the 10MB body cap put the ceiling
+        // around 10GB, i.e. an OOM kill on any normal Home Assistant host.
+        //
+        // So a non-positive declared size is now a rejection, not a free pass.
         let totalUncompressed = 0;
         for (const entry of entries) {
+            if (entry.isDirectory) continue;
             const size = entry.header && entry.header.size;
-            if (typeof size === 'number' && size > 0) {
-                totalUncompressed += size;
-                if (totalUncompressed > this.maxDecompressedBytes) {
-                    throw new Error(
-                        `CBZ archive decompressed size exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
-                    );
-                }
+            if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+                throw new Error(
+                    `CBZ archive entry "${entry.entryName}" declares no uncompressed size; `
+                    + 'rejecting (zip-bomb protection)'
+                );
+            }
+            totalUncompressed += size;
+            if (totalUncompressed > this.maxDecompressedBytes) {
+                throw new Error(
+                    `CBZ archive decompressed size exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
+                );
             }
         }
 

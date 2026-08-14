@@ -296,6 +296,29 @@ describe('CbusProjectParser', () => {
             expect(result.labels).toEqual({ '254/56/8': 'Sniffed' });
         });
 
+        // The declared size is attacker-controlled, and a declared 0 used to be
+        // SKIPPED by the budget loop rather than treated as unknown. adm-zip's
+        // own guard fails the same way - methods/inflater.js only applies
+        // maxOutputLength when expectedLength > 0 - so one attacker-chosen value
+        // switched off both defences. 51KB inflated to 50MB in testing.
+        it('rejects a CBZ entry declaring a zero uncompressed size', async () => {
+            const inner = new AdmZip();
+            inner.addFile('payload.bin', Buffer.alloc(1024 * 1024, 0));
+            const rebuilt = new AdmZip(inner.toBuffer());
+            for (const entry of rebuilt.getEntries()) {
+                entry.header.size = 0;
+            }
+            expect(() => parser._extractCBZ(rebuilt.toBuffer()))
+                .toThrow(/declares no uncompressed size|zip-bomb protection/i);
+        });
+
+        it('still accepts an ordinary CBZ with honest entry sizes', () => {
+            const zip = new AdmZip();
+            zip.addFile('project.xml', Buffer.from('<?xml version="1.0"?><Installation><Network/></Installation>'));
+            const result = parser._extractCBZ(zip.toBuffer());
+            expect(result.kind).toBe('xml');
+        });
+
         it('rejects a CBZ whose declared decompressed total exceeds the cap (zip-bomb protection)', async () => {
             // Build a real zip and configure the parser with a tiny cap so a
             // single small entry triggers the guard. The production default
