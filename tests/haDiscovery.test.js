@@ -49,33 +49,24 @@ const TREEXML_NET254 =
     '<Group><GroupAddress>10</GroupAddress><Label>Kitchen Light</Label></Group>' +
     '</Application></Unit></Network>';
 
-// Flat-format trees mirroring the issue #25 sample: unit 13 has finished
-// syncing its group bindings while unit 14 still reports empty <Groups>
-// because the C-Gate network sync has not completed. The full tree is what
-// C-Gate returns for the same network once the sync has finished.
-const PARTIAL_GROUPS_TREE_NET254 =
+// Flat-format tree for network 254 with the two units from the issue #25
+// sample, parameterised by the group bindings each reports.
+//
+// The scenario that matters is a partially-synced network: unit 13 has its
+// bindings while unit 14 still reports an empty <Groups> because C-Gate's
+// network sync has not finished. Building both trees from one function keeps
+// the only meaningful difference - unit 14's groups - visible at the call
+// site, instead of leaving two near-identical XML blobs to diff by eye.
+const flatTreeNet254 = (unit13Groups, unit14Groups = '') =>
     '<Network><NetworkNumber>254</NetworkNumber>' +
-    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
-    '<Application>56, 255</Application><Groups>31,32</Groups></Unit>' +
-    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
-    '<Application>56, 255</Application><Groups></Groups></Unit></Network>';
+    `<Unit><Type>RELDN12</Type><Address>13</Address><Application>56, 255</Application><Groups>${unit13Groups}</Groups></Unit>` +
+    `<Unit><Type>RELAY2</Type><Address>14</Address><Application>56, 255</Application><Groups>${unit14Groups}</Groups></Unit>` +
+    '</Network>';
 
-const FULL_GROUPS_TREE_NET254 =
-    '<Network><NetworkNumber>254</NetworkNumber>' +
-    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
-    '<Application>56, 255</Application><Groups>31,32</Groups></Unit>' +
-    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
-    '<Application>56, 255</Application><Groups>115</Groups></Unit></Network>';
-
-// Same partial-sync shape as PARTIAL_GROUPS_TREE_NET254 (unit 14 still has no
-// groups) with caller-chosen bindings on unit 13, so each variant has a
-// different group signature than the previous fetch.
-const partialGroupsTreeNet254 = (unit13Groups) =>
-    '<Network><NetworkNumber>254</NetworkNumber>' +
-    '<Unit><Type>RELDN12</Type><Address>13</Address>' +
-    `<Application>56, 255</Application><Groups>${unit13Groups}</Groups></Unit>` +
-    '<Unit><Type>RELAY2</Type><Address>14</Address>' +
-    '<Application>56, 255</Application><Groups></Groups></Unit></Network>';
+// Mid-sync: unit 14 has not reported its groups yet.
+const PARTIAL_GROUPS_TREE_NET254 = flatTreeNet254('31,32');
+// What C-Gate returns for the same network once the sync has finished.
+const FULL_GROUPS_TREE_NET254 = flatTreeNet254('31,32', '115');
 
 describe('HaDiscovery', () => {
     let haDiscovery;
@@ -1634,7 +1625,7 @@ describe('HaDiscovery', () => {
             let expectedDelay = haDiscovery._treeResyncInitialDelayMs;
             for (let i = 1; i <= haDiscovery._maxTreeResyncAttempts; i++) {
                 haDiscovery.handleTreeStart('start');
-                haDiscovery.handleTreeData(partialGroupsTreeNet254(`31,${40 + i}`));
+                haDiscovery.handleTreeData(flatTreeNet254(`31,${40 + i}`));
                 haDiscovery.handleTreeEnd('end');
                 expect(haDiscovery._treeResyncState.get('254').attempts).toBe(i);
 
@@ -1646,7 +1637,7 @@ describe('HaDiscovery', () => {
             // The next changed-but-still-unsynced tree exhausts the budget
             // instead of scheduling again.
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData(partialGroupsTreeNet254('31,99'));
+            haDiscovery.handleTreeData(flatTreeNet254('31,99'));
             haDiscovery.handleTreeEnd('end');
             expect(haDiscovery._treeResyncState.has('254')).toBe(false);
 
@@ -1703,7 +1694,7 @@ describe('HaDiscovery', () => {
             // is still empty: the cycle continues with the next backoff step
             // and tracks the new tree's signature.
             haDiscovery.handleTreeStart('start');
-            haDiscovery.handleTreeData(partialGroupsTreeNet254('31,32,40'));
+            haDiscovery.handleTreeData(flatTreeNet254('31,32,40'));
             haDiscovery.handleTreeEnd('end');
 
             const resync = haDiscovery._treeResyncState.get('254');
