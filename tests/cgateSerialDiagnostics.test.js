@@ -3,55 +3,18 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
+const { BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
+const { addonBin, addonLib } = require('./helpers/addonPaths');
 
 // These tests run the Linux rootfs shell script via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
-const SCRIPT = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'bin',
-    'cgateweb-serial-diagnostics'
-);
+const SCRIPT = addonBin('cgateweb-serial-diagnostics');
 
 // The shared serial-device helper the script sources (issue #28). Points at
 // the repo copy so the test never depends on the add-on's real install path.
-const SERIAL_DEVICE_LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'serial-device.sh'
-);
-
-// Mirrors the stub in cgateInstallScript.test.js: logs are printed with a
-// level prefix so tests can assert on them, and bashio::config reproduces
-// real bashio's "null"-for-unset quirk. Test config arrives via CGW_TEST_*
-// env vars.
-const BASHIO_STUB_WITH_LOGS = `
-    bashio::log.info()    { printf 'INFO: %s\\n' "$*"; }
-    bashio::log.warning() { printf 'WARNING: %s\\n' "$*"; }
-    bashio::log.error()   { printf 'ERROR: %s\\n' "$*"; }
-    bashio::log.debug()   { printf 'DEBUG: %s\\n' "$*"; }
-    bashio::log.trace()   { :; }
-    bashio::config() {
-        local key="$1"
-        local default_value="\${2:-null}"
-        local var_name="CGW_TEST_\${key}"
-        if declare -p "$var_name" &>/dev/null; then
-            printf '%s' "\${!var_name}"
-        else
-            printf '%s' "$default_value"
-        fi
-    }
-`;
+const SERIAL_DEVICE_LIB = addonLib('serial-device.sh');
 
 // An nc stub that records its argv and stdin (what the script asked C-Gate)
 // into CGW_NC_DIR, then answers with a canned PORT LIST/IFLIST response.

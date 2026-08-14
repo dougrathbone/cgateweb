@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
 const { BASHIO_STUB, BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
+const { addonInit, addonLib } = require('./helpers/addonPaths');
 
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
@@ -43,20 +44,14 @@ if (process.env.CI && !jqOk) {
 }
 const describeJq = (posixBashAvailable() && jqOk) ? describe : describe.skip;
 
-const SCRIPT = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'etc', 'cont-init.d', 'cgate-install.sh'
-);
+const SCRIPT = addonInit('cgate-install.sh');
 
 // The shared serial-device helper the script sources (issue #28). Points at
 // the repo copy so the test never depends on the add-on's real install path.
-const SERIAL_DEVICE_LIB = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'lib', 'cgateweb', 'serial-device.sh'
-);
+const SERIAL_DEVICE_LIB = addonLib('serial-device.sh');
 
 // Same for the shared supervisor-wait helper the script's main flow sources.
-const SUPERVISOR_WAIT_LIB = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'lib', 'cgateweb', 'supervisor-wait.sh'
-);
+const SUPERVISOR_WAIT_LIB = addonLib('supervisor-wait.sh');
 
 const FIXTURE_STOCK_ACCESS = fs.readFileSync(
     path.join(__dirname, 'fixtures', 'access-stock-cgate-3.3.2.txt'), 'utf8'

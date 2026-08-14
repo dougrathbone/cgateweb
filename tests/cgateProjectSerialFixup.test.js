@@ -7,10 +7,9 @@ const initSqlJs = require('sql.js');
 const {
     fixupProjectSerialInterface
 } = require('../homeassistant-addon/rootfs/usr/bin/cgateweb-project-serial-fixup.js');
+const { addonBin } = require('./helpers/addonPaths');
 
-const SCRIPT = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-project-serial-fixup.js'
-);
+const SCRIPT = addonBin('cgateweb-project-serial-fixup.js');
 const FIXTURE_DB = path.join(__dirname, '..', 'test-env', 'volumes', 'share', 'cgate', 'tag', 'HOME.db');
 
 async function readInterface(dbPath) {

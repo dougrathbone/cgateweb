@@ -1,22 +1,13 @@
 const { execFileSync } = require('child_process');
-const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
 const { BASHIO_STUB } = require('./helpers/bashioStub');
+const { addonLib } = require('./helpers/addonPaths');
 
 // These tests source the Linux rootfs shell helper via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
-const LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'supervisor-wait.sh'
-);
+const LIB = addonLib('supervisor-wait.sh');
 
 function runWait({ stubExtra = '', env = {} } = {}) {
     const script = `

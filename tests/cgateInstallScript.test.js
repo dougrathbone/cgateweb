@@ -4,45 +4,20 @@ const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
 const { BASHIO_STUB, BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
+const { addonBin, addonLib, addonInit } = require('./helpers/addonPaths');
 
 // These tests source the Linux rootfs shell script via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
-const SCRIPT = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'etc',
-    'cont-init.d',
-    'cgate-install.sh'
-);
+const SCRIPT = addonInit('cgate-install.sh');
 
 // The shared serial-device helper the script sources (issue #28). Points at
 // the repo copy so the test never depends on the add-on's real install path.
-const SERIAL_DEVICE_LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'serial-device.sh'
-);
+const SERIAL_DEVICE_LIB = addonLib('serial-device.sh');
 
 // Same for the shared supervisor-wait helper the script's main flow sources.
-const SUPERVISOR_WAIT_LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'supervisor-wait.sh'
-);
+const SUPERVISOR_WAIT_LIB = addonLib('supervisor-wait.sh');
 
 const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2';
 // sha256 of the zip the default URL serves, pinned in cgate-install.sh as
@@ -131,15 +106,7 @@ function runHelperWithArgs(helperName, args = [], configObject = {}) {
 // The identity-aware resolver the serial check shells out to (issue #28).
 // Installed at /usr/bin in the add-on image; the tests point the script at the
 // repo copy through CGATEWEB_RESOLVE_SERIAL_JS.
-const RESOLVER = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'bin',
-    'cgateweb-resolve-serial.js'
-);
+const RESOLVER = addonBin('cgateweb-resolve-serial.js');
 
 // Temp dirs handed out to serial tests, removed once the suite finishes.
 const serialTmpDirs = [];

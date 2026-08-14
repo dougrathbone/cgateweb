@@ -10,10 +10,9 @@ const {
     findDeviceByIdentity,
     resolveSerialDevice
 } = require('../homeassistant-addon/rootfs/usr/bin/cgateweb-resolve-serial.js');
+const { addonBin, addonLib, addonInit } = require('./helpers/addonPaths');
 
-const SCRIPT = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-resolve-serial.js'
-);
+const SCRIPT = addonBin('cgateweb-resolve-serial.js');
 
 const BY_ID = 'usb-FTDI_FT232R_USB_UART_A50285BI-if00-port0';
 // An unrelated dongle that can share the ttyUSBn namespace with the PC
@@ -737,16 +736,15 @@ describe('the default serial-device file path', () => {
     // constant vs. the shared bash default, and a consumer quietly going back
     // to inlining its own literal instead of sourcing the shared file — both
     // are checked here rather than by a single literal comparison.
-    const ROOT = path.join(__dirname, '..', 'homeassistant-addon', 'rootfs');
-    const LIB_FILE = path.join(ROOT, 'usr', 'lib', 'cgateweb', 'serial-device.sh');
+    const LIB_FILE = addonLib('serial-device.sh');
     const CONSUMERS = [
-        path.join(ROOT, 'etc', 'cont-init.d', 'cgate-install.sh'),
-        path.join(ROOT, 'etc', 'cont-init.d', 'cgate-project-sync.sh'),
-        path.join(ROOT, 'usr', 'bin', 'cgateweb-serial-diagnostics')
+        addonInit('cgate-install.sh'),
+        addonInit('cgate-project-sync.sh'),
+        addonBin('cgateweb-serial-diagnostics')
     ];
 
     it('is spelled identically in the JS resolver and the shared bash helper', () => {
-        const jsMatch = fs.readFileSync(path.join(ROOT, 'usr', 'bin', 'cgateweb-resolve-serial.js'), 'utf8')
+        const jsMatch = fs.readFileSync(addonBin('cgateweb-resolve-serial.js'), 'utf8')
             .match(/DEFAULT_DEVICE_FILE = '([^']+)'/);
         const libMatch = fs.readFileSync(LIB_FILE, 'utf8')
             .match(/CGATEWEB_SERIAL_DEVICE_DEFAULT_FILE="([^"]+)"/);

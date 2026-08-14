@@ -3,26 +3,21 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
+const { addonBin } = require('./helpers/addonPaths');
 
 // Runs the Linux rootfs recovery script via bash; skipped where no POSIX bash
 // is usable (see helper).
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
-const SCRIPT = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-recover-serial'
-);
+const SCRIPT = addonBin('cgateweb-recover-serial');
 
 // The repo copies of the two node helpers. `node` itself is stubbed below, so
 // these are never executed — but the script now checks the resolver is readable
 // before running it (node exits 1 for a missing script too, which the exit-code
 // contract would otherwise read as "the device is absent"), so the default has
 // to be a path that really exists.
-const RESOLVER_JS = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-resolve-serial.js'
-);
-const FIXUP_JS = path.join(
-    __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-project-serial-fixup.js'
-);
+const RESOLVER_JS = addonBin('cgateweb-resolve-serial.js');
+const FIXUP_JS = addonBin('cgateweb-project-serial-fixup.js');
 
 // Stand-ins for the three externals the script uses. `node` dispatches on the
 // script it was handed (resolver vs project fixup) and records every call;

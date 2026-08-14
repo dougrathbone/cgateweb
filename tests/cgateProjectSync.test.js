@@ -3,46 +3,21 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
+const { addonBin, addonLib, addonInit } = require('./helpers/addonPaths');
 
 // These tests source the Linux rootfs shell script via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
 const describeBash = posixBashAvailable() ? describe : describe.skip;
 
-const SCRIPT = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'etc',
-    'cont-init.d',
-    'cgate-project-sync.sh'
-);
+const SCRIPT = addonInit('cgate-project-sync.sh');
 
 // The shared serial-device helper the script sources (issue #28). Points at
 // the repo copy so the test never depends on the add-on's real install path.
-const SERIAL_DEVICE_LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'serial-device.sh'
-);
+const SERIAL_DEVICE_LIB = addonLib('serial-device.sh');
 
 // Same for the shared supervisor-wait helper the script sources before its
 // first bashio::config read.
-const SUPERVISOR_WAIT_LIB = path.join(
-    __dirname,
-    '..',
-    'homeassistant-addon',
-    'rootfs',
-    'usr',
-    'lib',
-    'cgateweb',
-    'supervisor-wait.sh'
-);
+const SUPERVISOR_WAIT_LIB = addonLib('supervisor-wait.sh');
 
 // Stub bashio: config keys come from env vars CGW_TEST_<key>. Warnings are
 // echoed so tests can assert on them (info/error stay silent).
@@ -449,9 +424,7 @@ describeBash('cgate-project-sync.sh', () => {
     describe('boot-time renumber, with the real fixup (issue #28)', () => {
         // No node stub here: the point is what ends up in the project database
         // when a PC Interface renumbers while the add-on is stopped.
-        const FIXUP_JS = path.join(
-            __dirname, '..', 'homeassistant-addon', 'rootfs', 'usr', 'bin', 'cgateweb-project-serial-fixup.js'
-        );
+        const FIXUP_JS = addonBin('cgateweb-project-serial-fixup.js');
         const FIXTURE_DB = path.join(
             __dirname, '..', 'test-env', 'volumes', 'share', 'cgate', 'tag', 'HOME.db'
         );
