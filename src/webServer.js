@@ -10,6 +10,66 @@ const StaticFileServer = require('./web/staticFiles');
 const { DEFAULT_MAX_BODY_SIZE } = require('./web/bodyReader');
 const { sendJSON, setSecurityHeaders, setCorsHeaders } = require('./web/httpHelpers');
 
+// Exact "METHOD path" to handler. A table rather than a ladder of
+// `if (urlPath === x && req.method === y)`: the routes are all exact matches
+// with no ordering between them, so the ladder was thirty lines expressing a
+// lookup. Anything not listed here falls through to the static file server.
+//
+// Note these run AFTER the auth and rate-limit checks in _handleRequest, which
+// decide what needs a key from the path themselves (see ApiAuth) - adding a
+// route here does not by itself make it authenticated.
+//
+// A Map rather than a plain object because the lookup key is built from the
+// request. Every key here contains a space, so no crafted method/path could
+// reach an inherited property like `constructor` anyway - but that is a
+// property of the key format, not something the lookup enforces, and a Map has
+// no prototype chain to reason about in the first place.
+const ROUTES = new Map([
+    ['GET /api/labels', (server, req, res) => server._labelRoutes.handleGetLabels(req, res)],
+    ['PUT /api/labels', (server, req, res) => server._labelRoutes.handlePutLabels(req, res)],
+    ['PATCH /api/labels', (server, req, res) => server._labelRoutes.handlePatchLabels(req, res)],
+    ['POST /api/labels/import', (server, req, res) => server._labelRoutes.handleImportLabels(req, res)],
+    ['GET /api/labels/export.xml', (server, req, res) => server._labelRoutes.handleExportLabelsXml(req, res)],
+    ['GET /api/status', (server, req, res) => server._statusRoutes.handleGetStatus(req, res)],
+    ['GET /api/dashboard', (server, req, res) => server._statusRoutes.handleGetDashboard(req, res)],
+    ['GET /api/areas', (server, req, res) => server._statusRoutes.handleGetAreas(req, res)],
+    ['GET /healthz', (server, req, res) => server._statusRoutes.handleHealth(req, res)],
+    ['GET /readyz', (server, req, res) => server._statusRoutes.handleReady(req, res)],
+    ['GET /api/events/stream', (server, req, res) => server._sseHandler.handle(req, res)],
+]);
+
+/**
+ * Coerce a numeric option to a positive finite number, falling back to the
+ * default for anything else (absent, null, a string, NaN, zero, negative).
+ *
+ * These arrive from a user-edited settings file or the add-on options, so
+ * "0" or a typo has to land on the default rather than on a zero-length rate
+ * limit window or a zero-byte body cap.
+ *
+ * @param {*} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+function positiveNumber(value, fallback) {
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/**
+ * Same, but for the two request-count limits, which clamp to 1 instead of
+ * falling back. The distinction is deliberate and not interchangeable with
+ * positiveNumber: a configured 0 here means the operator wanted the tightest
+ * limit they could express, so it becomes 1 request per window. Treating it as
+ * "unset" and restoring the 120/minute default would quietly loosen a limit
+ * someone had tried to tighten to nothing.
+ *
+ * @param {*} value
+ * @param {number} fallback - Used only when the value is not a finite number.
+ * @returns {number}
+ */
+function atLeastOne(value, fallback) {
+    return Math.max(1, Number.isFinite(value) ? value : fallback);
+}
+
 class WebServer {
     /**
      * @param {Object} options
@@ -50,32 +110,14 @@ class WebServer {
                 ? options.allowedOrigins.split(',').map((origin) => origin.trim()).filter(Boolean)
                 : null);
         this.rateLimitWindowMs = 60000;
-        this.maxMutationRequestsPerWindow = Math.max(
-            1,
-            Number.isFinite(options.maxMutationRequestsPerWindow)
-                ? options.maxMutationRequestsPerWindow
-                : 120
-        );
+        this.maxMutationRequestsPerWindow = atLeastOne(options.maxMutationRequestsPerWindow, 120);
         // Failed authentication attempts get a separate, stricter bucket so an
         // exposed web_api_key can't be brute-forced unthrottled.
-        this.maxAuthFailuresPerWindow = Math.max(
-            1,
-            Number.isFinite(options.maxAuthFailuresPerWindow)
-                ? options.maxAuthFailuresPerWindow
-                : 20
-        );
-        this.maxBodySizeBytes = Number.isFinite(options.maxBodySizeBytes) && options.maxBodySizeBytes > 0
-            ? options.maxBodySizeBytes
-            : DEFAULT_MAX_BODY_SIZE;
-        this.activeDeviceWindowMs = Number.isFinite(options.activeDeviceWindowMs) && options.activeDeviceWindowMs > 0
-            ? options.activeDeviceWindowMs
-            : 86400000;
-        this.haAreasCacheTtlMs = Number.isFinite(options.haAreasCacheTtlMs) && options.haAreasCacheTtlMs > 0
-            ? options.haAreasCacheTtlMs
-            : 30000;
-        this.haApiTimeoutMs = Number.isFinite(options.haApiTimeoutMs) && options.haApiTimeoutMs > 0
-            ? options.haApiTimeoutMs
-            : 5000;
+        this.maxAuthFailuresPerWindow = atLeastOne(options.maxAuthFailuresPerWindow, 20);
+        this.maxBodySizeBytes = positiveNumber(options.maxBodySizeBytes, DEFAULT_MAX_BODY_SIZE);
+        this.activeDeviceWindowMs = positiveNumber(options.activeDeviceWindowMs, 86400000);
+        this.haAreasCacheTtlMs = positiveNumber(options.haAreasCacheTtlMs, 30000);
+        this.haApiTimeoutMs = positiveNumber(options.haApiTimeoutMs, 5000);
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
 
@@ -214,39 +256,9 @@ class WebServer {
                 return sendJSON(res, 429, { error: 'Too many requests' });
             }
 
-            // API routes
-            if (urlPath === '/api/labels' && req.method === 'GET') {
-                return this._labelRoutes.handleGetLabels(req, res);
-            }
-            if (urlPath === '/api/labels' && req.method === 'PUT') {
-                return await this._labelRoutes.handlePutLabels(req, res);
-            }
-            if (urlPath === '/api/labels' && req.method === 'PATCH') {
-                return await this._labelRoutes.handlePatchLabels(req, res);
-            }
-            if (urlPath === '/api/labels/import' && req.method === 'POST') {
-                return await this._labelRoutes.handleImportLabels(req, res);
-            }
-            if (urlPath === '/api/labels/export.xml' && req.method === 'GET') {
-                return this._labelRoutes.handleExportLabelsXml(req, res);
-            }
-            if (urlPath === '/api/status' && req.method === 'GET') {
-                return this._statusRoutes.handleGetStatus(req, res);
-            }
-            if (urlPath === '/api/dashboard' && req.method === 'GET') {
-                return this._statusRoutes.handleGetDashboard(req, res);
-            }
-            if (urlPath === '/api/areas' && req.method === 'GET') {
-                return await this._statusRoutes.handleGetAreas(req, res);
-            }
-            if (urlPath === '/healthz' && req.method === 'GET') {
-                return this._statusRoutes.handleHealth(req, res);
-            }
-            if (urlPath === '/readyz' && req.method === 'GET') {
-                return this._statusRoutes.handleReady(req, res);
-            }
-            if (urlPath === '/api/events/stream' && req.method === 'GET') {
-                return this._sseHandler.handle(req, res);
+            const route = ROUTES.get(`${req.method} ${urlPath}`);
+            if (route) {
+                return await route(this, req, res);
             }
 
             // Static files
