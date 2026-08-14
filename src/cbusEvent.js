@@ -139,13 +139,15 @@ class CBusEvent {
         const addressComponents = this._extractAddressComponents(addressToken);
         if (!addressComponents) return false;
 
-        this._deviceType = deviceType;
-        this._action = action;
-        this._applyAddressComponents(
+        if (!this._applyAddressComponents(
             addressComponents.network,
             addressComponents.application,
             addressComponents.group
-        );
+        )) {
+            return false;
+        }
+        this._deviceType = deviceType;
+        this._action = action;
 
         if (thirdSpace !== -1 && thirdSpace + 1 < this._rawEvent.length) {
             const fourthSpace = this._rawEvent.indexOf(' ', thirdSpace + 1);
@@ -233,20 +235,47 @@ class CBusEvent {
             this._isValid = false;
             return false;
         }
-        this._address = address;
-        this._network = addressParts[0];
-        this._application = addressParts[1];
-        this._group = addressParts[2];
-        this._isValid = true;
+        // Delegates rather than assigning the fields itself. This used to be a
+        // third independent route to a valid address - alongside the fast path
+        // and the status-response parser - which is precisely how the missing
+        // range check survived: fixing either of the other two left this one
+        // open. One writer for the address fields, one place to validate.
+        if (!this._applyAddressComponents(addressParts[0], addressParts[1], addressParts[2])) {
+            this._logger.warn(`C-Bus address out of range: ${address}`);
+            this._isValid = false;
+            return false;
+        }
         return true;
     }
 
     _applyAddressComponents(network, application, group) {
+        // Range-check here rather than in either caller: the fast path and the
+        // slow path both validate digits separately, but this is the single
+        // point they both funnel through, so one check cannot be bypassed by
+        // the other route.
+        //
+        // CBusCommand already bounds the MQTT side to exactly these ranges;
+        // this side - lines arriving from C-Gate - only checked that the
+        // characters were digits, so any arbitrarily large number was accepted
+        // as an address. That matters because addresses seen in events drive
+        // event-driven HA discovery, whose seen-sets have no eviction. C-Gate
+        // is unauthenticated plaintext TCP on the LAN and the bridge does not
+        // validate the peer, so a hostile or spoofed one could stream
+        // "254/25/<counter>" and have each value publish a RETAINED discovery
+        // config to the broker plus a permanent in-process entry. Those
+        // retained topics outlive both the attacker and a bridge restart,
+        // leaving phantom entities in Home Assistant's registry.
+        if (!this._isInRange(network, 254)
+            || !this._isInRange(application, 255)
+            || !this._isInRange(group, 255)) {
+            return false;
+        }
         this._address = `${network}/${application}/${group}`;
         this._network = network;
         this._application = application;
         this._group = group;
         this._isValid = true;
+        return true;
     }
 
     _isDigits(value) {
@@ -258,6 +287,23 @@ class CBusEvent {
             }
         }
         return true;
+    }
+
+    /**
+     * Whether a digits-only string is within a C-Bus address range.
+     *
+     * Caller has already established the string is all digits, so a length
+     * check short-circuits before parseInt: an address longer than three
+     * characters cannot be <= 255, and this runs on the event hot path.
+     *
+     * @param {string} value - Digits-only string.
+     * @param {number} max - Inclusive upper bound (254 for networks, 255 otherwise).
+     * @returns {boolean}
+     * @private
+     */
+    _isInRange(value, max) {
+        if (value.length > 3) return false;
+        return parseInt(value, 10) <= max;
     }
 
     /**

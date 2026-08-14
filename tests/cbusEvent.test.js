@@ -413,3 +413,37 @@ describe('CBusEvent — getSourceUnit (issue #35)', () => {
         expect(event.getSourceUnit()).toBeNull();
     });
 });
+
+// A hostile or spoofed C-Gate is in scope: it is unauthenticated plaintext TCP
+// on the LAN and the bridge does not validate the peer. Addresses from events
+// drive event-driven HA discovery, whose seen-sets have no eviction, so an
+// unbounded address space meant unbounded RETAINED discovery topics that
+// outlive both the attacker and a restart.
+//
+// Three independent code paths reach a valid address here (the fast path, the
+// status-response parser, and the regex path). Each case below is asserted
+// through more than one of them deliberately - the first two attempts at this
+// fix each left one route unguarded.
+describe('CBusEvent address range validation', () => {
+    const CBusEvent = require('../src/cbusEvent');
+
+    it.each([
+        ['lighting on //P/254/56/1', true, 'ordinary address'],
+        ['lighting on 254/56/4', true, 'bare address (regex path)'],
+        ['lighting ramp 254/56/4 128', true, 'with a level'],
+        ['lighting on //P/254/56/255', true, 'group at the 255 boundary'],
+        ['lighting on //P/254/255/255', true, 'application at the 255 boundary'],
+        ['lighting on //P/0/0/0', true, 'all zeros'],
+        ['lighting on //P/255/56/1', false, 'network above 254'],
+        ['lighting on //P/254/56/256', false, 'group above 255'],
+        ['lighting on 254/300/1', false, 'application above 255'],
+        ['lighting on //P/254/25/99999999999', false, 'the address-flood shape'],
+    ])('%s -> valid=%s (%s)', (line, expected) => {
+        expect(new CBusEvent(line).isValid()).toBe(expected);
+    });
+
+    it('rejects an out-of-range address on the status-response path too', () => {
+        expect(new CBusEvent('300 //P/254/56/99999: level=255').isValid()).toBe(false);
+        expect(new CBusEvent('300 //P/254/56/1: level=255').isValid()).toBe(true);
+    });
+});
