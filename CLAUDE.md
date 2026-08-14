@@ -38,7 +38,14 @@ When bumping the version (e.g., for a bug fix or feature release), you MUST:
 
 If you skip step 3, the distribution repo will NOT be updated, Home Assistant will not see the new version, and the add-on will not auto-update on user devices. This has caused stale deployments in the past.
 
-CI now enforces step 1: the `version-sync` job in `.github/workflows/ci.yml` fails the build if `package.json` and `homeassistant-addon/config.yaml` disagree. Do not edit one without the other.
+CI now enforces step 1: the `version-sync` job fails the build if `package.json` and `homeassistant-addon/config.yaml` disagree, and on a tag push it also checks the tag matches. Do not edit one without the other.
+
+That job — and the whole quality gate — lives in `.github/workflows/quality.yml`, a reusable workflow called by both `ci.yml` (pushes and PRs) and `hacs-distribution.yml` (releases). **Edit the shared jobs there, not in the callers**, so a PR and a release can never be gated differently again; they had already drifted once, with the release path linting fewer shell scripts than the PR path.
+
+Two consequences worth knowing before touching it:
+
+- **Check names are `quality / <job name>`** and several are required status checks on master. Renaming a job in `quality.yml` breaks branch protection until the required contexts are updated to match (`gh api -X PATCH repos/dougrathbone/cgateweb/branches/master/protection/required_status_checks`).
+- **Docs-only changes skip the image builds and integration legs.** `ci.yml`'s `changes` job decides, and passes `run-expensive` in. `addon-image` gates its *steps* rather than skipping the job, because a skipped job does not satisfy a required check — skipping it outright would make every docs PR unmergeable. The integration legs are not individually required, so those skip wholesale and the aggregator reports why.
 
 After tagging, backfill a GitHub Release on the source repo (`gh release create vX.Y.Z --notes "..."`) so the source-repo release page stays in lockstep with the distribution. The `hacs-distribution.yml` workflow only creates a Release on the **distribution** repo, not the source.
 
@@ -172,7 +179,7 @@ These are the patterns that have actually shown up in past reviews. If you spot 
 - **Async parse callbacks where state is cleared before the callback fires**. If `parseString` or similar can fail, the failure path needs a recovery route (e.g. via `_handleTreeRequestFailure`); don't just log and return, or the surrounding state machine will get stuck.
 - **GitHub Actions pinned to floating tags** (`@v5`, `@v2`). Pin to commit SHA with a version comment. First-party `actions/*` and third-party both.
 - **Secrets substituted into rendered `run:` commands**. Move them to `env:` so they cannot leak via verbose-mode logs.
-- **`package.json` and `homeassistant-addon/config.yaml` version drift**. CI now enforces this, but if you see the check pass on a release that shouldn't be passing, double-check the version-sync logic in `ci.yml`.
+- **`package.json` and `homeassistant-addon/config.yaml` version drift**. CI now enforces this, but if you see the check pass on a release that shouldn't be passing, double-check the version-sync logic in `quality.yml`.
 
 ### Process for executing on a multi-item improvement plan
 
