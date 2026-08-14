@@ -1437,6 +1437,51 @@ describe('WebServer', () => {
         });
     });
 
+    // Verified DoS: _prune used to walk the whole map and reallocate an array
+    // per entry on EVERY request, which is quadratic in distinct sources.
+    // Measured 17.5s of blocked event loop at 50k addresses - and reachable
+    // unauthenticated, because failed-auth requests are metered too.
+    describe('RateLimiter resistance to source-address flooding', () => {
+        it('caps the number of tracked sources', () => {
+            const limiter = new RateLimiter({ windowMs: 60000, maxRequests: 5, maxTrackedSources: 100 });
+            for (let i = 0; i < 5000; i++) {
+                limiter.isLimited({ socket: { remoteAddress: `2001:db8::${i}` } });
+            }
+            expect(limiter._requestLog.size).toBeLessThanOrEqual(100);
+        });
+
+        it('processes a large address flood in bounded time', () => {
+            // Absolute bound, not a ratio: the ratio between a below-cap and an
+            // above-cap run is a constant-factor step, which measures nothing
+            // useful. What matters is that the whole-map walk is gone. The
+            // original implementation took ~17.5 SECONDS for this input;
+            // measured at ~0.1s after the fix, so 5s fails loudly on a
+            // regression while tolerating a slow CI runner.
+            const limiter = new RateLimiter({ windowMs: 60000, maxRequests: 5 });
+            const start = process.hrtime.bigint();
+            for (let i = 0; i < 50000; i++) {
+                limiter.isLimited({ socket: { remoteAddress: `2001:db8::${i}` } });
+            }
+            const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+            expect(elapsedMs).toBeLessThan(5000);
+        });
+
+        it('does not let a flood smaller than the cap clear a limited client', () => {
+            // Eviction is least-recently-used, so a sufficiently large sustained
+            // flood can eventually evict anyone - but it costs the attacker far
+            // more requests than the allowance it buys back, which makes it a
+            // losing trade rather than a bypass. What must hold is that a flood
+            // smaller than the cap cannot flush a client's record.
+            const limiter = new RateLimiter({ windowMs: 60000, maxRequests: 3, maxTrackedSources: 5000 });
+            const victim = { socket: { remoteAddress: '10.0.0.1' } };
+            expect([1, 2, 3].map(() => limiter.isLimited(victim))).toEqual([false, false, false]);
+            for (let i = 0; i < 500; i++) {
+                limiter.isLimited({ socket: { remoteAddress: `2001:db8::${i}` } });
+            }
+            expect(limiter.isLimited(victim)).toBe(true);
+        });
+    });
+
     describe('RateLimiter partial prune', () => {
         it('updates the log entry when some timestamps are stale but others are fresh', () => {
             const limiter = new RateLimiter({ windowMs: 60000, maxRequests: 5 });
