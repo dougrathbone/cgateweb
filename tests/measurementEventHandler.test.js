@@ -1,4 +1,6 @@
 const MeasurementEventHandler = require('../src/measurementEventHandler');
+const CBusEvent = require('../src/cbusEvent');
+const { LINE_UNPARSED } = require('../src/applicationDecoders/appEventLine');
 
 // Ground-truth fixture captured live from a real C-Gate instance (project
 // HOME) during end-to-end testing: a solar-inverter power reading of
@@ -45,12 +47,62 @@ describe('MeasurementEventHandler', () => {
         expect(() => handler.handleLine(MEASUREMENT_LINE)).not.toThrow();
     });
 
-    it('returns false and does not publish when the feature is disabled', () => {
-        const deps = makeDeps({ settings: { cbus_measurement_app_id: null } });
-        const handler = new MeasurementEventHandler(deps);
-        const consumed = handler.handleLine(MEASUREMENT_LINE);
-        expect(consumed).toBe(false);
-        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+    // Reported on #60 by a user with a real temperature sensor: with the
+    // feature off, "measurement data //MIDSTRM/254/228/23/1 2206 -2 0" was
+    // reaching CBusEvent, which read the 4-segment address as 254/228/23 and
+    // the raw 2206 as a lighting level - publishing his 22.06 degree sensor as
+    // ON at 865%. Measurement lines carry no '#' prefix, so unlike aircon and
+    // security traffic they do not land on the comment-dropping branch.
+    describe('when the feature is disabled', () => {
+        const DISABLED = { settings: { cbus_measurement_app_id: null } };
+
+        it('still claims the line so it never reaches the standard parser', () => {
+            const deps = makeDeps(DISABLED);
+            const handler = new MeasurementEventHandler(deps);
+            expect(handler.handleLine(MEASUREMENT_LINE)).toBe(LINE_UNPARSED);
+            expect(handler.handleLine(MEASUREMENT_LINE)).not.toBe(false);
+        });
+
+        it('publishes nothing', () => {
+            const deps = makeDeps(DISABLED);
+            new MeasurementEventHandler(deps).handleLine(MEASUREMENT_LINE);
+            expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        });
+
+        it('points at the setting once per network/application, not once per line', () => {
+            // These broadcast continuously, so the hint has to be capped or it
+            // becomes the log.
+            const deps = makeDeps(DISABLED);
+            const handler = new MeasurementEventHandler(deps);
+            for (let i = 0; i < 5; i += 1) handler.handleLine(MEASUREMENT_LINE);
+            handler.handleLine('measurement data //HOME/253/228/0/0 1234 -1 38');
+
+            const hints = deps.logger.info.mock.calls.map(c => c[0])
+                .filter(m => m.includes('cbus_measurement_app_id'));
+            expect(hints).toHaveLength(2);
+            expect(hints[0]).toContain('254/228');
+            expect(hints[1]).toContain('253/228');
+        });
+    });
+
+    // The address shape that actually misparsed in #60, end to end.
+    it('keeps a 4-segment address out of the standard event parser', () => {
+        const line = 'measurement data //MIDSTRM/254/228/23/1 2206 -2 0 #sourceunit=22 OID=';
+        // CBusEvent accepts it and gets it wrong - which is why the handler
+        // must claim it first.
+        const misparsed = new CBusEvent(line);
+        expect(misparsed.isValid()).toBe(true);
+        expect(misparsed.getLevel()).toBe(2206);
+
+        expect(new MeasurementEventHandler(makeDeps({ settings: { cbus_measurement_app_id: null } }))
+            .handleLine(line)).toBe(LINE_UNPARSED);
+
+        const deps = makeDeps();
+        expect(new MeasurementEventHandler(deps).handleLine(line)).toBe(true);
+        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+            '254', '228', '23/1',
+            expect.objectContaining({ value: 22.06, unit: '\u00b0C', deviceClass: 'temperature' })
+        );
     });
 
     it('ignores a non-measurement line without throwing and returns false', () => {

@@ -9,9 +9,15 @@ const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
  * C-Gate renders as "measurement data //PROJECT/<net>/<app>/<device>/<channel>
  * <value> <multiplier> <units>" (docs/Measurement Application.md §28.5.1.1) —
  * a 4-segment address the standard event parser (3-segment net/app/group)
- * can't handle. Gated behind settings.cbus_measurement_app_id; when unset,
- * returns false so these lines fall through to the normal (comment-dropping)
- * path, preserving current behaviour.
+ * can't handle.
+ *
+ * Decoding is gated behind settings.cbus_measurement_app_id, but recognising
+ * the line is not. Unlike aircon and security traffic, a measurement broadcast
+ * is not `#`-comment-prefixed, so with the feature off it does not land on the
+ * bridge's comment-dropping branch - it reaches CBusEvent, which reads the
+ * 4-segment address as a 3-segment one and the raw value as a lighting level.
+ * A 22.06 degree sensor then publishes ON at 865%. So these lines are always
+ * claimed, and the setting only decides whether they are decoded.
  */
 class MeasurementEventHandler {
     constructor({ eventPublisher, logger, settings, getHaDiscovery }) {
@@ -35,9 +41,16 @@ class MeasurementEventHandler {
     }
 
     handleLine(line) {
-        const appId = this.settings.cbus_measurement_app_id;
-        if (!appId) return false;
+        // Classified BEFORE the enabled check, deliberately. A measurement
+        // line is never a valid standard event, so it must be kept out of the
+        // parser whether or not we can decode it (see the class note).
         if (!this.isMeasurementLine(line)) return false;
+
+        const appId = this.settings.cbus_measurement_app_id;
+        if (!appId) {
+            this._warnFeatureOffOnce(line);
+            return LINE_UNPARSED;
+        }
 
         // Recognisable measurement traffic and the feature is enabled — decode it.
         const reading = measurementDecoder.decodeLine(line);
@@ -68,6 +81,30 @@ class MeasurementEventHandler {
             this.logger.debug(`Measurement line not natively decoded: ${line}`);
         }
         return LINE_UNPARSED;
+    }
+
+    /**
+     * Tell the user once that measurement traffic is on the bus but not being
+     * decoded. Before this, the symptom was a nonsense lighting level rather
+     * than anything naming the feature, which is not a hint anyone could act
+     * on (reported on #60).
+     *
+     * Once per network/application, not once per line: a measurement device
+     * broadcasts continuously and this is INFO, not debug.
+     *
+     * @param {string} line
+     * @private
+     */
+    _warnFeatureOffOnce(line) {
+        const reading = measurementDecoder.decodeLine(line);
+        const key = reading ? `${reading.network}/${reading.application}` : 'unknown';
+        if (!this._featureOffSeen) this._featureOffSeen = new Set();
+        if (this._featureOffSeen.has(key)) return;
+        this._featureOffSeen.add(key);
+        this.logger.info(
+            `C-Bus Measurement traffic seen on ${key} but not decoded; set cbus_measurement_app_id `
+            + `(typically 228) to publish these readings as sensors.`
+        );
     }
 }
 

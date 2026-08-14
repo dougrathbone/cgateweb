@@ -14,6 +14,15 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 ### Added
 
 - **Native support for the C-Bus Measurement application (analogue sensors like power, light level, and more).** Set `cbus_measurement_app_id` (default 228) to publish readings to `cbus/read/{network}/228/{device}/{channel}/value` and `/unit`, with a Home Assistant sensor entity for each device/channel. It also works the other way: `cbus/write/{network}/228/{device}/{channel}/data` (payload `value,multiplier,units`) lets you inject a reading onto C-Bus — handy for a scripted or virtual sensor (e.g. a solar inverter's power output) that has no physical C-Bus hardware of its own. Off by default.
+- **Forcing the alarm to arm past an open zone is now its own setting**, `cbus_security_bypass_enabled`. It used to come along with `cbus_security_control_enabled`. If you turned on alarm control and want the "arm anyway" option, turn this on too. Separate because an alarm armed past an open door says **armed** while that door is not being watched, and that should be a choice you make on purpose. (#42, #62)
+
+### Fixed
+
+- **Measurement sensors no longer show up as a light at a nonsense brightness.** With the measurement feature switched off — the default — a reading from a measurement device was being read as a lighting level, so a 22.06°C temperature sensor appeared as ON at 865%. Those readings are now left alone unless you enable the feature, and the add-on logs a one-line hint telling you the setting to turn on if it sees measurement traffic. If you saw this, the bad values were retained on your broker: clear `cbus/read/{network}/228/...` topics once after upgrading. Reported by a user with a real sensor on the bus. (#60)
+- **A limit on alarm disarm attempts.** Disarming replays your PIN at the panel, and there was nothing stopping something from trying every possible code. Now capped at 10 attempts per 10 minutes per network, which is well above normal use. A rejected attempt (wrong format, no code) does not count, so a broken automation cannot lock you out.
+- **A malformed message from C-Gate can no longer stop the bridge.** An error while handling one event line is now logged and skipped instead of taking the whole add-on down.
+- **Better protection against a malicious project file.** A `.cbz` whose contents claim no size is now rejected on import rather than being unpacked.
+- **The web interface stays responsive under a flood of requests.** Its rate limiter slowed down badly when it saw a large number of distinct clients; it no longer does.
 
 ## [1.24.3] - 2026-08-13
 
