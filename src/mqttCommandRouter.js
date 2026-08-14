@@ -288,6 +288,16 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
+        if (action === 'ARM_CUSTOM_BYPASS') {
+            // Home Assistant's own alarm-panel action for "arm, bypassing what
+            // is in the way". On this panel that is exactly the '#' keypress,
+            // so it routes to the same place as the bypass button rather than
+            // being a second implementation. Reported on #62 by the user who
+            // was already driving it this way from his own project.
+            this._sendBypassKeypress(network, application);
+            return;
+        }
+
         const mode = SECURITY_ARM_MODE_BY_PAYLOAD[action];
         if (mode === undefined) {
             // Deliberately quotes the action, never the payload: the payload may
@@ -324,6 +334,24 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
+        this._sendBypassKeypress(network, application);
+    }
+
+    /**
+     * Send the '#' keypress that forces an arm past open zones.
+     *
+     * Shared by the two ways a user can reach it: the dedicated bypass button
+     * on its own topic, and Home Assistant's `arm_custom_bypass` action on the
+     * alarm panel itself (#62). Both end up here so the two cannot drift.
+     *
+     * Callers are responsible for the control-enabled and application checks -
+     * both entry points already do them for their own error messages.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @private
+     */
+    _sendBypassKeypress(network, application) {
         const cmd = buildSecurityEmulateKeypadCommand({
             cbusname: this.cbusname, network, application, key: SECURITY_KEYPAD_ACCEPT.charCodeAt(0)
         });

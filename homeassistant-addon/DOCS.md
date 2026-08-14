@@ -696,7 +696,14 @@ With `cbus_security_control_enabled: true` (off by default) the entity gains a c
 
 #### Bypassing open zones
 
-When arming stalls at `pending` because a zone is open (`arm_not_ready` names it in the attributes), the physical keypad's `#` key bypasses the open zones and lets the arm continue. With `cbus_security_control_enabled: true`, the panel device gains a **Bypass open zones** button that sends that same `#` keypress via `SECURITY EMULATE_KEYPAD`, so the arm flow (arm → bypass → armed) can be completed from Home Assistant without walking to the keypad.
+When arming stalls at `pending` because a zone is open (`arm_not_ready` names it in the attributes), the physical keypad's `#` key bypasses the open zones and lets the arm continue. With `cbus_security_control_enabled: true` there are two ways to send that same `#` keypress from Home Assistant, so the arm flow (arm → bypass → armed) completes without walking to the keypad:
+
+- **On the alarm card itself** — the panel supports Home Assistant's **arm custom bypass** action, which is the tidier option if you already drive the panel from a dashboard card.
+- **A separate "Bypass open zones" button** on the panel device, which is easier to call from a script or put on its own dashboard.
+
+Both send exactly the same `SECURITY EMULATE_KEYPAD` command; use whichever suits your setup.
+
+> This is deliberately never automatic. Bypassing an open zone is a security decision, and only the person who can see the open window should make it — the add-on will not force an arm on your behalf just because a zone is unsealed.
 
 #### Disarming
 

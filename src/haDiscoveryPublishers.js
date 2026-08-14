@@ -847,10 +847,17 @@ class _HaDiscoveryPublishers {
 
             state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
             json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-            // Arm away/night/home(day-stay)/vacation; no custom bypass and no
-            // manual trigger on this panel. Disarm is not in this list because
-            // HA has no such flag — see the note above.
-            supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation'],
+            // Arm away/night/home(day-stay)/vacation, plus arm_custom_bypass.
+            // No manual trigger on this panel, and disarm is not in this list
+            // because HA has no such flag — see the note above.
+            //
+            // arm_custom_bypass is mapped to the '#' keypress that forces an
+            // arm past an open zone. That is not quite HA's literal meaning
+            // (arm while excluding chosen zones), but it is the closest native
+            // action and it is what the panel actually offers, so the bypass
+            // appears on the alarm card itself instead of only as a separate
+            // button entity (#62).
+            supported_features: ['arm_home', 'arm_away', 'arm_night', 'arm_vacation', 'arm_custom_bypass'],
             // Home Assistant defaults both of these to true and then refuses to
             // publish an arm/disarm without a code — it pops "PIN required" and
             // the command never reaches MQTT at all, which is how 1.23.1 shipped

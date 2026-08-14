@@ -93,10 +93,36 @@ describe('MqttCommandRouter', () => {
 
         it('rejects unknown payloads with a warning and no command', () => {
             const warnSpy = jest.spyOn(router.logger, 'warn');
-            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            // ARM_CUSTOM_BYPASS used to be the example here; it is a real
+            // action now (#62), so this needs a genuinely unsupported one.
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_TRIGGER');
             expect(mockQueue.add).not.toHaveBeenCalled();
             expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown security command'));
             warnSpy.mockRestore();
+        });
+
+        // #62: Home Assistant's native alarm-panel action for arming past
+        // whatever is in the way. It must reach the same '#' keypress as the
+        // dedicated bypass button, not a second implementation.
+        it('routes ARM_CUSTOM_BYPASS to the # keypress', () => {
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            expect(mockQueue.add).toHaveBeenCalledTimes(1);
+            // '#' is $23.
+            expect(mockQueue.add).toHaveBeenCalledWith('security emulate_keypad //TestProject/254/208 $23\n');
+        });
+
+        it('sends the identical command whether bypass comes from the button or the panel', () => {
+            router.routeMessage('cbus/write/254/208/panel/bypass', '');
+            const fromButton = mockQueue.add.mock.calls.map(c => c[0]);
+            mockQueue.add.mockClear();
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            expect(mockQueue.add.mock.calls.map(c => c[0])).toEqual(fromButton);
+        });
+
+        it('ignores ARM_CUSTOM_BYPASS when control is disabled', () => {
+            router.settings.cbus_security_control_enabled = false;
+            router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+            expect(mockQueue.add).not.toHaveBeenCalled();
         });
 
         it('ignores the command when control is disabled', () => {

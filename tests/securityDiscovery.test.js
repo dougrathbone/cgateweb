@@ -357,7 +357,7 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(payload.name).toBeNull(); // primary entity takes the device name
             expect(payload.state_topic).toBe('cbus/read/254/208/panel/state');
             expect(payload.json_attributes_topic).toBe('cbus/read/254/208/panel/attributes');
-            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation']);
+            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation', 'arm_custom_bypass']);
             expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
             expect(payload.device.name).toBe('C-Bus Security Panel 254/208');
             expect('command_topic' in payload).toBe(false);
