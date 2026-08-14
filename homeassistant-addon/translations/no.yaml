@@ -249,6 +249,11 @@ configuration:
     description: >-
       Tillat også Home Assistant å koble fra alarmen. Krever Alarmstyring. Av som standard. C-Bus har ingen frakoblingskommando, så PIN-koden tastes inn på sentralen via tastaturemulering: Home Assistant viser sitt eget tastatur og sender det du taster over MQTT. PIN-koden lagres ingen steder, men den går gjennom MQTT-brokeren din ved hver frakobling, så aktiver dette kun på en broker du stoler på, helst med TLS.
 
+  cbus_measurement_app_id:
+    name: Måleapplikasjons-ID
+    description: >-
+      C-Bus måleapplikasjons-id (standard 228) for analoge/numeriske sensoravlesninger (temperatur, effekt, lysnivå, osv). Publiserer cbus/read/{network}/228/{device}/{channel}/value og /unit, og godtar injiserte avlesninger på cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — f.eks. for skriptede/virtuelle sensorer. Av som standard.
+
 
   # ── Bridge diagnostikk ──
   ha_bridge_diagnostics_enabled:

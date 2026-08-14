@@ -252,6 +252,11 @@ configuration:
     description: >-
       Home Assistant によるアラームパネルの解除も許可します。セキュリティパネル制御が必要です。デフォルトはオフです。C-Bus には解除コマンドがないため、キーパッドエミュレーションで PIN をパネルに入力します。Home Assistant が独自のキーパッドを表示し、入力内容を MQTT で送信します。PIN はどこにも保存されませんが、解除のたびに MQTT ブローカーを経由します。信頼できるブローカーでのみ、できれば TLS を使って有効にしてください。
 
+  cbus_measurement_app_id:
+    name: 測定アプリケーションID
+    description: >-
+      アナログ/数値センサーの読み取り値（温度、電力、照度など）のためのC-Bus測定アプリケーションID（デフォルト228）。cbus/read/{network}/228/{device}/{channel}/value と /unit に発行し、cbus/write/{network}/228/{device}/{channel}/data（ペイロード "value,multiplier,units"）で注入された読み取り値を受け付けます — 例えばスクリプト/仮想センサー向けです。デフォルトでオフです。
+
 
   # ── Bridge 診断 ──
   ha_bridge_diagnostics_enabled:

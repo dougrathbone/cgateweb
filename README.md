@@ -95,6 +95,7 @@ Opt in by pointing a setting at the application id your project uses:
 | `ha_discovery_pir_app_id` | `binary_sensor` entities, device class motion |
 | `ha_discovery_trigger_app_id` | `event`, `button` and `scene` entities |
 | `cbus_aircon_app_id` | `climate` entities from native C-Bus air conditioning (`172`) |
+| `cbus_measurement_app_id` | `sensor` entities from the Measurement application (`228`) — power, light level, energy and more, one per device/channel. Also lets you inject readings onto C-Bus from a script or virtual sensor. |
 
 Application ids vary between installations — check your project in C-Bus Toolkit, or publish to `cbus/write/{net}///gettree` and read the JSON that comes back.
 

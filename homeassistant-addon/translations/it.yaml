@@ -257,6 +257,11 @@ configuration:
     description: >-
       Consenti a Home Assistant anche di disinserire la centrale di allarme. Richiede Controllo allarme. Disattivato per impostazione predefinita. C-Bus non ha un comando di disinserimento, quindi il PIN viene digitato sulla centrale tramite emulazione della tastiera: Home Assistant mostra la propria tastiera e invia quanto digitato via MQTT. Il PIN non viene memorizzato da nessuna parte, ma attraversa il tuo broker MQTT a ogni disinserimento: attivalo solo su un broker di cui ti fidi, preferibilmente con TLS.
 
+  cbus_measurement_app_id:
+    name: ID applicazione di misura
+    description: >-
+      ID dell'applicazione di misura C-Bus (predefinito 228) per letture analogiche/numeriche dei sensori (temperatura, potenza, livello di luce, ecc). Pubblica cbus/read/{network}/228/{device}/{channel}/value e /unit, e accetta letture iniettate su cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — ad esempio per sensori virtuali/scriptati. Disattivato per impostazione predefinita.
+
 
   # ── Diagnostica del bridge ──
   ha_bridge_diagnostics_enabled:

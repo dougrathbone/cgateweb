@@ -227,6 +227,11 @@ configuration:
     description: >-
       同时允许 Home Assistant 撤防安防面板。需要先启用安防面板控制。默认关闭。C-Bus 没有撤防命令，因此通过键盘模拟在面板上输入 PIN 码：Home Assistant 显示自己的键盘并通过 MQTT 发送您输入的内容。PIN 码不会保存在任何地方，但每次撤防都会经过您的 MQTT 代理，因此请仅在您信任的代理上启用，最好配合 TLS。
 
+  cbus_measurement_app_id:
+    name: 测量应用 ID
+    description: >-
+      C-Bus 测量应用 ID（默认 228），用于模拟/数值传感器读数（温度、功率、光照度等）。发布到 cbus/read/{network}/228/{device}/{channel}/value 和 /unit，并接受通过 cbus/write/{network}/228/{device}/{channel}/data（负载为 "value,multiplier,units"）注入的读数——例如用于脚本/虚拟传感器。默认关闭。
+
 
   # ── Bridge 诊断 ──
   ha_bridge_diagnostics_enabled:

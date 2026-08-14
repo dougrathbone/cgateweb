@@ -251,6 +251,11 @@ configuration:
     description: >-
       Umožnit Home Assistant také deaktivovat zabezpečovací ústřednu. Vyžaduje Ovládání alarmu. Ve výchozím nastavení vypnuto. C-Bus nemá příkaz k deaktivaci, takže se PIN zadává na ústřednu pomocí emulace klávesnice: Home Assistant zobrazí vlastní klávesnici a odešle zadané číslice přes MQTT. PIN se nikam neukládá, ale při každé deaktivaci prochází vaším MQTT brokerem. Zapínejte pouze na brokeru, kterému důvěřujete, ideálně s TLS.
 
+  cbus_measurement_app_id:
+    name: ID měřicí aplikace
+    description: >-
+      ID měřicí aplikace C-Bus (výchozí 228) pro analogové/číselné hodnoty ze senzorů (teplota, výkon, úroveň osvětlení atd). Publikuje cbus/read/{network}/228/{device}/{channel}/value a /unit a přijímá vložené hodnoty přes cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — např. pro skriptované/virtuální senzory. Ve výchozím nastavení vypnuto.
+
 
   # ── Diagnostika bridge ──
   ha_bridge_diagnostics_enabled:

@@ -27,6 +27,8 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
+    MQTT_TOPIC_SUFFIX_VALUE,
+    MQTT_TOPIC_SUFFIX_UNIT,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     CGATE_CMD_ON,
@@ -279,6 +281,8 @@ class EventPublisher {
      *   humidity_action → cbus/read/{net}/{app}/{group}/humidity_action
      *   security_zone  → cbus/read/{net}/{app}/{zone}/state (ON for unsealed/open/short)
      *                  → cbus/read/{net}/{app}/{zone}/attributes (raw 2-bit state name)
+     *   measurement    → cbus/read/{net}/{app}/{device}/{channel}/value (decoded number)
+     *                  → cbus/read/{net}/{app}/{device}/{channel}/unit (unit string, '' if none)
      */
     publishReading(network, application, group, reading) {
         if (!reading) return;
@@ -473,6 +477,19 @@ class EventPublisher {
             this._publishIfNeeded(
                 `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
                 JSON.stringify(attributes),
+                this.mqttOptions
+            );
+        } else if (reading.kind === 'measurement') {
+            // Measurement application (app 228): `group` is "{device}/{channel}",
+            // so `base` already addresses cbus/read/{net}/{app}/{device}/{channel}.
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_VALUE}`,
+                String(reading.value),
+                this.mqttOptions
+            );
+            this._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_UNIT}`,
+                reading.unit || '',
                 this.mqttOptions
             );
         }

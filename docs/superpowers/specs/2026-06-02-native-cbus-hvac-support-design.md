@@ -137,8 +137,58 @@ config.yaml rules.
   `5 0 1 0 0 0 1 8 4352 0`); zone temp/setpoint/mode layout per Clipsal's "C-Gate Air-Conditioning
   Application User Guide." **Must capture and, where possible, cross-check against that guide.**
 
+#### Update 2026-08-08 — Measurement ($E4) unblocked
+
+Both the byte semantics and the C-Gate text framing are now known, from two independent
+sources (no guessing involved):
+
+- **`docs/Measurement Application.pdf`** (Clipsal `CBUS-APP/28`, converted to
+  `docs/Measurement Application.md`) — the official SAL: a "channel measurement data" message
+  carries `<Device ID> <Channel> <Units> <Multiplier> <MSB> <LSB>`; decoded value is
+  `int16(MSB, LSB) × 10^Multiplier`, with `Units` from a fixed 40-entry table.
+- **A previously-built private reference implementation of the user's**, confirmed working
+  end-to-end against real DLT input units, showing C-Gate's text framing (which the official PDF
+  doesn't cover): write `MEASUREMENT DATA //project/net/app/device/channel value multiplier units`;
+  read/event `measurement data //project/net/app/device/channel value multiplier units` (C-Gate
+  already resolves MSB/LSB to a plain decimal `value` — no raw-byte math needed at this layer).
+  Confirmed real example: `measurement data //HOME/254/228/0/0 5042 0 38` → device 0, channel 0,
+  5042 W (units code 38 = Watts).
+
+Unlike Air-Con, the user's real use case is **bidirectional**: virtual measurement sources
+(temperature sensors, solar inverter power) are scripted and injected via MQTT → `MEASUREMENT
+DATA`, not read from physical hardware — so this phase adds a write path
+(`cbus/write/{net}/228/{device}/{channel}/data`) alongside the read path, gated on a single new
+`cbus_measurement_app_id` setting (mirrors `cbus_aircon_app_id`'s one-setting-both-directions
+shape, not Temperature's read-only pattern). See the implementation plan for the concrete task
+breakdown.
+
 **Verification rule:** decoders for 228/172 are built TDD against real captured fixtures. If a
 sample for an app cannot be obtained, that phase stays unshipped rather than shipping a guess.
+
+#### Update 2026-08-08 — Measurement ($E4) live end-to-end confirmation
+
+Ran the shipped implementation standalone against the user's real C-Gate (project `HOME`), routed
+through an isolated MQTT broker so it couldn't interfere with the production HA add-on instance
+already running on the same C-Gate. Confirmed the full round trip on real hardware, both directions:
+
+- **Write → C-Gate → read**, continuously, once per second: `cbus/write/254/228/1/{0..3}/data`
+  (a 4-channel temperature sensor: `125,-1,0` / `189,-1,0` / `242,-1,0` / `189,-1,0`) → built
+  `MEASUREMENT DATA` commands → C-Gate accepted them → broadcast back on the event port → decoded
+  correctly to `12.5°C` / `18.9°C` / `24.2°C` / `18.9°C` on `cbus/read/254/228/1/{0..3}/value`+`/unit`.
+- Solar-inverter power channel (`0/0`): `1234,-1,38` → `123.4 W`, confirmed visually on a real DLT
+  input unit, not just over MQTT.
+- **New real-world detail neither prior source covered:** C-Gate appends the same trailing
+  metadata format used by aircon/security event lines — e.g. `measurement data //HOME/254/228/1/0
+  125 -1 0 #sourceunit=0 OID= sessionId=cmd54 commandId={none}`. Already handled correctly by reusing
+  `normalizeAppEventLine` (the shared aircon/security metadata-stripping helper), but this was
+  confirmed rather than assumed — added as an explicit regression fixture in
+  `tests/applicationDecoders/measurementDecoder.test.js` and `tests/measurementEventHandler.test.js`
+  (previously those used the fork's example line as a stand-in; now replaced with genuine live
+  captures).
+
+No decoder guesses remain unconfirmed for Measurement — both the byte semantics (official spec) and
+the full real wire format including metadata (this live test) are now verified against a real
+system, closing out the verification-first rule for this application.
 
 ## Error handling
 

@@ -6,6 +6,7 @@ const DEFAULT_CBUS_APP_LIGHTING = '56';  // C-Bus application ID for lighting de
 const DEFAULT_CBUS_APP_TEMPERATURE = '25';   // C-Bus Temperature Broadcast application ($19)
 const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning application ($AC)
 const DEFAULT_CBUS_APP_SECURITY = '208';     // C-Bus Security application ($D0)
+const DEFAULT_CBUS_APP_MEASUREMENT = '228';  // C-Bus Measurement application ($E4)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -62,6 +63,9 @@ const MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT = 'fan_speed_pct';     // Fan speed %
 const MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL = 'comfort_level';     // Evaporative comfort level (spec §25.12.7, default mapping)
 const MQTT_TOPIC_SUFFIX_SOURCE_UNIT = 'source_unit';              // C-Bus unit that last changed the group (#sourceunit)
 const MQTT_TOPIC_SUFFIX_ATTRIBUTES = 'attributes';                // JSON attributes (e.g. raw security zone state)
+// Measurement application (app 228/$E4) topic suffixes.
+const MQTT_TOPIC_SUFFIX_VALUE = 'value';                          // Decoded measurement value (raw x 10^multiplier)
+const MQTT_TOPIC_SUFFIX_UNIT = 'unit';                             // Unit string for the value (e.g. 'W', '°C'), '' if unitless/custom
 // Settable temperature range for native C-Bus HVAC thermostats (e.g. 5070TH).
 // HA's climate card and our write clamp both use this so users can't request a
 // value the thermostat will silently reject.
@@ -176,6 +180,12 @@ const SECURITY_ARM_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/panel\/arm
 // Security panel zone-bypass button topic (the virtual '#' keypad key used to
 // bypass open zones during arming, issue #42).
 const SECURITY_BYPASS_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/panel\/bypass$/;
+// Measurement application (app 228/$E4) data-injection command topic. The
+// address is 4 segments (network/application/device/channel), so — like the
+// security arm topic — this can't parse as a CBusCommand and is routed
+// directly. Payload is "value,multiplier,units" (confirmed working format
+// via live end-to-end testing against real C-Gate).
+const MEASUREMENT_DATA_TOPIC_REGEX = /^cbus\/write\/(\d{1,3})\/(\d{1,3})\/(\d{1,3})\/(\d{1,3})\/data$/;
 // Event-port line announcing a network finished syncing ("762 //PROJECT/254
 // Network sync ok"). The leading C-Gate timestamp is optional so the pattern
 // also matches lines already stripped of it. Captures the network id.
@@ -188,6 +198,7 @@ module.exports = {
     DEFAULT_CBUS_APP_TEMPERATURE,
     DEFAULT_CBUS_APP_AIRCON,
     DEFAULT_CBUS_APP_SECURITY,
+    DEFAULT_CBUS_APP_MEASUREMENT,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -240,6 +251,8 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
+    MQTT_TOPIC_SUFFIX_VALUE,
+    MQTT_TOPIC_SUFFIX_UNIT,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_TOPIC_STATUS,
@@ -308,5 +321,6 @@ module.exports = {
     COMMAND_TOPIC_REGEX,
     SECURITY_ARM_TOPIC_REGEX,
     SECURITY_BYPASS_TOPIC_REGEX,
+    MEASUREMENT_DATA_TOPIC_REGEX,
     CGATE_EVENT_NETWORK_SYNC_REGEX
 };

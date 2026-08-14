@@ -116,6 +116,15 @@ const defaultSettings = {
     // that topic can learn it. Only enable on a broker you trust, ideally with
     // TLS.
     cbus_security_disarm_enabled: false,
+    // C-Bus Measurement app ID (default 228/$E4); null disables. Gates BOTH
+    // directions: decoding "measurement data ..." event lines to
+    // cbus/read/{net}/228/{device}/{channel}/value+unit, and injecting
+    // readings via cbus/write/{net}/228/{device}/{channel}/data (payload
+    // "value,multiplier,units"). One flag for both, unlike Air Conditioning/
+    // Security's separate *_control_enabled gate — Measurement writes are how
+    // a scripted/virtual sensor gets its own data onto the bus (spec §28.2),
+    // not a hardware-actuation risk. See docs/Measurement Application.md.
+    cbus_measurement_app_id: null,
     ha_hvac_temperature_unit: 'C',
     ha_bridge_diagnostics_enabled: true,
     ha_bridge_diagnostics_interval_sec: 60,

@@ -356,6 +356,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `cbus_security_app_id` | string | `208` | C-Bus Security application id for alarm zone sensors (read-only). Publishes one `binary_sensor` per zone: `cbus/read/{network}/208/{zone}/state` is `ON` for unsealed/open/short and `OFF` for sealed, with the raw zone state (`sealed`/`unsealed`/`open`/`short`) on `cbus/read/{network}/208/{zone}/attributes`. Zone names come from the zone labels under application 1 in your Toolkit project (import them via C-Bus Labels); a device class (`motion`, `door`, `window`, `garage_door`, `smoke`) is inferred from the name. Zone state is synced on connect via `security status_request` (security panels do not answer getall). Set to `0` to disable. |
 | `cbus_security_control_enabled` | boolean | `false` | Opt-in to **arming** the security panel: adds the `cbus/write/{network}/208/panel/arm` command topic to the `alarm_control_panel` entity (`ARM_AWAY`, `ARM_NIGHT`, `ARM_HOME`, `ARM_VACATION`). Off by default — the arm command carries **no PIN** on the C-Bus network, so anything that can publish to the command topic can arm your panel. The entity is read-only without it. Disarming needs `cbus_security_disarm_enabled` as well. Requires `cbus_security_app_id` to be set. |
 | `cbus_security_disarm_enabled` | boolean | `false` | Opt-in to **disarming** as well, on top of `cbus_security_control_enabled`. C-Bus has no disarm command, so the PIN is typed at the panel via keypad emulation: Home Assistant shows its own numeric keypad and sends what you type in the command payload. **The PIN is not stored anywhere** — not in the add-on options, not in Home Assistant — but it does cross your MQTT broker on every disarm. Only enable on a broker you trust, ideally with TLS. See "Alarm panel" below. |
+| `cbus_measurement_app_id` | integer | (null) | C-Bus Measurement application id (`228`) for analogue/numeric sensor readings (temperature, power, light level, energy, etc). Decodes `measurement data ...` events and publishes `cbus/read/{network}/228/{device}/{channel}/value` (the decoded number) and `/unit` (e.g. `W`, `°C`, `lx`; empty if unitless/custom), with a `sensor` entity auto-created per device/channel. Also gates the write path: publish `value,multiplier,units` to `cbus/write/{network}/228/{device}/{channel}/data` to inject a reading onto C-Bus (e.g. from a scripted/virtual sensor) — cgateweb sends the native `MEASUREMENT DATA` command. One setting gates both directions, since — unlike Air Conditioning/Security — this isn't a hardware-control write; it's how a measurement source (physical or scripted) gets its own data onto the bus. Off by default. |
 | `ha_bridge_diagnostics_enabled` | boolean | `true` | Publish bridge health/diagnostic entities to Home Assistant via MQTT Discovery |
 | `ha_bridge_diagnostics_interval_sec` | integer | `60` | How often to refresh bridge diagnostic states (seconds) |
 
@@ -627,6 +628,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | 56 | Lighting | `light` | Always enabled |
 | 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
 | 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming |
+| 228 | Measurement | `sensor` per device/channel (unit/device_class from the reading) | Opt-in via `cbus_measurement_app_id: 228` — also enables the write path |
 | 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (often covers) | `cover` | Opt-in via `ha_discovery_cover_app_id: 203` |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
@@ -723,6 +725,23 @@ What this means for your PIN:
 - Only digits are accepted. Keypad emulation can send any character, so a non-numeric payload is rejected rather than typed at the panel.
 
 The code is followed by a `#` keypress, which is what submits it — the panel otherwise just holds the digits and waits. This was confirmed on real hardware; Enter (`$0D`) had no effect. If your panel expects something else, please report it on [issue #51](https://github.com/dougrathbone/cgateweb/issues/51) with a log.
+
+### Measurement application (228)
+
+The C-Bus Measurement application (`$E4`) carries analogue/numeric readings — temperature, power, light level, energy, and more — keyed by **device + channel** rather than a group address, since a single measurement device can report several independent channels. See the official Clipsal spec (`CBUS-APP/28`) for the full 40-entry unit table.
+
+With `cbus_measurement_app_id` set (default off; typically `228`), cgateweb decodes `measurement data ...` broadcasts and publishes, per device/channel:
+
+- `cbus/read/{network}/228/{device}/{channel}/value` — the decoded reading (`raw × 10^multiplier`)
+- `cbus/read/{network}/228/{device}/{channel}/unit` — the unit string (e.g. `W`, `°C`, `lx`, `%`); empty if unitless or custom
+
+A Home Assistant `sensor` entity is auto-created per device/channel the first time it's seen, with `unit_of_measurement` and `device_class` (where the unit maps unambiguously to one — e.g. °C → temperature, W → power, Wh → energy, lx → illuminance, V → voltage, A → current, Pa → pressure, Hz → frequency) taken from the reading itself. Units the spec shares between quantities get no `device_class`: `%` covers humidity, tank levels, valve positions and any other ratio, so the entity is left as a plain percentage sensor rather than being announced as something it may not be. You can always set a device class yourself on the entity in Home Assistant.
+
+Energy readings (Wh) are published with `state_class: total_increasing` rather than `measurement`, which is what lets them be used in Home Assistant's Energy dashboard; every other unit uses `measurement`.
+
+Unlike Air Conditioning/Security, Measurement is not primarily about controlling hardware — a "measurement device" can just as easily be a script or virtual sensor as physical equipment (the specification itself defines devices as either "input units, which measure the quantities" or "output units, which display" them). So the same setting also enables the **write** path: publish a CSV payload of `value,multiplier,units` (e.g. `5042,0,38` for 5042 W) to `cbus/write/{network}/228/{device}/{channel}/data`, and cgateweb sends the native `MEASUREMENT DATA` command onto C-Bus — this is how a scripted or virtual sensor (e.g. reading a solar inverter's power output) gets its data onto the bus. Invalid values, multipliers, or unit codes are rejected with a warning rather than sent to C-Gate.
+
+Because injecting a reading isn't a hardware-actuation risk the way arming a panel or driving a thermostat is, there's no separate `*_control_enabled` flag here — `cbus_measurement_app_id` gates both directions.
 
 ## Networking
 

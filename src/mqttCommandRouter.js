@@ -41,6 +41,7 @@ const {
     NEWLINE,
     SECURITY_ARM_TOPIC_REGEX,
     SECURITY_BYPASS_TOPIC_REGEX,
+    MEASUREMENT_DATA_TOPIC_REGEX,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C
 } = require('./constants');
@@ -52,6 +53,8 @@ const {
     buildSetWardOff
 } = require('./airconControlRegistry');
 const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
+const { buildMeasurementDataCommand } = require('./measurementCommand');
+const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
 // Upper bound on PIN length before we start typing at the panel. Alarm PINs are
 // 4-8 digits in practice; this is a sanity guard so a malformed payload cannot
@@ -174,6 +177,18 @@ class MqttCommandRouter extends EventEmitter {
         const securityBypassMatch = topic.match(SECURITY_BYPASS_TOPIC_REGEX);
         if (securityBypassMatch) {
             this._handleSecurityBypass(securityBypassMatch[1], securityBypassMatch[2], topic);
+            return;
+        }
+
+        // Measurement data injection: the address is 4 segments
+        // (network/application/device/channel), so it can't parse as a
+        // CBusCommand either — routed directly like the security arm topic.
+        const measurementDataMatch = topic.match(MEASUREMENT_DATA_TOPIC_REGEX);
+        if (measurementDataMatch) {
+            this._handleMeasurementData(
+                measurementDataMatch[1], measurementDataMatch[2], measurementDataMatch[3], measurementDataMatch[4],
+                payload, topic
+            );
             return;
         }
 
@@ -447,6 +462,49 @@ class MqttCommandRouter extends EventEmitter {
         // Digit count, never the digits. Enough to confirm the keypresses went
         // out and to spot a truncated PIN, without putting it in the log.
         this.logger.info(`Security disarm: ${network}/${application} -> sent ${code.length} digits + accept key`);
+    }
+
+    /**
+     * Handles a Measurement application (228/$E4) data-injection command:
+     * "cbus/write/{net}/{app}/{device}/{channel}/data" with payload
+     * "value,multiplier,units" (confirmed working format via live end-to-end
+     * testing against real C-Gate). This is how a scripted/virtual measurement
+     * source (e.g. a solar inverter reading) gets onto the bus — not a
+     * hardware-control write, so it shares the single cbus_measurement_app_id
+     * gate with the read path rather than needing a separate *_control_enabled
+     * flag (unlike Air Conditioning/Security, which drive real plant/panels).
+     * @private
+     */
+    _handleMeasurementData(network, application, device, channel, payload, topic) {
+        const appId = this.settings.cbus_measurement_app_id;
+        if (!appId || String(application) !== String(appId)) {
+            this.logger.warn(`Measurement data command for unconfigured application ${application} on topic ${topic}`);
+            return;
+        }
+
+        const parts = String(payload).split(',');
+        const value = parseInt(parts[0], 10);
+        const multiplier = parts.length > 1 ? parseInt(parts[1], 10) : 0;
+        const unitsCode = parts.length > 2 ? parseInt(parts[2], 10) : 0; // default $00 (°C)
+
+        if (!Number.isInteger(value) || value < -32768 || value > 32767) {
+            this.logger.warn(`Invalid measurement value "${parts[0]}" on topic ${topic} (expected an integer, -32768..32767)`);
+            return;
+        }
+        if (!Number.isInteger(multiplier) || multiplier < -128 || multiplier > 127) {
+            this.logger.warn(`Invalid measurement multiplier "${parts[1]}" on topic ${topic} (expected an integer, -128..127)`);
+            return;
+        }
+        if (!Number.isInteger(unitsCode) || !Object.prototype.hasOwnProperty.call(MEASUREMENT_UNIT_TABLE, unitsCode)) {
+            this.logger.warn(`Unknown measurement units code "${parts[2]}" on topic ${topic} (see docs/Measurement Application.md §28.5.1.2)`);
+            return;
+        }
+
+        const cmd = buildMeasurementDataCommand({
+            cbusname: this.cbusname, network, application, device, channel, value, multiplier, unitsCode
+        });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Measurement data: ${network}/${application}/${device}/${channel} -> ${value} x 10^${multiplier} (units ${unitsCode})`);
     }
 
     /**

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [Unreleased]
+
+### Added
+
+- **Native support for the C-Bus Measurement application (analogue sensors like power, light level, and more).** Set `cbus_measurement_app_id` (default 228) to publish readings to `cbus/read/{network}/228/{device}/{channel}/value` and `/unit`, with a Home Assistant sensor entity for each device/channel. It also works the other way: `cbus/write/{network}/228/{device}/{channel}/data` (payload `value,multiplier,units`) lets you inject a reading onto C-Bus — handy for a scripted or virtual sensor (e.g. a solar inverter's power output) that has no physical C-Bus hardware of its own. Off by default.
+
 ## [1.24.3] - 2026-08-13
 
 ### Fixed

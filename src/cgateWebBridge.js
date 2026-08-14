@@ -10,6 +10,7 @@ const ConnectionManager = require('./connectionManager');
 const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
+const MeasurementEventHandler = require('./measurementEventHandler');
 const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const path = require('path');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
@@ -258,6 +259,16 @@ class CgateWebBridge {
             panelStateFile: this.settings.cbus_label_file
                 ? path.join(path.dirname(this.settings.cbus_label_file), 'security-panel-state.json')
                 : null
+        });
+
+        // Decodes native-measurement (app 228) event lines and publishes
+        // readings. Purely event-driven — the spec (§28.9) says measurement
+        // devices never respond to status requests, so there's no initial sync.
+        this.measurementEventHandler = new MeasurementEventHandler({
+            eventPublisher: this.eventPublisher,
+            logger: this.logger,
+            settings: this.settings,
+            getHaDiscovery: this._getHaDiscovery
         });
 
         // Republishes state after a Home Assistant or MQTT broker restart
@@ -654,16 +665,29 @@ class CgateWebBridge {
         return this.securityEventHandler.handleLine(line);
     }
 
+    /**
+     * Delegates native-measurement (app 228) event-line handling to
+     * MeasurementEventHandler. Returns the handler's tri-state: true
+     * (consumed), LINE_UNPARSED (measurement traffic the handler didn't
+     * consume), or false (not measurement traffic).
+     */
+    _handleMeasurementLine(line) {
+        return this.measurementEventHandler.handleLine(line);
+    }
+
     _processEventLine(line) {
         // Security lines are `#`-comment-prefixed like aircon lines; consume
         // them before the generic comment-dropping branch so zone events don't
         // publish a bogus OFF and status reports don't warn-spam the parser.
-        // Both handlers classify the line exactly once and report a tri-state,
-        // which the unparsed branches below reuse instead of re-scanning.
+        // All three handlers classify the line exactly once and report a
+        // tri-state, which the unparsed branches below reuse instead of
+        // re-scanning.
         const airconState = this._handleAirconLine(line);
         if (airconState === true) return;
         const securityState = this._handleSecurityLine(line);
         if (securityState === true) return;
+        const measurementState = this._handleMeasurementLine(line);
+        if (measurementState === true) return;
 
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${redactCgateLine(line)}`);
@@ -705,6 +729,10 @@ class CgateWebBridge {
         }
         if (securityState === LINE_UNPARSED) {
             this.logger.debug(`Unparsed security line (captured, not a standard event): ${redactCgateLine(line)}`);
+            return;
+        }
+        if (measurementState === LINE_UNPARSED) {
+            this.logger.debug(`Unparsed measurement line (captured, not a standard event): ${line}`);
             return;
         }
 

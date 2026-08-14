@@ -22,6 +22,7 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
+    MQTT_TOPIC_SUFFIX_VALUE,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
     MQTT_CMD_TYPE_SWITCH,
@@ -104,6 +105,9 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _securityPanelSeen;
+
+    /** @type {Set<string>} */
+    _measurementSeen;
 
     /** @type {Set<string>} */
     _currentRunTopics;
@@ -604,6 +608,85 @@ class _HaDiscoveryPublishers {
 
         this._publishEventDrivenConfig(discoveryTopic, payload);
         this.logger.info(`Temperature sensor entity published: ${labelKey} (${finalLabel})`);
+    }
+
+    /**
+     * Event-driven discovery for C-Bus Measurement (app 228) channels. Called
+     * whenever a measurement reading is decoded; announces the HA sensor the
+     * first time that device/channel is seen. Unlike Temperature (always °C),
+     * Measurement covers heterogeneous quantities, so unit/device_class come
+     * from the decoded reading rather than being fixed.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId - measurement app id (e.g. 228)
+     * @param {string|number} device
+     * @param {string|number} channel
+     * @param {{unit: string|null, deviceClass: string|null}} reading - decoded measurementDecoder reading
+     * @returns {boolean} true if a new sensor entity was published this call
+     */
+    ensureMeasurementDiscovery(network, appId, device, channel, reading) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined
+            || device === null || device === undefined || channel === null || channel === undefined) return false;
+
+        const key = `${network}/${appId}/${device}/${channel}`;
+        if (this._measurementSeen.has(key)) return false;
+
+        if (this.exclude.has(key)) {
+            this.logger.debug(`Excluding measurement channel ${key} from discovery`);
+            const excludedUniqueId = `cgateweb_${network}_${appId}_${device}_${channel}`;
+            const excludedTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${excludedUniqueId}/${HA_DISCOVERY_SUFFIX}`;
+            this._retractEventDrivenConfig(excludedTopic);
+            this._measurementSeen.add(key); // don't re-check on every event
+            return false;
+        }
+
+        this._createMeasurementDiscovery(String(network), String(appId), String(device), String(channel), reading);
+        this._measurementSeen.add(key);
+        return true;
+    }
+
+    /**
+     * Build and publish the measurement sensor discovery payload for one
+     * device/channel. State comes from the measurementDecoder reading topic
+     * (cbus/read/{net}/{app}/{device}/{channel}/value).
+     *
+     * @private
+     */
+    _createMeasurementDiscovery(networkId, appId, device, channel, reading) {
+        const groupId = `${device}_${channel}`;
+        const labelKey = `${networkId}/${appId}/${device}/${channel}`;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId, labelKey,
+            component: HA_COMPONENT_SENSOR,
+            fallbackLabel: `CBus Measurement ${networkId}/${appId}/${device}/${channel}`
+        });
+
+        const payload = {
+            name: null,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(HA_COMPONENT_SENSOR, entityId)),
+
+            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${device}/${channel}/${MQTT_TOPIC_SUFFIX_VALUE}`,
+            // From the reading, not hardcoded: Home Assistant rejects
+            // device_class 'energy' paired with state_class 'measurement', so
+            // Wh readings carry 'total_increasing' instead (see UNIT_TABLE).
+            state_class: (reading && reading.stateClass) || 'measurement',
+            ...(reading && reading.deviceClass ? { device_class: reading.deviceClass } : {}),
+            ...(reading && reading.unit ? { unit_of_measurement: reading.unit } : {}),
+
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: [uniqueId],
+                name: finalLabel,
+                model: 'C-Bus Measurement Sensor',
+                area
+            }),
+            origin: buildOriginBlock()
+        };
+
+        this._publishEventDrivenConfig(discoveryTopic, payload);
+        this.logger.info(`Measurement sensor entity published: ${labelKey} (${finalLabel})`);
     }
 
     /**

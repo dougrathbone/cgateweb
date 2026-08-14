@@ -240,6 +240,11 @@ configuration:
     description: >-
       Home Assistant가 보안 패널을 해제하는 것도 허용합니다. 보안 패널 제어가 필요합니다. 기본값은 꺼짐입니다. C-Bus에는 해제 명령이 없으므로 키패드 에뮬레이션으로 패널에 PIN을 입력합니다. Home Assistant가 자체 키패드를 표시하고 입력한 값을 MQTT로 전송합니다. PIN은 어디에도 저장되지 않지만 해제할 때마다 MQTT 브로커를 거치므로 신뢰할 수 있는 브로커에서만, 가급적 TLS와 함께 사용하세요.
 
+  cbus_measurement_app_id:
+    name: 측정 애플리케이션 ID
+    description: >-
+      아날로그/숫자 센서 값(온도, 전력, 조도 등)을 위한 C-Bus 측정 애플리케이션 ID(기본값 228)입니다. cbus/read/{network}/228/{device}/{channel}/value 및 /unit에 게시하며, cbus/write/{network}/228/{device}/{channel}/data(페이로드 "value,multiplier,units")를 통해 주입된 값을 받아들입니다 — 예: 스크립트/가상 센서용. 기본값은 꺼짐입니다.
+
 
   # ── Bridge 진단 ──
   ha_bridge_diagnostics_enabled:

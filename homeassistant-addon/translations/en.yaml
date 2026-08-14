@@ -250,6 +250,16 @@ configuration:
     description: >-
       Also allow Home Assistant to disarm the security panel. Requires Security Panel Control. Off by default. C-Bus has no disarm command, so the PIN is typed at the panel using keypad emulation: Home Assistant shows its own keypad and sends what you type over MQTT. The PIN is not stored anywhere, but it does cross your MQTT broker on every disarm, so only enable this on a broker you trust, ideally with TLS.
 
+  cbus_measurement_app_id:
+    name: Measurement Application ID
+    description: >-
+      C-Bus Measurement application id (default 228) for analogue/numeric
+      sensor readings (temperature, power, light level, etc). Publishes
+      cbus/read/{network}/228/{device}/{channel}/value and /unit, and accepts
+      injected readings on cbus/write/{network}/228/{device}/{channel}/data
+      (payload "value,multiplier,units") — e.g. for scripted/virtual sensors.
+      Off by default.
+
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:

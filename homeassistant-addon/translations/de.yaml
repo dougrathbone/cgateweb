@@ -254,6 +254,11 @@ configuration:
     description: >-
       Home Assistant zusätzlich erlauben, die Alarmanlage zu entschärfen. Erfordert Alarmanlagen-Steuerung. Standardmäßig deaktiviert. C-Bus hat keinen Entschärfen-Befehl, daher wird die PIN per Tastaturemulation an der Anlage eingegeben: Home Assistant zeigt ein eigenes Tastenfeld und sendet die Eingabe über MQTT. Die PIN wird nirgends gespeichert, läuft aber bei jedem Entschärfen über Ihren MQTT-Broker. Aktivieren Sie dies nur bei einem vertrauenswürdigen Broker, idealerweise mit TLS.
 
+  cbus_measurement_app_id:
+    name: Messanwendungs-ID
+    description: >-
+      C-Bus-Messanwendungs-ID (Standard 228) für analoge/numerische Sensormesswerte (Temperatur, Leistung, Lichtstärke usw.). Veröffentlicht cbus/read/{network}/228/{device}/{channel}/value und /unit und akzeptiert eingespeiste Messwerte über cbus/write/{network}/228/{device}/{channel}/data (Payload "value,multiplier,units") — z. B. für skriptgesteuerte/virtuelle Sensoren. Standardmäßig deaktiviert.
+
 
   # ── Bridge-Diagnose ──
   ha_bridge_diagnostics_enabled:
