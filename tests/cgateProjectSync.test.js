@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { posixBashAvailable } = require('./helpers/posixBash');
 const { addonBin, addonLib, addonInit } = require('./helpers/addonPaths');
+const { BASHIO_STUB_WITH_LOGS } = require('./helpers/bashioStub');
 
 // These tests source the Linux rootfs shell script via bash; only run where a
 // POSIX bash is usable (Linux CI, macOS). Skipped on Windows (see helper).
@@ -55,7 +56,7 @@ function projectDbPath(projectsDir, name) {
     return path.join(projectsDir, base, `${base}.db`);
 }
 
-function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} }) {
+function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {}, withLogs = false }) {
     // Root of the tmp tree this test's dirs live under (dataCgate is
     // <root>/data/cgate), used to build a guaranteed-nonexistent default for
     // the /config/share/cgate probe so existing tests never see a false
@@ -88,7 +89,7 @@ function runSync({ shareTag, dataCgate, configObject = {}, env: extraEnv = {} })
     // top-level `exit 0` will terminate this bash -c subshell, which is fine.
     const script = `
         set -u
-        ${BASHIO_STUB}
+        ${withLogs ? BASHIO_STUB_WITH_LOGS : BASHIO_STUB}
         source "$CGW_SYNC_SCRIPT"
     `;
     return execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
@@ -103,6 +104,60 @@ describeBash('cgate-project-sync.sh', () => {
 
     afterEach(() => {
         fs.rmSync(dirs.root, { recursive: true, force: true });
+    });
+
+    // Issue #58: a user's project sat in the share folder for a fortnight
+    // while C-Gate ran a different copy, because the only feedback was
+    // "Skipped 1 project(s) - destination newer than share copy" - true, but
+    // it reads as routine housekeeping rather than "your file is being
+    // ignored". The skip path had no test at all, which is part of why the
+    // wording was never questioned.
+    describe('when C-Gate\'s copy is newer than the share copy', () => {
+        function setUpSkippedProject() {
+            const src = path.join(dirs.shareTag, 'JUBILEE.db');
+            const dest = projectDbPath(dirs.projectsDir, 'JUBILEE');
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            fs.writeFileSync(src, 'share-copy');
+            fs.writeFileSync(dest, 'cgate-has-written-to-this');
+            // What a running C-Gate does: its own copy ends up newer.
+            const older = new Date(Date.now() - 60_000);
+            fs.utimesSync(src, older, older);
+            return { src, dest };
+        }
+
+        test('does not overwrite what C-Gate has written', () => {
+            const { dest } = setUpSkippedProject();
+            runSync({ ...dirs, configObject: { cgate_mode: 'managed' } });
+            expect(fs.readFileSync(dest, 'utf8')).toBe('cgate-has-written-to-this');
+        });
+
+        test('names the project it ignored and where the live copy actually is', () => {
+            setUpSkippedProject();
+            const out = runSync({ ...dirs, configObject: { cgate_mode: 'managed' }, withLogs: true });
+            expect(out).toContain('JUBILEE');
+            expect(out).toMatch(/NOT synced/);
+            // The two facts a user needs: which file is live, and how to win.
+            expect(out).toContain(path.join(dirs.projectsDir, '<PROJECT>', '<PROJECT>.db'));
+            expect(out).toMatch(/touch/);
+        });
+
+        test('stays at INFO, because this is the steady state for a working install', () => {
+            setUpSkippedProject();
+            const out = runSync({ ...dirs, configObject: { cgate_mode: 'managed' }, withLogs: true });
+            // A warning on every boot of every healthy managed install would
+            // train people to ignore the one that matters.
+            expect(out).not.toMatch(/^WARNING:.*NOT synced/m);
+        });
+
+        test('a newer share copy is still synced over the top', () => {
+            const { src, dest } = setUpSkippedProject();
+            const newer = new Date(Date.now() + 60_000);
+            fs.utimesSync(src, newer, newer);
+            const out = runSync({ ...dirs, configObject: { cgate_mode: 'managed' }, withLogs: true });
+            expect(fs.readFileSync(dest, 'utf8')).toBe('share-copy');
+            expect(out).toMatch(/Synced project/);
+            expect(out).not.toMatch(/NOT synced/);
+        });
     });
 
     test('skips entirely when cgate_mode is not managed', () => {

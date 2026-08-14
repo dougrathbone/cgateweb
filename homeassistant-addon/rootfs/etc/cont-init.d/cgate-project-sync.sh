@@ -115,6 +115,7 @@ fi
 shopt -s nullglob
 SYNCED=0
 SKIPPED=0
+SKIPPED_NAMES=()
 for src in "${SHARE_TAG_DIR}"/*.db; do
     name=$(basename "${src}")          # e.g. HOME.db
     project="${name%.db}"              # e.g. HOME
@@ -132,6 +133,7 @@ for src in "${SHARE_TAG_DIR}"/*.db; do
         fi
     else
         SKIPPED=$((SKIPPED + 1))
+        SKIPPED_NAMES+=("${project}")
     fi
 done
 shopt -u nullglob
@@ -161,7 +163,21 @@ if [[ ${SYNCED} -eq 0 && ${SKIPPED} -eq 0 ]]; then
         _cgateweb_warn_no_project
     fi
 elif [[ ${SKIPPED} -gt 0 ]]; then
-    bashio::log.info "Skipped ${SKIPPED} project(s) - destination newer than share copy"
+    # Say what being skipped MEANS, not just that it happened (issue #58). A
+    # running C-Gate writes to its own copy constantly, so from the first boot
+    # onward the destination is always newer and the share copy is shadowed
+    # permanently. A user who later drops a corrected project into the share
+    # folder gets no error, no warning, and no effect - the old "Skipped N
+    # project(s) - destination newer than share copy" line reads like routine
+    # housekeeping. One user spent a fortnight on that, convinced C-Gate was
+    # loading the .db he kept replacing.
+    #
+    # INFO, not WARNING: this is the steady state for every working managed
+    # install, and crying wolf on every boot would teach people to ignore it.
+    bashio::log.info "Project(s) NOT synced from ${SHARE_TAG_DIR}: ${SKIPPED_NAMES[*]}"
+    bashio::log.info "C-Gate's own copy is newer, so the share copy is being ignored. This is normal - C-Gate writes to its copy as it runs."
+    bashio::log.info "C-Gate is running ${PROJECTS_DIR}/<PROJECT>/<PROJECT>.db, NOT the file in ${SHARE_TAG_DIR}."
+    bashio::log.info "To make your share copy win, give it a newer timestamp (re-copy it, or 'touch' it) and restart. That overwrites what C-Gate has written."
 fi
 
 # ALPHA (issue #28): point the project's serial interface at the configured
