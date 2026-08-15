@@ -145,13 +145,49 @@ describe('securityDecoder', () => {
 
     describe('system state verbs (phase 2 surface, decoded leniently)', () => {
         it('decodes arm_ready with no zone', () => {
+            // The #42 capture is bare: the panel omits the zone segment
+            // entirely. Accepting arm_ready's optional zone must not cost us
+            // this shape, or a live install regresses to undecoded lines.
             expect(securityDecoder.decodeLine('# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID='))
-                .toEqual({ kind: 'arm_ready', network: '254', application: '208', verb: 'arm_ready' });
+                .toEqual({ kind: 'arm_ready', network: '254', application: '208', zone: null, verb: 'arm_ready' });
+        });
+
+        it('decodes arm_ready with a trailing zone (spec §5.5.1.25)', () => {
+            // The spec gives Arm Ready / Not Ready a <zone number> argument. A
+            // panel that sends it used to have the whole line dropped, because
+            // the zone segment made the address parse fail.
+            expect(securityDecoder.decodeLine('# security arm_ready //MIDSTRM/254/208/12  #sourceunit=18 OID='))
+                .toEqual({ kind: 'arm_ready', network: '254', application: '208', zone: '12', verb: 'arm_ready' });
+        });
+
+        it('keeps zone 0 on arm_ready, where it means "armed correctly"', () => {
+            // §5.5.1.25: "If the security system Arms correctly, this message
+            // should be sent with a <zone number> of 0". Rejecting zone 0 here
+            // threw away the panel's confirmation that nothing was blocking.
+            expect(securityDecoder.decodeLine('# security arm_ready //MIDSTRM/254/208/0  #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'arm_ready', zone: '0' });
         });
 
         it('decodes arm_not_ready with the blocking zone', () => {
             expect(securityDecoder.decodeLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID='))
                 .toEqual({ kind: 'arm_not_ready', network: '254', application: '208', zone: '44', verb: 'arm_not_ready' });
+        });
+
+        it('keeps zone 0 on arm_not_ready too, since both halves share the spec message', () => {
+            expect(securityDecoder.decodeLine('# security arm_not_ready //MIDSTRM/254/208/0  #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'arm_not_ready', zone: '0' });
+        });
+
+        it('still rejects zone 0 for real zone events, which have no zone 0', () => {
+            // The zone-0 relaxation is scoped to the two arm-readiness verbs. A
+            // zone_sealed for zone 0 is a malformed line; admitting it would
+            // invent a phantom zone 0 sensor in Home Assistant.
+            expect(securityDecoder.decodeLine('security zone_sealed //MIDSTRM/254/208/0')).toBeNull();
+            expect(securityDecoder.decodeLine('security zone_isolated //MIDSTRM/254/208/0')).toBeNull();
+        });
+
+        it('still rejects an out-of-range zone on arm_ready', () => {
+            expect(securityDecoder.decodeLine('security arm_ready //MIDSTRM/254/208/128')).toBeNull();
         });
 
         it('decodes exit_delay_started', () => {
@@ -236,7 +272,26 @@ describe('securityDecoder', () => {
 
         it('exposes the condition list in display order', () => {
             expect(PANEL_TROUBLE_CONDITIONS)
-                .toEqual(['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire']);
+                .toEqual(['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire', 'gas', 'other_alarm']);
+        });
+
+        it('decodes gas_alarm and other_alarm, the two alarms the spec lists after fire', () => {
+            // §5.5.1.33-36 ($97 gas, $98 other). Same detail-suffixed shape as
+            // fire_alarm, so a panel that supports them was previously silently
+            // undecoded — a gas alarm reached Home Assistant as nothing at all.
+            expect(securityDecoder.decodeLine('# security gas_alarm //MIDSTRM/254/208 gas_alarm_raised #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'panel_trouble', condition: 'gas', active: true });
+            expect(securityDecoder.decodeLine('# security gas_alarm //MIDSTRM/254/208 gas_alarm_cleared #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'panel_trouble', condition: 'gas', active: false });
+            expect(securityDecoder.decodeLine('# security other_alarm //MIDSTRM/254/208 other_alarm_raised #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'panel_trouble', condition: 'other_alarm', active: true });
+            expect(securityDecoder.decodeLine('# security other_alarm //MIDSTRM/254/208 other_alarm_cleared #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'panel_trouble', condition: 'other_alarm', active: false });
+        });
+
+        it('treats a bare gas_alarm as raised, like every other detail verb', () => {
+            expect(securityDecoder.decodeLine('# security gas_alarm //MIDSTRM/254/208  #sourceunit=18 OID='))
+                .toMatchObject({ condition: 'gas', active: true, detail: null });
         });
     });
 

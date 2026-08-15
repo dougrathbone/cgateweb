@@ -46,8 +46,30 @@ describe('securityPanelConditions', () => {
     });
 
     it('derives the derived-clear lists from the records', () => {
-        expect(CLEARED_ON_DISARM.sort()).toEqual(['arm_failed', 'fire', 'panic']);
+        expect(CLEARED_ON_DISARM.sort()).toEqual(['arm_failed', 'fire', 'gas', 'other_alarm', 'panic']);
         expect(CLEARED_ON_ARM).toEqual(['arm_failed']);
+    });
+
+    it('carries the gas and other alarms the spec lists alongside fire', () => {
+        // Spec §5.5.1.33-36 ($97 gas, $98 other). The verb spellings are
+        // inferred from fire_alarm, on the same basis as the inferred
+        // low_battery / tamper_on above: never captured, but identically shaped
+        // in the spec. Both are modelled on fire — a detail verb carrying its
+        // own _raised/_cleared sense, plus clearedOnDisarm, because the spec
+        // says some panels only clear these by Disarming.
+        expect(PANEL_TROUBLE_DETAIL_VERBS.get('gas_alarm')).toBe('gas');
+        expect(PANEL_TROUBLE_DETAIL_VERBS.get('other_alarm')).toBe('other_alarm');
+        expect(CLEARED_ON_DISARM).toContain('gas');
+        expect(CLEARED_ON_DISARM).toContain('other_alarm');
+    });
+
+    it('gives gas a gas device class and the catch-all alarm a problem one', () => {
+        // device_class drives the icon and the wording Home Assistant uses. Gas
+        // has a dedicated binary_sensor class; "other alarm" is
+        // installer-defined, so nothing more specific than problem is honest.
+        const byId = new Map(PANEL_CONDITIONS.map((c) => [c.id, c]));
+        expect(byId.get('gas').deviceClass).toBe('gas');
+        expect(byId.get('other_alarm').deviceClass).toBe('problem');
     });
 
     it('gives every condition some route back to clear, so none can latch on forever', () => {

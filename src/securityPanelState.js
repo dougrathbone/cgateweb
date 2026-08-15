@@ -21,6 +21,39 @@ const ALARM_STATE_BY_ARM_MODE = {
 };
 
 /**
+ * Where an arm mode this table has never seen lands. The spec (§5.5.1.1) only
+ * fixes $00 disarmed, $01 fully armed and $02 partially armed, and hands
+ * $03-$7F to "manufacturers discretion" — so a panel broadcasting a custom
+ * sub-mode is conformant, not broken. Publishing nothing for those (the old
+ * behaviour) left Home Assistant showing whatever it last knew, which after a
+ * disarm→custom-arm sequence reads "disarmed" on a panel that is armed. That is
+ * the one direction of error that matters: it silently disables away
+ * automations and tells the user the house is open when it is not. armed_away
+ * is the most protective of the armed states, so unknown non-zero modes land
+ * there and the raw mode rides along in `armMode` for anyone who needs the
+ * detail.
+ */
+const UNKNOWN_ARM_MODE_STATE = 'armed_away';
+
+/**
+ * HA alarm panel state for a raw C-Bus arm mode.
+ *
+ * Mode 0 is disarmed and stays disarmed — never guess "armed" from the one
+ * value the spec defines as not-armed. A non-integer or absent mode says
+ * nothing at all, so it maps to null (no publish) rather than to a state.
+ *
+ * @param {number|null|undefined} mode
+ * @returns {string|null}
+ * @private
+ */
+function alarmStateForArmMode(mode) {
+    if (!Number.isInteger(mode)) return null;
+    const known = ALARM_STATE_BY_ARM_MODE[/** @type {number} */(mode)];
+    if (known) return known;
+    return /** @type {number} */(mode) > 0 ? UNKNOWN_ARM_MODE_STATE : null;
+}
+
+/**
  * Tracks panel-wide trouble state per C-Bus network so the bridge only
  * publishes actual transitions. A panel repeating `mains_failure` while the
  * power is still out should not republish MQTT state or re-log at INFO.
@@ -38,7 +71,7 @@ class SecurityPanelState {
     constructor() {
         /** @type {Map<string, Object<string, boolean>>} network → condition → active */
         this._byNetwork = new Map();
-        /** @type {Map<string, { state: string|null, preAlarmState: string|null, blockingZone: string|null }>} */
+        /** @type {Map<string, { state: string|null, preAlarmState: string|null, blockingZone: string|null, armMode: number|null }>} */
         this._alarmByNetwork = new Map();
     }
 
@@ -93,7 +126,7 @@ class SecurityPanelState {
     }
 
     /**
-     * All seven conditions and their current values, for seeding state at
+     * Every condition and its current value, for seeding state at
      * discovery time. Conditions never seen default to inactive: assuming
      * healthy keeps the entities usable in automations immediately, and a stale
      * value self-corrects on the next transition or disarm. The alternative
@@ -101,7 +134,7 @@ class SecurityPanelState {
      * complaint behind issue #44.
      *
      * @param {string} network
-     * @returns {Array<{condition: string, active: boolean}>} all seven
+     * @returns {Array<{condition: string, active: boolean}>} one per condition
      */
     initialStates(network) {
         const state = this._forNetwork(network);
@@ -148,8 +181,16 @@ class SecurityPanelState {
      * followed by a system_arm broadcast that re-derives the state, so there
      * is nothing to guess there.
      *
+     * The reported `armMode` is the raw C-Bus arm mode last broadcast for the
+     * network (null until one arrives). It exists because unknown modes all
+     * collapse onto one HA state: the number is the only way to tell which
+     * manufacturer sub-mode the panel is actually in, so it belongs on the
+     * panel's attributes topic alongside the blocking zone. Readings that carry
+     * no mode inherit the tracked one rather than clearing it — alarm_on does
+     * not un-arm the panel.
+     *
      * @param {{kind: string, network: string, mode?: number|null, armState?: number, zone?: string|null}} reading
-     * @returns {{ state: string, blockingZone: string|null }|null}
+     * @returns {{ state: string, blockingZone: string|null, armMode: number|null }|null}
      */
     applyAlarmReading(reading) {
         if (!reading || reading.network === null || reading.network === undefined) return null;
@@ -157,14 +198,17 @@ class SecurityPanelState {
 
         let target;
         let blockingZone = null;
+        let armMode = entry.armMode;
         switch (reading.kind) {
             case 'system_arm':
-                target = ALARM_STATE_BY_ARM_MODE[reading.mode] || null;
+                target = alarmStateForArmMode(reading.mode);
+                armMode = Number.isInteger(reading.mode) ? /** @type {number} */(reading.mode) : armMode;
                 break;
             case 'status_report_1':
                 // The report's arm-state prefix is the one queryable source of
                 // panel state — this is how the entity learns it after startup.
-                target = ALARM_STATE_BY_ARM_MODE[reading.armState] || null;
+                target = alarmStateForArmMode(reading.armState);
+                armMode = Number.isInteger(reading.armState) ? /** @type {number} */(reading.armState) : armMode;
                 break;
             case 'exit_delay_started':
                 target = 'arming';
@@ -174,6 +218,23 @@ class SecurityPanelState {
                 blockingZone = reading.zone || null;
                 break;
             case 'arm_ready':
+                // arm_ready is emitted *during* arming to report that nothing is
+                // blocking (spec §5.5.1.25) — with a zone of 0 it means the
+                // system armed correctly. It is not a disarm notification, and
+                // treating it as one meant a late, repeated or post-arm
+                // arm_ready overwrote a live armed_away with disarmed. That is
+                // the worst possible direction to be wrong in: away automations
+                // stop, and the alarm card reassures the user the house is open
+                // while the panel is armed.
+                //
+                // So it may only seed or restore the idle state, never downgrade
+                // one: from unknown (nothing learned yet — the common case, a
+                // panel sitting ready) or from 'pending' (the blocking zone an
+                // earlier arm_not_ready named has now sealed). From 'arming',
+                // 'triggered' or any armed_* state it is ignored and the
+                // authoritative system_arm / status_report_1 keeps the entity
+                // honest.
+                if (entry.state !== null && entry.state !== 'pending') return null;
                 target = 'disarmed';
                 break;
             case 'alarm_on':
@@ -189,10 +250,14 @@ class SecurityPanelState {
         }
         if (target === null || target === undefined) return null;
 
-        if (entry.state === target && entry.blockingZone === blockingZone) return null;
+        // armMode joins the dedupe key: two custom sub-modes can share one HA
+        // state, and a move between them is a real change the attributes topic
+        // has to carry.
+        if (entry.state === target && entry.blockingZone === blockingZone && entry.armMode === armMode) return null;
         entry.state = target;
         entry.blockingZone = blockingZone;
-        return { state: target, blockingZone };
+        entry.armMode = armMode;
+        return { state: target, blockingZone, armMode };
     }
 
     /**
@@ -206,7 +271,9 @@ class SecurityPanelState {
      * and the alarm card sat blank until the panel next actually changed (#51).
      *
      * preAlarmState is deliberately kept: it is not published state, it is how
-     * alarm_off knows what to revert to, and a resync should not lose it.
+     * alarm_off knows what to revert to, and a resync should not lose it. The
+     * tracked armMode is kept for the same reason — clearing state is enough to
+     * force the republish, and the next reading carries the mode with it.
      *
      * @param {string|number} network - Stringified internally, as elsewhere here.
      */
@@ -220,14 +287,14 @@ class SecurityPanelState {
 
     /**
      * @param {string} network
-     * @returns {{ state: string|null, preAlarmState: string|null, blockingZone: string|null }}
+     * @returns {{ state: string|null, preAlarmState: string|null, blockingZone: string|null, armMode: number|null }}
      * @private
      */
     _alarmForNetwork(network) {
         const key = String(network);
         let entry = this._alarmByNetwork.get(key);
         if (!entry) {
-            entry = { state: null, preAlarmState: null, blockingZone: null };
+            entry = { state: null, preAlarmState: null, blockingZone: null, armMode: null };
             this._alarmByNetwork.set(key, entry);
         }
         return entry;

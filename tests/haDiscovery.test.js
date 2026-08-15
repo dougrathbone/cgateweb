@@ -3416,8 +3416,8 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityPanelDiscovery('254', '208');
         publishFn.mockClear();
 
-        // 2 zones + 7 panel conditions + 1 alarm_control_panel
-        expect(d.republishDiscoveryConfigs()).toBe(10);
+        // 2 zones + 9 panel conditions + 1 alarm_control_panel
+        expect(d.republishDiscoveryConfigs()).toBe(12);
     });
 
     it('does not replay a retracted config', () => {

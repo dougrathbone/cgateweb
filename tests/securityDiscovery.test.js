@@ -262,7 +262,7 @@ describe('HaDiscovery — app 208 security zones', () => {
     });
 
     describe('panel trouble sensors', () => {
-        const CONDITIONS = ['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire'];
+        const CONDITIONS = ['mains', 'battery', 'tamper', 'panic', 'line', 'arm_failed', 'fire', 'gas', 'other_alarm'];
 
         function panelPayloads() {
             return publishFn.mock.calls
@@ -277,7 +277,7 @@ describe('HaDiscovery — app 208 security zones', () => {
 
         it('publishes one binary_sensor per condition', () => {
             expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(true);
-            expect(panelPayloads()).toHaveLength(7);
+            expect(panelPayloads()).toHaveLength(CONDITIONS.length);
             for (const condition of CONDITIONS) {
                 expect(payloadFor(condition)).toBeDefined();
             }
@@ -322,11 +322,11 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(publishFn).not.toHaveBeenCalled();
         });
 
-        it('retracts all seven and skips an excluded panel', () => {
+        it('retracts every condition and skips an excluded panel', () => {
             d.exclude.add('254/208/panel');
             expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
             const retracted = panelPayloads().filter(p => p.payload === null);
-            expect(retracted).toHaveLength(7);
+            expect(retracted).toHaveLength(CONDITIONS.length);
         });
 
         it('publishes nothing when HA discovery is disabled', () => {

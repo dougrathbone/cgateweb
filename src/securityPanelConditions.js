@@ -18,7 +18,8 @@
  * `low_battery_corrected`, `tamper_off` and `panic_activated`. Those three names
  * are inferred from the convention of the confirmed pairs. Handling a verb that
  * never arrives costs nothing, and `panic` recovers via `clearedOnDisarm`
- * regardless of whether `panic_off` exists.
+ * regardless of whether `panic_off` exists. `gas_alarm` and `other_alarm` are
+ * inferred on the same basis — see their records.
  *
  * `detailSensed` marks the three verbs that carry their sense in a
  * `<verb>_raised` / `<verb>_cleared` argument rather than in the verb name; a
@@ -101,6 +102,35 @@ const PANEL_CONDITIONS = [
         deviceClass: 'smoke',
         raisedText: 'Fire alarm',
         clearedText: 'Fire alarm cleared'
+    },
+    {
+        // Gas Alarm Raised/Cleared (spec §5.5.1.33-34, argument $97). Never
+        // captured, so `gas_alarm` is inferred from `fire_alarm` — the two are
+        // adjacent, identically shaped messages in the spec — on the same basis
+        // as the inferred `low_battery` and `tamper_on` above. A verb that never
+        // arrives costs nothing; a verb we refuse to decode loses a gas alarm.
+        id: 'gas',
+        detailVerb: 'gas_alarm',
+        // "Some security systems only allow a gas alarm condition to be cleared
+        // by Disarming" (§5.5.1.34), exactly as for fire.
+        clearedOnDisarm: true,
+        name: 'Gas alarm',
+        deviceClass: 'gas',
+        raisedText: 'Gas alarm',
+        clearedText: 'Gas alarm cleared'
+    },
+    {
+        // Other Alarm Raised/Cleared (spec §5.5.1.35-36, argument $98) — the
+        // manufacturer-defined catch-all. `other_alarm` is inferred the same way
+        // as `gas_alarm`. No device class fits a condition whose meaning is
+        // installer-specific, so it is a generic problem sensor.
+        id: 'other_alarm',
+        detailVerb: 'other_alarm',
+        clearedOnDisarm: true,
+        name: 'Other alarm',
+        deviceClass: 'problem',
+        raisedText: 'Other alarm',
+        clearedText: 'Other alarm cleared'
     }
 ];
 

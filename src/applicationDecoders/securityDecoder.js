@@ -19,7 +19,8 @@ const {
  *   - status_report_2  → { kind:'status_report_2', …, zones[] } (zones 33-80)
  *   - status_request     → { kind:'status_request', …, report } (our own command
  *                          echoes on the event port)
- *   - arm_ready        → { kind:'arm_ready', … }
+ *   - arm_ready        → { kind:'arm_ready', …, zone } (zone 0 = armed correctly;
+ *                          absent on panels that omit it — see ZONE_ADDRESS_VERBS)
  *   - arm_not_ready    → { kind:'arm_not_ready', …, zone } (zone names the blocker)
  *   - exit_delay_started → { kind:'exit_delay_started', … }
  *   - system_arm       → { kind:'system_arm', …, mode, modeName } (0-4; 0 = disarmed)
@@ -69,9 +70,27 @@ const MIN_ZONE = 1;
 const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
 
 // Verbs whose address carries a trailing zone (//PROJECT/<net>/<app>/<zone>).
+// arm_ready belongs here: spec §5.5.1.25 defines one Arm Ready / Not Ready
+// message carrying a zone, so the ready half carries one too. Without it the
+// zone segment made the address look like it had one segment too many and the
+// whole line was dropped.
 const ZONE_ADDRESS_VERBS = new Set([
-    'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated', 'arm_not_ready'
+    'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated',
+    'arm_not_ready', 'arm_ready'
 ]);
+
+// …but arm_ready's zone is optional in practice: the #42 capture is a bare
+// "security arm_ready //MIDSTRM/254/208" with no zone at all. Requiring the
+// zone would have regressed that live panel to undecoded, so a failed
+// zone-bearing parse falls back to the zoneless shape for these verbs only.
+const OPTIONAL_ZONE_ADDRESS_VERBS = new Set(['arm_ready']);
+
+// Verbs where zone 0 is meaningful rather than out of range. Spec §5.5.1.25:
+// the Arm Ready / Not Ready message is sent with a <zone number> of 0 when the
+// system armed correctly — i.e. nothing is blocking. Zone 0 stays rejected for
+// every other verb: a zone_sealed for zone 0 is a malformed line, not an event,
+// and admitting it would invent a zone 0 sensor in Home Assistant.
+const ZERO_ZONE_VERBS = new Set(['arm_ready', 'arm_not_ready']);
 
 // Zone-event verb → 2-bit state name, hoisted so the dispatch allocates
 // nothing per line.
@@ -121,14 +140,33 @@ function lastSegments(addr, count) {
 }
 
 /**
+ * Number of non-empty '/'-separated segments in an address —
+ * //PROJECT/<net>/<app> is 3, //PROJECT/<net>/<app>/<zone> is 4. Used to tell
+ * "this address has no zone" apart from "this address has a bad zone", which
+ * the parse result alone cannot distinguish.
+ *
+ * @private
+ */
+function countSegments(addr) {
+    let count = 0;
+    let inSegment = false;
+    for (let i = 0; i < addr.length; i++) {
+        if (addr.charCodeAt(i) === 47 /* '/' */) { inSegment = false; continue; }
+        if (!inSegment) { count++; inSegment = true; }
+    }
+    return count;
+}
+
+/**
  * Parse a C-Bus address //PROJECT/<net>/<app>[/<zone>].
  *
  * @param {string} addr - Address token.
  * @param {boolean} expectZone - Whether a trailing zone segment is expected.
+ * @param {number} [minZone] - Lowest acceptable zone number for this verb.
  * @returns {{ network: string, application: string, zone: string|null }|null}
  * @private
  */
-function parseAddress(addr, expectZone) {
+function parseAddress(addr, expectZone, minZone = MIN_ZONE) {
     const segs = lastSegments(addr, 3);
     if (expectZone && segs.length >= 3) {
         const network = segs[segs.length - 3];
@@ -136,7 +174,7 @@ function parseAddress(addr, expectZone) {
         const zone = segs[segs.length - 1];
         if (!isDigits(network) || !isDigits(application) || !isDigits(zone)) return null;
         const zoneNum = parseInt(zone, 10);
-        if (zoneNum < MIN_ZONE || zoneNum > MAX_ZONE) return null;
+        if (zoneNum < minZone || zoneNum > MAX_ZONE) return null;
         return { network, application, zone };
     }
     if (segs.length >= 2) {
@@ -233,7 +271,15 @@ function decodeLine(line) {
     const params = tokens.slice(3);
 
     // 3. Parse address //PROJECT/<network>/<application>[/<zone>]
-    const parsed = parseAddress(addr, ZONE_ADDRESS_VERBS.has(verb));
+    const minZone = ZERO_ZONE_VERBS.has(verb) ? 0 : MIN_ZONE;
+    let parsed = parseAddress(addr, ZONE_ADDRESS_VERBS.has(verb), minZone);
+    if (!parsed && OPTIONAL_ZONE_ADDRESS_VERBS.has(verb) && countSegments(addr) <= 3) {
+        // No zone segment at all (//PROJECT/<net>/<app>) — the shape the #42
+        // panel emits. Gated on the segment count so a *malformed* zone still
+        // rejects the line: without the gate, ".../254/208/128" would fall
+        // through and be read as network 208, application 128.
+        parsed = parseAddress(addr, false);
+    }
     if (!parsed) return null;
     const { network, application, zone } = parsed;
 
@@ -282,7 +328,10 @@ function decodeLine(line) {
     // System state verbs (decoded, logged and surfaced to Live Events; the
     // panel condition sensors build on these — see securityPanelState).
     if (verb === 'arm_ready') {
-        return { kind: 'arm_ready', network, application, verb };
+        // zone is '0' when the panel armed with nothing blocking, a zone number
+        // on panels that report readiness per zone, and null on panels that
+        // omit the segment entirely.
+        return { kind: 'arm_ready', network, application, zone, verb };
     }
 
     if (verb === 'arm_not_ready') {
