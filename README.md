@@ -29,8 +29,13 @@ Needs Node.js 20+ and a C-Gate you can reach over the network.
 git clone https://github.com/dougrathbone/cgateweb.git
 cd cgateweb
 npm install
-cp settings.js.example settings.js   # creates your config file — then edit the C-Gate host, project name and MQTT broker
-npm start
+npm start                            # runs on built-in defaults: C-Gate and MQTT on 127.0.0.1
+```
+
+That starts against a local C-Gate and broker. To point it at yours, edit `settings.js` — it ships with working defaults, so you only change what differs — then check it before restarting:
+
+```bash
+npm run validate-settings
 ```
 
 To run it as a systemd service instead of in the foreground:

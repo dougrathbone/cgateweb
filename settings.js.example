@@ -1,7 +1,11 @@
 // =============================================================================
 // cgateweb Configuration - Starter Settings
 // =============================================================================
-// Copy this file to 'settings.js' and edit the values for your setup.
+// cgateweb already ships a working settings.js pointing at 127.0.0.1, so it
+// runs out of the box - edit that file to point at your own setup. This
+// template is here for starting a config from scratch: its connection values
+// are deliberate placeholders, so an unedited copy fails validation loudly
+// rather than retrying a stranger's address forever.
 //
 // This is a STARTER config: the handful of settings a standalone install
 // actually needs to get going, with the optional features commented out.
