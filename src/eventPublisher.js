@@ -38,12 +38,40 @@ const {
 // Security zone JSON-attributes payloads. Only four zone states exist, so the
 // payload string for each is built once instead of JSON-stringifying per zone
 // per status report. Frozen so the shared strings can't be mutated.
+//
+// Zone isolation (the panel bypassing a zone for an armed period) doubles the
+// table rather than composing JSON at publish time, because the state space is
+// still tiny and closed: 4 zone states x isolated/not. The overwhelmingly common
+// publish — a plain sealed/unsealed zone, 80 of them per status report — costs
+// exactly what it did before (one property read off a frozen object) and still
+// allocates nothing; the isolated variant is just as cheap. A composed
+// JSON.stringify would have put an object literal and a serialisation on that
+// path for the benefit of the rare case.
+//
+// Absence, not `"isolated":false`, means not isolated. That keeps the
+// non-isolated payloads byte-identical to what shipped before, so existing
+// automations and templates reading `zone_state` see no change at all, and
+// `state_attr(...,'isolated')` is falsy for them either way.
 const SECURITY_ZONE_ATTRIBUTES_PAYLOAD = Object.freeze({
     sealed: '{"zone_state":"sealed"}',
     unsealed: '{"zone_state":"unsealed"}',
     open: '{"zone_state":"open"}',
     short: '{"zone_state":"short"}'
 });
+
+const SECURITY_ZONE_ISOLATED_ATTRIBUTES_PAYLOAD = Object.freeze({
+    sealed: '{"zone_state":"sealed","isolated":true}',
+    unsealed: '{"zone_state":"unsealed","isolated":true}',
+    open: '{"zone_state":"open","isolated":true}',
+    short: '{"zone_state":"short","isolated":true}'
+});
+
+// A panel can isolate a zone before we have ever seen that zone's state (the
+// initial status report may not have arrived, or may never arrive). Isolation is
+// still worth publishing on its own — and the empty payload is what clears it
+// again, since the attributes topic is a whole-document replace.
+const SECURITY_ZONE_ISOLATED_ONLY_PAYLOAD = '{"isolated":true}';
+const SECURITY_ZONE_NO_ATTRIBUTES_PAYLOAD = '{}';
 
 class EventPublisher {
     /**
@@ -280,7 +308,8 @@ class EventPublisher {
      *   humidity_mode  → cbus/read/{net}/{app}/{group}/humidity_mode + humidity_setpoint
      *   humidity_action → cbus/read/{net}/{app}/{group}/humidity_action
      *   security_zone  → cbus/read/{net}/{app}/{zone}/state (ON for unsealed/open/short)
-     *                  → cbus/read/{net}/{app}/{zone}/attributes (raw 2-bit state name)
+     *                  → cbus/read/{net}/{app}/{zone}/attributes (raw 2-bit state
+     *                    name, plus `isolated` while the panel has the zone bypassed)
      *   measurement    → cbus/read/{net}/{app}/{device}/{channel}/value (decoded number)
      *                  → cbus/read/{net}/{app}/{device}/{channel}/unit (unit string, '' if none)
      */
@@ -438,20 +467,30 @@ class EventPublisher {
             // unsealed/open/short and OFF for sealed; the raw 2-bit state name
             // goes to the JSON attributes topic so automations can distinguish
             // fault states (open/short) from a normal unsealed zone.
-            if (reading.zoneState !== null && reading.zoneState !== undefined) {
+            //
+            // `isolated` is extra context on the attributes topic only — an
+            // isolated zone that is unsealed is still unsealed, so the state
+            // topic's meaning is untouched. A reading with no zoneState is an
+            // isolation-only update (the panel bypassed a zone without
+            // reporting its state), which publishes attributes and nothing else.
+            const hasZoneState = reading.zoneState !== null && reading.zoneState !== undefined;
+            const isolated = reading.isolated === true;
+            if (hasZoneState) {
                 this._publishIfNeeded(
                     `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
                     reading.zoneState === 'sealed' ? MQTT_STATE_OFF : MQTT_STATE_ON,
                     this.mqttOptions
                 );
-                const attributesPayload = SECURITY_ZONE_ATTRIBUTES_PAYLOAD[reading.zoneState];
-                if (attributesPayload) {
-                    this._publishIfNeeded(
-                        `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-                        attributesPayload,
-                        this.mqttOptions
-                    );
-                }
+            }
+            const attributesPayload = hasZoneState
+                ? (isolated ? SECURITY_ZONE_ISOLATED_ATTRIBUTES_PAYLOAD : SECURITY_ZONE_ATTRIBUTES_PAYLOAD)[reading.zoneState]
+                : (isolated ? SECURITY_ZONE_ISOLATED_ONLY_PAYLOAD : SECURITY_ZONE_NO_ATTRIBUTES_PAYLOAD);
+            if (attributesPayload) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                    attributesPayload,
+                    this.mqttOptions
+                );
             }
         } else if (reading.kind === 'security_panel') {
             // Panel-wide trouble condition (app 208): ON means the trouble is

@@ -129,6 +129,9 @@ describe('SecurityEventHandler', () => {
     // arm_failed and fire_alarm are deliberately absent: they are panel trouble
     // conditions now and do publish state (see 'panel trouble conditions'). The
     // arm/alarm verbs here drive the alarm_control_panel state — but no zone state.
+    // zone_isolated is absent too: it now publishes the zone's attributes (see
+    // 'zone isolation'). It still publishes nothing to the zone's *state* topic,
+    // which is asserted there.
     it('consumes arm-progress and alarm verbs without publishing zone state', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
@@ -138,8 +141,7 @@ describe('SecurityEventHandler', () => {
             '# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=',
             '# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=',
-            '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID='
+            '# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID='
         ]) {
             expect(handler.handleLine(line)).toBe(true);
         }
@@ -147,6 +149,220 @@ describe('SecurityEventHandler', () => {
             .filter(c => c[3] && c[3].kind === 'security_zone');
         expect(zoneReadings).toHaveLength(0);
         expect(deps.logger.warn).not.toHaveBeenCalled();
+    });
+
+    // cgateweb ships the bypass itself (the panel's '#' key as a button and as
+    // the alarm card's arm_custom_bypass action), and the documented risk of
+    // using it is "the alarm reports armed while that door is not covered".
+    // These cover making that consequence visible in Home Assistant.
+    describe('zone isolation', () => {
+        const ZONE_ISOLATED_LINE = '# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=';
+        const DISARM_LINE = '# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=';
+        // The capture's report 1 prefix is "0 0 0" (disarmed, no tamper, no
+        // panic); flipping the arm byte gives the same report from an armed panel.
+        const STATUS_REPORT_1_ARMED_LINE = STATUS_REPORT_1_LINE.replace('/254/208 0 ', '/254/208 1 ');
+
+        const zoneReadingsFor = (deps, zone) => deps.eventPublisher.publishReading.mock.calls
+            .filter(c => c[2] === zone && c[3] && c[3].kind === 'security_zone')
+            .map(c => c[3]);
+
+        it('publishes the isolated flag alongside the zone state the zone was last in', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            // Zone 44 unsealed, then the panel arms and bypasses it: the attributes
+            // topic is a whole-document replace, so zone_state has to ride along
+            // or existing automations reading it would see it vanish.
+            handler.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
+            );
+        });
+
+        it('publishes isolation for a zone whose state has never been reported', () => {
+            // A bypass can land before the initial status report does. The
+            // reading carries no zone state, so nothing reaches the state topic.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', '44', { kind: 'security_zone', zoneState: null, isolated: true }
+            );
+        });
+
+        it('announces the zone entity so the attributes land on a subscribed topic', () => {
+            const ensureSecurityZoneDiscovery = jest.fn();
+            const deps = makeDeps({ getHaDiscovery: () => ({ ensureSecurityZoneDiscovery }) });
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            expect(ensureSecurityZoneDiscovery).toHaveBeenCalledWith('254', '208', '44');
+        });
+
+        it('publishes a repeated isolation only once', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            expect(zoneReadingsFor(deps, '44')).toHaveLength(1);
+        });
+
+        it('keeps a zone that was never isolated exactly as it publishes today', () => {
+            // The common path: no isolated key on the reading at all, so
+            // EventPublisher keeps using its pre-rendered payload.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine(ZONE_UNSEALED_LINE); // zone 58, never isolated
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', '58', { kind: 'security_zone', zoneState: 'unsealed' }
+            );
+            expect(zoneReadingsFor(deps, '58')[0]).not.toHaveProperty('isolated');
+        });
+
+        it('carries isolation onto later state changes of the same zone', () => {
+            // A bypassed door closing does not un-bypass it: it stays out of the
+            // armed system until the disarm, and the attributes must say so.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', '44', { kind: 'security_zone', zoneState: 'sealed', isolated: true }
+            );
+        });
+
+        it('clears isolation for every zone on the network when the system disarms', () => {
+            // Isolation applies to the armed period only, and the panel sends no
+            // per-zone "no longer isolated" event — so the disarm has to clear
+            // all of them, and the cleared payload has to be published or the
+            // retained "isolated" would outlive the bypass indefinitely.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security zone_sealed //MIDSTRM/254/208/7  #sourceunit=18 OID=');
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/7  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(DISARM_LINE);
+
+            expect(zoneReadingsFor(deps, '44')).toEqual([{ kind: 'security_zone', zoneState: null }]);
+            expect(zoneReadingsFor(deps, '7')).toEqual([{ kind: 'security_zone', zoneState: 'sealed' }]);
+        });
+
+        it('clears isolation only on the network that disarmed', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine('# security zone_isolated //MIDSTRM/200/208/44  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(DISARM_LINE);
+            handler.handleLine('# security zone_unsealed //MIDSTRM/200/208/44  #sourceunit=18 OID=');
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '200', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
+            );
+        });
+
+        it('publishes nothing extra when a disarm finds no isolated zone', () => {
+            // The overwhelmingly common disarm. It must not republish zones.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_UNSEALED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(DISARM_LINE);
+
+            expect(zoneReadingsFor(deps, '58')).toHaveLength(0);
+        });
+
+        it('does not clear isolation when the system arms', () => {
+            // The panel announces its bypassed zones around the arm and the
+            // capture does not fix the order, so an arm must never erase them.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            handler.handleLine(SYSTEM_ARM_LINE);
+            handler.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
+            );
+        });
+
+        it('survives a resync while the panel is still armed', () => {
+            // A resync republishes every zone so Home Assistant can re-seed after
+            // a restart. Isolation is part of that state and must come back with it.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/5  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(STATUS_REPORT_1_ARMED_LINE);
+
+            expect(zoneReadingsFor(deps, '5')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed', isolated: true }
+            ]);
+        });
+
+        it('reconciles a disarm missed while the bridge was away, on the next status report', () => {
+            // The event connection can drop across a disarm. The report's arm
+            // prefix is then the only evidence the armed period ended, and each
+            // zone is published exactly once — cleared — not isolated then cleared.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/5  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(STATUS_REPORT_1_LINE); // arm prefix 0 = disarmed
+
+            expect(zoneReadingsFor(deps, '5')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed' }
+            ]);
+        });
+
+        it('republishes an isolated zone outside the report range on a reconciling disarm', () => {
+            // Report 1 only covers zones 1-32, so a bypassed zone 44 gets no
+            // fresh publish from the loop and needs an explicit cleared one.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(STATUS_REPORT_1_LINE);
+
+            expect(zoneReadingsFor(deps, '44')).toEqual([
+                { kind: 'security_zone', zoneState: null }
+            ]);
+        });
+
+        it('leaves isolation alone for a status report that does not say disarmed', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(STATUS_REPORT_2_LINE); // report 2 carries no arm state
+            handler.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
+            );
+        });
     });
 
     describe('humanized INFO logs for system verbs', () => {
@@ -633,6 +849,36 @@ describe('panel state persistence', () => {
         const deps = makeDeps({ panelStateFile: stateFile });
         expect(() => new SecurityEventHandler(deps)).not.toThrow();
         expect(deps.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Could not read security panel state file'));
+    });
+
+    it('writes isolated zones so a restart mid-armed-period still shows the bypass', () => {
+        // Isolation is as unqueryable as the trouble conditions, and forgetting
+        // it is the dangerous direction: a restarted bridge would otherwise show
+        // a bypassed door as covered while the panel is still armed.
+        const handler = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+        const written = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        expect(written['254'].isolated_zones).toEqual(['44']);
+    });
+
+    it('drops isolated zones from the file again on a disarm', () => {
+        const handler = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+        handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+        const written = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        expect(written['254']).not.toHaveProperty('isolated_zones');
+    });
+
+    it('restores isolated zones and folds them into the next zone publish', () => {
+        fs.writeFileSync(stateFile, JSON.stringify({ '254': { isolated_zones: ['44'] } }));
+        const deps = makeDeps({ panelStateFile: stateFile });
+        const handler = new SecurityEventHandler(deps);
+
+        handler.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+            '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
+        );
     });
 
     it('logs nothing and writes nothing when no state file is configured', () => {

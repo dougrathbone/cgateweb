@@ -60,9 +60,10 @@ const SYNC_TRIGGER_SLOTS = {
  *
  * Zone events and status reports publish zone state; panel_trouble readings
  * and system_arm update the panel condition sensors (see securityPanelState);
- * the remaining system-state verbs (arm_ready, exit_delay_started, …) are
- * decoded, logged and surfaced to the Live Events stream only. Arm/disarm
- * writes are not implemented.
+ * zone_isolated adds an `isolated` attribute to the zone it names (cleared for
+ * the whole network on the next disarm); the remaining system-state verbs
+ * (arm_ready, exit_delay_started, …) are decoded, logged and surfaced to the
+ * Live Events stream only. Arm/disarm writes are not implemented.
  *
  * This handler also owns the status_request sync dedupe for the whole bridge:
  * every trigger (connect, first traffic, 762 sync-ok) routes through
@@ -227,6 +228,17 @@ class SecurityEventHandler {
                     this._zoneLabel(reading.network, reading.zone),
                     `Zone ${reading.zoneState}`);
             } else if (reading.kind === 'status_report_1' || reading.kind === 'status_report_2') {
+                // A report that says the panel is disarmed ends any armed
+                // period, so isolation recorded against it is stale. This is
+                // the reconciliation for a disarm the bridge never saw (event
+                // connection down, or the bridge restarted mid-armed-period and
+                // restored isolation from disk). Done before the zone loop so
+                // the zones in this report are published already-cleared rather
+                // than flapping isolated → not isolated.
+                if (reading.kind === 'status_report_1' && reading.armState === 0) {
+                    this._clearZoneIsolation(reading.network, reading.application,
+                        new Set(reading.zones.map((entry) => String(entry.zone))));
+                }
                 for (const entry of reading.zones) {
                     this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
                 }
@@ -272,6 +284,22 @@ class SecurityEventHandler {
                 if (reading.kind === 'system_arm') {
                     this._publishPanelChanges(reading.network, reading.application,
                         this.panelState.applyReading(reading));
+                    // The disarm also ends the armed period isolation belongs
+                    // to. An arm deliberately does not clear it: the panel
+                    // announces its bypassed zones around the arm, and the
+                    // capture does not fix whether zone_isolated precedes or
+                    // follows system_arm — clearing here could erase an
+                    // isolation the panel had just declared.
+                    if (reading.mode === 0) {
+                        this._clearZoneIsolation(reading.network, reading.application);
+                    }
+                } else if (reading.kind === 'zone_isolated') {
+                    // The panel bypassed a zone for this armed period
+                    // (spec §5.5.1.15). cgateweb offers the bypass itself (the
+                    // '#' key button and arm_custom_bypass), so its consequence
+                    // — "armed, but that door is not covered" — has to be
+                    // visible somewhere in Home Assistant.
+                    this._markZoneIsolated(reading.network, reading.application, reading.zone);
                 }
                 // System-state verbs also drive the HA alarm_control_panel
                 // state machine (system_arm, arm_ready/not_ready,
@@ -314,7 +342,36 @@ class SecurityEventHandler {
      * @private
      */
     _publishZone(network, application, zone, zoneState) {
-        this.eventPublisher.publishReading(network, application, zone, { kind: 'security_zone', zoneState });
+        // Remembered so a later isolation change can re-render this zone's
+        // attributes without dropping zone_state (the attributes topic is a
+        // whole-document replace in Home Assistant).
+        this.panelState.noteZoneState(network, zone, zoneState);
+        this._publishZoneReading(network, application, zone, zoneState);
+    }
+
+    /**
+     * Publish one zone's state + attributes for a known state, folding in the
+     * zone's current isolation, and make sure its binary_sensor exists.
+     *
+     * Split out from _publishZone because isolation changes have to republish a
+     * zone from the *remembered* state rather than a freshly reported one, and
+     * both routes must agree on the payload and on announcing the entity — an
+     * isolation announced for a zone we have never published would otherwise
+     * land on a topic no entity is subscribed to.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {string} zone
+     * @param {string|null} zoneState - null when the zone's state is not yet known.
+     * @private
+     */
+    _publishZoneReading(network, application, zone, zoneState) {
+        // The isolated flag is only added when set: the common reading object
+        // then stays exactly what it has always been, and EventPublisher's
+        // pre-rendered non-isolated payloads stay the common path.
+        const reading = { kind: 'security_zone', zoneState };
+        if (this.panelState.isZoneIsolated(network, zone)) reading.isolated = true;
+        this.eventPublisher.publishReading(network, application, zone, reading);
         // Event-driven HA discovery: announce the zone's binary_sensor the
         // first time we see it. ensureSecurityZoneDiscovery is idempotent and
         // gated on ha_discovery_enabled internally.
@@ -322,6 +379,51 @@ class SecurityEventHandler {
         if (haDiscovery) {
             haDiscovery.ensureSecurityZoneDiscovery(network, application, zone);
         }
+    }
+
+    /**
+     * Record a zone the panel isolated and publish the change. Repeats are
+     * dropped by the tracker, so a panel re-announcing the same bypass costs
+     * nothing.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {string|null|undefined} zone
+     * @private
+     */
+    _markZoneIsolated(network, application, zone) {
+        if (zone === null || zone === undefined) return;
+        if (!this.panelState.setZoneIsolated(network, zone)) return;
+        this._publishZoneReading(network, application, zone, this.panelState.lastZoneState(network, zone));
+        this._persistPanelState();
+    }
+
+    /**
+     * Clear isolation for every zone on a network and republish each one, so no
+     * zone can be left advertising a bypass that ended.
+     *
+     * The republish is what makes the clear visible: the panel sends no
+     * per-zone "isolation over" event, so nothing else would ever overwrite a
+     * retained `"isolated":true` payload until that zone next changed state —
+     * which for an internal door on a disarmed system can be days.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {Set<string>|null} [zonesPublishedSeparately] - zones the caller is
+     *   about to publish itself (a status report's own zone list). They are
+     *   cleared like any other, but skipped here so the report's fresher state
+     *   is the only thing that lands on their attributes topic.
+     * @private
+     */
+    _clearZoneIsolation(network, application, zonesPublishedSeparately = null) {
+        const cleared = this.panelState.clearZoneIsolation(network);
+        if (cleared.length === 0) return;
+        for (const { zone, zoneState } of cleared) {
+            if (zonesPublishedSeparately && zonesPublishedSeparately.has(zone)) continue;
+            this._publishZoneReading(network, application, zone, zoneState);
+        }
+        this.logger.info(`C-Bus Security: zone isolation cleared for ${cleared.length} zone(s) (${network}/${application})`);
+        this._persistPanelState();
     }
 
     /**

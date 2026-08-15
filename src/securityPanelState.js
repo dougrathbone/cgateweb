@@ -36,6 +36,15 @@ const ALARM_STATE_BY_ARM_MODE = {
 const UNKNOWN_ARM_MODE_STATE = 'armed_away';
 
 /**
+ * Key the isolated-zone list rides under inside a network's persisted entry.
+ * Deliberately not a condition name: `restore` only copies keys listed in
+ * PANEL_TROUBLE_CONDITIONS, so an older build reading a newer file ignores this
+ * key rather than choking on it, and a newer build reading an older file simply
+ * finds no isolation.
+ */
+const ISOLATED_ZONES_KEY = 'isolated_zones';
+
+/**
  * HA alarm panel state for a raw C-Bus arm mode.
  *
  * Mode 0 is disarmed and stays disarmed — never guess "armed" from the one
@@ -63,6 +72,18 @@ function alarmStateForArmMode(mode) {
  * trouble conditions this needs no persistence: status_report_1's arm-state
  * prefix re-seeds it on every connect sync.
  *
+ * Finally it tracks per-zone isolation (the zones the panel bypassed when it
+ * armed, spec §5.5.1.15) and each zone's last reported 2-bit state. Isolation
+ * lives here rather than in SecurityEventHandler for two reasons:
+ *   - it is network-scoped panel state cleared by a network-scoped panel event
+ *     (the disarm), which this class already sees and already reasons about;
+ *   - it is unqueryable, exactly like the trouble conditions, so it belongs in
+ *     the snapshot that survives a restart (see toJSON).
+ * The last zone state rides along because it is not separately published state:
+ * it exists only so an isolation change can re-render the zone's attributes
+ * payload without inventing or dropping the `zone_state` attribute that
+ * automations already read.
+ *
  * Deliberately separate from SecurityEventHandler: the transition and
  * derived-clear rules are the fiddly part of this feature and are far easier to
  * test as a standalone unit than through the handler's line-parsing path.
@@ -73,6 +94,12 @@ class SecurityPanelState {
         this._byNetwork = new Map();
         /** @type {Map<string, { state: string|null, preAlarmState: string|null, blockingZone: string|null, armMode: number|null }>} */
         this._alarmByNetwork = new Map();
+        /**
+         * network → { states: zone → last 2-bit state, isolated: set of zones }.
+         * Bounded by the panel's zone count (≤128 per network), so no eviction.
+         * @type {Map<string, { states: Map<string, string>, isolated: Set<string> }>}
+         */
+        this._zonesByNetwork = new Map();
     }
 
     /**
@@ -142,16 +169,126 @@ class SecurityPanelState {
     }
 
     /**
-     * Snapshot every network's conditions for persistence:
-     * { network: { condition: active } }. The panel offers no way to query
-     * mains, battery, line, arm-fail or fire, so this snapshot is the only way
-     * those survive a bridge restart (#42).
+     * Remember a zone's last reported 2-bit state (sealed/unsealed/open/short).
      *
-     * @returns {Object<string, Object<string, boolean>>}
+     * Not published from here and not persisted — the status reports re-seed
+     * every zone on connect. It exists so an isolation change can re-render the
+     * zone's whole attributes payload: the attributes topic is a full replace in
+     * Home Assistant, so publishing isolation without the state the zone was
+     * last known to be in would silently delete the `zone_state` attribute.
+     *
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @param {string} zoneState
+     */
+    noteZoneState(network, zone, zoneState) {
+        if (network === null || network === undefined || zone === null || zone === undefined) return;
+        if (!zoneState) return;
+        this._zonesForNetwork(network).states.set(String(zone), zoneState);
+    }
+
+    /**
+     * The zone's last reported 2-bit state, or null if none has been seen. Null
+     * is a real case: a panel can isolate a zone before the initial status
+     * report has arrived (or when the report never does).
+     *
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @returns {string|null}
+     */
+    lastZoneState(network, zone) {
+        const entry = this._zonesByNetwork.get(String(network));
+        if (!entry) return null;
+        return entry.states.get(String(zone)) || null;
+    }
+
+    /**
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @returns {boolean} whether the zone is currently isolated (bypassed).
+     */
+    isZoneIsolated(network, zone) {
+        const entry = this._zonesByNetwork.get(String(network));
+        if (!entry) return false;
+        return entry.isolated.has(String(zone));
+    }
+
+    /**
+     * Record that the panel isolated (bypassed) a zone for this armed period.
+     *
+     * Returns false for a repeat so callers publish transitions only — a panel
+     * re-announcing the same isolation, or a second arm of an already-isolated
+     * zone, should not put another message on the attributes topic.
+     *
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @returns {boolean} true when this call actually changed the zone.
+     */
+    setZoneIsolated(network, zone) {
+        if (network === null || network === undefined || zone === null || zone === undefined) return false;
+        const entry = this._zonesForNetwork(network);
+        const key = String(zone);
+        if (entry.isolated.has(key)) return false;
+        entry.isolated.add(key);
+        return true;
+    }
+
+    /**
+     * Drop every isolation recorded for a network and report what was dropped,
+     * so the caller can republish those zones' attributes.
+     *
+     * Isolation is scoped to one armed period (spec §5.5.1.15) — a disarm ends
+     * it for every zone at once, and the panel sends no per-zone "no longer
+     * isolated" event. Without this a bypassed zone would keep an `isolated`
+     * attribute for the rest of the bridge's life, which is worse than not
+     * showing isolation at all: it would claim a door is uncovered while the
+     * system is disarmed and, on the next arm, while it is genuinely covered.
+     *
+     * Each entry carries the zone's last known state so the republished payload
+     * keeps `zone_state` intact.
+     *
+     * @param {string|number} network
+     * @returns {Array<{zone: string, zoneState: string|null}>} zones that were isolated.
+     */
+    clearZoneIsolation(network) {
+        if (network === null || network === undefined) return [];
+        const entry = this._zonesByNetwork.get(String(network));
+        if (!entry || entry.isolated.size === 0) return [];
+        const cleared = [...entry.isolated].map((zone) => ({
+            zone,
+            zoneState: entry.states.get(zone) || null
+        }));
+        entry.isolated.clear();
+        return cleared;
+    }
+
+    /**
+     * Snapshot every network's conditions for persistence:
+     * { network: { condition: active, isolated_zones?: [zone] } }. The panel
+     * offers no way to query mains, battery, line, arm-fail or fire, so this
+     * snapshot is the only way those survive a bridge restart (#42).
+     *
+     * Zone isolation is in the snapshot for the same reason — it cannot be
+     * queried either — and because forgetting it is the dangerous direction of
+     * error: a restart mid-armed-period would otherwise show a bypassed door as
+     * covered, which is precisely what making isolation visible is for. The
+     * stale-in-the-other-direction risk (a disarm missed while the bridge was
+     * down) is reconciled on reconnect, where a status report that says the
+     * panel is disarmed clears isolation before the zones are published.
+     *
+     * The key is omitted when nothing is isolated, so the common file is
+     * byte-identical to the pre-isolation format.
+     *
+     * @returns {Object<string, Object<string, boolean|Array<string>>>}
      */
     toJSON() {
         const out = {};
         for (const [network, state] of this._byNetwork) out[network] = { ...state };
+        for (const [network, entry] of this._zonesByNetwork) {
+            if (entry.isolated.size === 0) continue;
+            if (!out[network]) out[network] = {};
+            out[network][ISOLATED_ZONES_KEY] = [...entry.isolated];
+        }
         return out;
     }
 
@@ -160,7 +297,12 @@ class SecurityPanelState {
      * values are ignored, so a hand-edited or newer-version file cannot
      * corrupt the tracker; unknown networks are adopted as-is.
      *
-     * @param {Object<string, Object<string, boolean>>} data
+     * The isolated-zone list gets the same treatment: anything that is not an
+     * array of zone-ish scalars is skipped rather than trusted. Zone *states*
+     * are never restored — they are queryable, and a stale one would be
+     * published as fact on the next isolation change.
+     *
+     * @param {Object<string, Object<string, boolean|Array<string>>>} data
      */
     restore(data) {
         if (!data || typeof data !== 'object') return;
@@ -169,6 +311,12 @@ class SecurityPanelState {
             const target = this._forNetwork(network);
             for (const condition of PANEL_TROUBLE_CONDITIONS) {
                 if (typeof state[condition] === 'boolean') target[condition] = state[condition];
+            }
+            const isolated = state[ISOLATED_ZONES_KEY];
+            if (!Array.isArray(isolated)) continue;
+            const zones = this._zonesForNetwork(network);
+            for (const zone of isolated) {
+                if (typeof zone === 'string' || typeof zone === 'number') zones.isolated.add(String(zone));
             }
         }
     }
@@ -296,6 +444,21 @@ class SecurityPanelState {
         if (!entry) {
             entry = { state: null, preAlarmState: null, blockingZone: null, armMode: null };
             this._alarmByNetwork.set(key, entry);
+        }
+        return entry;
+    }
+
+    /**
+     * @param {string|number} network
+     * @returns {{ states: Map<string, string>, isolated: Set<string> }}
+     * @private
+     */
+    _zonesForNetwork(network) {
+        const key = String(network);
+        let entry = this._zonesByNetwork.get(key);
+        if (!entry) {
+            entry = { states: new Map(), isolated: new Set() };
+            this._zonesByNetwork.set(key, entry);
         }
         return entry;
     }

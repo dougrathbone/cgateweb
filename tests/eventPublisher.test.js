@@ -1104,6 +1104,84 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should keep the non-isolated attributes payload byte-identical for every zone state', () => {
+            // The overwhelmingly common publish. Asserted as exact strings, not
+            // parsed objects, so any regression in the pre-rendered payloads —
+            // an added "isolated":false, a reordered key — is caught here rather
+            // than in a user's template.
+            const expected = {
+                sealed: '{"zone_state":"sealed"}',
+                unsealed: '{"zone_state":"unsealed"}',
+                open: '{"zone_state":"open"}',
+                short: '{"zone_state":"short"}'
+            };
+            for (const [zoneState, payload] of Object.entries(expected)) {
+                mockPublishFn.mockClear();
+                eventPublisher.publishReading('254', '208', '58', { kind: 'security_zone', zoneState });
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/208/58/attributes',
+                    payload,
+                    mockMqttOptions
+                );
+            }
+        });
+
+        it('should add isolated to the attributes while leaving the zone state alone', () => {
+            // A bypassed zone that is unsealed is still unsealed: isolation is
+            // extra context on the attributes topic, never a new on/off meaning.
+            eventPublisher.publishReading('254', '208', '58', {
+                kind: 'security_zone',
+                zoneState: 'unsealed',
+                isolated: true
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/state',
+                'ON',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/attributes',
+                '{"zone_state":"unsealed","isolated":true}',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish attributes only when a zone is isolated before its state is known', () => {
+            // A panel can bypass a zone before the initial status report lands.
+            // The isolation is still worth showing, but nothing is known about
+            // the zone's state, so the state topic must stay untouched.
+            eventPublisher.publishReading('254', '208', '58', {
+                kind: 'security_zone',
+                zoneState: null,
+                isolated: true
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/attributes',
+                '{"isolated":true}',
+                mockMqttOptions
+            );
+        });
+
+        it('should clear the attributes when isolation ends on a zone of unknown state', () => {
+            // The attributes topic is a whole-document replace and is retained,
+            // so the only way to retire a stale "isolated" is to publish over it.
+            eventPublisher.publishReading('254', '208', '58', {
+                kind: 'security_zone',
+                zoneState: null
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/208/58/attributes',
+                '{}',
+                mockMqttOptions
+            );
+        });
+
         it('should publish ON for the loop-fault security zone states (open/short)', () => {
             for (const zoneState of ['open', 'short']) {
                 mockPublishFn.mockClear();

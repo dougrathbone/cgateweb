@@ -181,6 +181,132 @@ describe('persistence (toJSON / restore)', () => {
     });
 });
 
+describe('SecurityPanelState — zone isolation', () => {
+    let state;
+
+    beforeEach(() => {
+        state = new SecurityPanelState();
+    });
+
+    it('reports a zone as not isolated until the panel says otherwise', () => {
+        expect(state.isZoneIsolated('254', '44')).toBe(false);
+    });
+
+    it('records an isolated zone and reports the change once', () => {
+        // Transitions only: a panel re-announcing the same bypass (or a second
+        // arm with the same zone still bypassed) must not put another message
+        // on the zone's attributes topic.
+        expect(state.setZoneIsolated('254', '44')).toBe(true);
+        expect(state.isZoneIsolated('254', '44')).toBe(true);
+        expect(state.setZoneIsolated('254', '44')).toBe(false);
+    });
+
+    it('keeps isolation per network and per zone', () => {
+        state.setZoneIsolated('254', '44');
+        expect(state.isZoneIsolated('254', '45')).toBe(false);
+        expect(state.isZoneIsolated('200', '44')).toBe(false);
+    });
+
+    it('normalises numeric zone and network ids to the string keys used elsewhere', () => {
+        // Status reports carry numeric zones, event lines carry strings — both
+        // must address the same zone or a bypass would show on a phantom one.
+        state.setZoneIsolated(254, 44);
+        expect(state.isZoneIsolated('254', '44')).toBe(true);
+    });
+
+    it('clears every isolated zone on the network and reports what it cleared', () => {
+        state.noteZoneState('254', '44', 'unsealed');
+        state.setZoneIsolated('254', '44');
+        state.setZoneIsolated('254', '7');
+        state.setZoneIsolated('200', '9');
+
+        const cleared = state.clearZoneIsolation('254');
+
+        // The last known state rides along so the caller can republish the
+        // zone's attributes without dropping zone_state.
+        expect(cleared).toEqual([
+            { zone: '44', zoneState: 'unsealed' },
+            { zone: '7', zoneState: null }
+        ]);
+        expect(state.isZoneIsolated('254', '44')).toBe(false);
+        // A disarm on one network says nothing about another panel.
+        expect(state.isZoneIsolated('200', '9')).toBe(true);
+    });
+
+    it('reports nothing to clear when no zone was isolated', () => {
+        // Every disarm and every disarmed status report runs this, so the
+        // no-op case has to stay a no-op rather than republishing 80 zones.
+        expect(state.clearZoneIsolation('254')).toEqual([]);
+        state.noteZoneState('254', '44', 'sealed');
+        expect(state.clearZoneIsolation('254')).toEqual([]);
+    });
+
+    it('remembers the last zone state and forgets nothing on a clear', () => {
+        state.noteZoneState('254', '44', 'unsealed');
+        state.noteZoneState('254', '44', 'sealed');
+        state.setZoneIsolated('254', '44');
+        state.clearZoneIsolation('254');
+        expect(state.lastZoneState('254', '44')).toBe('sealed');
+        expect(state.lastZoneState('254', '99')).toBeNull();
+    });
+
+    it('ignores missing networks and zones instead of throwing', () => {
+        expect(() => {
+            state.noteZoneState(null, '44', 'sealed');
+            state.noteZoneState('254', null, 'sealed');
+            state.noteZoneState('254', '44', null);
+        }).not.toThrow();
+        expect(state.setZoneIsolated('254', null)).toBe(false);
+        expect(state.setZoneIsolated(null, '44')).toBe(false);
+        expect(state.clearZoneIsolation(null)).toEqual([]);
+    });
+
+    describe('persistence', () => {
+        it('round-trips isolated zones through toJSON and restore', () => {
+            // Isolation is unqueryable, exactly like the trouble conditions, so
+            // a restart mid-armed-period must not forget which door is bypassed.
+            state.applyReading({ kind: 'panel_trouble', network: '254', condition: 'mains', active: true });
+            state.setZoneIsolated('254', '44');
+
+            const restored = new SecurityPanelState();
+            restored.restore(JSON.parse(JSON.stringify(state.toJSON())));
+
+            expect(restored.isZoneIsolated('254', '44')).toBe(true);
+            expect(restored.initialStates('254').find((c) => c.condition === 'mains').active).toBe(true);
+        });
+
+        it('omits the isolation key entirely when nothing is isolated', () => {
+            // Keeps the common state file byte-identical to the pre-isolation
+            // format, so an older build reads it unchanged.
+            state.applyReading({ kind: 'panel_trouble', network: '254', condition: 'mains', active: true });
+            expect(Object.keys(state.toJSON()['254'])).not.toContain('isolated_zones');
+        });
+
+        it('does not persist zone states, which the status reports re-seed anyway', () => {
+            // A restored stale state would be republished as fact the next time
+            // isolation changed; the panel is the authority for it.
+            state.noteZoneState('254', '44', 'unsealed');
+            state.setZoneIsolated('254', '44');
+
+            const restored = new SecurityPanelState();
+            restored.restore(JSON.parse(JSON.stringify(state.toJSON())));
+
+            expect(restored.lastZoneState('254', '44')).toBeNull();
+        });
+
+        it('ignores a malformed isolation list rather than trusting it', () => {
+            const restored = new SecurityPanelState();
+            expect(() => {
+                restored.restore({ '254': { isolated_zones: 'nope' } });
+                restored.restore({ '253': { isolated_zones: [{ zone: 44 }, null, '7', 8] } });
+            }).not.toThrow();
+            expect(restored.isZoneIsolated('254', '44')).toBe(false);
+            expect(restored.isZoneIsolated('253', '7')).toBe(true);
+            expect(restored.isZoneIsolated('253', '8')).toBe(true);
+        });
+    });
+});
+
 describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
     let state;
 
