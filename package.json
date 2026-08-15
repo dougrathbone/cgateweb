@@ -61,7 +61,7 @@
     "dev:inspect": "node --inspect index.js",
     "install-service": "node install-service.js",
     "uninstall-service": "node uninstall-service.js",
-    "setup": "cp settings.js.example settings.js && echo 'Settings file created! Edit settings.js to configure your C-Gate and MQTT settings.'",
+    "setup": "cp -n settings.js.example settings.js && echo 'Created settings.js - edit it, then run: npm run validate-settings' || echo 'settings.js already exists; left untouched.'",
     "import-labels": "node tools/import-cbus-labels.js",
     "perf:raw": "PERF_VARIANT=raw PERF_LOG_LEVEL=info PERF_DEDUP_WINDOW_MS=0 PERF_REPEAT=5 PERF_WARMUP=1 PERF_ARTIFACT=perf/raw.json jest tests/perf/latencyBenchmark.test.js --runInBand",
     "perf:dedup": "PERF_VARIANT=dedup PERF_LOG_LEVEL=info PERF_DEDUP_WINDOW_MS=200 PERF_REPEAT=5 PERF_WARMUP=1 PERF_ARTIFACT=perf/dedup.json jest tests/perf/latencyBenchmark.test.js --runInBand",
@@ -75,8 +75,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --max-warnings 0",
     "lint:fix": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --fix",
-    "validate-settings": "node -e \"try { require('./settings.js'); console.log('Settings file is valid!'); } catch(e) { console.error('Settings file error:', e.message); process.exit(1); }\"",
-    "check-setup": "node -e \"const { validateSetup } = require('./src/settingsValidator'); let settings; try { settings = require('./settings.js'); } catch(e) { settings = {}; } const result = validateSetup(settings); if (result.isFirstTime) { console.log(result.message); process.exit(1); } if (result.issues.length > 0) { console.log('Issues:', result.issues.join(', ')); } if (result.recommendations.length > 0) { console.log('Recommendations:', result.recommendations.join(', ')); } console.log(result.isValid ? 'Setup looks good!' : 'Please address the issues above');\""
+    "validate-settings": "node tools/validate-settings.js"
   },
   "jest": {
     "testPathIgnorePatterns": [
