@@ -524,6 +524,12 @@ class SecurityEventHandler {
                 return `Zone ${reading.zone} open — not ready to arm`;
             case 'exit_delay_started':
                 return 'Exit delay started';
+            case 'entry_delay_started':
+                // Named zone when the panel gives one — during an entry delay
+                // "which door was it" is the first thing anyone asks.
+                return reading.zone
+                    ? `Entry delay started (zone ${reading.zone})`
+                    : 'Entry delay started';
             case 'zone_isolated':
                 return `Zone ${reading.zone} bypassed`;
             case 'alarm_on':

@@ -195,6 +195,45 @@ describe('securityDecoder', () => {
                 .toMatchObject({ kind: 'exit_delay_started' });
         });
 
+        // Entry delay (spec §5.5.1.4, $09/$82) — the counterpart of exit delay
+        // and the pre-siren warning automations want. No capture exists for
+        // this verb, so the spelling is inferred from exit_delay_started and
+        // both address shapes are accepted; these cases pin both.
+        it('decodes entry_delay_started with no zone, the exit_delay_started shape', () => {
+            expect(securityDecoder.decodeLine('# security entry_delay_started //MIDSTRM/254/208  #sourceunit=18 OID='))
+                .toEqual({
+                    kind: 'entry_delay_started', network: '254', application: '208',
+                    zone: null, verb: 'entry_delay_started'
+                });
+        });
+
+        it('decodes entry_delay_started carrying the zone that started it, the arm_not_ready shape', () => {
+            // An entry delay is started by one zone unsealing on a delay path,
+            // so a panel may well name it the way arm_not_ready names its
+            // blocker. Both shapes decode rather than betting on one.
+            expect(securityDecoder.decodeLine('# security entry_delay_started //MIDSTRM/254/208/44  #sourceunit=18 OID='))
+                .toEqual({
+                    kind: 'entry_delay_started', network: '254', application: '208',
+                    zone: '44', verb: 'entry_delay_started'
+                });
+        });
+
+        it('reports a zone of 0 on entry_delay_started as no zone at all', () => {
+            // 0 is the spec's "no particular zone" (§5.5.1.25 convention).
+            // Decoding it rather than rejecting the address means a panel that
+            // uses it still gets its entry delay through; normalising it to null
+            // keeps a phantom zone 0 out of the logs and the Live Events feed.
+            expect(securityDecoder.decodeLine('# security entry_delay_started //MIDSTRM/254/208/0  #sourceunit=18 OID='))
+                .toMatchObject({ kind: 'entry_delay_started', zone: null });
+        });
+
+        it('still rejects an out-of-range zone on entry_delay_started', () => {
+            // The optional-zone fallback must not read "/128" as network 208,
+            // application 128 — a malformed zone rejects the line.
+            expect(securityDecoder.decodeLine('security entry_delay_started //MIDSTRM/254/208/128')).toBeNull();
+            expect(securityDecoder.decodeLine('security entry_delay_started //MIDSTRM/254/208/abc')).toBeNull();
+        });
+
         it('decodes system_arm modes 0-4 to their names', () => {
             const expected = { 0: 'disarmed', 1: 'away', 2: 'night', 3: 'day', 4: 'vacation' };
             for (const [mode, modeName] of Object.entries(expected)) {

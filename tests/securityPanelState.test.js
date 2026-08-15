@@ -344,14 +344,29 @@ describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
             .toEqual({ state: 'armed_home', blockingZone: null, armMode: 3 });
     });
 
-    it('arm_not_ready goes pending with the blocking zone, and re-publishes when the zone changes', () => {
+    // arm_not_ready deliberately does NOT map to 'pending' any more. A refused
+    // arm is a disarmed panel with a complaint; 'pending' in Home Assistant
+    // means an entry delay is counting down to the siren, and automations keyed
+    // on it (sirens, notifications, camera captures) would fire because someone
+    // tried to arm with a window open. entry_delay_started owns 'pending'; the
+    // open zone still reaches HA on the attributes topic, unchanged.
+    it('arm_not_ready stays disarmed and names the blocking zone, re-publishing when the zone changes', () => {
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' })))
-            .toEqual({ state: 'pending', blockingZone: '44', armMode: null });
+            .toEqual({ state: 'disarmed', blockingZone: '44', armMode: null });
         // Same zone again: deduped
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }))).toBeNull();
-        // A different blocking zone while still pending: new transition
+        // A different blocking zone: the state has not changed but the
+        // attributes payload has, so it still publishes.
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '45' })))
-            .toEqual({ state: 'pending', blockingZone: '45', armMode: null });
+            .toEqual({ state: 'disarmed', blockingZone: '45', armMode: null });
+    });
+
+    it('arm_not_ready never downgrades an armed panel, for the same reason arm_ready does not', () => {
+        // A late or repeated readiness verb must not report a live armed panel
+        // as disarmed - away automations stop and the card says the house is
+        // open while the panel is armed.
+        state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+        expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }))).toBeNull();
     });
 
     it('alarm_on goes triggered and alarm_off reverts to the pre-alarm state', () => {
@@ -396,13 +411,108 @@ describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
                 .toEqual({ state: 'disarmed', blockingZone: null, armMode: null });
         });
 
-        it('still clears a pending arm once the blocking zone seals', () => {
-            // arm_not_ready → pending is the only non-idle state arm_ready is
-            // allowed to leave: the arm attempt was refused, so the panel is
-            // back to sitting disarmed and ready.
+        it('still clears the blocking zone once it seals', () => {
+            // The arm attempt was refused, so the panel sits disarmed with the
+            // blocker named; arm_ready says it is now clear, and the attributes
+            // payload has to lose the zone or it advertises a stale blocker.
             state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }));
             expect(state.applyAlarmReading(reading('arm_ready')))
                 .toEqual({ state: 'disarmed', blockingZone: null, armMode: null });
+        });
+
+        it('is ignored during an entry delay, which it must not cut short', () => {
+            // The siren is seconds away; an arm_ready arriving mid-countdown
+            // saying "nothing is blocking" must not tell Home Assistant the
+            // pending state is over.
+            state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+            state.applyAlarmReading(reading('entry_delay_started'));
+            expect(state.applyAlarmReading(reading('arm_ready'))).toBeNull();
+        });
+    });
+
+    describe('entry delay (spec §5.5.1.4) maps to HA pending', () => {
+        // "Someone opened a delay zone while the system is armed and the siren
+        // fires in N seconds" is exactly what HA's 'pending' means, and it is
+        // the most automation-useful event the panel emits.
+
+        it('goes pending from every armed mode', () => {
+            for (const [mode, armed] of Object.entries(
+                { 1: 'armed_away', 2: 'armed_night', 3: 'armed_home', 4: 'armed_vacation' }
+            )) {
+                const tracker = new SecurityPanelState();
+                expect(tracker.applyAlarmReading(reading('system_arm', { mode: Number(mode) })))
+                    .toMatchObject({ state: armed });
+                expect(tracker.applyAlarmReading(reading('entry_delay_started')))
+                    .toEqual({ state: 'pending', blockingZone: null, armMode: Number(mode) });
+            }
+        });
+
+        it('goes pending even when the tracker thinks the panel is disarmed', () => {
+            // The panel only starts an entry delay when it is armed, so a
+            // tracker that disagrees is the stale one. Swallowing the event to
+            // protect a stale state would lose the warning entirely.
+            state.applyAlarmReading(reading('system_arm', { mode: 0 }));
+            expect(state.applyAlarmReading(reading('entry_delay_started')))
+                .toEqual({ state: 'pending', blockingZone: null, armMode: 0 });
+        });
+
+        it('goes pending from arming, and from a cold start with nothing learned yet', () => {
+            state.applyAlarmReading(reading('exit_delay_started'));
+            expect(state.applyAlarmReading(reading('entry_delay_started')))
+                .toMatchObject({ state: 'pending' });
+
+            const cold = new SecurityPanelState();
+            expect(cold.applyAlarmReading(reading('entry_delay_started')))
+                .toEqual({ state: 'pending', blockingZone: null, armMode: null });
+        });
+
+        it('dedupes a repeated entry delay', () => {
+            state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+            state.applyAlarmReading(reading('entry_delay_started'));
+            expect(state.applyAlarmReading(reading('entry_delay_started'))).toBeNull();
+        });
+
+        it('cannot walk a triggered panel back to a countdown that is already over', () => {
+            // The siren has gone. A repeat of the verb, or a second delay zone
+            // opening while the alarm sounds, must leave 'triggered' alone.
+            state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+            state.applyAlarmReading(reading('entry_delay_started'));
+            state.applyAlarmReading(reading('alarm_on'));
+            expect(state.applyAlarmReading(reading('entry_delay_started'))).toBeNull();
+            // Still triggered: another alarm_on would be a repeat, not a change.
+            expect(state.applyAlarmReading(reading('alarm_on'))).toBeNull();
+        });
+
+        it('lands on disarmed when the entry delay is beaten by a disarm', () => {
+            // The whole point of the delay: the resident disarms in time.
+            state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+            state.applyAlarmReading(reading('entry_delay_started'));
+            expect(state.applyAlarmReading(reading('system_arm', { mode: 0 })))
+                .toEqual({ state: 'disarmed', blockingZone: null, armMode: 0 });
+        });
+
+        it('reverts to the armed state, not to pending, when the siren is silenced', () => {
+            // alarm_off restores what the panel was before the alarm. Capturing
+            // 'pending' as that state would leave the entity counting down a
+            // delay that ended minutes ago.
+            state.applyAlarmReading(reading('system_arm', { mode: 1 }));
+            state.applyAlarmReading(reading('entry_delay_started'));
+            expect(state.applyAlarmReading(reading('alarm_on')))
+                .toEqual({ state: 'triggered', blockingZone: null, armMode: 1 });
+            expect(state.applyAlarmReading(reading('alarm_off')))
+                .toEqual({ state: 'armed_away', blockingZone: null, armMode: 1 });
+        });
+
+        it('carries no blocking zone, so a stale blocker clears when the delay starts', () => {
+            state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }));
+            expect(state.applyAlarmReading(reading('entry_delay_started')))
+                .toEqual({ state: 'pending', blockingZone: null, armMode: null });
+        });
+
+        it('tracks networks independently', () => {
+            state.applyAlarmReading(reading('entry_delay_started', {}, '254'));
+            expect(state.applyAlarmReading(reading('entry_delay_started', {}, '255')))
+                .toMatchObject({ state: 'pending' });
         });
     });
 

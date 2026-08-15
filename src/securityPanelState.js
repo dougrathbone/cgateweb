@@ -36,6 +36,33 @@ const ALARM_STATE_BY_ARM_MODE = {
 const UNKNOWN_ARM_MODE_STATE = 'armed_away';
 
 /**
+ * The HA states that mean "this panel is armed", derived from the mode table so
+ * a mode added there cannot be forgotten here. Used to decide what the entity
+ * should fall back to once an alarm is over.
+ */
+const ARMED_STATES = new Set(
+    Object.values(ALARM_STATE_BY_ARM_MODE).filter((state) => state !== 'disarmed')
+);
+
+/**
+ * Whether an alarm state is one the readiness verbs (arm_ready / arm_not_ready)
+ * are allowed to write over: nothing learned yet, or a panel already sitting
+ * disarmed.
+ *
+ * Both verbs report the readiness of a panel that is *not* armed, so neither may
+ * downgrade one that is arming, armed, counting down an entry delay or already
+ * sounding. That is the one direction of error that matters: it stops away
+ * automations and tells the user the house is open while the panel is armed.
+ *
+ * @param {string|null} state
+ * @returns {boolean}
+ * @private
+ */
+function isIdleAlarmState(state) {
+    return state === null || state === 'disarmed';
+}
+
+/**
  * Key the isolated-zone list rides under inside a network's persisted entry.
  * Deliberately not a condition name: `restore` only copies keys listed in
  * PANEL_TROUBLE_CONDITIONS, so an older build reading a newer file ignores this
@@ -361,8 +388,38 @@ class SecurityPanelState {
             case 'exit_delay_started':
                 target = 'arming';
                 break;
-            case 'arm_not_ready':
+            case 'entry_delay_started':
+                // A delay zone opened while the system is armed and the siren
+                // follows unless someone disarms in time (spec §5.5.1.4). That
+                // is precisely what Home Assistant's 'pending' means, and it is
+                // the state worth automating on — hall lights, camera snapshot,
+                // phone notification, all before the siren.
+                //
+                // Applied from every other state, including 'disarmed': the
+                // panel only starts an entry delay when it is armed, so a
+                // tracker that thinks otherwise is the stale one, and swallowing
+                // the event to protect a stale state would defeat the feature.
+                //
+                // 'triggered' is the exception. Once the siren has gone, a
+                // repeat of the verb or a second delay zone opening must not
+                // walk the panel back to a countdown that is already over.
+                if (entry.state === 'triggered') return null;
+                // Remember what the panel was armed as, so alarm_off can revert
+                // to it. alarm_on cannot capture it itself: by then the state is
+                // 'pending', which is not somewhere to return to.
+                if (entry.state && ARMED_STATES.has(entry.state)) entry.preAlarmState = entry.state;
                 target = 'pending';
+                break;
+            case 'arm_not_ready':
+                // NOT 'pending': the panel refused to arm because a zone is
+                // open, which is a disarmed panel with a complaint — not an
+                // intruder mid-entry-delay. 'pending' belongs to
+                // entry_delay_started above, where Home Assistant's meaning of
+                // it (and any automation keyed on it) actually applies. The open
+                // zone still reaches Home Assistant, on the attributes topic,
+                // which is where it always went.
+                if (!isIdleAlarmState(entry.state)) return null;
+                target = 'disarmed';
                 blockingZone = reading.zone || null;
                 break;
             case 'arm_ready':
@@ -377,16 +434,23 @@ class SecurityPanelState {
                 //
                 // So it may only seed or restore the idle state, never downgrade
                 // one: from unknown (nothing learned yet — the common case, a
-                // panel sitting ready) or from 'pending' (the blocking zone an
-                // earlier arm_not_ready named has now sealed). From 'arming',
-                // 'triggered' or any armed_* state it is ignored and the
-                // authoritative system_arm / status_report_1 keeps the entity
-                // honest.
-                if (entry.state !== null && entry.state !== 'pending') return null;
+                // panel sitting ready) or from 'disarmed', where it clears the
+                // blocking zone an earlier arm_not_ready named once that zone
+                // seals. From 'arming', 'pending', 'triggered' or any armed_*
+                // state it is ignored and the authoritative system_arm /
+                // status_report_1 keeps the entity honest. 'pending' matters
+                // most of all now that it means an entry delay: an arm_ready
+                // arriving mid-countdown must not tell Home Assistant the
+                // countdown is over seconds before the siren.
+                if (!isIdleAlarmState(entry.state)) return null;
                 target = 'disarmed';
                 break;
             case 'alarm_on':
-                if (entry.state !== 'triggered') entry.preAlarmState = entry.state;
+                // 'pending' is the entry delay this alarm almost certainly came
+                // from, and it is not somewhere to revert to once the siren
+                // stops — the armed state captured when the delay started
+                // stands instead.
+                if (entry.state !== 'triggered' && entry.state !== 'pending') entry.preAlarmState = entry.state;
                 target = 'triggered';
                 break;
             case 'alarm_off':

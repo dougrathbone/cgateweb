@@ -140,6 +140,7 @@ describe('SecurityEventHandler', () => {
             '# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=',
             '# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=',
+            '# security entry_delay_started //MIDSTRM/254/208/44  #sourceunit=18 OID=',
             '# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=',
             '# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID='
         ]) {
@@ -372,6 +373,10 @@ describe('SecurityEventHandler', () => {
             ['# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=', 'C-Bus Security: System disarmed (254/208)'],
             ['# security arm_ready //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Ready to arm (254/208)'],
             ['# security exit_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Exit delay started (254/208)'],
+            ['# security entry_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Entry delay started (254/208)'],
+            // Named zone when the panel gives one: during an entry delay the
+            // first question is which door was opened.
+            ['# security entry_delay_started //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Entry delay started (zone 44) (254/208)'],
             ['# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 open — not ready to arm (254/208)'],
             ['# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=', 'C-Bus Security: Zone 44 bypassed (254/208)'],
             ['# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=', 'C-Bus Security: Alarm on (254/208)'],
@@ -491,12 +496,46 @@ describe('SecurityEventHandler', () => {
             expect(alarmReadings(deps).map(c => c[3].alarmState)).toEqual(['armed_away', 'disarmed']);
         });
 
-        it('publishes pending with the blocking zone on arm_not_ready', () => {
+        it('publishes disarmed with the blocking zone on arm_not_ready', () => {
+            // Not 'pending': a refused arm is a disarmed panel with a complaint.
+            // 'pending' is reserved for the entry delay, where Home Assistant's
+            // meaning of it (the siren is imminent) actually applies.
             const deps = makeDeps();
             const handler = new SecurityEventHandler(deps);
             handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
             expect(alarmReadings(deps)[0][3]).toEqual(
-                { kind: 'security_alarm', alarmState: 'pending', blockingZone: '44' });
+                { kind: 'security_alarm', alarmState: 'disarmed', blockingZone: '44' });
+        });
+
+        it('publishes pending on entry_delay_started - the siren is counting down', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 1 #sourceunit=18 OID=');
+            handler.handleLine('# security entry_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=');
+            expect(alarmReadings(deps).map(c => c[3].alarmState)).toEqual(['armed_away', 'pending']);
+        });
+
+        it('walks entry delay back to disarmed when the resident disarms in time', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 1 #sourceunit=18 OID=');
+            handler.handleLine('# security entry_delay_started //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
+            expect(alarmReadings(deps).map(c => c[3].alarmState))
+                .toEqual(['armed_away', 'pending', 'disarmed']);
+        });
+
+        it('walks an entry delay that runs out to triggered and back to armed', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security system_arm //MIDSTRM/254/208 1 #sourceunit=18 OID=');
+            handler.handleLine('# security entry_delay_started //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security alarm_on //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security alarm_off //MIDSTRM/254/208  #sourceunit=18 OID=');
+            // alarm_off reverts to armed_away, not to the pending it passed
+            // through on the way in.
+            expect(alarmReadings(deps).map(c => c[3].alarmState))
+                .toEqual(['armed_away', 'pending', 'triggered', 'armed_away']);
         });
 
         it('walks exit delay to armed, and triggered back to the pre-alarm state', () => {

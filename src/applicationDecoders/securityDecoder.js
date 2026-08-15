@@ -23,6 +23,8 @@ const {
  *                          absent on panels that omit it — see ZONE_ADDRESS_VERBS)
  *   - arm_not_ready    → { kind:'arm_not_ready', …, zone } (zone names the blocker)
  *   - exit_delay_started → { kind:'exit_delay_started', … }
+ *   - entry_delay_started → { kind:'entry_delay_started', …, zone } (spelling
+ *                          inferred, not captured — see the note below)
  *   - system_arm       → { kind:'system_arm', …, mode, modeName } (0-4; 0 = disarmed)
  *   - alarm_on / alarm_off → { kind:'alarm_on'|'alarm_off', … }
  *   - zone_isolated    → { kind:'zone_isolated', …, zone } (zone bypassed on arming)
@@ -44,6 +46,16 @@ const {
  * Field layouts verified against the official protocol spec ("Security
  * Application", CBUS-APP/05 issue 4.3 — docs/Security Application.md) and the
  * live captures quoted in docs/SECURITY_INVESTIGATION.md §1.
+ *
+ * `entry_delay_started` is the one verb here whose C-Gate spelling is
+ * INFERRED rather than captured. The spec defines the message (§5.5.1.4,
+ * $09/$82) as the exact counterpart of Exit Delay Started (§5.5.1.3, $09/$81),
+ * which C-Gate renders as `exit_delay_started` in the #42 captures, so the
+ * entry half is spelled the same way — the same reasoning that names
+ * `low_battery`, `tamper_on` and `panic_off` in securityPanelConditions.
+ * Handling a verb that never arrives costs nothing; the address shape is
+ * likewise handled both ways (see OPTIONAL_ZONE_ADDRESS_VERBS).
+ *
  * Other verbs return null.
  */
 
@@ -76,21 +88,33 @@ const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
 // whole line was dropped.
 const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated',
-    'arm_not_ready', 'arm_ready'
+    'arm_not_ready', 'arm_ready', 'entry_delay_started'
 ]);
 
 // …but arm_ready's zone is optional in practice: the #42 capture is a bare
 // "security arm_ready //MIDSTRM/254/208" with no zone at all. Requiring the
 // zone would have regressed that live panel to undecoded, so a failed
 // zone-bearing parse falls back to the zoneless shape for these verbs only.
-const OPTIONAL_ZONE_ADDRESS_VERBS = new Set(['arm_ready']);
+//
+// entry_delay_started is here for the opposite reason: nothing was captured at
+// all. Its sibling exit_delay_started is panel-wide and zoneless, but an entry
+// delay is started by one zone unsealing on a delay path (spec §5.5.1.4), so a
+// panel naming that zone the way arm_not_ready names its blocker is entirely
+// plausible. Accepting both shapes costs one Set entry and means neither
+// possibility drops the most automation-useful event the panel emits.
+const OPTIONAL_ZONE_ADDRESS_VERBS = new Set(['arm_ready', 'entry_delay_started']);
 
 // Verbs where zone 0 is meaningful rather than out of range. Spec §5.5.1.25:
 // the Arm Ready / Not Ready message is sent with a <zone number> of 0 when the
 // system armed correctly — i.e. nothing is blocking. Zone 0 stays rejected for
 // every other verb: a zone_sealed for zone 0 is a malformed line, not an event,
 // and admitting it would invent a zone 0 sensor in Home Assistant.
-const ZERO_ZONE_VERBS = new Set(['arm_ready', 'arm_not_ready']);
+//
+// entry_delay_started is admitted for a different reason: if a panel does put a
+// zone on it and uses 0 for "no particular zone" (the §5.5.1.25 convention),
+// rejecting the address would drop the whole entry-delay event over a detail
+// nothing downstream needs. The dispatch normalises that 0 back to null.
+const ZERO_ZONE_VERBS = new Set(['arm_ready', 'arm_not_ready', 'entry_delay_started']);
 
 // Zone-event verb → 2-bit state name, hoisted so the dispatch allocates
 // nothing per line.
@@ -340,6 +364,22 @@ function decodeLine(line) {
 
     if (verb === 'exit_delay_started') {
         return { kind: 'exit_delay_started', network, application, verb };
+    }
+
+    if (verb === 'entry_delay_started') {
+        // The system is armed and a delay zone just opened: the siren follows
+        // unless it is disarmed in time (spec §5.5.1.4). Verb spelling inferred
+        // from exit_delay_started — see the header note.
+        //
+        // zone is the zone that started the delay when the panel names one,
+        // null when it does not; a literal 0 means "no particular zone" and is
+        // reported as null so nothing downstream addresses a zone 0 that does
+        // not exist.
+        return {
+            kind: 'entry_delay_started', network, application,
+            zone: zone === '0' ? null : zone,
+            verb
+        };
     }
 
     if (verb === 'system_arm') {
