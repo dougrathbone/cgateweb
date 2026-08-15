@@ -734,7 +734,7 @@ The code is followed by a `#` keypress, which is what submits it — the panel o
 
 ### Measurement application (228)
 
-The C-Bus Measurement application (`$E4`) carries analogue/numeric readings — temperature, power, light level, energy, and more — keyed by **device + channel** rather than a group address, since a single measurement device can report several independent channels. See the official Clipsal spec (`CBUS-APP/28`) for the full 40-entry unit table.
+The C-Bus Measurement application (`$E4`) carries analogue/numeric readings — temperature, power, light level, energy, and more — keyed by **device + channel** rather than a group address, since a single measurement device can report several independent channels. See the official Clipsal spec (`CBUS-APP/28`) for the full 42-entry unit table — 40 SI unit codes, plus "no units" and "custom".
 
 With `cbus_measurement_app_id` set (default off; typically `228`), cgateweb decodes `measurement data ...` broadcasts and publishes, per device/channel:
 
