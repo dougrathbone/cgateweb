@@ -92,9 +92,11 @@ exports.ha_discovery_networks = [254];
 
 // Different C-Bus applications are mapped to different Home Assistant device types:
 
-// Lighting devices (standard dimmable lights)
-// Application 56 is the standard C-Bus lighting application
-exports.ha_discovery_lighting_app_id = '56';
+// Lighting devices (standard dimmable lights) are not configurable.
+// Application 56, the standard C-Bus lighting application, is always discovered
+// as dimmable 'light' entities. If your project runs lighting on another
+// application in the $30-$5F range, point ha_discovery_switch_app_id at it to
+// get on/off switch entities for those groups.
 
 // Cover devices (blinds, curtains, garage doors)
 // Application 203 is typically used for Enable Control (motor control)
