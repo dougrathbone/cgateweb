@@ -14,6 +14,18 @@
   ],
   "private": true,
   "license": "MIT",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cgate-client": "./src/cgate-client/index.js",
+    "./cgate-client/project": "./src/cgate-client/project.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "public/",
+    "index.js"
+  ],
   "engines": {
     "node": "^20.19.0 || ^22.13.0 || >=24"
   },
