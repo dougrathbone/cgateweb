@@ -301,8 +301,8 @@ mqtt_reject_unauthorized: false
 |--------|------|---------|-------------|
 | `auto_discover_networks` | boolean | `true` | Automatically discover C-Bus network IDs from C-Gate on connect |
 | `getall_networks` | list | `[254]` | List of C-Bus network IDs to monitor (overrides auto-discovery) |
-| `getall_on_start` | boolean | `true` | Request all device states on startup |
-| `getall_period` | integer | `3600` | How often to request all states (seconds) |
+| `getall_on_start` | boolean | _(unset)_ | Request all device states on startup. Not set by default — add it to your add-on options to turn it on. |
+| `getall_period` | integer | _(unset)_ | How often to request all states (seconds). Not set by default — no periodic refresh happens until you add it. |
 | `getall_app_periods` | map | `{}` | Per-app poll interval overrides (seconds). Key is app ID (e.g. `"201"`), value is interval in seconds. Set to `0` to disable polling for that app. |
 | `retain_reads` | boolean | `false` | Set MQTT retain flag for state messages |
 | `message_interval` | integer | `200` | Delay between C-Gate commands (milliseconds) |
