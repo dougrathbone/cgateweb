@@ -1072,6 +1072,54 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish the network date to the clock date topic', () => {
+            eventPublisher.publishReading('254', '223', 'clock', {
+                kind: 'clock',
+                network: '254',
+                application: '223',
+                variant: 'date',
+                value: '2026-03-02'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/223/clock/date',
+                '2026-03-02',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish the network time to the clock time topic', () => {
+            eventPublisher.publishReading('254', '223', 'clock', {
+                kind: 'clock',
+                network: '254',
+                application: '223',
+                variant: 'time',
+                value: '21:13:21'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/223/clock/time',
+                '21:13:21',
+                mockMqttOptions
+            );
+        });
+
+        it('should publish the clock value verbatim, not as a derived timestamp', () => {
+            // The bus reports local wall-clock with no timezone; converting it
+            // would mean inventing one. See clockDecoder.js.
+            eventPublisher.publishReading('254', '223', 'clock', {
+                kind: 'clock', network: '254', application: '223', variant: 'time', value: '00:00:00'
+            });
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/223/clock/time',
+                '00:00:00',
+                mockMqttOptions
+            );
+        });
+
         it('should publish ON + attributes for an unsealed security zone', () => {
             eventPublisher.publishReading('254', '208', '58', {
                 kind: 'security_zone',
