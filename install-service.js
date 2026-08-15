@@ -59,7 +59,10 @@ function ensureServiceUser() {
         console.log(`Service user '${username}' already exists ✓`);
     } else {
         console.log(`Creating service user '${username}'...`);
-        if (!runCommand(`useradd --system --no-create-home --shell /usr/sbin/nologin ${username}`)) {
+        // --user-group creates the matching group the unit's Group= needs.
+        // Debian's useradd happens to do this by default; not every distro
+        // does, and there the unit fails on group resolution.
+        if (!runCommand(`useradd --system --user-group --no-create-home --shell /usr/sbin/nologin ${username}`)) {
             console.error(`Failed to create service user '${username}'.`);
             process.exit(1);
         }
@@ -111,6 +114,25 @@ function installService() {
         console.log(`Replacing %I placeholder with path: ${BASE_INSTALL_PATH}`);
         // Use a regular expression with the 'g' flag to replace all occurrences
         serviceContent = serviceContent.replace(/%I/g, BASE_INSTALL_PATH);
+
+        // The interpreter running this installer is the one we just version
+        // checked, so it is the one the unit should run. Hardcoding
+        // /usr/bin/node meant a supported Node installed via nvm/fnm/asdf
+        // passed the check and then failed 203/EXEC at start.
+        console.log(`Using node binary: ${process.execPath}`);
+        serviceContent = serviceContent.replace(/%NODE%/g, process.execPath);
+
+        // ProtectHome=yes hides /home from the unit, so an install under /home
+        // cannot even chdir into its own WorkingDirectory (200/CHDIR). Relax it
+        // rather than ship a unit that cannot start, and say so - /opt is the
+        // better home for a system service.
+        const installedUnderHome = BASE_INSTALL_PATH === '/home' || BASE_INSTALL_PATH.startsWith('/home/');
+        if (installedUnderHome) {
+            console.warn(`WARNING: installing from ${BASE_INSTALL_PATH}, which is under /home.`);
+            console.warn('         ProtectHome must be disabled for the service to start from there.');
+            console.warn('         Consider moving the checkout to /opt/cgateweb and re-running this installer.');
+        }
+        serviceContent = serviceContent.replace(/%PROTECT_HOME%/g, installedUnderHome ? 'no' : 'yes');
         
         // Backup existing service file if it exists
         if (fs.existsSync(TARGET_SERVICE_FILE)) {
@@ -122,6 +144,19 @@ function installService() {
         console.log(`Writing configured service file to ${TARGET_SERVICE_FILE}...`);
         fs.writeFileSync(TARGET_SERVICE_FILE, serviceContent, { encoding: 'utf8', mode: 0o644 });
         console.log('Service file written successfully.');
+
+        // The unit runs as 'cgateweb', not as whoever cloned the repo. Nothing
+        // chowns the checkout - doing so would take a developer's own working
+        // copy away from them - so check the service user can actually read the
+        // entry point and say exactly how to fix it if not. ReadWritePaths only
+        // lifts systemd's own restrictions; POSIX permissions still apply.
+        const entryPoint = path.join(BASE_INSTALL_PATH, 'index.js');
+        if (!runCommand(`sudo -u cgateweb test -r ${entryPoint}`)) {
+            console.warn(`WARNING: service user 'cgateweb' cannot read ${entryPoint}.`);
+            console.warn('         The service will fail to start. Grant access with either:');
+            console.warn(`           sudo chgrp -R cgateweb ${BASE_INSTALL_PATH} && sudo chmod -R g+rX ${BASE_INSTALL_PATH}`);
+            console.warn(`           sudo chown -R cgateweb:cgateweb ${BASE_INSTALL_PATH}   (gives up your own write access)`);
+        }
 
     } catch (error) {
         console.error(`Failed to process service file: ${error.message}`);

@@ -1,14 +1,17 @@
 [Unit]
 Description=cgateweb - C-Bus to MQTT Bridge
 Documentation=https://github.com/dougrathbone/cgateweb
-Wants=cgate.service
-After=network.target cgate.service
-Requires=network.target
+Wants=cgate.service network-online.target
+After=network-online.target cgate.service
 
 [Service]
-# Use %I as placeholder for the script directory determined by installer
+# %I is the install directory and %NODE% the node binary; the installer
+# substitutes both. node is NOT hardcoded to /usr/bin/node because anyone who
+# installed a supported Node via nvm, fnm or asdf has it elsewhere - the
+# installer's version check passes on the interpreter running it, and the unit
+# would then fail 203/EXEC on a path that does not exist.
 Type=simple
-ExecStart=/usr/bin/node %I/index.js
+ExecStart=%NODE% %I/index.js
 ExecReload=/bin/kill -USR1 $MAINPID
 Restart=always
 RestartSec=10
@@ -29,7 +32,10 @@ TimeoutStopSec=30
 # Security hardening
 NoNewPrivileges=yes
 ProtectSystem=strict
-ProtectHome=yes
+# %PROTECT_HOME% is yes unless the install directory is under /home, where
+# ProtectHome=yes makes WorkingDirectory unreachable and the unit fails
+# 200/CHDIR. The installer picks the value and warns when it has to relax it.
+ProtectHome=%PROTECT_HOME%
 PrivateTmp=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

@@ -92,6 +92,6 @@ describe('install-service.js', () => {
             return true;
         });
         installModule.ensureServiceUser();
-        expect(mockRunCommand).toHaveBeenCalledWith('useradd --system --no-create-home --shell /usr/sbin/nologin cgateweb');
+        expect(mockRunCommand).toHaveBeenCalledWith('useradd --system --user-group --no-create-home --shell /usr/sbin/nologin cgateweb');
     });
 });
