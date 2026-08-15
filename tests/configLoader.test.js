@@ -28,6 +28,36 @@ describe('ConfigLoader', () => {
             );
         });
 
+        // These two are read by real code paths - getall_networks by
+        // bridgeInitializationService's poll-target resolution, the keyword map
+        // by deviceTypeClassifier - but were absent from defaultSettings, which
+        // is where the known-key set comes from. Anyone who set them was told
+        // they were a typo that "will be ignored by defaults", and both halves
+        // of that sentence were untrue.
+        it.each([
+            ['getall_networks', [254]],
+            ['ha_discovery_security_device_class_keywords', { garage: 'garage_door' }]
+        ])('does not report %s as a typo, because the code reads it', (key, value) => {
+            const loader = new ConfigLoader({
+                environmentDetector: {
+                    detect: () => ({
+                        type: 'standalone',
+                        isAddon: false,
+                        settingsPath: '/tmp/settings.js'
+                    })
+                }
+            });
+            const warnSpy = jest.spyOn(loader.logger, 'warn');
+
+            loader._convertSettingsToStandardFormat({
+                cbusip: '192.168.1.100',
+                mqtt: 'mqtt://localhost',
+                [key]: value
+            });
+
+            expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining(key));
+        });
+
         it('should not warn about known settings keys', () => {
             const loader = new ConfigLoader({
                 environmentDetector: {

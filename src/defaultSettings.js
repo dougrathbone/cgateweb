@@ -53,6 +53,12 @@ const defaultSettings = {
     ha_discovery_enabled: false,
     ha_discovery_prefix: 'homeassistant',
     ha_discovery_networks: [],
+    // Networks to include in getall level polling. Empty means "use whatever
+    // was auto-discovered" (bridgeInitializationService._resolveGetallNetworks).
+    // Declared here because it is genuinely read: without an entry the
+    // unknown-key check would tell anyone who sets it that it is a typo and
+    // will be ignored, which was false on both counts.
+    getall_networks: [],
     ha_discovery_cover_app_id: null,
     cover_ramp_duration_ms: 5000,
     // How often (ms) the cover ramp tracker emits interpolated position updates
@@ -100,6 +106,12 @@ const defaultSettings = {
     // binary_sensor per zone (sealed/unsealed) and syncs zone state via
     // security status_request on connect. Empty or '0' disables.
     cbus_security_app_id: '208',
+    // Override the label keywords that map a security zone to a Home Assistant
+    // device class (e.g. { garage: 'garage_door' }). Empty falls back to the
+    // built-in keyword table in deviceTypeClassifier. Declared for the same
+    // reason as getall_networks above: it is read, so it must not be reported
+    // as a typo.
+    ha_discovery_security_device_class_keywords: {},
     // Opt-in: allow Home Assistant to ARM the security panel via `security arm`
     // commands. Off by default — the write carries no PIN on the bus, so
     // anything that can publish to the command topic can arm the panel.
