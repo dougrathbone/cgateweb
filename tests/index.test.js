@@ -287,6 +287,38 @@ describe('index.js', () => {
         expect(logSpy).toHaveBeenCalledWith('[INFO] Configuration reloaded successfully');
     });
 
+    // The success message above is not evidence of a reload. ConfigLoader.load()
+    // returns its startup cache unless forceReload is passed, so for a long time
+    // SIGUSR1 re-applied the settings it already had and announced success -
+    // and the systemd unit points ExecReload straight at it.
+    it('SIGUSR1 re-reads settings from disk rather than replaying the startup cache', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+        mockConfigLoaderInstance.load.mockClear();
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+
+        expect(mockConfigLoaderInstance.load).toHaveBeenCalledWith(true);
+    });
+
+    it('SIGUSR1 applies the newly read settings, not the ones loaded at startup', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance, bridgeInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+
+        mockConfigLoaderInstance.load.mockReturnValue({ log_level: 'debug' });
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+
+        expect(bridgeInstance.reloadSettings).toHaveBeenCalledWith(
+            expect.objectContaining({ log_level: 'debug' })
+        );
+    });
+
     it('SIGUSR1 handler logs error on reload failure', async () => {
         const processOnSpy = jest.spyOn(process, 'on');
         const { indexModule, mockConfigLoaderInstance } = loadIndexWithMocks();

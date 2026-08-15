@@ -94,7 +94,12 @@ async function main() {
     process.on('SIGUSR1', () => {
         console.log('[INFO] Received SIGUSR1, reloading configuration...');
         try {
-            const reloaded = configLoader.load();
+            // forceReload, or this reloads nothing: ConfigLoader.load() returns
+            // its cached config from startup unless told otherwise, so SIGUSR1
+            // was re-applying the settings it already had and logging success.
+            // The systemd unit wires ExecReload to this signal, so the lie was
+            // one `systemctl reload` away from anyone editing settings.js.
+            const reloaded = configLoader.load(true);
             const newSettings = { ...defaultSettings, ...reloaded };
             bridge.reloadSettings(newSettings);
             console.log('[INFO] Configuration reloaded successfully');
