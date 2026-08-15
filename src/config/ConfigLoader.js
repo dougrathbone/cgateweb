@@ -312,7 +312,7 @@ class ConfigLoader {
         const knownKeys = new Set(Object.keys(defaultSettings));
         // Also accept keys that are set internally or by ConfigLoader, plus the
         // legacy snake_case alias for network auto-discovery.
-        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'auto_discover_networks', 'cgate_mode', 'cgate_install_source']);
+        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'auto_discover_networks', 'cgate_mode', 'cgate_install_source', 'cgate_download_url']);
         for (const key of Object.keys(config)) {
             if (!knownKeys.has(key) && !internalKeys.has(key)) {
                 this.logger.warn(`Unknown setting "${key}" in settings.js — check for typos. This key will be ignored by defaults.`);

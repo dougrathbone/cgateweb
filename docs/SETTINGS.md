@@ -74,7 +74,7 @@ exports.getallonstart = true;
 1. `src/config/EnvironmentDetector.js` decides whether this is an add-on or a standalone install. Add-on is detected from `/data/options.json` plus `/data`, or from `SUPERVISOR_TOKEN` / `INGRESS_SESSION`.
 2. Standalone: the first existing file of `./settings.js`, `<repo>/settings.js`, `./config/settings.js` is loaded with `require()`. If none exists, defaults are used with a warning.
 3. The loaded object is merged over `src/defaultSettings.js` — anything you do not set keeps its default.
-4. Unknown keys are **warned about but ignored**: `Unknown setting "<key>" in settings.js — check for typos.` This catches misspellings. See [Known traps](#known-traps-and-mismatches) for two keys that trigger this warning despite being real.
+4. Unknown keys are **warned about but ignored**: `Unknown setting "<key>" in settings.js — check for typos.` This catches misspellings. Every setting listed in this document is recognised.
 5. Environment variable overrides are applied last (see below).
 6. `ConfigLoader.validate()` runs. Errors abort startup; warnings are logged.
 
@@ -123,7 +123,7 @@ What it actually does (`CgateWebBridge.reloadSettings`):
 
 Everything else (connections, ports, broker, discovery) needs a full restart.
 
-> **Caveat:** the handler calls `configLoader.load()` without forcing a reload, and `ConfigLoader` caches the parsed config from startup. In practice `SIGUSR1` therefore reloads **labels**, but not edits you have just made to `settings.js`. Restart the service to apply a settings change.
+`settings.js` is genuinely re-read from disk on each reload. (Until 1.25.0 it was not — the handler used the config cached at startup, so a reload reported success and applied nothing. Fixed; if you are on 1.25.0 or earlier, restart instead.)
 
 ---
 
@@ -180,7 +180,7 @@ C-Bus does not announce the state of every group at startup, so cgateweb asks fo
 | `getall_app_periods` | `getall_app_periods` | object | `{}` | Per-application poll interval overrides, in seconds: `{ '56': 3600, '203': 0 }`. `0` disables polling for that app. **Shape differs:** the add-on takes a list of `{app_id, period_sec}` objects and ConfigLoader flattens it into this map; standalone takes the map directly. |
 | `getallnetapp` | *derived* | string \| null | `null` | Single `network/application` pair, e.g. `'254/56'`. Legacy fallback used only when no network list is available. The add-on derives it as `<getall_networks[0]>/56`. |
 | `autoDiscoverNetworks` | `auto_discover_networks` | boolean | `true` | Ask C-Gate which networks exist instead of hardcoding them. Skipped when `getall_networks` or `ha_discovery_networks` is already configured. Standalone accepts either `autoDiscoverNetworks` or the snake_case `auto_discover_networks`. |
-| `getall_networks` | `getall_networks` | number[] | *(not in defaults)* | List of C-Bus network IDs to poll, e.g. `[254]`. Read by `bridgeInitializationService`, but absent from `src/defaultSettings.js`, so a standalone install setting it gets a spurious "Unknown setting" warning at startup. It still works. |
+| `getall_networks` | `getall_networks` | number[] | `[]` | List of C-Bus network IDs to poll, e.g. `[254]`. Empty means use whatever was auto-discovered. |
 | `messageinterval` | `message_interval` | integer (ms) | `200` | Minimum gap between outbound C-Gate commands. Throttles bursts so C-Gate is not flooded. Clamped to a 10 ms floor; validation warns outside 10-10000. |
 | `commandMinIntervalMs` | *standalone only* | integer (ms) | `10` | Floor on the adaptive command interval. Clamped to 5 ms minimum; validation warns outside 1-1000. |
 | `maxQueueSize` | *standalone only* | integer | `1000` | Cap on the outbound command queue. Commands beyond this are dropped rather than growing memory without bound. |
@@ -213,7 +213,7 @@ Lighting (application 56) groups default to `light`. These settings decide when 
 | `ha_discovery_auto_type_cover_keywords` | `ha_discovery_auto_type_cover_keywords` | string[] | `['blind','shutter','shade','awning','curtain','roller','garage door']` | Replaces the default list when non-empty. Case-insensitive, matches plurals. |
 | `ha_discovery_type_from_label_prefix` | `ha_discovery_type_from_label_prefix` | boolean | `false` | Treat an entity-id-style label prefix as the type: `cover.bedroom_shutter` becomes a cover. Recognised prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` Opt-in. |
 | `ha_discovery_type_from_unit` | `ha_discovery_type_from_unit` | boolean | `false` | Derive the type from the C-Bus unit driving the group: dimmer channel to dimmable light, relay channel to on/off light, input-only unit to `binary_sensor`. Opt-in because enabling it can change the type of entities you already have. |
-| `ha_discovery_security_device_class_keywords` | *standalone only* | object | *(not in defaults)* | Keyword to `device_class` map for security zone binary sensors, replacing the built-in list (`pir`/`motion` to motion, `garage` to garage_door, `door`, `window`, `smoke`). Read by `deviceTypeClassifier`, but absent from `src/defaultSettings.js`, so it triggers an "Unknown setting" warning. It still works. |
+| `ha_discovery_security_device_class_keywords` | *standalone only* | object | `{}` | Keyword to `device_class` map for security zone binary sensors, replacing the built-in list (`pir`/`motion` to motion, `garage` to garage_door, `door`, `window`, `smoke`). Empty uses the built-in list. |
 
 ---
 
@@ -468,13 +468,11 @@ The one setting that is read but has no effect is `logging` — see [Logging](#l
 1. **Event port is 20025.** Not 20024, despite the add-on declaring a `20024/tcp` port mapping for C-Gate's own event port. `cbuseventport` must be 20025.
 2. **`logging` does nothing.** Use `log_level`.
 3. **`log_level` does not cover every component.** Set the `LOG_LEVEL` environment variable too when debugging a standalone install — see [Logging](#logging).
-4. **`SIGUSR1` reloads labels, not settings.** The config loader's cache is not invalidated. Restart to apply a `settings.js` change.
-5. **Unit conversions between add-on and standalone names.** `connection_health_check_interval_sec` to `healthCheckInterval` (ms), `connection_keep_alive_interval_sec` to `keepAliveInterval` *and* `eventConnectionKeepAliveInterval` (ms), `cover_ramp_duration_sec` to `cover_ramp_duration_ms`. `message_interval`, `getall_period`, `ha_bridge_diagnostics_interval_sec`, `stale_device_check_interval_sec` and `stale_device_threshold_hours` are **not** converted.
-6. **`getall_app_periods` changes shape.** Add-on: a list of `{app_id, period_sec}`. Standalone: a plain `{ '56': 3600 }` map.
-7. **`mqtt` is composed in the add-on** from `mqtt_host` and `mqtt_port`; standalone it is a single `host:port` string.
-8. **Two real settings trigger a false "Unknown setting" warning** in standalone mode, because they are read by code but missing from `src/defaultSettings.js`: `getall_networks` and `ha_discovery_security_device_class_keywords`. Both still work.
-9. **`web_port` cannot be set in the add-on.** `addonOptionMap.js` has a mapping rule for it, but `homeassistant-addon/config.yaml` declares no such option, so the Supervisor never writes it into `/data/options.json`. The rule is dead.
-10. **`ha_discovery_relay_app_id` and `ha_discovery_pir_app_id` are standalone-only.** There is no add-on option for either, so relay and PIR application mapping is unavailable in the add-on UI.
-11. **`mqttCertFile` and `mqttKeyFile` are standalone-only.** The add-on exposes `mqtt_ca_file` but no client certificate or key option, so mutual TLS is not configurable there.
-12. **`trace` is standalone-only.** The add-on's `log_level` schema is `list(debug|info|warn|error)`; anything else falls back to `info`.
-13. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches and `cbus_measurement_app_id` — are deliberate, so MQTT-only installs keep working.
+4. **Unit conversions between add-on and standalone names.** `connection_health_check_interval_sec` to `healthCheckInterval` (ms), `connection_keep_alive_interval_sec` to `keepAliveInterval` *and* `eventConnectionKeepAliveInterval` (ms), `cover_ramp_duration_sec` to `cover_ramp_duration_ms`. `message_interval`, `getall_period`, `ha_bridge_diagnostics_interval_sec`, `stale_device_check_interval_sec` and `stale_device_threshold_hours` are **not** converted.
+5. **`getall_app_periods` changes shape.** Add-on: a list of `{app_id, period_sec}`. Standalone: a plain `{ '56': 3600 }` map.
+6. **`mqtt` is composed in the add-on** from `mqtt_host` and `mqtt_port`; standalone it is a single `host:port` string.
+7. **`web_port` is standalone-only, by design.** The add-on hardcodes `ingress_port: 8080` and its watchdog to the same port, so exposing it would let a user break ingress and the Supervisor watchdog at once.
+8. **`ha_discovery_relay_app_id` and `ha_discovery_pir_app_id` are standalone-only.** There is no add-on option for either, so relay and PIR application mapping is unavailable in the add-on UI.
+9. **`mqttCertFile` and `mqttKeyFile` are standalone-only.** The add-on exposes `mqtt_ca_file` but no client certificate or key option, so mutual TLS is not configurable there.
+10. **`trace` is standalone-only.** The add-on's `log_level` schema is `list(debug|info|warn|error)`; anything else falls back to `info`.
+11. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches and `cbus_measurement_app_id` — are deliberate, so MQTT-only installs keep working.

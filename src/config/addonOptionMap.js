@@ -68,8 +68,14 @@ const ADDON_OPTION_MAP = [
     { src: 'connection_health_check_interval_sec', dst: 'healthCheckInterval', kind: 'secToMs' },
     { src: 'cover_ramp_duration_sec', dst: 'cover_ramp_duration_ms', kind: 'secToMs' },
 
-    { src: 'web_port', dst: 'web_port', kind: 'copyTruthy' },
     { src: 'web_api_key', dst: 'web_api_key', kind: 'copyTruthy' },
+    // Retained deliberately even though config.yaml declares no web_port option,
+    // so the Supervisor never writes one today. The rule costs nothing when the
+    // key is absent, it is covered by tests, and removing it would mean a future
+    // config.yaml gaining the option would silently fail to map. The reason the
+    // option is not offered is separate: ingress_port and the Supervisor
+    // watchdog are both pinned to 8080, so a user-set port would break both.
+    { src: 'web_port', dst: 'web_port', kind: 'copyTruthy' },
     { src: 'web_allow_unauthenticated_mutations', dst: 'web_allow_unauthenticated_mutations', kind: 'boolDefined' },
     { src: 'web_mutation_rate_limit_per_minute', dst: 'web_mutation_rate_limit_per_minute', kind: 'copyDefined' }
 ];

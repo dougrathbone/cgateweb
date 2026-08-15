@@ -75,7 +75,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --max-warnings 0",
     "lint:fix": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --fix",
-    "validate-settings": "node tools/validate-settings.js"
+    "validate-settings": "node tools/validate-settings.js",
+    "pretest": "npm run validate:addon-config && npm run validate:translations && npm run validate:schema-i18n"
   },
   "jest": {
     "testPathIgnorePatterns": [
