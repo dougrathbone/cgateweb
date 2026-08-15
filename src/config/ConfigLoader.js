@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
-const { defaultSettings } = require('../defaultSettings');
+const { listKnownConfigKeys, listSettingAliases, getSchemaEntry } = require('./schema');
 const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
@@ -308,24 +308,18 @@ class ConfigLoader {
     _convertSettingsToStandardFormat(settings) {
         const config = { ...settings };
 
-        // Warn about unrecognized settings keys (likely typos)
-        const knownKeys = new Set(Object.keys(defaultSettings));
-        // Also accept keys that are set internally or by ConfigLoader, plus the
-        // legacy snake_case alias for network auto-discovery.
-        const internalKeys = new Set(['_environment', 'autoDiscoverNetworks', 'auto_discover_networks', 'cgate_mode', 'cgate_install_source', 'cgate_download_url']);
+        // Warn about unrecognized settings keys (likely typos). The vocabulary
+        // is derived from the schema — canonical names, their aliases and the
+        // internal keys ConfigLoader itself sets — so a key the code genuinely
+        // reads can never be reported as a typo that "will be ignored".
+        const knownKeys = listKnownConfigKeys();
         for (const key of Object.keys(config)) {
-            if (!knownKeys.has(key) && !internalKeys.has(key)) {
+            if (!knownKeys.has(key)) {
                 this.logger.warn(`Unknown setting "${key}" in settings.js — check for typos. This key will be ignored by defaults.`);
             }
         }
 
-        // Bridge the legacy snake_case `auto_discover_networks` to the camelCase
-        // key the runtime reads, so standalone configs using either form work.
-        if (config.auto_discover_networks !== undefined && config.autoDiscoverNetworks === undefined) {
-            config.autoDiscoverNetworks = config.auto_discover_networks === true
-                || config.auto_discover_networks === 'true';
-        }
-        delete config.auto_discover_networks;
+        this._applySettingAliases(config);
 
         if (typeof config.getallonstart === 'string') {
             config.getallonstart = config.getallonstart.toLowerCase() === 'true';
@@ -354,6 +348,72 @@ class ConfigLoader {
         }
 
         return config;
+    }
+
+    /**
+     * Rename any add-on option names used in settings.js onto the runtime keys
+     * the code actually reads, in place.
+     *
+     * The add-on documentation is the documentation most users read, so a
+     * standalone settings.js written from it says `exports.cgate_host = ...`.
+     * Before this, that was warned about as a typo and then ignored. Only names
+     * that map to exactly one runtime key with no transformation are listed as
+     * aliases (see the ALIAS RULE in schema.js), so the rename below is always
+     * value-preserving.
+     *
+     * A canonical key always wins: if both names are present the alias is
+     * dropped, so adding an alias can never change what an existing settings.js
+     * resolves to.
+     *
+     * @param {Object} config - Mutable config object, mutated in place.
+     * @private
+     */
+    _applySettingAliases(config) {
+        for (const [alias, canonicalKey] of listSettingAliases()) {
+            if (!Object.prototype.hasOwnProperty.call(config, alias)) {
+                continue;
+            }
+
+            const value = config[alias];
+            delete config[alias];
+
+            if (value === undefined) {
+                continue;
+            }
+
+            if (config[canonicalKey] !== undefined) {
+                this.logger.info(
+                    `Setting "${alias}" is the Home Assistant add-on name for "${canonicalKey}", which is also set; ` +
+                    `using "${canonicalKey}" and ignoring "${alias}".`
+                );
+                continue;
+            }
+
+            config[canonicalKey] = this._coerceAliasValue(canonicalKey, value);
+            this.logger.info(`Accepted Home Assistant add-on option name "${alias}" in settings.js as "${canonicalKey}".`);
+        }
+    }
+
+    /**
+     * Coerce an aliased value to the type its setting is declared as.
+     *
+     * Only booleans need it, and only because settings.js values sometimes
+     * arrive as strings (an env var threaded through, a copied YAML value).
+     * This is the same strict `true`/`'true'` test the hand-written
+     * auto_discover_networks bridge used, kept identical so that config keeps
+     * behaving exactly as it did.
+     *
+     * @param {string} canonicalKey
+     * @param {*} value
+     * @returns {*}
+     * @private
+     */
+    _coerceAliasValue(canonicalKey, value) {
+        const entry = getSchemaEntry(canonicalKey);
+        if (entry && entry.type === 'boolean') {
+            return value === true || value === 'true';
+        }
+        return value;
     }
 
     /**

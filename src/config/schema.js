@@ -29,6 +29,22 @@
  *   reason      - why a decision was made: why a default is what it is, why a
  *                 flag is opt-in, why the exposure is restricted.
  *   description - the plain-English explanation of what the setting does.
+ *   aliases     - other names a standalone settings.js may use for this exact
+ *                 setting. See ALIAS RULE below.
+ *
+ * ALIAS RULE
+ * ----------
+ * An alias exists so someone who read the add-on documentation and typed the
+ * add-on option name into settings.js gets the setting they meant instead of a
+ * "unknown setting, check for typos" warning and silence.
+ *
+ * An add-on option may only be listed as an alias when it maps to EXACTLY ONE
+ * runtime key with NO transformation of the value. Add-on options that
+ * compose (mqtt_host + mqtt_port -> mqtt), fan out to two runtime keys
+ * (connection_keep_alive_interval_sec), convert units (*_sec -> *Ms) or change
+ * shape (getall_app_periods' object list) must NOT be aliased: accepting the
+ * name without the conversion would silently store a wrong value, which is
+ * worse than the warning the user gets today.
  *
  * NOTE: this module is intentionally free of dependencies and side effects.
  */
@@ -50,6 +66,7 @@
  * @property {boolean} [nullable]
  * @property {string[]} [values]
  * @property {string} [reason]
+ * @property {string[]} [aliases]
  */
 
 /**
@@ -94,7 +111,11 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'both',
         description: 'IP address or hostname of the C-Gate server.',
-        reason: 'The placeholder default must be changed: placeholder values fail validation and abort startup rather than silently connecting nowhere. In add-on managed mode it is forced to 127.0.0.1 because C-Gate runs in the container.'
+        reason: 'The placeholder default must be changed: placeholder values fail validation and abort startup rather than silently connecting nowhere. In add-on managed mode it is forced to 127.0.0.1 because C-Gate runs in the container.',
+        // The add-on's managed-mode override (force 127.0.0.1) is a property of
+        // that mode, not of the option: in a standalone settings.js there is no
+        // managed mode, so cgate_host means cbusip and nothing else.
+        aliases: ['cgate_host']
     },
     cbusname: {
         key: 'cbusname',
@@ -102,7 +123,8 @@ const SETTINGS_SCHEMA = {
         default: 'CLIPSAL',
         unit: 'none',
         exposure: 'both',
-        description: 'C-Gate project name, spelled exactly as it is in C-Bus Toolkit.'
+        description: 'C-Gate project name, spelled exactly as it is in C-Bus Toolkit.',
+        aliases: ['cgate_project']
     },
     cbuscommandport: {
         key: 'cbuscommandport',
@@ -110,7 +132,8 @@ const SETTINGS_SCHEMA = {
         default: 20023,
         unit: 'none',
         exposure: 'both',
-        description: 'C-Gate command port. The connection pool opens connectionPoolSize sockets here.'
+        description: 'C-Gate command port. The connection pool opens connectionPoolSize sockets here.',
+        aliases: ['cgate_port']
     },
     cbuseventport: {
         key: 'cbuseventport',
@@ -118,7 +141,8 @@ const SETTINGS_SCHEMA = {
         default: 20025,
         unit: 'none',
         exposure: 'both',
-        description: 'C-Gate status-change (event) port, where all state updates arrive. This is 20025, not 20024.'
+        description: 'C-Gate status-change (event) port, where all state updates arrive. This is 20025, not 20024.',
+        aliases: ['cgate_event_port']
     },
     cgateusername: {
         key: 'cgateusername',
@@ -146,7 +170,8 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Set the MQTT retain flag on state/level publishes so Home Assistant entities come back with a known state after a restart.'
+        description: 'Set the MQTT retain flag on state/level publishes so Home Assistant entities come back with a known state after a restart.',
+        aliases: ['retain_reads']
     },
     logging: {
         key: 'logging',
@@ -173,7 +198,9 @@ const SETTINGS_SCHEMA = {
         default: 200,
         unit: 'ms',
         exposure: 'both',
-        description: 'Minimum gap between outbound C-Gate commands, so bursts do not flood C-Gate.'
+        description: 'Minimum gap between outbound C-Gate commands, so bursts do not flood C-Gate.',
+        // Milliseconds on both sides - the add-on option is not one of the *_sec ones.
+        aliases: ['message_interval']
     },
     commandMinIntervalMs: {
         key: 'commandMinIntervalMs',
@@ -209,7 +236,8 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Request every group\'s level on connect so Home Assistant starts in sync.'
+        description: 'Request every group\'s level on connect so Home Assistant starts in sync.',
+        aliases: ['getall_on_start']
     },
     getallperiod: {
         key: 'getallperiod',
@@ -219,7 +247,9 @@ const SETTINGS_SCHEMA = {
         unit: 's',
         exposure: 'both',
         description: 'Repeat the full level poll every N seconds; catches anything missed while the bridge or broker was down. null or 0 disables.',
-        reason: 'Seconds despite the suffix-less name — the name predates the unit convention and is frozen because users have it in their settings files.'
+        reason: 'Seconds despite the suffix-less name — the name predates the unit convention and is frozen because users have it in their settings files.',
+        // Seconds on both sides, so the alias needs no conversion.
+        aliases: ['getall_period']
     },
     getall_app_periods: {
         key: 'getall_app_periods',
@@ -237,7 +267,8 @@ const SETTINGS_SCHEMA = {
         nullable: true,
         unit: 'none',
         exposure: 'both',
-        description: 'MQTT broker username. Add-on installs auto-detect this from the Supervisor MQTT service when left empty.'
+        description: 'MQTT broker username. Add-on installs auto-detect this from the Supervisor MQTT service when left empty.',
+        aliases: ['mqtt_username']
     },
     mqttpassword: {
         key: 'mqttpassword',
@@ -246,7 +277,8 @@ const SETTINGS_SCHEMA = {
         nullable: true,
         unit: 'none',
         exposure: 'both',
-        description: 'MQTT broker password. Add-on installs auto-detect this from the Supervisor MQTT service when left empty.'
+        description: 'MQTT broker password. Add-on installs auto-detect this from the Supervisor MQTT service when left empty.',
+        aliases: ['mqtt_password']
     },
     mqttUseTls: {
         key: 'mqttUseTls',
@@ -254,7 +286,8 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Connect with mqtts:// instead of mqtt:// when the broker string carries no scheme.'
+        description: 'Connect with mqtts:// instead of mqtt:// when the broker string carries no scheme.',
+        aliases: ['mqtt_use_tls']
     },
     mqttCaFile: {
         key: 'mqttCaFile',
@@ -263,7 +296,8 @@ const SETTINGS_SCHEMA = {
         nullable: true,
         unit: 'none',
         exposure: 'both',
-        description: 'Path to a CA certificate for verifying the broker. Required for self-signed broker certificates.'
+        description: 'Path to a CA certificate for verifying the broker. Required for self-signed broker certificates.',
+        aliases: ['mqtt_ca_file']
     },
     mqttCertFile: {
         key: 'mqttCertFile',
@@ -292,7 +326,8 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'both',
         description: 'Verify the broker\'s TLS certificate.',
-        reason: 'Security-sensitive: setting it false permits a man-in-the-middle, so it is only honoured when explicitly false and prefers mqttCaFile with a trusted CA as the fix for self-signed certificates.'
+        reason: 'Security-sensitive: setting it false permits a man-in-the-middle, so it is only honoured when explicitly false and prefers mqttCaFile with a trusted CA as the fix for self-signed certificates.',
+        aliases: ['mqtt_reject_unauthorized']
     },
     reconnectinitialdelay: {
         key: 'reconnectinitialdelay',
@@ -345,7 +380,8 @@ const SETTINGS_SCHEMA = {
         default: 3,
         unit: 'none',
         exposure: 'both',
-        description: 'Number of persistent C-Gate command connections, round-robin load balanced.'
+        description: 'Number of persistent C-Gate command connections, round-robin load balanced.',
+        aliases: ['connection_pool_size']
     },
     healthCheckInterval: {
         key: 'healthCheckInterval',
@@ -435,7 +471,10 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'both',
         description: 'Ask C-Gate which networks exist instead of hardcoding them. Skipped when getall_networks or ha_discovery_networks is already configured.',
-        reason: 'Runtime consumers read the camelCase autoDiscoverNetworks. The HA add-on exposes this as the snake_case auto_discover_networks option, which ConfigLoader maps to camelCase; standalone settings.js may use either form.'
+        reason: 'Runtime consumers read the camelCase autoDiscoverNetworks. The HA add-on exposes this as the snake_case auto_discover_networks option, which ConfigLoader maps to camelCase; standalone settings.js may use either form.',
+        // The original alias, and the one this whole mechanism generalises:
+        // ConfigLoader used to special-case exactly this pair.
+        aliases: ['auto_discover_networks']
     },
 
     // --- Home Assistant discovery -------------------------------------------
@@ -1147,6 +1186,31 @@ const SETTINGS_SCHEMA = {
 };
 
 /**
+ * Config keys that are legitimately present on a loaded configuration object
+ * but are NOT runtime settings: they have no default, so they cannot live in
+ * SETTINGS_SCHEMA, yet code reads them and a user may set them.
+ *
+ * They belong in the known-key vocabulary for exactly the reason getall_networks
+ * does: without them the loader would tell anyone who set one that it is a typo
+ * that will be ignored, and both halves of that sentence would be false.
+ */
+const INTERNAL_CONFIG_KEYS = Object.freeze({
+    // Written by ConfigLoader after loading; describes where the config came
+    // from. MqttManager reads it to tell add-on installs from standalone ones.
+    _environment: 'Provenance stamp written by ConfigLoader (type, path, loadedAt).',
+    // Written by the add-on path so bridgeInitializationService can tell
+    // "user chose these networks" from "these came from auto-discovery".
+    _getall_networks_explicit: 'Marks getall_networks as explicitly configured rather than defaulted.',
+    _ha_discovery_networks_explicit: 'Marks ha_discovery_networks as explicitly configured rather than defaulted.',
+    // The managed/remote C-Gate trio. These have no runtime default: managed
+    // mode only exists inside the add-on container, where ConfigLoader sets
+    // them from the add-on options. SerialDeviceRecovery reads cgate_mode.
+    cgate_mode: 'remote | managed. Managed means C-Gate runs inside the add-on container.',
+    cgate_install_source: 'download | upload, for managed mode only.',
+    cgate_download_url: 'Where managed mode downloads C-Gate from, when the source is download.'
+});
+
+/**
  * Keys whose name does not carry the suffix their unit implies.
  *
  * FROZEN LIST. These are existing warts kept for backwards compatibility:
@@ -1242,9 +1306,69 @@ function listSchemaEntries() {
     return Object.values(SETTINGS_SCHEMA);
 }
 
+/**
+ * Every alias, mapped to the canonical runtime key it stands for.
+ *
+ * Returned as a fresh Map so a caller cannot edit the schema by editing it.
+ * See the ALIAS RULE at the top of this file for what may be listed.
+ *
+ * @returns {Map<string, string>} alias -> canonical key
+ */
+function listSettingAliases() {
+    /** @type {Map<string, string>} */
+    const aliases = new Map();
+    for (const entry of listSchemaEntries()) {
+        for (const alias of entry.aliases || []) {
+            aliases.set(alias, entry.key);
+        }
+    }
+    return aliases;
+}
+
+/**
+ * Resolve any accepted name to its canonical runtime key.
+ *
+ * A canonical key resolves to itself; an alias resolves to the key it stands
+ * for; anything else returns undefined.
+ *
+ * @param {string} name
+ * @returns {string|undefined}
+ */
+function resolveSettingKey(name) {
+    if (Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, name)) {
+        return SETTINGS_SCHEMA[/** @type {keyof typeof SETTINGS_SCHEMA} */ (name)].key;
+    }
+    return listSettingAliases().get(name);
+}
+
+/**
+ * Every key that may legitimately appear on a configuration object: canonical
+ * setting names, their aliases, and the internal keys above.
+ *
+ * This is the vocabulary ConfigLoader checks a user's settings.js against, so
+ * it is derived rather than hand-maintained — a setting cannot be readable by
+ * the code and simultaneously reported as an unknown typo.
+ *
+ * @returns {Set<string>}
+ */
+function listKnownConfigKeys() {
+    const keys = new Set(Object.values(SETTINGS_SCHEMA).map((entry) => entry.key));
+    for (const alias of listSettingAliases().keys()) {
+        keys.add(alias);
+    }
+    for (const key of Object.keys(INTERNAL_CONFIG_KEYS)) {
+        keys.add(key);
+    }
+    return keys;
+}
+
 module.exports = {
     SETTINGS_SCHEMA,
+    INTERNAL_CONFIG_KEYS,
     listSchemaEntries,
+    listSettingAliases,
+    listKnownConfigKeys,
+    resolveSettingKey,
     UNIT_SUFFIX_EXEMPT_KEYS,
     UNIT_KEY_SUFFIXES,
     buildDefaults,

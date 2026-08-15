@@ -1,11 +1,20 @@
+const fs = require('fs');
+const path = require('path');
+const YAML = require('yaml');
+
 const {
     SETTINGS_SCHEMA,
+    INTERNAL_CONFIG_KEYS,
     listSchemaEntries,
+    listSettingAliases,
+    listKnownConfigKeys,
+    resolveSettingKey,
     UNIT_SUFFIX_EXEMPT_KEYS,
     UNIT_KEY_SUFFIXES,
     buildDefaults,
     getSchemaEntry
 } = require('../src/config/schema');
+const { ADDON_OPTION_MAP } = require('../src/config/addonOptionMap');
 
 const ENTRIES = listSchemaEntries();
 const defaultSettingsModule = require('../src/defaultSettings');
@@ -139,6 +148,164 @@ describe('settings schema — unit suffix convention', () => {
             return !entry || entry.unit === 'none';
         });
         expect(stale).toEqual([]);
+    });
+});
+
+describe('settings schema — aliases', () => {
+    const ALIASES = listSettingAliases();
+    const CANONICAL_KEYS = new Set(ENTRIES.map((entry) => entry.key));
+
+    const addonConfig = YAML.parse(
+        fs.readFileSync(path.join(__dirname, '..', 'homeassistant-addon', 'config.yaml'), 'utf8')
+    );
+    const ADDON_OPTION_NAMES = new Set(Object.keys(addonConfig.schema));
+
+    it('declares aliases as arrays of non-empty strings', () => {
+        const bad = ENTRIES
+            .filter((entry) => entry.aliases !== undefined)
+            .filter((entry) => (
+                !Array.isArray(entry.aliases)
+                || entry.aliases.length === 0
+                || entry.aliases.some((alias) => typeof alias !== 'string' || alias.trim() === '')
+            ))
+            .map((entry) => entry.key);
+        expect(bad).toEqual([]);
+    });
+
+    it('never aliases a name that is already a canonical key', () => {
+        // An alias that shadowed a real setting would quietly redirect it.
+        const shadowing = [...ALIASES.keys()].filter((alias) => CANONICAL_KEYS.has(alias));
+        expect(shadowing).toEqual([]);
+    });
+
+    it('never gives the same alias to two settings', () => {
+        const declared = ENTRIES.flatMap((entry) => entry.aliases || []);
+        const duplicates = declared.filter((alias, i) => declared.indexOf(alias) !== i);
+        expect(duplicates).toEqual([]);
+    });
+
+    it('aliases only names the Home Assistant add-on actually offers', () => {
+        // An alias exists so that an add-on option name typed into settings.js
+        // resolves; a name that is not an add-on option (a typo in the alias
+        // itself, say) would just be dead weight in the vocabulary.
+        const notAnAddonOption = [...ALIASES.keys()]
+            .filter((alias) => !ADDON_OPTION_NAMES.has(alias));
+        expect(notAnAddonOption).toEqual([]);
+    });
+
+    it('resolves every alias and every canonical key to the canonical key', () => {
+        for (const [alias, canonicalKey] of ALIASES) {
+            expect(resolveSettingKey(alias)).toBe(canonicalKey);
+        }
+        for (const key of CANONICAL_KEYS) {
+            expect(resolveSettingKey(key)).toBe(key);
+        }
+        expect(resolveSettingKey('cbusnmae')).toBeUndefined();
+    });
+
+    // THE CRUX. An add-on option may only be aliased when it maps to exactly
+    // one runtime key with no transformation. None of these does: aliasing one
+    // would accept the name and store a wrong value — seconds where the runtime
+    // wants milliseconds, half a broker address — which is worse than the
+    // "unknown setting" warning the user gets instead.
+    const NOT_ALIASABLE = {
+        mqtt_host: 'Composed with mqtt_port into the single mqtt host:port string.',
+        mqtt_port: 'Composed with mqtt_host into the single mqtt host:port string.',
+        connection_health_check_interval_sec: 'Seconds; healthCheckInterval is milliseconds.',
+        connection_keep_alive_interval_sec: 'Seconds, and sets keepAliveInterval AND eventConnectionKeepAliveInterval.',
+        cover_ramp_duration_sec: 'Seconds; cover_ramp_duration_ms is milliseconds.',
+        cgate_download_sha256: 'Add-on container script only; no runtime setting reads it.',
+        cgate_force_reinstall: 'Add-on container script only; no runtime setting reads it.',
+        cgate_external_clients: 'Add-on container script only; no runtime setting reads it.'
+    };
+
+    it.each(Object.entries(NOT_ALIASABLE))('does not alias %s (%s)', (option) => {
+        expect(ALIASES.has(option)).toBe(false);
+    });
+
+    it('does not alias getall_app_periods, whose add-on shape differs', () => {
+        // Same name on both sides, but the add-on takes [{app_id, period_sec}]
+        // and the runtime wants {"56": 3600}. Nothing to alias, and nothing may
+        // pretend the two shapes are interchangeable.
+        expect(ALIASES.has('getall_app_periods')).toBe(false);
+        expect(getSchemaEntry('getall_app_periods').aliases).toBeUndefined();
+    });
+
+    // Every add-on option must be one of: a runtime key by the same name, an
+    // alias, an internal key, or a conscious exclusion above. A new option that
+    // renames a runtime key fails this until someone decides which it is —
+    // which is the whole point.
+    it('accounts for every add-on option: same name, alias, internal key, or a listed exclusion', () => {
+        const canonicalOrInternal = new Set([
+            ...CANONICAL_KEYS,
+            ...Object.keys(INTERNAL_CONFIG_KEYS)
+        ]);
+        const unaccounted = [...ADDON_OPTION_NAMES].filter((option) => (
+            !canonicalOrInternal.has(option)
+            && !ALIASES.has(option)
+            && !Object.prototype.hasOwnProperty.call(NOT_ALIASABLE, option)
+        ));
+        expect(unaccounted).toEqual([]);
+    });
+
+    it('excludes nothing that it also aliases', () => {
+        const contradictory = Object.keys(NOT_ALIASABLE).filter((option) => ALIASES.has(option));
+        expect(contradictory).toEqual([]);
+    });
+
+    it('agrees with ADDON_OPTION_MAP on the destination of every mechanical mapping it aliases', () => {
+        // Where both describe the same option, they must not disagree about
+        // which runtime key it feeds.
+        const disagreements = ADDON_OPTION_MAP
+            .filter((rule) => ALIASES.has(rule.src))
+            .filter((rule) => ALIASES.get(rule.src) !== rule.dst)
+            .map((rule) => `${rule.src}: schema says ${ALIASES.get(rule.src)}, map says ${rule.dst}`);
+        expect(disagreements).toEqual([]);
+    });
+
+    it('aliases no option that ADDON_OPTION_MAP transforms', () => {
+        // secToMs is the transforming kind; anything aliased must be a plain
+        // copy of the value under a different name.
+        const transformed = ADDON_OPTION_MAP
+            .filter((rule) => rule.kind === 'secToMs')
+            .filter((rule) => ALIASES.has(rule.src))
+            .map((rule) => rule.src);
+        expect(transformed).toEqual([]);
+    });
+});
+
+describe('settings schema — the known-key vocabulary', () => {
+    it('covers every canonical key, every alias and every internal key', () => {
+        const known = listKnownConfigKeys();
+        const expected = new Set([
+            ...ENTRIES.map((entry) => entry.key),
+            ...listSettingAliases().keys(),
+            ...Object.keys(INTERNAL_CONFIG_KEYS)
+        ]);
+        expect([...known].sort()).toEqual([...expected].sort());
+    });
+
+    it('describes every internal key, since none of them has a default to explain it', () => {
+        const undescribed = Object.entries(INTERNAL_CONFIG_KEYS)
+            .filter(([, description]) => typeof description !== 'string' || description.trim() === '')
+            .map(([key]) => key);
+        expect(undescribed).toEqual([]);
+    });
+
+    it('keeps internal keys out of the runtime defaults', () => {
+        // An internal key has no default by definition; one leaking into
+        // buildDefaults would change the shipped settings object.
+        const defaults = buildDefaults();
+        const leaked = Object.keys(INTERNAL_CONFIG_KEYS)
+            .filter((key) => Object.prototype.hasOwnProperty.call(defaults, key));
+        expect(leaked).toEqual([]);
+    });
+
+    it('keeps aliases out of the runtime defaults', () => {
+        const defaults = buildDefaults();
+        const leaked = [...listSettingAliases().keys()]
+            .filter((alias) => Object.prototype.hasOwnProperty.call(defaults, alias));
+        expect(leaked).toEqual([]);
     });
 });
 
