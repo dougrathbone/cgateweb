@@ -349,11 +349,25 @@ describe('HaDiscovery — HVAC climate entity discovery', () => {
         expect(payload.temperature_state_topic).toBeDefined();
         expect(payload.mode_command_topic).toBeDefined();
         expect(payload.mode_state_topic).toBeDefined();
-        expect(payload.modes).toEqual(expect.arrayContaining(['off', 'auto', 'cool', 'heat', 'fan_only']));
+        expect(payload.modes).toEqual(['off', 'auto']);
         expect(payload.temperature_unit).toBe('C');
         expect(payload.min_temp).toBeDefined();
         expect(payload.max_temp).toBeDefined();
         expect(payload.temp_step).toBeDefined();
+    });
+
+    test('advertises only off and auto — a lighting group cannot carry a real mode', () => {
+        runDiscovery(MOCK_TREE_WITH_HVAC);
+
+        const climateCall = mockPublishFn.mock.calls.find(c =>
+            c[0] === 'homeassistant/climate/cgateweb_254_201_1/config'
+        );
+        const payload = JSON.parse(climateCall[1]);
+
+        expect(payload.modes).toEqual(['off', 'auto']);
+        expect(payload.modes).not.toContain('heat');
+        expect(payload.modes).not.toContain('cool');
+        expect(payload.modes).not.toContain('fan_only');
     });
 
     test('climate entity topics use correct MQTT paths', () => {
@@ -622,16 +636,35 @@ describe('MqttCommandRouter — HVAC commands', () => {
             expect(cmd).toContain('//HOME/254/201/1');
         });
 
-        test.each(['auto', 'cool', 'heat', 'fan_only'])(
-            '%s mode sends C-Gate ON command', (mode) => {
+        test('auto mode sends C-Gate ON command to correct address', () => {
+            router.routeMessage('cbus/write/254/201/1/hvacmode', 'auto');
+
+            const cmd = mockQueue.add.mock.calls[0][0];
+            expect(cmd).toMatch(/^ON /);
+            expect(cmd).toContain('//HOME/254/201/1');
+        });
+
+        test.each(['heat', 'cool', 'heat_cool', 'dry', 'fan_only'])(
+            '%s mode sends nothing and explains why', (mode) => {
                 router.routeMessage('cbus/write/254/201/1/hvacmode', mode);
-                expect(mockQueue.add.mock.calls[0][0]).toMatch(/^ON /);
+
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(console.warn).toHaveBeenCalledWith(
+                    expect.stringContaining('ha_discovery_hvac_app_id')
+                );
+                expect(console.warn).toHaveBeenCalledWith(
+                    expect.stringContaining('cbus_aircon_app_id')
+                );
             }
         );
 
         test('unknown mode sends no command and logs a warning', () => {
             router.routeMessage('cbus/write/254/201/1/hvacmode', 'turbo');
+
             expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(console.warn).toHaveBeenCalledWith(
+                expect.stringContaining('Unknown HVAC mode')
+            );
         });
     });
 });

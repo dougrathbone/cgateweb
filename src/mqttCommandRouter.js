@@ -999,12 +999,18 @@ class MqttCommandRouter extends EventEmitter {
      * Handles HVAC mode commands for the "HVAC-via-lighting" pattern.
      *
      * As with the setpoint handler, this drives a lighting-compatible group, not
-     * the native Air Conditioning application. 'off' → C-Gate OFF; any active
-     * mode ('auto'/'cool'/'heat'/'fan_only') → C-Gate ON, leaving mode selection
-     * to the PAC/touchscreen logic that the group feeds.
+     * the native Air Conditioning application. Only two modes exist here: 'off' →
+     * C-Gate OFF, 'auto' → C-Gate ON, leaving the actual heat/cool decision to the
+     * PAC/touchscreen logic the group feeds.
+     *
+     * Named modes (heat/cool/dry/fan_only) are refused rather than sent as a bare
+     * ON. A single group level has nowhere to carry a mode, and C-Bus never reports
+     * one back, so an accepted 'heat' would turn the unit on in whatever mode the
+     * PAC chose and then report itself as 'auto'. Discovery therefore advertises
+     * off/auto only; the warning is for anyone publishing to the topic by hand.
      *
      * @param {CBusCommand} command - The mode command
-     * @param {string} payload - Mode string (e.g., "off", "auto", "cool")
+     * @param {string} payload - Mode string ("off" or "auto")
      * @param {string} topic - Original topic for error logging
      * @private
      */
@@ -1025,11 +1031,14 @@ class MqttCommandRouter extends EventEmitter {
 
         if (mode === 'off') {
             cgateCommand = `${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`;
-        } else if (['auto', 'cool', 'heat', 'fan_only'].includes(mode)) {
-            // All active modes map to ON — the thermostat maintains its last setpoint.
+        } else if (mode === 'auto') {
+            // ON only — the thermostat keeps its last setpoint and picks its own mode.
             // TODO: If the C-Bus hardware supports dedicated mode group addresses,
             // extend this to send mode-specific RAMP values to additional group addresses.
             cgateCommand = `${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`;
+        } else if (['heat', 'cool', 'heat_cool', 'dry', 'fan_only'].includes(mode)) {
+            this.logger.warn(`HVAC mode "${payload}" is not supported on the ha_discovery_hvac_app_id path — a single lighting group cannot carry a mode, so only off and auto work. Use the native Air Conditioning application (cbus_aircon_app_id) for real mode control. Ignoring ${topic}`);
+            return;
         } else {
             this.logger.warn(`Unknown HVAC mode "${payload}" on topic ${topic}`);
             return;

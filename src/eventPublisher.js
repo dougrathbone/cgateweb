@@ -547,6 +547,9 @@ class EventPublisher {
         // Publish mode based on action only. C-Gate sends explicit 'off' action when
         // the HVAC unit is turned off. rawLevel=0 is NOT used because it maps to 0°C
         // setpoint, which is a valid (if unusual) temperature, not an off state.
+        // off/auto is all this path can ever report, which is why discovery advertises
+        // only those two — see _createHvacDiscovery. Anything richer needs the native
+        // Air Conditioning application (cbus_aircon_app_id).
         // TODO: Hardware validation — real HVAC units may report heat/cool/fan_only via
         // dedicated group addresses or extended C-Gate event fields not yet handled here.
         const mode = (action === 'off') ? 'off' : 'auto';

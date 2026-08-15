@@ -1254,9 +1254,11 @@ class _HaDiscoveryPublishers {
      *   - Level 0-255 is used for the temperature setpoint (0.5°C resolution, 0-50°C range):
      *       raw_value = round(temperature_celsius * 2)  →  0°C = 0, 25°C = 50, 50°C = 100
      *   - The current temperature is reported back via the same group address as a status level.
-     *   - Mode and fan control are not exposed via standard C-Gate level commands in the
-     *     simplified implementation. Full mode/fan support would require vendor-specific
-     *     C-Gate extensions or additional group addresses per zone.
+     *   - Only off/auto are offered as modes, and fan control is not offered at all. A single
+     *     lighting group carries one level and nothing else, so heat/cool/fan_only would need
+     *     extra per-zone group addresses that ha_discovery_hvac_app_id cannot describe and that
+     *     C-Bus never broadcasts back. Installations that need genuine mode control should use
+     *     the native Air Conditioning application (cbus_aircon_app_id), which models it properly.
      *
      * TODO: Hardware validation required. The temperature encoding formula above is based on
      * community reports and the C-Bus HVAC thermostat (5000CT2) documentation. Actual
@@ -1294,8 +1296,9 @@ class _HaDiscoveryPublishers {
             ...(entityId && entityIdFields(HA_COMPONENT_CLIMATE, entityId)),
 
             // Current temperature: reported by C-Gate as a status level on this group.
-            // Template converts 0-255 C-Bus level to 0-50°C (0.5°C resolution):
-            //   temperature = level / 255 * 50   (approximation; see TODO above)
+            // EventPublisher decodes the level to °C before it reaches this topic, using the
+            // inverse of the setpoint encoding above:
+            //   temperature = level / 2   (0.5°C resolution; see TODO above)
             current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
 
             // Target temperature setpoint — command and state topics
@@ -1306,9 +1309,12 @@ class _HaDiscoveryPublishers {
             mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
             mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
 
-            // Supported modes — based on typical C-Bus HVAC thermostat capabilities.
-            // TODO: Hardware validation — some units may only support a subset of these.
-            modes: ['off', 'auto', 'cool', 'heat', 'fan_only'],
+            // Deliberately off/auto only — do not add heat/cool/fan_only back here.
+            // This path has exactly one group level to work with: the router can only
+            // translate a mode into C-Gate ON or OFF, and the event side can only infer
+            // the same two states from what C-Bus reports. Advertising more modes gives
+            // Home Assistant buttons that send a bare ON and then snap back to auto.
+            modes: ['off', 'auto'],
 
             temperature_unit: temperatureUnit,
             min_temp: HVAC_MIN_TEMP_C,

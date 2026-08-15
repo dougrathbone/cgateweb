@@ -2017,7 +2017,7 @@ describe('HaDiscovery', () => {
             expect(payload.temperature_command_topic).toBe('cbus/write/254/56/12/setpoint');
             expect(payload.temperature_state_topic).toBe('cbus/read/254/56/12/setpoint');
             expect(payload.mode_command_topic).toBe('cbus/write/254/56/12/hvacmode');
-            expect(payload.modes).toEqual(expect.arrayContaining(['off', 'auto', 'cool', 'heat', 'fan_only']));
+            expect(payload.modes).toEqual(['off', 'auto']);
         });
 
         describe('Auto device-type detection (cover name-heuristic)', () => {
