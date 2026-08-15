@@ -3,6 +3,7 @@
   "cbusRawEventLogApps": [],
   "cbus_aircon_app_id": null,
   "cbus_aircon_control_enabled": false,
+  "cbus_clock_enabled": false,
   "cbus_label_file": null,
   "cbus_measurement_app_id": null,
   "cbus_security_app_id": "208",

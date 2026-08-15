@@ -1572,4 +1572,120 @@ describe('CgateWebBridge', () => {
             expect(() => bridge.reloadSettings({ ...defaultSettings, log_level: 'debug' })).not.toThrow();
         });
     });
+
+    // C-Bus Clock and Timekeeping (app 223). These lines were dropped outright
+    // until the decoder landed; the invariant that survives is that they must
+    // never reach the standard event parser, whether the feature is on or off.
+    describe('clock (app 223) event lines', () => {
+        const DATE_LINE = 'clock date //CLIPSAL/254/223 2026-03-02 0 #sourceunit=8 OID=';
+        const TIME_LINE = 'clock time //CLIPSAL/254/223 21:13:21 0 #sourceunit=8 OID=';
+
+        const makeBridge = (overrides = {}) => {
+            const b = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1', ...overrides });
+            b.eventPublisher.publishReading = jest.fn();
+            b.eventPublisher.publishEvent = jest.fn();
+            b.haDiscovery = { ensureClockDiscovery: jest.fn() };
+            return b;
+        };
+
+        describe('with the feature off (the default)', () => {
+            it('defaults to off', () => {
+                expect(defaultSettings.cbus_clock_enabled).toBe(false);
+            });
+
+            it('publishes nothing for a clock date or time line', () => {
+                const b = makeBridge();
+                b._processEventLine(DATE_LINE);
+                b._processEventLine(TIME_LINE);
+                expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
+                expect(b.eventPublisher.publishEvent).not.toHaveBeenCalled();
+            });
+
+            it('announces no discovery entities', () => {
+                const b = makeBridge();
+                b._processEventLine(DATE_LINE);
+                expect(b.haDiscovery.ensureClockDiscovery).not.toHaveBeenCalled();
+            });
+
+            // The original bug: a two-segment address run through the
+            // three-segment parser warns on every clock tick.
+            it('never reaches the standard event parser, so it cannot warn-spam', () => {
+                const b = makeBridge();
+                mockConsoleWarn.mockClear();
+                b._processEventLine(DATE_LINE);
+                b._processEventLine(TIME_LINE);
+                expect(mockConsoleWarn).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('with the feature on', () => {
+            it('publishes the decoded date under the clock group', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                b._processEventLine(DATE_LINE);
+                expect(b.eventPublisher.publishReading).toHaveBeenCalledWith(
+                    '254', '223', 'clock',
+                    { kind: 'clock', network: '254', application: '223', variant: 'date', value: '2026-03-02' }
+                );
+            });
+
+            it('publishes the decoded time under the clock group', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                b._processEventLine(TIME_LINE);
+                expect(b.eventPublisher.publishReading).toHaveBeenCalledWith(
+                    '254', '223', 'clock',
+                    { kind: 'clock', network: '254', application: '223', variant: 'time', value: '21:13:21' }
+                );
+            });
+
+            it('announces the diagnostic sensors for the network', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                b._processEventLine(DATE_LINE);
+                expect(b.haDiscovery.ensureClockDiscovery).toHaveBeenCalledWith('254', '223');
+            });
+
+            it('still keeps the line off the standard event parser', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                mockConsoleWarn.mockClear();
+                b._processEventLine(DATE_LINE);
+                expect(b.eventPublisher.publishEvent).not.toHaveBeenCalled();
+                expect(mockConsoleWarn).not.toHaveBeenCalled();
+            });
+
+            it('does not throw when discovery is not wired up yet', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                b.haDiscovery = null;
+                expect(() => b._processEventLine(DATE_LINE)).not.toThrow();
+                expect(b.eventPublisher.publishReading).toHaveBeenCalled();
+            });
+
+            it('publishes nothing for clock traffic the decoder will not guess at', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                mockConsoleWarn.mockClear();
+                b._processEventLine('clock request_refresh //CLIPSAL/254/223 0 #sourceunit=8 OID=');
+                expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
+                expect(b.eventPublisher.publishEvent).not.toHaveBeenCalled();
+                expect(mockConsoleWarn).not.toHaveBeenCalled();
+            });
+
+            it('publishes nothing for a malformed clock line rather than throwing', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                for (const line of [
+                    'clock date //CLIPSAL/254/223 2026-02-30 0',
+                    'clock time //CLIPSAL/254/223 25:00:00 0',
+                    'clock date //CLIPSAL/254/223',
+                    'clock date //CLIPSAL/abc/223 2026-03-02 0'
+                ]) {
+                    expect(() => b._processEventLine(line)).not.toThrow();
+                }
+                expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
+            });
+
+            it('leaves other applications alone', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                b._processEventLine('lighting on 254/56/4');
+                expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
+                expect(b.eventPublisher.publishEvent).toHaveBeenCalled();
+            });
+        });
+    });
 });

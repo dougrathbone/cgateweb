@@ -12,6 +12,7 @@ const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
 const MeasurementEventHandler = require('./measurementEventHandler');
 const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
+const clockDecoder = require('./applicationDecoders/clockDecoder');
 const path = require('path');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
@@ -687,6 +688,41 @@ class CgateWebBridge {
         return this.measurementEventHandler.handleLine(line);
     }
 
+    /**
+     * Handles C-Bus Clock and Timekeeping (app 223 / $DF) event lines.
+     *
+     * Clock lines are ALWAYS claimed, whether or not the feature is on, for the
+     * same reason measurement lines are (see the class note in
+     * src/measurementEventHandler.js): their address has two segments
+     * (`//PROJECT/<net>/<app>`, no group) and they are not `#`-comment-prefixed,
+     * so left alone they reach CBusEvent, whose EVENT_REGEX needs three
+     * segments, and warn-spam the log on every clock tick. Silencing that spam
+     * is why these lines were dropped outright in 833b60e; the setting only
+     * decides whether they are also decoded and published.
+     *
+     * @param {string} line
+     * @returns {true|typeof LINE_UNPARSED|false} true if consumed, LINE_UNPARSED
+     *   for clock traffic left undecoded (feature off, or a shape the decoder
+     *   will not guess at), false if not clock traffic.
+     */
+    _handleClockLine(line) {
+        if (!clockDecoder.isClockLine(line)) return false;
+
+        if (!this.settings.cbus_clock_enabled) return LINE_UNPARSED;
+
+        const reading = clockDecoder.decodeLine(line);
+        if (!reading) return LINE_UNPARSED;
+
+        // No group address exists for Clock (net/app only), so 'clock' stands in
+        // as the group segment, giving cbus/read/{net}/223/clock/{date|time}.
+        this.eventPublisher.publishReading(reading.network, reading.application, 'clock', reading);
+
+        if (this.haDiscovery) {
+            this.haDiscovery.ensureClockDiscovery(reading.network, reading.application);
+        }
+        return true;
+    }
+
     _processEventLine(line) {
         // Security lines are `#`-comment-prefixed like aircon lines; consume
         // them before the generic comment-dropping branch so zone events don't
@@ -700,14 +736,15 @@ class CgateWebBridge {
         if (securityState === true) return;
         const measurementState = this._handleMeasurementLine(line);
         if (measurementState === true) return;
+        // Ahead of the comment branch like aircon/security: the captured clock
+        // lines are not `#`-prefixed, but claiming them here means a
+        // comment-prefixed variant is handled the same way rather than being
+        // swallowed as a generic comment.
+        const clockState = this._handleClockLine(line);
+        if (clockState === true) return;
 
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${redactCgateLine(line)}`);
-            return;
-        }
-
-        if (line.startsWith('clock ')) {
-            this.logger.debug(`Ignoring clock event from event port: ${redactCgateLine(line)}`);
             return;
         }
 
@@ -745,6 +782,15 @@ class CgateWebBridge {
         }
         if (measurementState === LINE_UNPARSED) {
             this.logger.debug(`Unparsed measurement line (captured, not a standard event): ${line}`);
+            return;
+        }
+        // Reached when the feature is off, or on but the line was a shape the
+        // decoder refuses to guess at. Either way it has now passed through
+        // _publishRawEventCapture above, so `cbusRawEventLogApps` can capture
+        // real app-223 traffic — which is how the format gets confirmed, or a
+        // `request_refresh` broadcast obtained, without decoding it blind.
+        if (clockState === LINE_UNPARSED) {
+            this.logger.debug(`Unparsed clock line (captured, not a standard event): ${redactCgateLine(line)}`);
             return;
         }
 

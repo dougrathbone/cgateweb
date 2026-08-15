@@ -746,6 +746,15 @@ const SETTINGS_SCHEMA = {
         description: 'C-Bus Measurement app ID (default 228/$E4); null disables. Gates BOTH directions: decoding "measurement data ..." event lines to cbus/read/{net}/228/{device}/{channel}/value+unit, and injecting readings via cbus/write/{net}/228/{device}/{channel}/data (payload "value,multiplier,units").',
         reason: 'One flag for both, unlike Air Conditioning/Security\'s separate *_control_enabled gate - Measurement writes are how a scripted/virtual sensor gets its own data onto the bus (spec 28.2), not a hardware-actuation risk. See docs/Measurement Application.md.'
     },
+    cbus_clock_enabled: {
+        key: 'cbus_clock_enabled',
+        type: 'boolean',
+        default: false,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Decode C-Bus Clock and Timekeeping (app 223/$DF) broadcasts and publish the network date and time to cbus/read/{net}/223/clock/date and /time, plus two diagnostic sensors when discovery is on. Read-only: this never sets the network clock.',
+        reason: 'Opt-in and standalone-only because the event-port format is under-evidenced: it is derived from two captured lines (commit 833b60e) and no vendor document in this repo specifies it, so the decoder fails closed and the feature stays off until more installs confirm it. Off by default also keeps a chatty per-tick broadcast off MQTT for the installs that do not want it. No add-on option yet - promote it to one once the format is confirmed on a second site.'
+    },
     ha_hvac_temperature_unit: {
         key: 'ha_hvac_temperature_unit',
         type: 'enum',

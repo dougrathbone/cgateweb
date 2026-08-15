@@ -52,6 +52,14 @@ const {
 } = require('./constants');
 const { PANEL_CONDITIONS } = require('./securityPanelConditions');
 
+// The two halves of the C-Bus network clock, which app 223 broadcasts as
+// separate events. Icons only — deliberately no device_class; see
+// ensureClockDiscovery for why a timestamp would be dishonest here.
+const CLOCK_VARIANTS = [
+    { id: 'date', name: 'Clock Date', icon: 'mdi:calendar' },
+    { id: 'time', name: 'Clock Time', icon: 'mdi:clock-outline' }
+];
+
 class _HaDiscoveryPublishers {
     // Host-provided instance state. This class is never instantiated: its
     // prototype methods are copied onto HaDiscovery (see the Object.assign in
@@ -108,6 +116,11 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _measurementSeen;
+
+    // Unlike its siblings this one is not constructed in haDiscovery.js — the
+    // clock path initialises it on first use, so it stays self-contained.
+    /** @type {Set<string>|undefined} */
+    _clockSeen;
 
     /** @type {Set<string>} */
     _currentRunTopics;
@@ -540,6 +553,120 @@ class _HaDiscoveryPublishers {
         this.discoveryCount++;
         this.logger.info(`CNI connectivity binary_sensor published for network ${net}`);
         return true;
+    }
+
+    /**
+     * Event-driven discovery for the C-Bus Clock and Timekeeping (app 223)
+     * network clock. Announces two diagnostic sensors — the network's date and
+     * its time — the first time clock traffic is decoded on a network.
+     *
+     * WHY NO device_class: 'timestamp'
+     * --------------------------------
+     * It would not be honest. Home Assistant's timestamp device_class requires
+     * a full ISO 8601 datetime WITH a UTC offset, and the bus gives us neither
+     * half of that: date and time arrive as two separate broadcasts, and
+     * neither carries a timezone. Producing one timestamp would mean joining
+     * two independent events and assuming the C-Bus network runs in the bridge
+     * host's timezone.
+     *
+     * Worse, it would defeat the point. The reason to surface a network clock
+     * at all is to notice when it has DRIFTED — and a timestamp entity is
+     * normalised to UTC and rendered as relative time ("2 hours ago"), which
+     * launders a wrong clock into a plausible-looking instant. Two plain string
+     * sensors show exactly what the panel said, which is the diagnostic.
+     *
+     * Both sensors sit on the existing "C-Bus Network {n}" device alongside the
+     * CNI connectivity sensor: the clock is a property of the network, not of a
+     * separate piece of hardware. entity_category 'diagnostic' keeps them off
+     * auto-generated dashboards.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId - clock app id (223)
+     * @returns {boolean} true if the entities were published this call
+     */
+    ensureClockDiscovery(network, appId) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined) return false;
+
+        // Initialised lazily: the sibling Seen sets are constructed in
+        // haDiscovery.js, and this keeps the clock path self-contained.
+        if (!this._clockSeen) this._clockSeen = new Set();
+
+        const key = `${network}/${appId}/clock`;
+        return this._ensureEventDrivenEntity({
+            key,
+            seen: this._clockSeen,
+            describe: `network clock ${network}/${appId}`,
+            retract: () => {
+                for (const variant of CLOCK_VARIANTS) {
+                    this._retractEventDrivenConfig(
+                        this._clockTopic(this._clockUniqueId(String(network), String(appId), variant.id))
+                    );
+                }
+            },
+            create: () => this._createClockDiscovery(String(network), String(appId))
+        });
+    }
+
+    /**
+     * unique_id for one half of the network clock. The discovery topic embeds
+     * this, so both must come from here or a retraction would target a topic HA
+     * never saw and orphan the entity.
+     *
+     * @param {string} networkId
+     * @param {string} appId
+     * @param {string} variantId - 'date' or 'time'
+     * @returns {string}
+     * @private
+     */
+    _clockUniqueId(networkId, appId, variantId) {
+        return `cgateweb_${networkId}_${appId}_clock_${variantId}`;
+    }
+
+    /**
+     * @param {string} uniqueId
+     * @returns {string}
+     * @private
+     */
+    _clockTopic(uniqueId) {
+        return `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
+    }
+
+    /**
+     * Build and publish the two network-clock sensor payloads. State comes from
+     * the clock decoder via cbus/read/{net}/{app}/clock/date and .../time.
+     *
+     * @private
+     */
+    _createClockDiscovery(networkId, appId) {
+        for (const variant of CLOCK_VARIANTS) {
+            const uniqueId = this._clockUniqueId(networkId, appId, variant.id);
+            const discoveryTopic = this._clockTopic(uniqueId);
+
+            const payload = {
+                // Two entities on the shared network device, so each needs its
+                // own name rather than inheriting the device's.
+                name: variant.name,
+                unique_id: uniqueId,
+
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/clock/${variant.id}`,
+                // No device_class and no unit_of_measurement, deliberately —
+                // see the note on ensureClockDiscovery.
+                entity_category: 'diagnostic',
+                icon: variant.icon,
+
+                qos: 0,
+                device: buildDeviceBlock({
+                    identifiers: [`cgateweb_network_${networkId}`],
+                    name: `C-Bus Network ${networkId}`,
+                    model: 'C-Bus Network Interface'
+                }),
+                origin: buildOriginBlock()
+            };
+
+            this._publishEventDrivenConfig(discoveryTopic, payload);
+        }
+        this.logger.info(`Network clock sensors published: ${networkId}/${appId}`);
     }
 
     /**

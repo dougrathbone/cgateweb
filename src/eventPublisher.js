@@ -312,6 +312,9 @@ class EventPublisher {
      *                    name, plus `isolated` while the panel has the zone bypassed)
      *   measurement    → cbus/read/{net}/{app}/{device}/{channel}/value (decoded number)
      *                  → cbus/read/{net}/{app}/{device}/{channel}/unit (unit string, '' if none)
+     *   clock          → cbus/read/{net}/{app}/clock/date ('YYYY-MM-DD') or
+     *                    cbus/read/{net}/{app}/clock/time ('HH:MM:SS'), whichever
+     *                    the broadcast carried — the two arrive separately
      */
     publishReading(network, application, group, reading) {
         if (!reading) return;
@@ -391,6 +394,17 @@ class EventPublisher {
                     this.mqttOptions
                 );
             }
+        } else if (reading.kind === 'clock') {
+            // Clock and Timekeeping (app 223): the network's date and time
+            // arrive as two separate broadcasts, so each gets its own topic
+            // and neither waits on the other. Published verbatim as the
+            // network reported them — see the note in clockDecoder.js on why
+            // they are deliberately not combined into a timestamp.
+            this._publishIfNeeded(
+                `${base}/${reading.variant}`,
+                reading.value,
+                this.mqttOptions
+            );
         } else if (reading.kind === 'state') {
             this._publishIfNeeded(
                 `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
