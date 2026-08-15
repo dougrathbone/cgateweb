@@ -1,4 +1,29 @@
 const { defaultSettings } = require('../src/defaultSettings');
+const defaultSettingsSnapshot = require('./fixtures/defaultSettings.snapshot.json');
+
+describe('defaultSettings — frozen baseline', () => {
+    // The exported defaults are derived from src/config/schema.js. This is the
+    // backstop for that derivation: the snapshot fixture was captured from the
+    // hand-written object and is ground truth. If this fails, the schema is
+    // wrong — never "fix" the fixture. A changed default silently reconfigures
+    // every install that did not set the key.
+    it('deep-equals the captured baseline exactly (same keys, values and types)', () => {
+        expect(defaultSettings).toStrictEqual(defaultSettingsSnapshot);
+    });
+
+    it('exports the same 116 keys as the baseline', () => {
+        expect(Object.keys(defaultSettings).sort())
+            .toEqual(Object.keys(defaultSettingsSnapshot).sort());
+        expect(Object.keys(defaultSettings)).toHaveLength(116);
+    });
+
+    it('returns a fresh object so consumers cannot mutate the schema defaults', () => {
+        const { buildDefaults } = require('../src/config/schema');
+        const first = buildDefaults();
+        first.cbusRawEventLogApps.push('172');
+        expect(buildDefaults().cbusRawEventLogApps).toEqual([]);
+    });
+});
 
 describe('aircon app id default', () => {
     it('defaults cbus_aircon_app_id to null (disabled)', () => {
