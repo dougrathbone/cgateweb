@@ -1,4 +1,59 @@
 // @ts-check
+const { CBUS_ADDRESS_MAX } = require('./constants');
+
+/**
+ * Is a single C-Bus address component within its permitted range?
+ *
+ * The one place the bound is applied, so every route into a C-Gate command
+ * agrees on what an address is. CBusCommand has always range-checked the
+ * addresses it parses, but three write topics (security arm, security bypass,
+ * measurement data) are matched by their own regexes and returned before
+ * CBusCommand was ever constructed, so they reached C-Gate unchecked — the
+ * mirror image of the gap CBusEvent closed on the inbound side. Sharing the
+ * check rather than repeating it is what stops the next dedicated topic
+ * inheriting the same hole.
+ *
+ * Callers pass the raw captured string; a non-numeric or empty value is out of
+ * range by construction.
+ *
+ * @param {string|null|undefined} value - Raw address component from a topic.
+ * @param {number} max - Inclusive upper bound (see CBUS_ADDRESS_MAX).
+ * @returns {boolean}
+ */
+function isCbusAddressComponentInRange(value, max) {
+    const parsed = parseInt(value, 10);
+    return !isNaN(parsed) && parsed >= 0 && parsed <= max;
+}
+
+/**
+ * Range-check a whole C-Bus address given as named components, returning a
+ * ready-to-log description of the first component that is out of range.
+ *
+ * Keyed by component name so the bound and the wording both come from the same
+ * place no matter which topic supplied the address — a measurement topic
+ * carries network/application/device/channel, a panel topic only
+ * network/application, and neither has to know the numbers.
+ *
+ * @param {Object<string, string|null|undefined>} components - e.g. { network: '254', application: '208' }.
+ *   Keys must be CBUS_ADDRESS_MAX keys; components checked in insertion order.
+ * @returns {string|null} Description of the first failure, or null when the whole address is in range.
+ */
+function describeCbusAddressRangeError(components) {
+    for (const [name, value] of Object.entries(components)) {
+        const max = CBUS_ADDRESS_MAX[name];
+        if (max === undefined) {
+            // A caller naming a component the table doesn't know is a bug in the
+            // caller, not bad input - failing loudly beats silently skipping the
+            // check, which is how an unvalidated address gets to C-Gate.
+            throw new Error(`Unknown C-Bus address component "${name}"`);
+        }
+        if (!isCbusAddressComponentInRange(value, max)) {
+            return `C-Bus ${name} address "${value}" is out of range (expected 0-${max})`;
+        }
+    }
+    return null;
+}
+
 /**
  * Clamp a settings value to a minimum, falling back to a default when the
  * configured value is missing, NaN, or zero. Encodes the canonical pattern
@@ -131,6 +186,8 @@ function redactMqttPayload(payload) {
 module.exports = {
     clampSetting,
     evictOldestFifo,
+    isCbusAddressComponentInRange,
+    describeCbusAddressRangeError,
     temperatureToCbusLevel,
     looksLikeTlsRecord,
     redactCgateLine,

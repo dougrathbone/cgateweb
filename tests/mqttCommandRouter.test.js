@@ -502,6 +502,228 @@ describe('MqttCommandRouter', () => {
         });
     });
 
+    // Every other write topic is range-checked by CBusCommand, which these three
+    // never reach: they match their own regex in routeMessage and return before
+    // it is constructed. So "cbus/write/999/208/panel/arm" used to produce
+    // "security arm //HOME/999/208 away" for a network C-Bus cannot express.
+    // C-Gate rejects it, so the damage was malformed commands and log noise -
+    // but it left the write side lagging the inbound side, which was hardened
+    // for exactly this (CBusEvent._applyAddressComponents).
+    describe('C-Bus address range validation on the topics that bypass CBusCommand', () => {
+        let warnSpy;
+
+        beforeEach(() => {
+            router.settings.cbus_security_app_id = '208';
+            router.settings.cbus_security_control_enabled = true;
+            router.settings.cbus_security_bypass_enabled = true;
+            router.settings.cbus_measurement_app_id = '228';
+            warnSpy = jest.spyOn(router.logger, 'warn').mockImplementation(() => {});
+        });
+
+        afterEach(() => {
+            warnSpy.mockRestore();
+        });
+
+        const sentCommands = () => mockQueue.add.mock.calls.map(c => c[0]);
+
+        describe('reproduction from the bug report', () => {
+            it('sends nothing for cbus/write/999/208/panel/arm', () => {
+                // Arrange: the exact topic and payload captured in the report.
+                // Act
+                router.routeMessage('cbus/write/999/208/panel/arm', 'ARM_AWAY');
+
+                // Assert: not merely "a warning was logged" - the malformed
+                // command must never be queued for C-Gate.
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(sentCommands()).not.toContain('security arm //TestProject/999/208 away\n');
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus/write/999/208/panel/arm'));
+            });
+
+            it('sends nothing for cbus/write/999/228/5/1/data', () => {
+                router.routeMessage('cbus/write/999/228/5/1/data', '123,-1,38');
+
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(sentCommands()).not.toContain('MEASUREMENT DATA //TestProject/999/228/5/1 123 -1 38\n');
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus/write/999/228/5/1/data'));
+            });
+        });
+
+        describe('security arm topic', () => {
+            const arm = (network, application = '208') =>
+                router.routeMessage(`cbus/write/${network}/${application}/panel/arm`, 'ARM_AWAY');
+
+            it('accepts the valid network boundaries and still builds the same command', () => {
+                // 0 and 254 are the ends of the range; 255 is reserved, so the
+                // network bound is one below the single-byte maximum.
+                for (const network of ['0', '254']) {
+                    mockQueue.add.mockClear();
+                    arm(network);
+                    expect(sentCommands()).toEqual([`security arm //TestProject/${network}/208 away\n`]);
+                }
+            });
+
+            it('accepts the one- and two-digit network shapes the regex allows', () => {
+                for (const network of ['5', '99']) {
+                    mockQueue.add.mockClear();
+                    arm(network);
+                    expect(sentCommands()).toEqual([`security arm //TestProject/${network}/208 away\n`]);
+                }
+            });
+
+            it('rejects network 255, the first value above the maximum', () => {
+                arm('255');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('network address "255"'));
+            });
+
+            it('rejects every out-of-range network the regex can match', () => {
+                for (const network of ['255', '256', '300', '999']) {
+                    mockQueue.add.mockClear();
+                    arm(network);
+                    expect(mockQueue.add).not.toHaveBeenCalled();
+                }
+            });
+
+            it('accepts application 255, the top of the single-byte range', () => {
+                // The handler already refuses an application that is not the
+                // configured one, so reaching the range check at all means
+                // configuring the panel there.
+                router.settings.cbus_security_app_id = '255';
+                arm('254', '255');
+                expect(sentCommands()).toEqual(['security arm //TestProject/254/255 away\n']);
+            });
+
+            it('rejects an out-of-range application even when it is the configured one', () => {
+                // The configured-application check constrains the application to
+                // whatever the user set - it does not constrain it to a legal
+                // C-Bus address. A misconfigured app id must not become a
+                // malformed command.
+                router.settings.cbus_security_app_id = '256';
+                arm('254', '256');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('application address "256"'));
+            });
+
+            it('rejects a rejected address before the disarm path can type a PIN', () => {
+                // Disarm is the costliest thing on this topic - it replays the
+                // PIN keypress by keypress - so the address check has to come
+                // first, not inside the arm branch.
+                router.settings.cbus_security_disarm_enabled = true;
+                router.routeMessage('cbus/write/999/208/panel/arm', JSON.stringify({ action: 'DISARM', code: '1234' }));
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+
+            it('queues nothing for a four-digit network, which the topic regex never matches', () => {
+                // Falls through to the generic parser instead, which rejects it -
+                // recorded so a future regex relaxation does not silently open a
+                // path that skips the range check.
+                router.routeMessage('cbus/write/1000/208/panel/arm', 'ARM_AWAY');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+        });
+
+        describe('security bypass topic', () => {
+            const bypass = (network, application = '208') =>
+                router.routeMessage(`cbus/write/${network}/${application}/panel/bypass`, 'PRESS');
+
+            it('accepts the valid network boundaries and still sends the # keypress', () => {
+                for (const network of ['0', '254']) {
+                    mockQueue.add.mockClear();
+                    bypass(network);
+                    expect(sentCommands()).toEqual([`security emulate_keypad //TestProject/${network}/208 $23\n`]);
+                }
+            });
+
+            it('rejects network 255, the first value above the maximum', () => {
+                bypass('255');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('network address "255"'));
+            });
+
+            it('rejects the reproduction network 999', () => {
+                bypass('999');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus/write/999/208/panel/bypass'));
+            });
+
+            it('rejects an out-of-range application even when it is the configured one', () => {
+                router.settings.cbus_security_app_id = '999';
+                bypass('254', '999');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('application address "999"'));
+            });
+
+            it('still reaches the same bypass path via the alarm panel action', () => {
+                // ARM_CUSTOM_BYPASS funnels through the arm topic; the address
+                // check there must not have broken the valid case.
+                router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_CUSTOM_BYPASS');
+                expect(sentCommands()).toEqual(['security emulate_keypad //TestProject/254/208 $23\n']);
+            });
+        });
+
+        describe('measurement data topic', () => {
+            // Device ID and Channel are one argument byte each in the SAL
+            // message (docs/Measurement Application.md §28.5.1.1), so both are
+            // bounded 0-255 like an application or group. The spec's "no more
+            // than 10 measuring devices per network" note (§28.5.4) is
+            // engineering guidance, not an address bound, so it is not enforced.
+            const data = (network, application, device, channel, payload = '5042,0,38') =>
+                router.routeMessage(`cbus/write/${network}/${application}/${device}/${channel}/data`, payload);
+
+            it('accepts the valid boundaries on every component', () => {
+                data('0', '228', '0', '0');
+                expect(sentCommands()).toEqual(['MEASUREMENT DATA //TestProject/0/228/0/0 5042 0 38\n']);
+
+                mockQueue.add.mockClear();
+                data('254', '228', '255', '255');
+                expect(sentCommands()).toEqual(['MEASUREMENT DATA //TestProject/254/228/255/255 5042 0 38\n']);
+            });
+
+            it('accepts the multi-digit device and channel shapes the regex allows', () => {
+                data('254', '228', '10', '100');
+                expect(sentCommands()).toEqual(['MEASUREMENT DATA //TestProject/254/228/10/100 5042 0 38\n']);
+            });
+
+            it('rejects network 255, the first value above the maximum', () => {
+                data('255', '228', '0', '0');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('network address "255"'));
+            });
+
+            it('rejects device 256, the first value above the maximum', () => {
+                data('254', '228', '256', '0');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('device address "256"'));
+            });
+
+            it('rejects channel 256, the first value above the maximum', () => {
+                data('254', '228', '0', '256');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('channel address "256"'));
+            });
+
+            it('rejects an out-of-range application even when it is the configured one', () => {
+                router.settings.cbus_measurement_app_id = '256';
+                data('254', '256', '0', '0');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('application address "256"'));
+            });
+
+            it('rejects an out-of-range address before the payload is even parsed', () => {
+                // Otherwise a bad address plus a good payload reads as a payload
+                // problem in the log, and vice versa.
+                data('999', '228', '0', '0', 'not-a-number');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Invalid measurement value'));
+            });
+
+            it('queues nothing for a four-digit component, which the topic regex never matches', () => {
+                router.routeMessage('cbus/write/1000/228/0/0/data', '5042,0,38');
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            });
+        });
+    });
+
     describe('routeMessage()', () => {
         it('should handle manual HA discovery trigger', () => {
             const emitSpy = jest.spyOn(router, 'emit');

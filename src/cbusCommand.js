@@ -19,8 +19,10 @@ const {
     MQTT_COMMAND_INCREASE,
     MQTT_COMMAND_DECREASE,
     CGATE_LEVEL_MIN,
-    CGATE_LEVEL_MAX
+    CGATE_LEVEL_MAX,
+    CBUS_ADDRESS_MAX
 } = require('./constants');
+const { isCbusAddressComponentInRange } = require('./utils');
 
 const logger = createLogger({ component: 'CBusCommand' });
 
@@ -105,24 +107,32 @@ class CBusCommand {
             this._group = match[3] !== undefined ? match[3] : null;
             this._commandType = match[4] !== undefined ? match[4] : null;
 
-            // Validate address ranges
-            const net = parseInt(this._network, 10);
-            const app = parseInt(this._application, 10);
-            const grp = parseInt(this._group, 10);
-            if (this._network !== null && (isNaN(net) || net < 0 || net > 254)) {
-                this._logger.warn(`Invalid C-Bus network address: ${this._network} (expected 0-254)`);
+            // Validate address ranges. The bound for each component comes from
+            // the shared table rather than being spelled out here, so this and
+            // the topics that never reach CBusCommand (security panel,
+            // measurement data) cannot disagree about what a valid address is.
+            //
+            // The empty-segment rules are this class's own and stay here: the
+            // documented getall/gettree forms omit application and group
+            // (cbus/write/254///gettree), but an absent network has nothing to
+            // address at all.
+            if (this._network !== null
+                && !isCbusAddressComponentInRange(this._network, CBUS_ADDRESS_MAX.network)) {
+                this._logger.warn(`Invalid C-Bus network address: ${this._network} (expected 0-${CBUS_ADDRESS_MAX.network})`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
             }
-            if (this._application !== null && this._application !== '' && (isNaN(app) || app < 0 || app > 255)) {
-                this._logger.warn(`Invalid C-Bus application address: ${this._application} (expected 0-255)`);
+            if (this._application !== null && this._application !== ''
+                && !isCbusAddressComponentInRange(this._application, CBUS_ADDRESS_MAX.application)) {
+                this._logger.warn(`Invalid C-Bus application address: ${this._application} (expected 0-${CBUS_ADDRESS_MAX.application})`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
             }
-            if (this._group !== null && this._group !== '' && (isNaN(grp) || grp < 0 || grp > 255)) {
-                this._logger.warn(`Invalid C-Bus group address: ${this._group} (expected 0-255)`);
+            if (this._group !== null && this._group !== ''
+                && !isCbusAddressComponentInRange(this._group, CBUS_ADDRESS_MAX.group)) {
+                this._logger.warn(`Invalid C-Bus group address: ${this._group} (expected 0-${CBUS_ADDRESS_MAX.group})`);
                 this._isValid = false;
                 this._parsed = true;
                 return;

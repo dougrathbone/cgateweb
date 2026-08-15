@@ -11,6 +11,26 @@ const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
 
+// Inclusive upper bound for every component that can appear in a C-Bus address
+// on a write topic. One table because the bounds are a property of C-Bus, not
+// of whichever topic happens to carry them: the same numbers already guard
+// CBusCommand and the inbound event path (CBusEvent), and the security and
+// measurement topics were the two that had no bound at all.
+//
+// Network stops at 254 because 255 is reserved. Application and group are a
+// single byte each. Device and channel are the Measurement application's two
+// address arguments, one byte apiece (docs/Measurement Application.md
+// §28.5.1.1) — the spec's "no more than 10 measuring devices per network"
+// guidance (§28.5.4) is an engineering recommendation, not an address bound,
+// so it deliberately isn't enforced here.
+const CBUS_ADDRESS_MAX = Object.freeze({
+    network: 254,
+    application: 255,
+    group: 255,
+    device: 255,
+    channel: 255
+});
+
 // C-Gate Commands
 const CGATE_CMD_ON = 'ON';
 const CGATE_CMD_OFF = 'OFF';
@@ -202,7 +222,8 @@ module.exports = {
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
-    
+    CBUS_ADDRESS_MAX,
+
     // C-Gate Commands
     CGATE_CMD_ON,
     CGATE_CMD_OFF,

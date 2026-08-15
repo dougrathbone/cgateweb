@@ -3,7 +3,7 @@ const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
-const { temperatureToCbusLevel, redactMqttPayload } = require('./utils');
+const { temperatureToCbusLevel, redactMqttPayload, describeCbusAddressRangeError } = require('./utils');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_TOPIC_PREFIX_READ,
@@ -198,7 +198,10 @@ class MqttCommandRouter extends EventEmitter {
         // manual discovery trigger.
         const securityArmMatch = topic.match(SECURITY_ARM_TOPIC_REGEX);
         if (securityArmMatch) {
-            this._handleSecurityArm(securityArmMatch[1], securityArmMatch[2], payload, topic);
+            const [, network, application] = securityArmMatch;
+            if (this._hasAddressInRange(topic, { network, application })) {
+                this._handleSecurityArm(network, application, payload, topic);
+            }
             return;
         }
 
@@ -206,7 +209,10 @@ class MqttCommandRouter extends EventEmitter {
         // same no-numeric-group shape as the arm topic.
         const securityBypassMatch = topic.match(SECURITY_BYPASS_TOPIC_REGEX);
         if (securityBypassMatch) {
-            this._handleSecurityBypass(securityBypassMatch[1], securityBypassMatch[2], topic);
+            const [, network, application] = securityBypassMatch;
+            if (this._hasAddressInRange(topic, { network, application })) {
+                this._handleSecurityBypass(network, application, topic);
+            }
             return;
         }
 
@@ -215,10 +221,10 @@ class MqttCommandRouter extends EventEmitter {
         // CBusCommand either — routed directly like the security arm topic.
         const measurementDataMatch = topic.match(MEASUREMENT_DATA_TOPIC_REGEX);
         if (measurementDataMatch) {
-            this._handleMeasurementData(
-                measurementDataMatch[1], measurementDataMatch[2], measurementDataMatch[3], measurementDataMatch[4],
-                payload, topic
-            );
+            const [, network, application, device, channel] = measurementDataMatch;
+            if (this._hasAddressInRange(topic, { network, application, device, channel })) {
+                this._handleMeasurementData(network, application, device, channel, payload, topic);
+            }
             return;
         }
 
@@ -236,8 +242,41 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
+     * Range-check the C-Bus address components a dedicated topic regex captured,
+     * warning and refusing the message when any is out of bounds.
+     *
+     * The topic regexes match digit runs, not ranges, and deliberately stay that
+     * way — a pattern spelling out 0-254 is unreadable and rots the moment a
+     * bound changes — so the captured values are checked here instead, against
+     * the same table CBusCommand uses.
+     *
+     * This exists because these topics return from routeMessage before
+     * CBusCommand is ever constructed, which is where every other write topic
+     * gets its address checked. `cbus/write/999/208/panel/arm` therefore sent
+     * `security arm //HOME/999/208 away` to C-Gate, and the measurement topic
+     * did the same with an address C-Bus cannot express. C-Gate rejects them, so
+     * the cost was malformed commands and log noise rather than anything
+     * reaching the bus — but it left the write side lagging the inbound side,
+     * which was hardened for the equivalent gap (see CBusEvent
+     * _applyAddressComponents).
+     *
+     * @param {string} topic - Topic the address came from; named in the warning.
+     * @param {Object<string, string>} components - Named components, e.g. { network, application }.
+     * @returns {boolean} true when the whole address is in range.
+     * @private
+     */
+    _hasAddressInRange(topic, components) {
+        const rangeError = describeCbusAddressRangeError(components);
+        if (rangeError) {
+            this.logger.warn(`Ignoring ${topic}: ${rangeError}`);
+            return false;
+        }
+        return true;
+    }
+
+    /**
      * Processes a validated MQTT command and dispatches it to the appropriate handler.
-     * 
+     *
      * @param {CBusCommand} command - The parsed and validated MQTT command
      * @param {string} topic - Original MQTT topic for logging
      * @param {string} payload - Original MQTT payload for logging

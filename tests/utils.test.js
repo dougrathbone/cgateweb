@@ -1,4 +1,13 @@
-const { clampSetting, evictOldestFifo, temperatureToCbusLevel, redactCgateLine, redactMqttPayload } = require('../src/utils');
+const {
+    clampSetting,
+    evictOldestFifo,
+    temperatureToCbusLevel,
+    redactCgateLine,
+    redactMqttPayload,
+    isCbusAddressComponentInRange,
+    describeCbusAddressRangeError
+} = require('../src/utils');
+const { CBUS_ADDRESS_MAX } = require('../src/constants');
 
 describe('clampSetting', () => {
     it('uses default when value is undefined', () => {
@@ -157,5 +166,75 @@ describe('redactMqttPayload', () => {
         expect(redactMqttPayload('')).toBe('');
         expect(redactMqttPayload(undefined)).toBeUndefined();
         expect(redactMqttPayload(null)).toBeNull();
+    });
+});
+
+// The single range check behind every C-Bus address that reaches C-Gate. It
+// exists so the write topics that bypass CBusCommand (security panel,
+// measurement data) apply the same bounds CBusCommand and CBusEvent already do.
+describe('isCbusAddressComponentInRange', () => {
+    it('accepts the whole valid network range, including both boundaries', () => {
+        // Arrange / Act / Assert - 255 is reserved, hence a network max of 254.
+        expect(isCbusAddressComponentInRange('0', CBUS_ADDRESS_MAX.network)).toBe(true);
+        expect(isCbusAddressComponentInRange('254', CBUS_ADDRESS_MAX.network)).toBe(true);
+        expect(isCbusAddressComponentInRange('255', CBUS_ADDRESS_MAX.network)).toBe(false);
+    });
+
+    it('accepts the whole valid single-byte range, including both boundaries', () => {
+        expect(isCbusAddressComponentInRange('0', CBUS_ADDRESS_MAX.application)).toBe(true);
+        expect(isCbusAddressComponentInRange('255', CBUS_ADDRESS_MAX.application)).toBe(true);
+        expect(isCbusAddressComponentInRange('256', CBUS_ADDRESS_MAX.application)).toBe(false);
+    });
+
+    it('rejects values that are not a number at all', () => {
+        // Empty is what an omitted topic segment looks like; the callers that
+        // permit omission check for it themselves rather than relying on this.
+        expect(isCbusAddressComponentInRange('', 255)).toBe(false);
+        expect(isCbusAddressComponentInRange('abc', 255)).toBe(false);
+        expect(isCbusAddressComponentInRange(null, 255)).toBe(false);
+        expect(isCbusAddressComponentInRange(undefined, 255)).toBe(false);
+    });
+
+    it('rejects a negative component', () => {
+        expect(isCbusAddressComponentInRange('-1', 255)).toBe(false);
+    });
+});
+
+describe('describeCbusAddressRangeError', () => {
+    it('returns null when every component is in range', () => {
+        expect(describeCbusAddressRangeError({ network: '254', application: '208' })).toBeNull();
+        expect(describeCbusAddressRangeError({
+            network: '0', application: '228', device: '0', channel: '0'
+        })).toBeNull();
+    });
+
+    it('names the offending component and its bound so the log says what to fix', () => {
+        const message = describeCbusAddressRangeError({ network: '999', application: '208' });
+        expect(message).toContain('network');
+        expect(message).toContain('999');
+        expect(message).toContain('0-254');
+    });
+
+    it('reports the first failure in the order the caller listed the components', () => {
+        // Both are bad; the network is listed first, so that is what the user is
+        // told about rather than an arbitrary one.
+        const message = describeCbusAddressRangeError({ network: '999', application: '999' });
+        expect(message).toContain('network');
+        expect(message).not.toContain('application');
+    });
+
+    it('applies the correct per-component bound', () => {
+        // 255 is a legal application but not a legal network - the table, not
+        // the caller, is what knows the difference.
+        expect(describeCbusAddressRangeError({ application: '255' })).toBeNull();
+        expect(describeCbusAddressRangeError({ network: '255' })).toContain('0-254');
+        expect(describeCbusAddressRangeError({ device: '256' })).toContain('device');
+        expect(describeCbusAddressRangeError({ channel: '256' })).toContain('channel');
+    });
+
+    it('throws on a component the bounds table does not know', () => {
+        // A silent skip here would be an unvalidated address reaching C-Gate,
+        // which is the bug this helper exists to prevent.
+        expect(() => describeCbusAddressRangeError({ ward: '1' })).toThrow(/Unknown C-Bus address component/);
     });
 });
