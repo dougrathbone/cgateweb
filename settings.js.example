@@ -1,226 +1,218 @@
 // =============================================================================
-// CGateWeb Configuration Settings
+// cgateweb Configuration - Starter Settings
 // =============================================================================
-// Copy this file to 'settings.js' and modify the values for your setup.
-// This file contains example configurations for different common scenarios.
+// Copy this file to 'settings.js' and edit the values for your setup.
+//
+// This is a STARTER config: the handful of settings a standalone install
+// actually needs to get going, with the optional features commented out.
+// For the complete list of settings and their defaults, see docs/SETTINGS.md.
+//
+// Anything not set here falls back to the defaults in src/defaultSettings.js.
+// cgateweb warns on start about any setting name it does not recognise, so a
+// typo is caught rather than silently ignored.
 
 // =============================================================================
-// Core C-Gate Connection Settings (Required)
+// C-Gate Connection (Required)
 // =============================================================================
 
-// C-Gate server IP address
-// This is the computer running Clipsal's C-Gate server software
-exports.cbusip = '192.168.1.100';  // Replace with your C-Gate server IP
+// C-Gate server IP address - the machine running Clipsal's C-Gate software.
+// This MUST be changed; cgateweb refuses to start while it is the placeholder.
+exports.cbusip = 'your-cgate-ip';
 
-// C-Gate project name (must match your C-Gate project)
-// Use C-Gate toolkit to find your project name, usually uppercase
-exports.cbusname = 'SHAC';  // Common names: 'HOME', 'PROJECT', 'MAIN'
+// C-Gate project name, exactly as it appears in C-Bus Toolkit (usually
+// uppercase). Letters, digits and underscores only.
+exports.cbusname = 'YOUR_PROJECT';
 
-// C-Gate command port (usually 20023)
+// C-Gate command port - cgateweb sends commands here.
 exports.cbuscommandport = 20023;
 
-// C-Gate event port (usually 20024) 
-exports.cbuseventport = 20024;
+// C-Gate event port - cgateweb reads C-Gate's status change stream here.
+// This is 20025, NOT 20023 or 20024. If you point it at the wrong port your
+// lights will still respond to commands, but no state will ever come back.
+exports.cbuseventport = 20025;
+
+// C-Gate access control credentials (only if your C-Gate requires them).
+// exports.cgateusername = 'cgate_user';
+// exports.cgatepassword = 'cgate_password';
 
 // =============================================================================
-// MQTT Broker Settings (Required)
+// MQTT Broker (Required)
 // =============================================================================
 
-// MQTT broker connection - format: 'hostname:port' or 'mqtt://hostname:port'
-exports.mqtt = '192.168.1.50:1883';  // Replace with your MQTT broker
+// MQTT broker address - 'hostname:port'.
+exports.mqtt = 'localhost:1883';
 
-// MQTT authentication (uncomment and set if your broker requires auth)
+// MQTT authentication (uncomment if your broker requires it).
 // exports.mqttusername = 'homeassistant';
 // exports.mqttpassword = 'your_mqtt_password';
 
-// MQTT client ID (optional, will auto-generate if not set)
-// exports.mqttclientid = 'cgateweb_bridge';
-
-// Sets MQTT retain flag for values coming from C-Gate
-// When enabled, Home Assistant will see last known state on restart
+// Set the MQTT retain flag on values published from C-Gate, so Home Assistant
+// sees the last known state after a restart instead of 'unknown'.
 exports.retainreads = true;
 
 // =============================================================================
-// Message Processing Settings
+// Logging
 // =============================================================================
 
-// Minimum interval between messages in milliseconds
-// Prevents flooding C-Gate or MQTT broker with rapid commands
-exports.messageinterval = 200;  // 200ms = 5 messages per second max
-
-// Enable detailed logging (useful for debugging)
-// Shows all MQTT and C-Gate messages in console
-exports.logging = false;  // Set to true for debugging
+// One of: 'error', 'warn', 'info', 'debug', 'trace'. Use 'debug' to see every
+// MQTT and C-Gate message while troubleshooting.
+// The LOG_LEVEL environment variable overrides this for a single run, e.g.
+//   LOG_LEVEL=debug npm start
+exports.log_level = 'info';
 
 // =============================================================================
-// Automatic Device Polling (Optional)
+// Message Throttling
 // =============================================================================
 
-// Network and application to automatically query for device states
-// Format: 'network/application' (e.g., '254/56' for lighting on network 254)
-// Common applications: 56=lighting, 36=triggers, 203=enable control
+// Minimum interval between outbound messages, in milliseconds. Stops a burst
+// of commands from flooding C-Gate. 200ms = 5 messages per second.
+exports.messageinterval = 200;
+
+// =============================================================================
+// Startup and Periodic State Polling
+// =============================================================================
+
+// Network and application to query for current device levels, as
+// 'network/application'. 254/56 is lighting on the default network.
 exports.getallnetapp = '254/56';
 
-// Request all device states when bridge starts
-// Useful to sync Home Assistant with current C-Bus device states
+// Query all device levels when the bridge starts, so Home Assistant comes up
+// in sync with the actual state of the bus.
 exports.getallonstart = true;
 
-// How often to re-query all device states (in seconds)
-// Helps keep Home Assistant in sync if it misses some events
-// Set to 0 to disable periodic polling
-exports.getallperiod = 3600;  // 1 hour (3600 seconds)
+// How often to repeat that query, in seconds. Catches anything missed while
+// the bridge or broker was down. Null or 0 disables periodic polling.
+exports.getallperiod = 3600;
 
 // =============================================================================
-// Home Assistant MQTT Discovery (Optional but Recommended)
+// Home Assistant MQTT Discovery
 // =============================================================================
 
-// Enable automatic Home Assistant device discovery
-// Creates device entities in Home Assistant automatically
+// Publish discovery messages so Home Assistant creates the entities for you.
 exports.ha_discovery_enabled = true;
 
-// MQTT topic prefix Home Assistant uses for discovery
-// Standard HA installation uses 'homeassistant'
+// Discovery topic prefix. A standard Home Assistant install uses
+// 'homeassistant'.
 exports.ha_discovery_prefix = 'homeassistant';
 
-// C-Bus networks to scan for devices during discovery
-// Usually just [254] for default network, or [254, 255] for multiple
+// C-Bus networks to scan during discovery. Usually just [254].
 exports.ha_discovery_networks = [254];
 
+// --- Application to entity type mapping ---
+//
+// Lighting (application 56) is always discovered as dimmable 'light' entities
+// and is not configurable. The settings below map your other applications onto
+// other entity types; each one is off until you set it.
+
+// Groups on this application become 'cover' entities (blinds, shutters,
+// garage doors). 203 is the usual choice, but C-Bus calls 203 Enable Control -
+// a general purpose application. Only set this if your covers really are on it.
+// exports.ha_discovery_cover_app_id = '203';
+
+// Groups on this application become on/off 'switch' entities.
+// exports.ha_discovery_switch_app_id = '203';
+
+// Groups on this application become 'switch' entities driving relay channels.
+// exports.ha_discovery_relay_app_id = '1';
+
+// Groups on this application become motion 'binary_sensor' entities.
+// exports.ha_discovery_pir_app_id = '36';
+
+// Groups on this application become keypad/scene 'event' + 'button' entities.
+// Typically 202.
+// exports.ha_discovery_trigger_app_id = '202';
+
 // =============================================================================
-// C-Bus Application Mapping for Home Assistant
+// C-Bus Labels (Optional)
 // =============================================================================
 
-// Different C-Bus applications are mapped to different Home Assistant device types:
-
-// Lighting devices (standard dimmable lights) are not configurable.
-// Application 56, the standard C-Bus lighting application, is always discovered
-// as dimmable 'light' entities. If your project runs lighting on another
-// application in the $30-$5F range, point ha_discovery_switch_app_id at it to
-// get on/off switch entities for those groups.
-
-// Cover devices (blinds, curtains, garage doors)
-// Application 203 is typically used for Enable Control (motor control)
-exports.ha_discovery_cover_app_id = '203';
-
-// Switch devices (on/off only, no dimming)
-// Can use same as covers (203) or relays (1) depending on your setup
-exports.ha_discovery_switch_app_id = '203';
-
-// PIR Motion Sensors
-// Application 36 is typically used for trigger devices like PIR sensors
-exports.ha_discovery_pir_app_id = '36';
+// Path to the JSON file holding your imported group labels. Set this to give
+// discovered entities their Toolkit names, and to let the web UI save edits.
+// exports.cbus_label_file = '/var/lib/cgateweb/cbus-labels.json';
 
 // =============================================================================
-// Advanced Settings (Usually don't need to change)
+// Web UI and API (Optional)
 // =============================================================================
 
-// Home Assistant device information
-exports.ha_device_manufacturer = 'Clipsal C-Bus via CGateWeb';
-exports.ha_device_via = 'cgateweb_bridge';
+// Status page and label-editing API.
+exports.web_port = 8080;
 
-// Web UI and API security
-// Bind web interface to localhost by default (recommended)
+// Bind to loopback only. Change this only if you understand the consequences -
+// the API can modify your labels.
 exports.web_bind_host = '127.0.0.1';
-// Optional API key for mutating label endpoints (PUT/PATCH/POST)
-// exports.web_api_key = 'replace_with_long_random_key';
 
-// MQTT topic structure
-exports.mqttprefix = 'cbus';  // Creates topics like: cbus/read/254/56/4/state
+// API key required for write requests (POST/PUT/PATCH) when the web UI is
+// reached directly.
+// exports.web_api_key = 'replace_with_a_long_random_key';
 
-// Connection retry settings
-exports.reconnectinterval = 5000;  // 5 seconds between reconnection attempts
-exports.maxreconnects = 0;         // 0 = retry forever
-
-// =============================================================================
-// Example Configurations for Common Setups
-// =============================================================================
-
-/*
-=== Basic Home Setup ===
-Copy these settings for a simple home automation setup:
-
-exports.cbusip = '192.168.1.100';          // Your C-Gate PC
-exports.cbusname = 'HOME';                   // Your project name
-exports.mqtt = '192.168.1.50:1883';        // Your MQTT broker (or HA)
-exports.retainreads = true;
-exports.messageinterval = 200;
-exports.logging = false;
-exports.getallnetapp = '254/56';           // Lighting on network 254
-exports.getallonstart = true;
-exports.getallperiod = 3600;
-exports.ha_discovery_enabled = true;
-exports.ha_discovery_networks = [254];
-
-=== Apartment/Small Setup ===
-Minimal configuration for smaller installations:
-
-exports.cbusip = '192.168.1.100';
-exports.cbusname = 'UNIT1'; 
-exports.mqtt = 'homeassistant.local:1883';
-// exports.mqttusername = 'mqtt_user';      // Uncomment if using auth
-// exports.mqttpassword = 'mqtt_pass';
-exports.retainreads = true;
-exports.messageinterval = 300; 
-exports.getallnetapp = '254/56';
-exports.ha_discovery_enabled = true;
-
-=== Large Installation ===
-Configuration for complex setups with multiple device types:
-
-exports.cbusip = '192.168.10.100';
-exports.cbusname = 'MAIN_HOUSE';
-exports.mqtt = '192.168.10.50:1883';
-exports.mqttusername = 'cgateweb';
-exports.mqttpassword = 'secure_password_here';
-exports.retainreads = true;
-exports.messageinterval = 150;             // Higher message rate
-exports.getallnetapp = '254/56';           // Just lighting for polling
-exports.getallonstart = true;
-exports.getallperiod = 1800;               // 30 minutes
-exports.ha_discovery_enabled = true;
-exports.ha_discovery_networks = [254, 255]; // Multiple networks
-exports.ha_discovery_cover_app_id = '203'; // Blinds/garage doors
-exports.ha_discovery_switch_app_id = '1';   // Relay switches
-exports.ha_discovery_pir_app_id = '36';     // Motion sensors
-exports.logging = false;                    // Only enable for debugging
-
-=== Debugging/Development ===
-Settings for troubleshooting and development:
-
-exports.cbusip = '127.0.0.1';              // Local C-Gate simulator
-exports.cbusname = 'TEST';
-exports.mqtt = '127.0.0.1:1883';
-exports.retainreads = false;               // Don't retain during testing
-exports.messageinterval = 500;             // Slower for debugging
-exports.logging = true;                     // Enable full logging
-exports.getallnetapp = '254/56';
-exports.getallonstart = false;             // Manual control during testing
-exports.ha_discovery_enabled = false;      // Disable discovery during dev
-*/
+// WARNING: enabling this lets ANYONE who can reach web_port modify your labels
+// without any authentication. Leave it off unless the port is fully isolated.
+// exports.web_allow_unauthenticated_mutations = true;
 
 // =============================================================================
-// Network/Application ID Reference
+// Specialised C-Bus Applications (Optional)
+// =============================================================================
+
+// --- Air Conditioning (native, application 172) ---
+// Read thermostat temperature, mode, setpoint and fan state.
+// exports.cbus_aircon_app_id = '172';
+
+// WARNING: enabling this lets Home Assistant WRITE to your live heating and
+// cooling - mode and setpoint changes reach the plant. Requires
+// cbus_aircon_app_id above.
+// exports.cbus_aircon_control_enabled = true;
+
+// --- Security (application 208) ---
+// Alarm zone sensors are read-only and ON by default. Set this to '0' to turn
+// zone discovery off entirely.
+// exports.cbus_security_app_id = '208';
+
+// WARNING: enabling this lets anything that can publish to the panel command
+// topic ARM your alarm - the arm command carries no PIN on the C-Bus network.
+// exports.cbus_security_control_enabled = true;
+
+// WARNING: enabling this allows DISARM as well. C-Bus has no disarm command,
+// so the PIN is typed at the panel via keypad emulation and therefore crosses
+// your MQTT broker on every disarm. Only on a broker you trust, ideally with
+// TLS. Requires cbus_security_control_enabled above.
+// exports.cbus_security_disarm_enabled = true;
+
+// WARNING: enabling this allows arming PAST AN OPEN ZONE (the panel's '#'
+// key). The alarm then reports armed while that door or window is not covered.
+// Requires cbus_security_control_enabled above.
+// exports.cbus_security_bypass_enabled = true;
+
+// --- Measurement (application 228) ---
+// Decode analogue sensor readings (temperature, power, light level) into
+// 'sensor' entities. Also allows injecting readings onto the bus.
+// exports.cbus_measurement_app_id = '228';
+
+// =============================================================================
+// Reference
 // =============================================================================
 
 /*
-Common C-Bus Application IDs:
-- 1    = Relay (on/off switches, no dimming)
-- 36   = Trigger (PIR sensors, push buttons)
-- 56   = Lighting (dimmable lights, most common)
-- 203  = Enable Control (motors, blinds, garage doors)
+Common C-Bus application IDs:
+- 1    = Relay (on/off, no dimming)
+- 36   = Trigger / PIR sensors
+- 56   = Lighting (dimmable, most common)
+- 172  = Air Conditioning
+- 202  = Trigger control (keypads, scenes)
+- 203  = Enable Control (often used for motors and blinds)
+- 208  = Security
+- 228  = Measurement
 
-Common C-Bus Network IDs:
-- 254  = Default network (most installations use this)
+Common C-Bus network IDs:
+- 254  = Default network (most installations)
 - 255  = Secondary network (larger installations)
 
-Address Format:
-C-Bus addresses follow: network/application/group
-- 254/56/4 = Network 254, Lighting app, Group 4 (a specific light)
-- 254/36/1 = Network 254, Trigger app, Group 1 (a PIR sensor)
+Addresses are network/application/group, e.g. 254/56/4 is group 4 of the
+lighting application on network 254.
 
-MQTT Topic Examples:
-- cbus/write/254/56/4/switch → Control light (payload: ON/OFF)
-- cbus/write/254/56/4/ramp → Dim light (payload: 0-100 percentage)
-- cbus/read/254/56/4/state → Light state (ON/OFF)
-- cbus/read/254/56/4/level → Light brightness (0-100%)
+MQTT topics for that group:
+- cbus/write/254/56/4/switch -> control it (payload ON or OFF)
+- cbus/write/254/56/4/ramp   -> dim it (payload 0-100, optionally with a
+                                ramp time, e.g. "75,4s")
+- cbus/read/254/56/4/state   -> its state (ON or OFF)
+- cbus/read/254/56/4/level   -> its brightness (0-100)
 */
