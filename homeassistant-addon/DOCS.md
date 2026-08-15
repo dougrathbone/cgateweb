@@ -669,7 +669,23 @@ To read native thermostat data from the real C-Bus Air Conditioning application,
 - `cbus/read/{network}/172/{sourceUnit}/current_humidity`, `/humidity_mode`, `/humidity_setpoint`, `/humidity_action` — humidity application state (spec-derived; only present on installs with humidity plant)
 - `cbus/read/{network}/172/{sourceUnit}/comfort_level` — evaporative comfort level (only for evaporative plant cooling)
 
-Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) rather than zone group, so installations with multiple thermostats sharing a zone group are correctly handled. An HA `climate` entity (with fan mode and humidity state) plus `Plant problem` and `Temperature sensor problem` binary_sensors are auto-created per thermostat.
+Topics are keyed by **source unit** (the thermostat's unit address, e.g. `201`) rather than zone group, so installations with multiple thermostats sharing a zone group are correctly handled.
+
+Each thermostat gets a `climate` entity (with fan mode and humidity state), `Plant problem` and `Temperature sensor problem` binary_sensors, and a set of diagnostic entities grouped under Diagnostics on the same device:
+
+| Entity | Type | What it shows |
+|---|---|---|
+| `Damper` | binary_sensor | Whether the zone damper is open (spec §25.6.6 bit 3) |
+| `Plant busy` | binary_sensor | The plant is settling and may not act on a change yet |
+| `Plant type` | sensor | What the reporting plant is — heat pump, evaporative, and so on |
+| `Plant error` | sensor | The plant's error description, or none |
+| `Temperature sensor status` | sensor | Whether the zone's temperature sensor is healthy |
+| `Fan speed setting` | sensor | The commanded fan speed |
+| `Fan output` | sensor | Fan output as a percentage, where the plant reports one |
+| `Comfort level` | sensor | Evaporative comfort level |
+| `Humidity mode` / `Humidity action` | sensor | Humidifier mode and what it is currently doing |
+
+These are read-only and appear regardless of `cbus_aircon_control_enabled`. Several are only populated by plant that reports them — comfort level and fan output come from evaporative systems, and the humidity pair from humidity-capable plant — so an entity that stays empty means your hardware does not broadcast that field, not that something is wrong.
 
 Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it writes to live heating/cooling). When enabled: publish a target in °C to `cbus/write/{network}/172/{sourceUnit}/setpoint`, a mode (`off`/`heat`/`cool`/`auto`/`fan_only`) to `cbus/write/{network}/172/{sourceUnit}/hvacmode`, or a fan mode (`automatic`/`continuous`) to `cbus/write/{network}/172/{sourceUnit}/fanmode`. Setpoint writes are debounced to one command per 3s per the protocol's anti-echo guidance, and the thermostat's own flags, per-mode setpoints, and fan state are learned and echoed on writes.
 

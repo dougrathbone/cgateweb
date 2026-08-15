@@ -30,6 +30,7 @@ Add-on users should also read [`homeassistant-addon/DOCS.md`](../homeassistant-a
 - [Air Conditioning (application 172)](#air-conditioning-application-172)
 - [Security (application 208)](#security-application-208)
 - [Measurement (application 228)](#measurement-application-228)
+- [Clock and timekeeping (application 223)](#clock-and-timekeeping-application-223)
 - [Diagnostics and stale devices](#diagnostics-and-stale-devices)
 - [Labels](#labels)
 - [Web interface and API](#web-interface-and-api)
@@ -274,6 +275,18 @@ Zone sensors are read-only and on by default. Every write path is separately opt
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
 | `cbus_measurement_app_id` | `cbus_measurement_app_id` | string \| null | `null` | Typically `228` (`$E4`). One flag gates **both directions**: decoding `measurement data` event lines to `cbus/read/{net}/228/{device}/{channel}/value` and `/unit`, and injecting readings via `cbus/write/{net}/228/{device}/{channel}/data` with a `value,multiplier,units` payload. Unlike aircon and security there is no separate control switch — measurement writes are how a scripted or virtual sensor publishes its own data, not a hardware-actuation risk. See [`docs/Measurement Application.md`](Measurement%20Application.md). |
+
+---
+
+## Clock and timekeeping (application 223)
+
+| Setting | Add-on option | Type | Default | Notes |
+|---|---|---|---|---|
+| `cbus_clock_enabled` | *standalone only* | boolean | `false` | Decode the network clock (`223`/`$DF`) and publish the date and time it broadcasts as two diagnostic sensors on the C-Bus network device. Off by default because the message format rests on two captured lines rather than a published specification. Reading only — cgateweb never sets the C-Bus clock. |
+
+Clock traffic uses a two-segment address (network and application, no group) that the standard event parser cannot read, so these lines are kept away from it whether or not this setting is on; before this existed they were discarded entirely and could not even be captured with `cbusRawEventLogApps`.
+
+The sensors carry no `device_class`. Home Assistant's `timestamp` class wants ISO 8601 with a UTC offset, and the bus sends date and time as separate broadcasts with no timezone on either — synthesising one would mean assuming the network runs in the bridge's timezone, and a timestamp entity renders as relative time, which would make a drifted clock look like a plausible instant and hide the fault the sensor exists to reveal.
 
 ---
 
