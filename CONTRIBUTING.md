@@ -29,6 +29,7 @@ Welcome! This guide will help you get started contributing to CGateWeb, a Node.j
    cp settings.js.example settings.js
    # Edit settings.js with your C-Gate and MQTT broker details
    ```
+   `settings.js` is git-ignored — the copy above creates it, and your local edits should never be committed. Every setting, its default and its Home Assistant add-on equivalent are in [docs/SETTINGS.md](docs/SETTINGS.md); the defaults themselves live in `src/defaultSettings.js`. Credentials can be kept out of the file entirely via the `CGATE_*`/`MQTT_*` environment variables (see the README).
 
 4. **Run tests**
    ```bash
@@ -97,7 +98,7 @@ Example: `254/56/4` = Network 254, Lighting Application, Group 4
 
 1. **Write tests first** for new functionality
 2. **Run all tests**: `npm test`
-3. **Ensure 100% test pass rate** (currently 134 tests)
+3. **Ensure 100% test pass rate** — the whole suite must be green, not just the file you touched
 4. **Update tests** when modifying existing functionality
 
 ### Test Structure
@@ -147,10 +148,16 @@ describe('ClassName', () => {
 
 #### Debugging Connection Issues
 
-Enable detailed logging in `settings.js`:
+Turn up the log level in `settings.js`:
 ```javascript
-logging: true  // Shows all MQTT and C-Gate messages
+exports.log_level = 'debug';  // 'error' | 'warn' | 'info' | 'debug' | 'trace'
 ```
+
+`log_level` is the real control. The older `logging: true` flag is effectively dead: consumers read `settings.log_level || (settings.logging ? 'info' : 'warn')`, and `defaultSettings` always supplies a `log_level`, so the `logging` branch is never reached.
+
+`LOG_LEVEL=debug npm start` works too, but only for components that build their logger without a level (most modules). The bridge, event publisher and connection manager take theirs from `settings.log_level`, so set that in `settings.js` when you want the whole bridge verbose.
+
+Log level is hot-reloadable: `kill -USR1 <pid>` (or `systemctl reload cgateweb`) re-reads `settings.js` and applies the new level without a restart.
 
 ## Submitting Changes
 
@@ -199,7 +206,7 @@ Resolves #123
 **"Connection refused to C-Gate"**
 - Verify C-Gate is running and accessible
 - Check firewall settings
-- Confirm port numbers (typically 20023/20024)
+- Confirm port numbers: **20023** for commands (`cbuscommandport`) and **20025** for the status-change stream cgateweb listens on (`cbuseventport`). C-Gate also has an event port on 20024, but cgateweb does not use it.
 
 **"MQTT publish failed"**
 - Verify MQTT broker is running

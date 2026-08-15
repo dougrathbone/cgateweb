@@ -29,7 +29,7 @@ Needs Node.js 20+ and a C-Gate you can reach over the network.
 git clone https://github.com/dougrathbone/cgateweb.git
 cd cgateweb
 npm install
-cp settings.js.example settings.js   # then edit: C-Gate host, project name, MQTT broker
+cp settings.js.example settings.js   # creates your config file — then edit the C-Gate host, project name and MQTT broker
 npm start
 ```
 
@@ -39,6 +39,33 @@ To run it as a systemd service instead of in the foreground:
 sudo node install-service.js         # installs, enables and starts cgateweb.service
 sudo node uninstall-service.js       # to remove
 ```
+
+The unit runs cgateweb straight out of this checkout, so upgrading is `git pull && npm ci && sudo systemctl restart cgateweb` — re-running the installer is only needed if `cgateweb.service.template` itself changes.
+
+`sudo systemctl reload cgateweb` sends `SIGUSR1`, which re-reads `settings.js` and your labels file without dropping any connections. It applies `log_level`, `messageinterval`, `commandMinIntervalMs` and the getall schedules; anything else (hosts, ports, credentials, discovery) needs a restart.
+
+#### Settings
+
+Standalone settings live in `settings.js` and **are not named the same as the add-on options** — the add-on names are a snake_case layer over them, and a few change units. Full reference and the complete mapping: **[docs/SETTINGS.md](docs/SETTINGS.md)**. The ones people hit first:
+
+| Add-on option | `settings.js` |
+|---|---|
+| `cgate_host` | `cbusip` |
+| `cgate_project` | `cbusname` |
+| `mqtt_host` + `mqtt_port` | `mqtt` — a single `host:port` string |
+| `cover_ramp_duration_sec` | `cover_ramp_duration_ms` (milliseconds) |
+| `connection_health_check_interval_sec` | `healthCheckInterval` (milliseconds) |
+
+Seven settings can come from the environment instead, which overrides `settings.js` — useful in containers and for keeping credentials out of a file: `CGATE_IP`, `CGATE_PROJECT`, `CGATE_USERNAME`, `CGATE_PASSWORD`, `MQTT_HOST` (the whole `host:port` string), `MQTT_USERNAME` and `MQTT_PASSWORD`.
+
+Two more environment variables affect startup: `LOG_LEVEL` (`error`, `warn`, `info`, `debug`, `trace`) raises logging for components that don't take their level from `log_level` in `settings.js`, and `ALLOW_DEFAULT_FALLBACK=true` lets the bridge start on built-in defaults when `settings.js` fails to load (a syntax error, say) instead of exiting.
+
+#### Health checks
+
+cgateweb serves its status page and two unauthenticated probes on `web_port` (default `http://127.0.0.1:8080`, bound to loopback unless you set `web_bind_host`):
+
+- `GET /healthz` — liveness. `200` with uptime and lifecycle state while the process is up.
+- `GET /readyz` — readiness. `200` once MQTT, the C-Gate event connection and at least one healthy command connection are all up; `503` until then.
 
 ## Do I need C-Gate?
 
