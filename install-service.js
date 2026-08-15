@@ -70,6 +70,47 @@ function ensureServiceUser() {
     }
 }
 
+/**
+ * Whether an install path sits under /home, where systemd's ProtectHome=yes
+ * would hide the unit's own WorkingDirectory and it would fail 200/CHDIR.
+ *
+ * Exported and pure so both branches can be tested directly. Inline, its
+ * coverage depended on where the repository happened to be checked out - the
+ * CI runner works under /home/runner, so the branch ran there and not on a
+ * developer's machine, which is a coverage figure that moves for reasons
+ * having nothing to do with the code.
+ *
+ * @param {string} installPath
+ * @returns {boolean}
+ */
+function isUnderHome(installPath) {
+    return installPath === '/home' || installPath.startsWith('/home/');
+}
+
+/**
+ * The ProtectHome value for an install path, plus any warnings to print.
+ *
+ * The warnings live here rather than at the call site so this whole decision -
+ * value and explanation - is testable without an installer run. Left inline,
+ * their coverage tracked the checkout path rather than the code.
+ *
+ * @param {string} installPath
+ * @returns {{ value: 'yes'|'no', warnings: string[] }}
+ */
+function resolveProtectHome(installPath) {
+    if (!isUnderHome(installPath)) {
+        return { value: 'yes', warnings: [] };
+    }
+    return {
+        value: 'no',
+        warnings: [
+            `WARNING: installing from ${installPath}, which is under /home.`,
+            '         ProtectHome must be disabled for the service to start from there.',
+            '         Consider moving the checkout to /opt/cgateweb and re-running this installer.'
+        ]
+    };
+}
+
 function installService() {
     console.log('--- cgateweb Systemd Service Installer ---');
 
@@ -126,13 +167,9 @@ function installService() {
         // cannot even chdir into its own WorkingDirectory (200/CHDIR). Relax it
         // rather than ship a unit that cannot start, and say so - /opt is the
         // better home for a system service.
-        const installedUnderHome = BASE_INSTALL_PATH === '/home' || BASE_INSTALL_PATH.startsWith('/home/');
-        if (installedUnderHome) {
-            console.warn(`WARNING: installing from ${BASE_INSTALL_PATH}, which is under /home.`);
-            console.warn('         ProtectHome must be disabled for the service to start from there.');
-            console.warn('         Consider moving the checkout to /opt/cgateweb and re-running this installer.');
-        }
-        serviceContent = serviceContent.replace(/%PROTECT_HOME%/g, installedUnderHome ? 'no' : 'yes');
+        const protectHome = resolveProtectHome(BASE_INSTALL_PATH);
+        protectHome.warnings.forEach(line => console.warn(line));
+        serviceContent = serviceContent.replace(/%PROTECT_HOME%/g, protectHome.value);
         
         // Backup existing service file if it exists
         if (fs.existsSync(TARGET_SERVICE_FILE)) {
@@ -199,5 +236,7 @@ if (require.main === module || (require.main && require.main.filename === __file
 module.exports = {
     installService,
     checkDependencies,
-    ensureServiceUser
+    ensureServiceUser,
+    isUnderHome,
+    resolveProtectHome
 };

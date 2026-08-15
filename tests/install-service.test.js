@@ -17,6 +17,48 @@ jest.mock('../src/systemUtils', () => ({
     checkRoot: (...args) => mockCheckRoot(...args)
 }));
 
+// isUnderHome decides whether the unit ships ProtectHome=yes. It is tested
+// directly rather than through installService because, inline, its coverage
+// depended on the checkout path: CI runs under /home/runner so the branch
+// executed there, and on a developer's machine it did not - the same commit
+// scored 77.14% on CI and 74.28% locally, against a 75% threshold.
+describe('isUnderHome', () => {
+    const { isUnderHome } = require('../install-service');
+
+    it.each([
+        ['/home/pi/cgateweb', true],
+        ['/home/doug/code/cgateweb', true],
+        ['/home', true],
+        ['/opt/cgateweb', false],
+        ['/usr/local/cgateweb', false],
+        ['/srv/cgateweb', false],
+        // Not a home directory despite the prefix - the check is path-segment
+        // aware, so a sibling directory named /homelab must not match.
+        ['/homelab/cgateweb', false],
+        ['/var/home/cgateweb', false]
+    ])('%s -> %s', (installPath, expected) => {
+        expect(isUnderHome(installPath)).toBe(expected);
+    });
+});
+
+describe('resolveProtectHome', () => {
+    const { resolveProtectHome } = require('../install-service');
+
+    it('keeps ProtectHome on and says nothing for a system location', () => {
+        expect(resolveProtectHome('/opt/cgateweb')).toEqual({ value: 'yes', warnings: [] });
+    });
+
+    it('disables it under /home and explains why, naming the path', () => {
+        const result = resolveProtectHome('/home/pi/cgateweb');
+        expect(result.value).toBe('no');
+        expect(result.warnings).toHaveLength(3);
+        expect(result.warnings[0]).toContain('/home/pi/cgateweb');
+        // The remedy has to be in the warning: a user who only sees "ProtectHome
+        // disabled" has no idea what to do about it.
+        expect(result.warnings.join(' ')).toContain('/opt/cgateweb');
+    });
+});
+
 describe('install-service.js', () => {
     let exitSpy;
     let installModule;
