@@ -25,6 +25,11 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
+    MQTT_TOPIC_SUFFIX_HVAC_DAMPER,
+    MQTT_TOPIC_SUFFIX_HVAC_BUSY,
+    MQTT_TOPIC_SUFFIX_HVAC_EXPANSION,
+    MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE,
+    MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
     MQTT_TOPIC_SUFFIX_VALUE,
@@ -304,6 +309,8 @@ class EventPublisher {
      *   state       → cbus/read/{net}/{app}/{group}/state  ('ON'|'OFF')
      *   action      → cbus/read/{net}/{app}/{group}/action + problem
      *               → cbus/read/{net}/{app}/{group}/error + error_description (if error code decoded)
+     *               → cbus/read/{net}/{app}/{group}/damper|busy|expansion (§25.6.6 bits, if decoded)
+     *               → cbus/read/{net}/{app}/{group}/plant_type + plant_type_description (§25.6.4)
      *   humidity       → cbus/read/{net}/{app}/{group}/current_humidity (if non-null)
      *   humidity_mode  → cbus/read/{net}/{app}/{group}/humidity_mode + humidity_setpoint
      *   humidity_action → cbus/read/{net}/{app}/{group}/humidity_action
@@ -404,6 +411,36 @@ class EventPublisher {
                 reading.action,
                 this.mqttOptions
             );
+            // The remaining §25.6.6 status bits. cooling/heating/fan are already
+            // folded into `action` above; these three carry information that
+            // hvac_action cannot express, so they get their own topics rather
+            // than being decoded and thrown away:
+            //   damper (bit 3) — Closed/Open, ON = open
+            //   busy   (bit 5) — the plant is mid-transition, so a mode or
+            //                    setpoint write may not take effect yet
+            //   expansion (bit 7) — protocol expansion marker with no defined
+            //                    meaning in issue 1.12; published for
+            //                    completeness, deliberately given no HA entity
+            //                    (nothing sensible to show a user).
+            this._publishBooleanIfPresent(reading.damper, `${base}/${MQTT_TOPIC_SUFFIX_HVAC_DAMPER}`);
+            this._publishBooleanIfPresent(reading.busy, `${base}/${MQTT_TOPIC_SUFFIX_HVAC_BUSY}`);
+            this._publishBooleanIfPresent(reading.expansion, `${base}/${MQTT_TOPIC_SUFFIX_HVAC_EXPANSION}`);
+            // Plant type (spec §25.6.4): numeric code + human description, the
+            // same pairing as the error code below. This is the plant actually
+            // reporting status, not the type requested by a mode broadcast —
+            // see decodeZonePlantStatus for why only this verb feeds the topic.
+            if (reading.type !== null && reading.type !== undefined) {
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE}`,
+                    String(reading.type),
+                    this.mqttOptions
+                );
+                this._publishIfNeeded(
+                    `${base}/${MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION}`,
+                    reading.typeDescription,
+                    this.mqttOptions
+                );
+            }
             // Plant error state (spec §25.6.5): numeric code + human description.
             if (reading.errorCode !== null && reading.errorCode !== undefined) {
                 this._publishIfNeeded(
@@ -532,6 +569,23 @@ class EventPublisher {
                 this.mqttOptions
             );
         }
+    }
+
+    /**
+     * Publish a decoded boolean flag as an ON/OFF binary state, or publish
+     * nothing at all when the decoder didn't produce the field.
+     *
+     * The absent case matters: the flag topics are retained, so emitting OFF for
+     * a field a reading never carried would assert "this is off" about something
+     * we simply don't know, and would then stick in the broker.
+     *
+     * @param {*} value - Decoded flag; only true/false publish.
+     * @param {string} topic - Full topic to publish to.
+     * @private
+     */
+    _publishBooleanIfPresent(value, topic) {
+        if (value === null || value === undefined) return;
+        this._publishIfNeeded(topic, value ? MQTT_STATE_ON : MQTT_STATE_OFF, this.mqttOptions);
     }
 
     /**

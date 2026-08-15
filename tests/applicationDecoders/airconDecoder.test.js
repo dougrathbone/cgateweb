@@ -463,6 +463,8 @@ describe('airconDecoder — zone_hvac_plant_status (running action)', () => {
             busy: false,
             error: false,
             expansion: false,
+            type: 3,
+            typeDescription: 'Heat pump - reverse cycle',
             errorCode: 0,
             errorDescription: 'No error',
             action: 'heating',
@@ -503,6 +505,53 @@ describe('airconDecoder — zone_hvac_plant_status (running action)', () => {
     });
 });
 
+describe('airconDecoder — zone_hvac_plant_status HVAC Type (spec §25.6.4)', () => {
+    // params[2] is <HVAC Type> per §25.8.4 — the plant type of the piece of
+    // plant actually reporting, which is why this verb (and not the mode
+    // broadcast, where the type is only a request) is the source of truth.
+
+    it('decodes the captured type 3 into code + description', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 3 14 0 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.type).toBe(3);
+        expect(r.typeDescription).toBe('Heat pump - reverse cycle');
+    });
+
+    it.each([
+        [0, 'None'],
+        [1, 'Furnace'],
+        [2, 'Evaporative'],
+        [3, 'Heat pump - reverse cycle'],
+        [4, 'Heat pump - heating only'],
+        [5, 'Heat pump - cooling only'],
+        [6, 'Furnace / evaporative cooling'],
+        [7, 'Furnace / heat pump - cooling only'],
+        [8, 'Hydronic'],
+        [9, 'Hydronic / heat pump - cooling only'],
+        [10, 'Hydronic / evaporative'],
+        [255, 'Any']
+    ])('describes HVAC type %i as "%s"', (code, description) => {
+        const line = `# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 ${code} 0 0 #sourceunit=201 OID=x`;
+        expect(decodeLine(line).typeDescription).toBe(description);
+    });
+
+    it.each([11, 128, 254])('marks the reserved code %i as reserved rather than inventing a plant', (code) => {
+        const line = `# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 ${code} 0 0 #sourceunit=201 OID=x`;
+        const r = decodeLine(line);
+        expect(r.type).toBe(code);
+        expect(r.typeDescription).toMatch(/^Reserved \(0x[0-9A-F]{2}\)$/);
+    });
+
+    it('keeps the status bits when the type field is not a number', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 notatype 14 0 #sourceunit=201 OID=x';
+        const r = decodeLine(line);
+        expect(r.type).toBeNull();
+        expect(r.typeDescription).toBeNull();
+        expect(r.action).toBe('heating');
+        expect(r.damper).toBe(true);
+    });
+});
+
 describe('airconDecoder — zone_hvac_plant_status error state (spec §25.8.4/§25.6.5/§25.6.6)', () => {
     // Spec-derived fixtures built on the captured line shape: the 5th argument
     // (after <HVAC Status>) is the <HVAC Error Code> per §25.8.4.
@@ -524,6 +573,8 @@ describe('airconDecoder — zone_hvac_plant_status error state (spec §25.8.4/§
             busy: false,
             error: true,
             expansion: false,
+            type: 3,
+            typeDescription: 'Heat pump - reverse cycle',
             errorCode: 4,
             errorDescription: 'Temperature sensor failure',
             action: 'heating', // action reflects running state; error is separate state

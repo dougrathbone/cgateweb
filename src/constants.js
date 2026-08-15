@@ -81,6 +81,11 @@ const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE = 'humidity_mode';     // off/humidif
 const MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION = 'humidity_action'; // humidifying/dehumidifying/fan/idle (spec §25.6.10)
 const MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT = 'fan_speed_pct';     // Fan speed % from the Raw Level (spec §25.12.8)
 const MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL = 'comfort_level';     // Evaporative comfort level (spec §25.12.7, default mapping)
+const MQTT_TOPIC_SUFFIX_HVAC_DAMPER = 'damper';                   // ON when the damper is open (spec §25.6.6 bit 3)
+const MQTT_TOPIC_SUFFIX_HVAC_BUSY = 'busy';                       // ON while the plant reports Busy (spec §25.6.6 bit 5)
+const MQTT_TOPIC_SUFFIX_HVAC_EXPANSION = 'expansion';             // ON when the status expansion bit is set (spec §25.6.6 bit 7)
+const MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE = 'plant_type';           // HVAC plant type code (spec §25.6.4)
+const MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION = 'plant_type_description'; // Human-readable HVAC plant type
 const MQTT_TOPIC_SUFFIX_SOURCE_UNIT = 'source_unit';              // C-Bus unit that last changed the group (#sourceunit)
 const MQTT_TOPIC_SUFFIX_ATTRIBUTES = 'attributes';                // JSON attributes (e.g. raw security zone state)
 // Measurement application (app 228/$E4) topic suffixes.
@@ -270,6 +275,11 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
     MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
+    MQTT_TOPIC_SUFFIX_HVAC_DAMPER,
+    MQTT_TOPIC_SUFFIX_HVAC_BUSY,
+    MQTT_TOPIC_SUFFIX_HVAC_EXPANSION,
+    MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE,
+    MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
     MQTT_TOPIC_SUFFIX_VALUE,

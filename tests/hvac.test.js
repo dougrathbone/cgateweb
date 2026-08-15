@@ -532,12 +532,38 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         const call = mockPublishFn.mock.calls.find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_250/config');
         expect(call).toBeDefined();
         expect(call[1]).toBe('');
-        // …and the problem binary_sensors are retracted too
-        for (const suffix of ['_problem', '_sensor_problem']) {
-            const sensorCall = mockPublishFn.mock.calls.find(c => c[0] === `homeassistant/binary_sensor/cgateweb_254_172_250${suffix}/config`);
+        // …and every companion entity is retracted too, or an excluded
+        // thermostat would leave orphans retained in the broker forever.
+        const retracted = [
+            ...['problem', 'sensor_problem', 'damper', 'busy']
+                .map(s => `homeassistant/binary_sensor/cgateweb_254_172_250_${s}/config`),
+            ...['plant_type', 'error', 'sensor_status', 'fan_speed', 'fan_speed_pct', 'comfort_level', 'humidity_mode', 'humidity_action']
+                .map(s => `homeassistant/sensor/cgateweb_254_172_250_${s}/config`)
+        ];
+        for (const topic of retracted) {
+            const sensorCall = mockPublishFn.mock.calls.find(c => c[0] === topic);
             expect(sensorCall).toBeDefined();
             expect(sensorCall[1]).toBe('');
         }
+    });
+
+    test('retracts exactly the set of entities it publishes', () => {
+        // The publish list and the retract list are derived from the same
+        // tables; this is the assertion that keeps them that way.
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const published = mockPublishFn.mock.calls
+            .filter(c => c[0].includes('cgateweb_254_172_201'))
+            .map(c => c[0])
+            .sort();
+
+        mockPublishFn.mockClear();
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '250'); // excluded
+        const cleared = mockPublishFn.mock.calls
+            .filter(c => c[1] === '')
+            .map(c => c[0].replace('_250', '_201'))
+            .sort();
+
+        expect(cleared).toEqual(published);
     });
 
     test('publishes plant and sensor problem binary_sensors attached to the thermostat device', () => {
@@ -558,6 +584,142 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(sensor.device_class).toBe('problem');
         expect(sensor.state_topic).toBe('cbus/read/254/172/201/sensor_problem');
         expect(sensor.device.identifiers).toEqual(['cgateweb_254_172_201']);
+    });
+
+    test('leaves the two original problem sensors out of the diagnostic category', () => {
+        // They shipped without entity_category. Adding one now would move them
+        // out of any dashboard a user has already built around them.
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        for (const suffix of ['problem', 'sensor_problem']) {
+            const call = mockPublishFn.mock.calls.find(c => c[0] === `homeassistant/binary_sensor/cgateweb_254_172_201_${suffix}/config`);
+            expect(JSON.parse(call[1]).entity_category).toBeUndefined();
+        }
+    });
+
+    // --- companion entities for the fields the decoder was already producing ---
+
+    const companionPayload = (calls, component, suffix) => {
+        const call = calls.find(c => c[0] === `homeassistant/${component}/cgateweb_254_172_201_${suffix}/config`);
+        expect(call).toBeDefined();
+        return JSON.parse(call[1]);
+    };
+
+    test('publishes damper and busy binary_sensors for the remaining §25.6.6 status bits', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+
+        const damper = companionPayload(mockPublishFn.mock.calls, 'binary_sensor', 'damper');
+        expect(damper.state_topic).toBe('cbus/read/254/172/201/damper');
+        expect(damper.payload_on).toBe('ON');
+        expect(damper.payload_off).toBe('OFF');
+        // §25.6.6 bit 3 is defined as Closed/Open, which is what 'opening' means.
+        expect(damper.device_class).toBe('opening');
+        expect(damper.entity_category).toBe('diagnostic');
+
+        const busy = companionPayload(mockPublishFn.mock.calls, 'binary_sensor', 'busy');
+        expect(busy.state_topic).toBe('cbus/read/254/172/201/busy');
+        expect(busy.entity_category).toBe('diagnostic');
+        // No device_class: 'running' would contradict hvac_action, and nothing
+        // else in HA means "busy". Omitting beats guessing.
+        expect(busy.device_class).toBeUndefined();
+    });
+
+    test('publishes no entity for the expansion bit, which has no defined meaning to show', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const topics = mockPublishFn.mock.calls.map(c => c[0]);
+        expect(topics.some(t => t.includes('expansion'))).toBe(false);
+    });
+
+    test.each([
+        ['plant_type', 'plant_type_description', 'Plant type'],
+        ['error', 'error_description', 'Plant error'],
+        ['sensor_status', 'sensor_status', 'Temperature sensor status'],
+        ['fan_speed', 'fan_speed', 'Fan speed setting'],
+        ['fan_speed_pct', 'fan_speed_pct', 'Fan output'],
+        ['comfort_level', 'comfort_level', 'Comfort level'],
+        ['humidity_mode', 'humidity_mode', 'Humidity mode'],
+        ['humidity_action', 'humidity_action', 'Humidity action']
+    ])('publishes a diagnostic sensor "%s" reading cbus/read/254/172/201/%s', (suffix, topicSuffix, name) => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+
+        const payload = companionPayload(mockPublishFn.mock.calls, 'sensor', suffix);
+        expect(payload.name).toBe(name);
+        expect(payload.unique_id).toBe(`cgateweb_254_172_201_${suffix}`);
+        expect(payload.state_topic).toBe(`cbus/read/254/172/201/${topicSuffix}`);
+        expect(payload.entity_category).toBe('diagnostic');
+        // All of these are readouts; none gets a command topic.
+        expect(payload.command_topic).toBeUndefined();
+    });
+
+    test('gives fan output a percent unit but no device_class', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const payload = companionPayload(mockPublishFn.mock.calls, 'sensor', 'fan_speed_pct');
+        expect(payload.unit_of_measurement).toBe('%');
+        expect(payload.state_class).toBe('measurement');
+        // Same reasoning as measurementDecoder's unit $1A: a percentage is not
+        // a humidity, and HA has no "percent of capacity" class.
+        expect(payload.device_class).toBeUndefined();
+    });
+
+    test('leaves the plant-dependent sensors unitless rather than inventing one', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        for (const suffix of ['plant_type', 'error', 'sensor_status', 'fan_speed', 'comfort_level', 'humidity_mode', 'humidity_action']) {
+            const payload = companionPayload(mockPublishFn.mock.calls, 'sensor', suffix);
+            expect(payload.unit_of_measurement).toBeUndefined();
+            expect(payload.device_class).toBeUndefined();
+        }
+    });
+
+    test('attaches every companion entity to the thermostat device, not a new one', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '202'); // has a custom label
+
+        const climate = JSON.parse(mockPublishFn.mock.calls
+            .find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_202/config')[1]);
+
+        const companions = mockPublishFn.mock.calls
+            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_202_/.test(c[0]))
+            .map(c => JSON.parse(c[1]));
+
+        expect(companions).toHaveLength(12); // 4 binary_sensors + 8 sensors
+        for (const payload of companions) {
+            expect(payload.device.identifiers).toEqual(climate.device.identifiers);
+            expect(payload.device.name).toBe('Master Bedroom AC');
+            expect(payload.device.model).toBe('C-Bus Air Conditioning Thermostat');
+        }
+    });
+
+    test('publishes the companion entities even when control is disabled', () => {
+        // They are readouts; none of them depends on cbus_aircon_control_enabled.
+        expect(haDiscovery.settings.cbus_aircon_control_enabled).toBeUndefined();
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const companions = mockPublishFn.mock.calls
+            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_201_/.test(c[0]));
+        expect(companions).toHaveLength(12);
+    });
+
+    test('does not change the climate entity while adding companions', () => {
+        // An additive change that quietly rewired the climate entity would be
+        // invisible in the tests above, so pin its whole shape here.
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const payload = JSON.parse(mockPublishFn.mock.calls
+            .find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_201/config')[1]);
+
+        expect(payload.action_topic).toBe('cbus/read/254/172/201/action');
+        expect(payload.current_temperature_topic).toBe('cbus/read/254/172/201/current_temperature');
+        expect(payload.temperature_state_topic).toBe('cbus/read/254/172/201/setpoint');
+        expect(payload.mode_state_topic).toBe('cbus/read/254/172/201/mode');
+        expect(payload.fan_mode_state_topic).toBe('cbus/read/254/172/201/fan_mode');
+        expect(payload.fan_modes).toEqual(['automatic', 'continuous']);
+        expect(payload.modes).toEqual(['off', 'heat', 'cool', 'auto', 'fan_only']);
+        expect(payload.current_humidity_topic).toBe('cbus/read/254/172/201/current_humidity');
+        expect(payload.target_humidity_state_topic).toBe('cbus/read/254/172/201/humidity_setpoint');
+        expect(payload.min_temp).toBe(10);
+        expect(payload.max_temp).toBe(32);
+        expect(payload.temp_step).toBe(0.5);
+        // The new readouts stay off the climate entity entirely.
+        expect(payload.entity_category).toBeUndefined();
+        for (const key of ['damper', 'busy', 'plant_type', 'fan_speed', 'comfort_level']) {
+            expect(JSON.stringify(payload)).not.toContain(`/${key}`);
+        }
     });
 
     test('bounds the climate entity to the C-Bus thermostat range (10–32°C)', () => {

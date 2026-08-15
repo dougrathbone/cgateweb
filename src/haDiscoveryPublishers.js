@@ -22,6 +22,16 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
     MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
+    MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS,
+    MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED,
+    MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
+    MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL,
+    MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE,
+    MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION,
+    MQTT_TOPIC_SUFFIX_HVAC_DAMPER,
+    MQTT_TOPIC_SUFFIX_HVAC_BUSY,
+    MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_VALUE,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
@@ -51,6 +61,129 @@ const {
     entityIdFields
 } = require('./constants');
 const { PANEL_CONDITIONS } = require('./securityPanelConditions');
+
+const NATIVE_AIRCON_MODEL = 'C-Bus Air Conditioning Thermostat';
+
+/**
+ * Companion binary_sensors published on the native aircon thermostat's device,
+ * next to its climate entity. Every one of these is fed by a topic the aircon
+ * decoder already publishes; without an entity here a user has to hand-write
+ * MQTT YAML to see any of it.
+ *
+ * `entityCategory` is deliberately per-entry rather than blanket 'diagnostic':
+ * the two problem sensors shipped without it and moving them into HA's
+ * diagnostic section now would pull them out of dashboards people have already
+ * built. New entities start where they belong.
+ */
+const NATIVE_AIRCON_BINARY_SENSORS = [
+    {
+        suffix: 'problem',
+        name: 'Plant problem',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_PROBLEM,
+        deviceClass: 'problem'
+    },
+    {
+        suffix: 'sensor_problem',
+        name: 'Temperature sensor problem',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM,
+        deviceClass: 'problem'
+    },
+    {
+        // Spec §25.6.6 bit 3 is literally "Damper State: Closed / Open", which
+        // is exactly what HA's generic 'opening' class renders — so the class is
+        // read off the spec, not guessed at from the entity's name.
+        suffix: 'damper',
+        name: 'Damper',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_DAMPER,
+        deviceClass: 'opening',
+        entityCategory: 'diagnostic'
+    },
+    {
+        // No device_class. The closest candidate is 'running', but §25.6.6 bit 5
+        // is "Busy", not "running" — the plant reports Busy while it settles,
+        // and what is actually running is already on hvac_action. Labelling it
+        // 'running' would contradict the climate entity whenever the two differ.
+        suffix: 'busy',
+        name: 'Plant busy',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_BUSY,
+        entityCategory: 'diagnostic'
+    }
+];
+
+/**
+ * Companion diagnostic sensors on the same thermostat device. All are readouts
+ * rather than controls, so all are entity_category 'diagnostic' and stay off
+ * auto-generated dashboards.
+ *
+ * Several are plant-dependent (fan speed needs an Aux Level, comfort level
+ * needs evaporative plant, the humidity pair needs humidity plant). Those show
+ * as unknown on installs whose plant never broadcasts them — which is the same
+ * bargain the security panel's trouble sensors already make, and the honest one:
+ * discovery happens the first time a thermostat is seen, long before we know
+ * which optional verbs it will ever send.
+ */
+const NATIVE_AIRCON_SENSORS = [
+    {
+        suffix: 'plant_type',
+        name: 'Plant type',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION
+    },
+    {
+        // The description, not the raw code: 'Filter replacement required' is
+        // what makes this worth an entity. The numeric code stays on its own
+        // topic for automations that want to match on it.
+        suffix: 'error',
+        name: 'Plant error',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_ERROR_DESCRIPTION
+    },
+    {
+        // Severity behind the sensor_problem binary_sensor (§25.6.12: 0 ok,
+        // 1 relaxed accuracy, 2 out of calibration, 3 total failure) — "needs
+        // recalibrating" and "dead" are different service calls.
+        suffix: 'sensor_status',
+        name: 'Temperature sensor status',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_SENSOR_STATUS
+    },
+    {
+        // Raw 0-63 Aux Level fan speed (§25.6.11), 0 = plant default. No unit:
+        // the numbering is plant-dependent and the plant's own speed table is
+        // Toolkit configuration that never reaches the bus.
+        suffix: 'fan_speed',
+        name: 'Fan speed setting',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED
+    },
+    {
+        // Fan output as a fraction of plant capacity (§25.12.8). '%' with no
+        // device_class, for the reason measurementDecoder gives for unit $1A:
+        // a percentage is not necessarily a humidity, and HA has no percentage
+        // class that means "of capacity".
+        suffix: 'fan_speed_pct',
+        name: 'Fan output',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_FAN_SPEED_PCT,
+        unit: '%',
+        stateClass: 'measurement'
+    },
+    {
+        // What an evaporative plant's wall panel actually displays (§25.12.7);
+        // its "temperature" is meaningless in that mode.
+        suffix: 'comfort_level',
+        name: 'Comfort level',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_COMFORT_LEVEL
+    },
+    {
+        suffix: 'humidity_mode',
+        name: 'Humidity mode',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_MODE
+    },
+    {
+        // The humidity counterpart of hvac_action. The climate entity carries
+        // current and target humidity but has no humidity equivalent of
+        // action_topic, so this is the only way to surface it.
+        suffix: 'humidity_action',
+        name: 'Humidity action',
+        topicSuffix: MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_ACTION
+    }
+];
 
 class _HaDiscoveryPublishers {
     // Host-provided instance state. This class is never instantiated: its
@@ -1099,9 +1232,9 @@ class _HaDiscoveryPublishers {
             key,
             seen: this._nativeAirconSeen,
             describe: `native HVAC unit ${key}`,
-            // Clear any entities published on an earlier run (climate + problem
-            // sensors) so they disappear from HA once the user excludes it (e.g.
-            // a PAC/controller mirroring the real thermostats).
+            // Clear any entities published on an earlier run (climate + every
+            // companion entity) so they disappear from HA once the user excludes
+            // it (e.g. a PAC/controller mirroring the real thermostats).
             retract: () => {
                 for (const topic of this._nativeAirconDiscoveryTopics(network, appId, sourceUnit)) {
                     this._retractEventDrivenConfig(topic);
@@ -1154,8 +1287,9 @@ class _HaDiscoveryPublishers {
             max_humidity: 100,
             // Fan mode from the Aux Level (spec §25.6.11 bit 6). HA accepts an
             // arbitrary fan_modes list; the C-Bus values are automatic/continuous.
-            // (Raw 0-63 fan speed has no HA climate equivalent — it stays on the
-            // fan_speed MQTT topic.)
+            // (Raw 0-63 fan speed still has no HA climate equivalent, so it stays
+            // off this entity — it gets its own diagnostic sensor instead, see
+            // NATIVE_AIRCON_SENSORS.)
             fan_mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`,
             fan_modes: ['automatic', 'continuous'],
 
@@ -1178,7 +1312,7 @@ class _HaDiscoveryPublishers {
             device: buildDeviceBlock({
                 identifiers: [uniqueId],
                 name: finalLabel,
-                model: 'C-Bus Air Conditioning Thermostat',
+                model: NATIVE_AIRCON_MODEL,
                 area
             }),
             origin: buildOriginBlock()
@@ -1187,13 +1321,17 @@ class _HaDiscoveryPublishers {
         this._publishEventDrivenConfig(discoveryTopic, payload);
         this.logger.info(`Native HVAC climate entity published: ${labelKey} (${finalLabel})`);
 
-        this._createNativeAirconProblemSensors(networkId, appId, sourceUnit, uniqueId, finalLabel, area, readBase);
+        this._createNativeAirconCompanionEntities(uniqueId, finalLabel, area, readBase);
     }
 
     /**
      * All discovery config topics belonging to one native AC thermostat
-     * (climate + problem binary_sensors) — used by the exclude path to retract
+     * (climate + every companion entity) — used by the exclude path to retract
      * every entity for the unit.
+     *
+     * Derived from the same two tables the creator publishes from, so a new
+     * companion entity cannot be added and then left behind, still retained in
+     * the broker, when its thermostat is excluded.
      * @private
      */
     _nativeAirconDiscoveryTopics(network, appId, sourceUnit) {
@@ -1201,43 +1339,65 @@ class _HaDiscoveryPublishers {
         const prefix = this.settings.ha_discovery_prefix;
         return [
             `${prefix}/${HA_COMPONENT_CLIMATE}/${base}/${HA_DISCOVERY_SUFFIX}`,
-            `${prefix}/${HA_COMPONENT_BINARY_SENSOR}/${base}_problem/${HA_DISCOVERY_SUFFIX}`,
-            `${prefix}/${HA_COMPONENT_BINARY_SENSOR}/${base}_sensor_problem/${HA_DISCOVERY_SUFFIX}`
+            ...NATIVE_AIRCON_BINARY_SENSORS.map(def =>
+                `${prefix}/${HA_COMPONENT_BINARY_SENSOR}/${base}_${def.suffix}/${HA_DISCOVERY_SUFFIX}`),
+            ...NATIVE_AIRCON_SENSORS.map(def =>
+                `${prefix}/${HA_COMPONENT_SENSOR}/${base}_${def.suffix}/${HA_DISCOVERY_SUFFIX}`)
         ];
     }
 
     /**
-     * Publish the problem binary_sensors for one native AC thermostat: plant
-     * error (spec §25.6.6 bit 6 / §25.6.5 code) and temperature-sensor fault
-     * (§25.6.12). Both attach to the thermostat's device (same identifiers) and
-     * are read-only — published regardless of cbus_aircon_control_enabled.
+     * Publish the companion entities for one native AC thermostat: the plant
+     * and sensor problem binary_sensors, the remaining §25.6.6 status bits, and
+     * the diagnostic sensors for plant type, error detail, sensor status, fan
+     * speed, comfort level and humidity. All attach to the thermostat's own
+     * device (same identifiers as its climate entity, so HA groups them under
+     * the one thermostat) and all are read-only — published regardless of
+     * cbus_aircon_control_enabled, because none of them can be written.
+     *
+     * See NATIVE_AIRCON_BINARY_SENSORS / NATIVE_AIRCON_SENSORS for what each
+     * one is and why it carries the device_class and category it does.
      * @private
      */
-    _createNativeAirconProblemSensors(networkId, appId, sourceUnit, uniqueId, finalLabel, area, readBase) {
-        const definitions = [
-            { suffix: 'problem', name: 'Plant problem', stateTopic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_PROBLEM}` },
-            { suffix: 'sensor_problem', name: 'Temperature sensor problem', stateTopic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SENSOR_PROBLEM}` }
-        ];
-        for (const def of definitions) {
+    _createNativeAirconCompanionEntities(uniqueId, finalLabel, area, readBase) {
+        const device = buildDeviceBlock({
+            identifiers: [uniqueId],
+            name: finalLabel,
+            model: NATIVE_AIRCON_MODEL,
+            area
+        });
+
+        for (const def of NATIVE_AIRCON_BINARY_SENSORS) {
             const sensorUniqueId = `${uniqueId}_${def.suffix}`;
             const topic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            const payload = {
+            this._publishEventDrivenConfig(topic, {
                 name: def.name,
                 unique_id: sensorUniqueId,
-                device_class: 'problem',
-                state_topic: def.stateTopic,
+                ...(def.deviceClass && { device_class: def.deviceClass }),
+                ...(def.entityCategory && { entity_category: def.entityCategory }),
+                state_topic: `${readBase}/${def.topicSuffix}`,
                 payload_on: MQTT_STATE_ON,
                 payload_off: MQTT_STATE_OFF,
                 qos: 0,
-                device: buildDeviceBlock({
-                    identifiers: [uniqueId],
-                    name: finalLabel,
-                    model: 'C-Bus Air Conditioning Thermostat',
-                    area
-                }),
+                device,
                 origin: buildOriginBlock()
-            };
-            this._publishEventDrivenConfig(topic, payload);
+            });
+        }
+
+        for (const def of NATIVE_AIRCON_SENSORS) {
+            const sensorUniqueId = `${uniqueId}_${def.suffix}`;
+            const topic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`;
+            this._publishEventDrivenConfig(topic, {
+                name: def.name,
+                unique_id: sensorUniqueId,
+                entity_category: 'diagnostic',
+                state_topic: `${readBase}/${def.topicSuffix}`,
+                ...(def.unit && { unit_of_measurement: def.unit }),
+                ...(def.stateClass && { state_class: def.stateClass }),
+                qos: 0,
+                device,
+                origin: buildOriginBlock()
+            });
         }
     }
 

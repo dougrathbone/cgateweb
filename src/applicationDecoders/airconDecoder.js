@@ -11,7 +11,8 @@ const { normalizeAppEventLine } = require('./appEventLine');
  *   - set_ward_on           → { kind:'state', …, on:true }
  *   - set_ward_off          → { kind:'state', …, on:false }
  *   - zone_hvac_plant_status → { kind:'action', …, cooling, heating, fan, damper, busy,
- *                               error, expansion, errorCode, errorDescription, action }
+ *                               error, expansion, type, typeDescription, errorCode,
+ *                               errorDescription, action }
  *   - zone_humidity         → { kind:'humidity', …, humidity, unit:'%', sensorStatus }
  *   - set_zone_humidity_mode → { kind:'humidity_mode', …, mode, modeRaw, humiditySetpoint }
  *   - zone_humidity_plant_status → { kind:'humidity_action', …, humidifying,
@@ -69,6 +70,42 @@ const HVAC_ERROR_DESCRIPTION_BY_CODE = {
  */
 function describeHvacError(code) {
     return describePlantError(HVAC_ERROR_DESCRIPTION_BY_CODE, code);
+}
+
+/**
+ * HVAC plant type code → description (spec §25.6.4 table). $00–$0A are the
+ * defined plant types, $0B–$FE are reserved and $FF means "Any" (the services
+ * pick a suitable plant themselves). Verified against the captured units, which
+ * report 1 (furnace), 3 (heat pump reverse cycle) and 255 (any).
+ */
+const HVAC_TYPE_DESCRIPTION_BY_CODE = {
+    0x00: 'None',
+    0x01: 'Furnace',
+    0x02: 'Evaporative',
+    0x03: 'Heat pump - reverse cycle',
+    0x04: 'Heat pump - heating only',
+    0x05: 'Heat pump - cooling only',
+    0x06: 'Furnace / evaporative cooling',
+    0x07: 'Furnace / heat pump - cooling only',
+    0x08: 'Hydronic',
+    0x09: 'Hydronic / heat pump - cooling only',
+    0x0A: 'Hydronic / evaporative',
+    0xFF: 'Any'
+};
+
+/**
+ * Describe an HVAC plant type code per spec §25.6.4. Unlike the error tables
+ * there is no developer-specific range here — everything between the defined
+ * types and "Any" is explicitly "Reserved, not to be used".
+ *
+ * @param {number} code - HVAC Type (0–255).
+ * @returns {string}
+ */
+function describeHvacType(code) {
+    if (Object.prototype.hasOwnProperty.call(HVAC_TYPE_DESCRIPTION_BY_CODE, code)) {
+        return HVAC_TYPE_DESCRIPTION_BY_CODE[code];
+    }
+    return `Reserved (0x${code.toString(16).toUpperCase().padStart(2, '0')})`;
 }
 
 /**
@@ -347,6 +384,14 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
  * errorDescription. `action` keeps reflecting the running state only — a plant
  * fault does not repurpose it.
  *
+ * The HVAC Type (params[2], §25.6.4) is decoded into type + typeDescription.
+ * This is the authoritative plant type: §25.8.4 defines it as "the plant type of
+ * the piece of plant reporting its status", whereas the same field on Set Zone
+ * HVAC Mode is only the *requested* type and is routinely $FF ("Any", let the
+ * services choose). That is why the published plant type comes from here and not
+ * from the mode reading — sourcing it from both would flap between "Any" and the
+ * real plant on every mode broadcast.
+ *
  * Derives `action` for Home Assistant's climate hvac_action:
  *   cooling → 'cooling', else heating → 'heating', else fan → 'fan', else 'idle'.
  *
@@ -369,6 +414,13 @@ function decodeZonePlantStatus({ network, application, params, sourceUnit, verb 
     const error = (bits & 64) !== 0;
     const expansion = (bits & 128) !== 0;
 
+    // <HVAC Type> (spec §25.6.4) — the argument before <HVAC Status>. Required
+    // by the arity check above, but tolerated as null if it isn't a number so a
+    // malformed type never costs us the status bits.
+    const typeRaw = parseInt(params[2], 10);
+    const type = Number.isInteger(typeRaw) ? typeRaw : null;
+    const typeDescription = type !== null ? describeHvacType(type) : null;
+
     // <HVAC Error Code> (spec §25.6.5) — the argument after <HVAC Status>.
     // Optional in practice: null when the field is absent or unparseable.
     const errorCodeRaw = params.length > 4 ? parseInt(params[4], 10) : NaN;
@@ -377,7 +429,7 @@ function decodeZonePlantStatus({ network, application, params, sourceUnit, verb 
 
     const action = cooling ? 'cooling' : heating ? 'heating' : fan ? 'fan' : 'idle';
 
-    return { kind: 'action', network, application, zoneGroup, zones, sourceUnit, cooling, heating, fan, damper, busy, error, expansion, errorCode, errorDescription, action, verb };
+    return { kind: 'action', network, application, zoneGroup, zones, sourceUnit, cooling, heating, fan, damper, busy, error, expansion, type, typeDescription, errorCode, errorDescription, action, verb };
 }
 
 /**

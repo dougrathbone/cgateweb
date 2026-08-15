@@ -1668,3 +1668,139 @@ describe('EventPublisher', () => {
         });
     });
 });
+
+// ============================================================
+// EventPublisher — native Air Conditioning (172) readings, driven by the decoder
+// ============================================================
+//
+// These tests feed real C-Gate event lines through airconDecoder and hand the
+// resulting reading straight to publishReading, rather than hand-building a
+// reading object. A hand-built object can agree with the publisher while the
+// decoder has drifted away from both; a decoded one cannot.
+
+describe('EventPublisher — native aircon plant status (decoder-driven)', () => {
+    const { decodeLine } = require('../src/applicationDecoders/airconDecoder');
+
+    let publisher;
+    let publishFn;
+    let mqttOptions;
+
+    // Real capture shape (§25.8.4): aircon zone_hvac_plant_status //PROJECT/net/app
+    //   <Zone Group> <Zone List> <HVAC Type> <HVAC Status> <HVAC Error Code>
+    const plantStatusLine = (hvacType, statusBits, errorCode) =>
+        `# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0,1,2,3,4 ${hvacType} ${statusBits} ${errorCode} #sourceunit=201 OID=x`;
+
+    const publishPlantStatus = (hvacType, statusBits, errorCode) => {
+        const reading = decodeLine(plantStatusLine(hvacType, statusBits, errorCode));
+        expect(reading).not.toBeNull(); // guard: a broken fixture must not pass silently
+        publisher.publishReading(reading.network, reading.application, '201', reading);
+        return reading;
+    };
+
+    const publishedPayload = (topic) => {
+        const call = publishFn.mock.calls.find(c => c[0] === topic);
+        return call ? call[1] : undefined;
+    };
+
+    beforeEach(() => {
+        publishFn = jest.fn();
+        mqttOptions = { retain: true, qos: 0 };
+        publisher = new EventPublisher({
+            settings: { logging: false },
+            publishFn,
+            mqttOptions,
+            logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn(), isLevelEnabled: () => false }
+        });
+    });
+
+    it('publishes damper, busy and expansion from the §25.6.6 status bits', () => {
+        // 46 = 32(busy) + 8(damper) + 4(fan) + 2(heating); expansion clear.
+        publishPlantStatus(3, 46, 0);
+
+        expect(publishedPayload('cbus/read/254/172/201/damper')).toBe('ON');
+        expect(publishedPayload('cbus/read/254/172/201/busy')).toBe('ON');
+        expect(publishedPayload('cbus/read/254/172/201/expansion')).toBe('OFF');
+    });
+
+    it('publishes OFF for the flags that are clear, so a closed damper is not left as stale retained ON', () => {
+        publishPlantStatus(3, 2, 0); // heating only
+
+        expect(publishedPayload('cbus/read/254/172/201/damper')).toBe('OFF');
+        expect(publishedPayload('cbus/read/254/172/201/busy')).toBe('OFF');
+        expect(publishedPayload('cbus/read/254/172/201/expansion')).toBe('OFF');
+    });
+
+    it('publishes the expansion bit when set (§25.6.6 bit 7)', () => {
+        publishPlantStatus(3, 128, 0);
+
+        expect(publishedPayload('cbus/read/254/172/201/expansion')).toBe('ON');
+    });
+
+    it('publishes the plant type as both a code and a description (§25.6.4)', () => {
+        publishPlantStatus(3, 14, 0);
+
+        expect(publishedPayload('cbus/read/254/172/201/plant_type')).toBe('3');
+        expect(publishedPayload('cbus/read/254/172/201/plant_type_description')).toBe('Heat pump - reverse cycle');
+    });
+
+    it('publishes the "Any" plant type verbatim rather than suppressing it', () => {
+        publishPlantStatus(255, 14, 0);
+
+        expect(publishedPayload('cbus/read/254/172/201/plant_type')).toBe('255');
+        expect(publishedPayload('cbus/read/254/172/201/plant_type_description')).toBe('Any');
+    });
+
+    it('publishes nothing for plant type when the type field is unparseable', () => {
+        const line = '# aircon zone_hvac_plant_status //THEGAFF/254/172 1 0 notatype 14 0 #sourceunit=201 OID=x';
+        const reading = decodeLine(line);
+        publisher.publishReading(reading.network, reading.application, '201', reading);
+
+        expect(publishedPayload('cbus/read/254/172/201/plant_type')).toBeUndefined();
+        expect(publishedPayload('cbus/read/254/172/201/plant_type_description')).toBeUndefined();
+        // …but the flags it could decode still went out.
+        expect(publishedPayload('cbus/read/254/172/201/damper')).toBe('ON');
+    });
+
+    it('publishes no flag topics for a reading kind that carries no status bits', () => {
+        // A mode reading has no §25.6.6 bits at all, so publishing ON/OFF for
+        // them would assert something we were never told — and it would stick,
+        // because the flag topics are retained.
+        const reading = decodeLine('# aircon set_zone_hvac_mode //THEGAFF/254/172 1 0,1,2,3,4 1 0 0 0 0 3 5632 0 #sourceunit=201 OID=x');
+        expect(reading.kind).toBe('mode');
+        publisher.publishReading(reading.network, reading.application, '201', reading);
+
+        for (const suffix of ['damper', 'busy', 'expansion', 'plant_type', 'plant_type_description']) {
+            expect(publishedPayload(`cbus/read/254/172/201/${suffix}`)).toBeUndefined();
+        }
+    });
+
+    it('leaves hvac_action reporting exactly the running state, unaffected by the new fields', () => {
+        // Damper open + busy + a plant fault must not change what the climate
+        // entity shows as its running action.
+        publishPlantStatus(3, 110, 4); // 64(error)+32(busy)+8(damper)+4(fan)+2(heating)
+
+        expect(publishedPayload('cbus/read/254/172/201/action')).toBe('heating');
+        expect(publishedPayload('cbus/read/254/172/201/problem')).toBe('ON');
+        expect(publishedPayload('cbus/read/254/172/201/error')).toBe('4');
+        expect(publishedPayload('cbus/read/254/172/201/error_description')).toBe('Temperature sensor failure');
+    });
+
+    it('still derives idle with the damper open, exactly as before', () => {
+        publishPlantStatus(3, 8, 0); // damper only
+
+        expect(publishedPayload('cbus/read/254/172/201/action')).toBe('idle');
+        expect(publishedPayload('cbus/read/254/172/201/damper')).toBe('ON');
+    });
+
+    it('publishes every new flag with the configured mqtt options', () => {
+        publishPlantStatus(3, 46, 0);
+
+        for (const suffix of ['damper', 'busy', 'expansion', 'plant_type', 'plant_type_description']) {
+            expect(publishFn).toHaveBeenCalledWith(
+                `cbus/read/254/172/201/${suffix}`,
+                expect.any(String),
+                mqttOptions
+            );
+        }
+    });
+});
