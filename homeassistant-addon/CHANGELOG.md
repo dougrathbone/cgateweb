@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.26.0] - 2026-08-15
+
+### Added
+
+- **You can now see which zones were bypassed when the alarm armed.** Isolated zones show an `isolated` attribute on the zone sensor, so an alarm armed past an open door no longer hides which door. (#42)
+- **cgateweb can be used as a library** by other C-Bus applications, via a `cgate-client` entry point that exposes the C-Gate connection, parsers and decoders without loading the bridge.
+
+### Fixed
+
+- **`systemctl reload` now applies changes to your settings file.** It reported success and quietly kept the old settings; only labels were being reloaded.
+- **The service can now start from where the install guide tells you to put it.** A checkout in your home directory could not start at all, and the unit ran whichever `node` was at `/usr/bin/node` rather than the one it checked the version of — so a Node installed with nvm or fnm passed setup and then failed to start.
+- **Security and measurement commands with an impossible C-Bus address are now rejected** instead of being sent to C-Gate.
+- **Two real settings no longer warn that they are typos.** `getall_networks` and the security device-class keyword override both work and both were being reported as misspellings.
+- **`npm run validate-settings` now checks your configuration** rather than only checking the file parses, and `npm run setup` no longer overwrites a working settings file.
+
+### Changed
+
+- **A complete settings reference at `docs/SETTINGS.md`**, covering all 116 settings with both the standalone and add-on names, since the two differ and a few change units.
+- **`settings.js.example` matches the code again.** It listed five settings that do not exist and gave the wrong C-Gate event port — commands worked, state never arrived.
+
 ## [1.25.0] - 2026-08-15
 
 ### Added
