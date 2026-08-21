@@ -250,6 +250,63 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
+    describe('_cgateweb_installed_version', () => {
+        function withBuildInfo(contents, callback) {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-build-info-'));
+            try {
+                fs.writeFileSync(path.join(dir, 'BuildInfo.txt'), contents);
+                callback(dir);
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        }
+
+        test('reads the version and build from C-Gate metadata', () => {
+            withBuildInfo([
+                'Schneider Electric C-Gate',
+                'Version: 3.3.2',
+                'Build:\t1855',
+                'Date:\t20240524-0410'
+            ].join('\r\n'), (dir) => {
+                const out = runHelperWithArgs('_cgateweb_installed_version', [dir]);
+                expect(out).toBe('3.3.2_1855');
+            });
+        });
+
+        test('returns the version when older metadata has no build field', () => {
+            withBuildInfo('Version: 2.11.12\n', (dir) => {
+                const out = runHelperWithArgs('_cgateweb_installed_version', [dir]);
+                expect(out).toBe('2.11.12');
+            });
+        });
+
+        test('fails when BuildInfo.txt has no version', () => {
+            withBuildInfo('Build: 2287\n', (dir) => {
+                expect(() => runHelperWithArgs('_cgateweb_installed_version', [dir]))
+                    .toThrow();
+            });
+        });
+
+        test('repairs an unknown diagnostics marker from installed metadata', () => {
+            withBuildInfo('Version: 3.7.1\nBuild: 2287\n', (dir) => {
+                const marker = path.join(dir, '.version');
+                fs.writeFileSync(marker, 'unknown\n');
+                runHelperWithArgs('_cgateweb_record_installed_version', [dir]);
+                expect(fs.readFileSync(marker, 'utf8')).toBe('3.7.1_2287\n');
+            });
+        });
+
+        test('uses the archive version only when build metadata is unavailable', () => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-build-info-'));
+            try {
+                runHelperWithArgs('_cgateweb_record_installed_version', [dir, '3.3.2_1855']);
+                expect(fs.readFileSync(path.join(dir, '.version'), 'utf8')).toBe('3.3.2_1855\n');
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+    });
+
     describe('_cgateweb_force_reinstall_requested', () => {
         test('returns 0 when cgate_force_reinstall is unset (default off)', () => {
             const out = callHelper('_cgateweb_force_reinstall_requested', {});

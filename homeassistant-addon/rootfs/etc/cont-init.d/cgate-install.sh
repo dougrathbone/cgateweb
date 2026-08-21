@@ -84,6 +84,69 @@ _cgateweb_custom_url_without_sha256() {
     if [[ "${url}" != "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" && -z "${sha}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# Read C-Gate's own build metadata instead of inferring its version from the
+# archive name. Schneider packages BuildInfo.txt beside cgate.jar, and archive
+# names are not stable across download and upload sources.
+_cgateweb_installed_version() {
+    local cgate_dir="$1"
+    local build_info="${cgate_dir}/BuildInfo.txt"
+    local version build
+
+    if [[ ! -r "${build_info}" ]]; then
+        return 1
+    fi
+
+    version=$(awk -F: '
+        tolower($1) ~ /^[[:space:]]*version[[:space:]]*$/ {
+            value = $2
+            sub(/\r$/, "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            print value
+            exit
+        }
+    ' "${build_info}")
+    build=$(awk -F: '
+        tolower($1) ~ /^[[:space:]]*build[[:space:]]*$/ {
+            value = $2
+            sub(/\r$/, "", value)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+            print value
+            exit
+        }
+    ' "${build_info}")
+
+    if [[ -z "${version}" ]]; then
+        return 1
+    fi
+    if [[ -n "${build}" ]]; then
+        printf '%s_%s' "${version}" "${build}"
+    else
+        printf '%s' "${version}"
+    fi
+}
+
+# Keep the marker consumed by bridge diagnostics in sync with BuildInfo.txt.
+# The optional fallback preserves support for packages that omit that file but
+# whose nested archive still carries a version in its filename.
+_cgateweb_record_installed_version() {
+    local cgate_dir="$1"
+    local fallback_version="${2:-}"
+    local detected_version current_version
+
+    detected_version=$(_cgateweb_installed_version "${cgate_dir}" || true)
+    if [[ -z "${detected_version}" ]]; then
+        detected_version="${fallback_version}"
+    fi
+    current_version=$(cat "${cgate_dir}/.version" 2>/dev/null || true)
+
+    if [[ -n "${detected_version}" && "${current_version}" != "${detected_version}" ]]; then
+        printf '%s\n' "${detected_version}" > "${cgate_dir}/.version"
+        bashio::log.info "Recorded C-Gate version: ${detected_version}"
+    elif [[ -z "${current_version}" ]]; then
+        printf 'unknown\n' > "${cgate_dir}/.version"
+    fi
+}
+
 # Standard "what to do now" block for every C-Gate download failure. The most
 # common external cause is Clipsal/Schneider changing the download URL or
 # repackaging the zip (they did on 2026-07-24, breaking every fresh install
@@ -1047,15 +1110,11 @@ fi
 # Restrict permissions on installed files
 chmod -R go-w "${CGATE_DIR}/" 2>/dev/null || true
 
-# Record installed version for diagnostics reporting
-if [[ -n "${CGATE_VERSION}" ]]; then
-    echo "${CGATE_VERSION}" > "${CGATE_DIR}/.version"
-    bashio::log.info "Recorded C-Gate version: ${CGATE_VERSION}"
-else
-    echo "unknown" > "${CGATE_DIR}/.version"
-fi
-
 fi  # end NEED_INSTALL
+
+# Refresh the diagnostic version on every boot so existing managed installs
+# whose marker says "unknown" are repaired without forcing a reinstall.
+_cgateweb_record_installed_version "${CGATE_DIR}" "${CGATE_VERSION:-}"
 
 # Configure access.txt. Runs on every boot, not only when the file is absent,
 # so the grammar fix and any configured external clients reach existing installs.
