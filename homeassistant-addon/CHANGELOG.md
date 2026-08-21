@@ -9,13 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
-## [Unreleased]
+## [1.27.0] - 2026-08-21
 
 ### Added
 
 - **Your alarm now tells Home Assistant when an entry delay starts** — someone opened a delay zone while the alarm was armed and the siren follows unless it is disarmed in time. The panel reports this as pending, which is the state worth putting automations on. (#42)
 - **Air conditioning thermostats now show what the plant is doing.** Damper position, plant busy, plant type, fan speed and output, comfort level and humidity state all appear as diagnostic entities. Some are only filled in by plant that reports them, so an empty one means your hardware does not broadcast that field.
 - **The C-Bus network clock can be published as a sensor.** Turn on the new clock option to see the date and time the network is broadcasting, which is how you spot a drifted clock before it moves your schedules. Off by default, and cgateweb never sets the clock.
+
+### Fixed
+
+- **Managed C-Gate installations now show their installed version and build in diagnostics.** Existing installations showing unknown are repaired on their next start. (#66)
 
 ### Changed
 
