@@ -85,6 +85,23 @@ function main() {
         `config.yaml OK: ${Object.keys(schema).length} schema fields, ` +
         `${Object.keys(options).length} option defaults, upgrade-safety rules satisfied.`
     );
+
+    // Supervisor shows a generic puzzle piece without these, and the
+    // distribution workflow copies them on every tag — a missing file fails
+    // the release after quality has already passed.
+    const branding = ['icon.png', 'logo.png'];
+    for (const name of branding) {
+        const p = path.join(ADDON_DIR, name);
+        if (!fs.existsSync(p)) {
+            errors.push(`missing ${name} (Home Assistant add-on store branding)`);
+        }
+    }
+    if (errors.length > 0) {
+        console.error('add-on branding validation FAILED:\n');
+        for (const e of errors) console.error(`  - ${e}`);
+        process.exit(1);
+    }
+    console.log('add-on branding OK: icon.png and logo.png are present.');
 }
 
 if (require.main === module) {
