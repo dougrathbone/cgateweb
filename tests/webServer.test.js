@@ -339,6 +339,7 @@ describe('WebServer', () => {
             expect(res.status).toBe(200);
             expect(res.body.test).toBe(true);
             expect(res.body.labels.count).toBe(2);
+            expect(res.body.labels).not.toHaveProperty('filePath');
         });
     });
 
