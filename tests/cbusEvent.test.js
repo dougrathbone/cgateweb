@@ -88,14 +88,12 @@ describe('CBusEvent', () => {
         expect(event.getApplication()).toBeNull();
         expect(event.getGroup()).toBeNull();
         // Level testing is covered in new-style getter method tests
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should be invalid if address part is missing', () => {
         const data = Buffer.from("lighting on");
         const event = new CBusEvent(data);
         expect(event.isValid()).toBe(false);
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should NOT parse a 300- prefixed lighting line as a valid event-port CBusEvent', () => {
@@ -103,14 +101,12 @@ describe('CBusEvent', () => {
         // event port format. (Moved from the retired cbusParser.test.js.)
         const event = new CBusEvent('300-lighting on 254/56/9');
         expect(event.isValid()).toBe(false);
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
     
     it('should be invalid if address part is incomplete', () => {
         const data = Buffer.from("lighting on 254/56");
         const event = new CBusEvent(data);
         expect(event.isValid()).toBe(false);
-         expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should be invalid for clock date events (2-segment address)', () => {
@@ -119,7 +115,6 @@ describe('CBusEvent', () => {
         expect(event.isValid()).toBe(false);
         expect(event.getDeviceType()).toBeNull();
         expect(event.getAddress()).toBeNull();
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should be invalid for clock time events (2-segment address)', () => {
@@ -128,7 +123,6 @@ describe('CBusEvent', () => {
         expect(event.isValid()).toBe(false);
         expect(event.getDeviceType()).toBeNull();
         expect(event.getAddress()).toBeNull();
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should handle events with only essential parts', () => {
@@ -356,6 +350,12 @@ describe('CBusEvent', () => {
         it('should format invalid event', () => {
             const event = new CBusEvent('totally broken');
             expect(event.toString()).toContain('Invalid');
+        });
+
+        it('does not warn a keypad echo that fails to parse', () => {
+            new CBusEvent('security emulate_keypad //P/254/208 7');
+            const warned = mockConsoleWarn.mock.calls.map((c) => String(c[0])).join('\n');
+            expect(warned).not.toMatch(/emulate_keypad \S+\s+7\b/i);
         });
     });
 

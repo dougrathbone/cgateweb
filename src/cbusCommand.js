@@ -22,7 +22,7 @@ const {
     CGATE_LEVEL_MAX,
     CBUS_ADDRESS_MAX
 } = require('./constants');
-const { isCbusAddressComponentInRange } = require('./utils');
+const { isCbusAddressComponentInRange, redactMqttPayload } = require('./utils');
 
 const logger = createLogger({ component: 'CBusCommand' });
 
@@ -96,7 +96,7 @@ class CBusCommand {
         try {
             const match = this._topic.match(COMMAND_TOPIC_REGEX);
             if (!match) {
-                this._logger.warn(`Invalid MQTT command topic format: ${this._topic}`);
+                this._logger.debug(`Invalid MQTT command topic format: ${redactMqttPayload(this._topic)}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -151,7 +151,7 @@ class CBusCommand {
             this._parsePayload();
             this._parsed = true;
         } catch (error) {
-            this._logger.error(`Error parsing MQTT command topic: ${this._topic}`, { error });
+            this._logger.debug(`Error parsing MQTT command topic: ${redactMqttPayload(this._topic)}`, { error });
             this._isValid = false;
             this._parsed = true;
         }
@@ -248,7 +248,7 @@ class CBusCommand {
             if (/^\d+(\.\d+)?(ms|s|m|h)?$/.test(timePart)) {
                 this._rampTime = timePart;
             } else {
-                this._logger.warn(`Invalid ramp time format rejected: ${timePart}`);
+                this._logger.debug(`Invalid ramp time format rejected: ${redactMqttPayload(String(timePart))}`);
                 this._isValid = false;
             }
         }
@@ -364,7 +364,7 @@ class CBusCommand {
 
     toString() {
         if (!this._isValid) {
-            return `Invalid CBusCommand: ${this._topic} -> ${this._payload}`;
+            return `Invalid CBusCommand: ${redactMqttPayload(this._topic)} -> ${redactMqttPayload(this._payload)}`;
         }
         return `CBusCommand[${this._commandType} ${this._network}/${this._application}/${this._group}${this._level !== null ? ` level=${this._level}` : ''}${this._rampTime ? ` time=${this._rampTime}` : ''}]`;
     }

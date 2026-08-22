@@ -2,6 +2,7 @@
 const { createLogger } = require('./logger');
 const { EVENT_REGEX, CGATE_RESPONSE_OBJECT_STATUS } = require('./constants');
 const applicationDecoders = require('./applicationDecoders');
+const { redactCgateLine } = require('./utils');
 
 const logger = createLogger({ component: 'CBusEvent' });
 
@@ -91,8 +92,9 @@ class CBusEvent {
             // Use regex to parse standard events
             const match = this._rawEvent.match(EVENT_REGEX);
             if (!match) {
-                // Not a recognizable event format
-                this._logger.warn(`Could not parse C-Bus event: ${this._rawEvent}`);
+                // Callers already warn with a redacted line. Debug only here so
+                // a keypad echo that fails to parse cannot leak at warn.
+                this._logger.debug(`Could not parse C-Bus event: ${redactCgateLine(this._rawEvent)}`);
                 this._isValid = false;
                 this._parsed = true;
                 return;
@@ -106,13 +108,13 @@ class CBusEvent {
 
             // Parse address into components
             if (!this._applyAddress(this._address)) {
-                this._logger.warn(`Missing address in C-Bus event: ${this._rawEvent}`);
+                this._logger.debug(`Missing address in C-Bus event: ${redactCgateLine(this._rawEvent)}`);
             }
 
             this._applyDecoder();
             this._parsed = true;
         } catch (error) {
-            this._logger.error(`Error parsing C-Bus event: ${this._rawEvent}`, { error });
+            this._logger.debug(`Error parsing C-Bus event: ${redactCgateLine(this._rawEvent)}`, { error });
             this._isValid = false;
             this._parsed = true;
         }
@@ -341,7 +343,7 @@ class CBusEvent {
 
         if (!this._isValid) {
             // Invalid status response format
-            this._logger.warn(`Invalid status response format: ${this._rawEvent}`);
+            this._logger.debug(`Invalid status response format: ${redactCgateLine(this._rawEvent)}`);
             this._isValid = false;
         }
 
