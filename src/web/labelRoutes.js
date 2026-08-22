@@ -1,8 +1,8 @@
 // @ts-check
 const CbusProjectParser = require('../cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('../constants');
-const { sendJSON, sanitizePlainObject, isUnsafeObjectKey } = require('./httpHelpers');
-const { readRequestBody, parseMultipart } = require('./bodyReader');
+const { sendJSON, isUnsafeObjectKey } = require('./httpHelpers');
+const { readRequestBody, parseMultipart, BODY_TOO_LARGE } = require('./bodyReader');
 
 const CBUS_APP_NAMES = {
     1: 'Security Zones',
@@ -13,6 +13,75 @@ const CBUS_APP_NAMES = {
     203: 'Blinds',
     208: 'Security'
 };
+
+/**
+ * Sanitize a label (or nested) map: drop unsafe keys, require string values.
+ * When allowDelete is true (PATCH), null/'' mark keys for deletion and are kept
+ * as null in the returned map so the caller can delete them.
+ * @param {*} map
+ * @param {{ allowDelete?: boolean }} [options]
+ * @returns {{ map: Object }|{ error: string }}
+ */
+function normalizeLabelMap(map, { allowDelete = false } = {}) {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) {
+        return { error: 'Label map must be an object' };
+    }
+    const out = {};
+    for (const [key, value] of Object.entries(map)) {
+        if (isUnsafeObjectKey(key)) continue;
+        if (allowDelete && (value === null || value === '')) {
+            out[key] = null;
+            continue;
+        }
+        if (typeof value !== 'string') {
+            return { error: 'Label values must be strings' };
+        }
+        out[key] = value;
+    }
+    return { map: out };
+}
+
+/**
+ * Normalize a full PUT/import-style label file payload.
+ * @param {*} data
+ * @param {{ requireLabels?: boolean }} [options]
+ * @returns {{ payload: Object }|{ error: string }}
+ */
+function normalizeLabelPayload(data, { requireLabels = true } = {}) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return { error: 'Body must be an object' };
+    }
+
+    /** @type {Object} */
+    const payload = {};
+
+    if (requireLabels || data.labels !== undefined) {
+        if (!data.labels || typeof data.labels !== 'object' || Array.isArray(data.labels)) {
+            return { error: 'Body must contain a "labels" object' };
+        }
+        const labelsResult = normalizeLabelMap(data.labels);
+        if ('error' in labelsResult) return labelsResult;
+        payload.labels = labelsResult.map;
+    }
+
+    for (const field of ['type_overrides', 'entity_ids', 'areas']) {
+        if (data[field] === undefined) continue;
+        const nested = normalizeLabelMap(data[field]);
+        if ('error' in nested) {
+            return { error: `${field} values must be strings` };
+        }
+        payload[field] = nested.map;
+    }
+
+    if (data.exclude !== undefined) {
+        if (!Array.isArray(data.exclude) || !data.exclude.every((v) => typeof v === 'string')) {
+            return { error: 'exclude must be an array of strings' };
+        }
+        payload.exclude = data.exclude;
+    }
+
+    return { payload };
+}
 
 /**
  * Route handlers for label CRUD and C-Bus project XML import/export.
@@ -53,8 +122,9 @@ class LabelRoutes {
      * PUT /api/labels — replace the label file with the given data.
      */
     async handlePutLabels(req, res) {
-        const body = /** @type {string|null} */ (await readRequestBody(req, this.maxBodySizeBytes));
-        if (!body) return sendJSON(res, 400, { error: 'Request body required' });
+        const body = await readRequestBody(req, this.maxBodySizeBytes);
+        if (body === BODY_TOO_LARGE) return sendJSON(res, 413, { error: 'Payload too large' });
+        if (typeof body !== 'string' || !body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let data;
         try {
@@ -64,8 +134,9 @@ class LabelRoutes {
             return sendJSON(res, 400, { error: 'Invalid JSON' });
         }
 
-        if (!data.labels || typeof data.labels !== 'object') {
-            return sendJSON(res, 400, { error: 'Body must contain a "labels" object' });
+        const normalized = normalizeLabelPayload(data, { requireLabels: true });
+        if ('error' in normalized) {
+            return sendJSON(res, 400, { error: normalized.error });
         }
 
         try {
@@ -73,12 +144,12 @@ class LabelRoutes {
                 version: 1,
                 source: 'web-ui',
                 generated: new Date().toISOString(),
-                labels: sanitizePlainObject(data.labels)
+                labels: normalized.payload.labels
             };
-            if (data.type_overrides) fileData.type_overrides = sanitizePlainObject(data.type_overrides);
-            if (data.entity_ids) fileData.entity_ids = sanitizePlainObject(data.entity_ids);
-            if (data.areas) fileData.areas = sanitizePlainObject(data.areas);
-            if (data.exclude) fileData.exclude = data.exclude;
+            if (normalized.payload.type_overrides) fileData.type_overrides = normalized.payload.type_overrides;
+            if (normalized.payload.entity_ids) fileData.entity_ids = normalized.payload.entity_ids;
+            if (normalized.payload.areas) fileData.areas = normalized.payload.areas;
+            if (normalized.payload.exclude) fileData.exclude = normalized.payload.exclude;
 
             this.labelLoader.save(fileData);
             const fullData = this.labelLoader.getFullData();
@@ -88,7 +159,8 @@ class LabelRoutes {
                 saved: true
             });
         } catch (err) {
-            sendJSON(res, 500, { error: `Failed to save: ${err.message}` });
+            this.logger.error('Failed to save labels', { error: err.message });
+            sendJSON(res, 500, { error: 'Failed to save labels' });
         }
     }
 
@@ -96,8 +168,9 @@ class LabelRoutes {
      * PATCH /api/labels — apply partial label updates (null/'' deletes).
      */
     async handlePatchLabels(req, res) {
-        const body = /** @type {string|null} */ (await readRequestBody(req, this.maxBodySizeBytes));
-        if (!body) return sendJSON(res, 400, { error: 'Request body required' });
+        const body = await readRequestBody(req, this.maxBodySizeBytes);
+        if (body === BODY_TOO_LARGE) return sendJSON(res, 413, { error: 'Payload too large' });
+        if (typeof body !== 'string' || !body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let patch;
         try {
@@ -107,17 +180,19 @@ class LabelRoutes {
             return sendJSON(res, 400, { error: 'Invalid JSON' });
         }
 
-        if (typeof patch !== 'object' || patch === null) {
+        if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) {
             return sendJSON(res, 400, { error: 'Body must be an object of label updates' });
+        }
+
+        const normalized = normalizeLabelMap(patch, { allowDelete: true });
+        if ('error' in normalized) {
+            return sendJSON(res, 400, { error: normalized.error });
         }
 
         try {
             const existing = this.labelLoader.getLabelsObject();
-            for (const [key, value] of Object.entries(patch)) {
-                // Defence in depth: never let untrusted input write prototype-
-                // polluting keys, even though label values are strings.
-                if (isUnsafeObjectKey(key)) continue;
-                if (value === null || value === '') {
+            for (const [key, value] of Object.entries(normalized.map)) {
+                if (value === null) {
                     delete existing[key];
                 } else {
                     existing[key] = value;
@@ -127,7 +202,8 @@ class LabelRoutes {
             const labels = this.labelLoader.getLabelsObject();
             sendJSON(res, 200, { labels, count: Object.keys(labels).length, saved: true });
         } catch (err) {
-            sendJSON(res, 500, { error: `Failed to save: ${err.message}` });
+            this.logger.error('Failed to save labels', { error: err.message });
+            sendJSON(res, 500, { error: 'Failed to save labels' });
         }
     }
 
@@ -149,24 +225,34 @@ class LabelRoutes {
 
         if (contentType.includes('multipart/form-data')) {
             const result = await parseMultipart(req, contentType, this.maxBodySizeBytes);
-            if (!result) {
+            if (result === BODY_TOO_LARGE) {
+                return sendJSON(res, 413, { error: 'Payload too large' });
+            }
+            if (!result || typeof result !== 'object') {
                 return sendJSON(res, 400, { error: 'No file found in upload' });
             }
             fileBuffer = result.buffer;
             filename = result.filename;
         } else {
-            const body = /** @type {Buffer|null} */ (await readRequestBody(req, this.maxBodySizeBytes, { raw: true }));
-            if (!body || body.length === 0) {
+            const body = await readRequestBody(req, this.maxBodySizeBytes, { raw: true });
+            if (body === BODY_TOO_LARGE) {
+                return sendJSON(res, 413, { error: 'Payload too large' });
+            }
+            if (!Buffer.isBuffer(body) || body.length === 0) {
                 return sendJSON(res, 400, { error: 'No file data received' });
             }
             fileBuffer = body;
             filename = 'upload';
         }
 
+        let result;
         try {
-            const result = await this._parser.parse(fileBuffer, filename);
+            result = await this._parser.parse(fileBuffer, filename);
+        } catch (err) {
+            return sendJSON(res, 400, { error: err.message });
+        }
 
-            // Check query param for merge mode
+        try {
             const url = new URL(req.url, `http://${req.headers.host}`);
             const merge = url.searchParams.get('merge') === 'true';
 
@@ -177,6 +263,12 @@ class LabelRoutes {
             } else {
                 finalLabels = result.labels;
             }
+
+            const labelsNormalized = normalizeLabelMap(finalLabels);
+            if ('error' in labelsNormalized) {
+                return sendJSON(res, 400, { error: labelsNormalized.error });
+            }
+            finalLabels = labelsNormalized.map;
 
             // Drop any group-255 terminator labels (Toolkit "<Unused>"
             // placeholders) that earlier imports saved into the label file —
@@ -205,7 +297,8 @@ class LabelRoutes {
                 notice: 'Imported labels only. This does NOT load the C-Gate project itself. In managed mode, place a pre-built <PROJECT>.db file in /share/cgate/tag/ for the add-on to sync into C-Gate. See the add-on documentation for the supported managed-mode project workflow.'
             });
         } catch (err) {
-            sendJSON(res, 400, { error: err.message });
+            this.logger.error('Failed to save labels', { error: err.message });
+            sendJSON(res, 500, { error: 'Failed to save labels' });
         }
     }
 
@@ -215,7 +308,6 @@ class LabelRoutes {
     handleExportLabelsXml(_req, res) {
         const labels = this.labelLoader.getLabelsObject();
 
-        // Group labels by network -> app -> groups
         const networks = new Map();
         for (const [key, label] of Object.entries(labels)) {
             const parts = key.split('/');

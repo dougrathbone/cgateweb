@@ -7,7 +7,7 @@ const LabelLoader = require('../src/labelLoader');
 const CbusProjectParser = require('../src/cbusProjectParser');
 const RateLimiter = require('../src/web/rateLimiter');
 const StaticFileServer = require('../src/web/staticFiles');
-const { readRequestBody } = require('../src/web/bodyReader');
+const { readRequestBody, BODY_TOO_LARGE } = require('../src/web/bodyReader');
 
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
@@ -34,6 +34,7 @@ describe('WebServer', () => {
             port,
             labelLoader,
             allowUnauthenticatedMutations: true,
+            maxReadRequestsPerWindow: 10000,
             getStatus: () => ({ test: true })
         });
         await server.start();
@@ -62,6 +63,40 @@ describe('WebServer', () => {
                 let data = '';
                 res.on('data', (chunk) => { data += chunk; });
                 res.on('end', () => {
+                    try {
+                        resolve({ status: res.statusCode, body: JSON.parse(data), headers: res.headers });
+                    } catch {
+                        resolve({ status: res.statusCode, body: data, headers: res.headers });
+                    }
+                });
+            });
+            req.on('error', reject);
+            if (body) req.write(typeof body === 'string' ? body : body);
+            req.end();
+        });
+    }
+
+
+    function rawRequest(targetPort, method, urlPath, { body = null, headers = {}, parseJson = true } = {}) {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: '127.0.0.1',
+                port: targetPort,
+                path: urlPath,
+                method,
+                headers: { ...headers }
+            };
+            if (body && typeof body === 'string' && !options.headers['Content-Type']) {
+                options.headers['Content-Type'] = 'application/json';
+            }
+            const req = http.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    if (!parseJson) {
+                        resolve({ status: res.statusCode, body: data, headers: res.headers });
+                        return;
+                    }
                     try {
                         resolve({ status: res.statusCode, body: JSON.parse(data), headers: res.headers });
                     } catch {
@@ -167,6 +202,46 @@ describe('WebServer', () => {
             expect(res.status).toBe(400);
         });
 
+        it.each([
+            [{ labels: { '254/56/10': { nested: true } } }, 'Label values must be strings'],
+            [{ labels: { '254/56/10': 42 } }, 'Label values must be strings'],
+            [{ labels: { '254/56/10': 'Kitchen' }, exclude: '254/56/99' }, 'exclude must be an array of strings'],
+            [{ labels: { '254/56/10': 'Kitchen' }, exclude: [1, 2] }, 'exclude must be an array of strings'],
+        ])('rejects invalid label payload %#', async (payload, message) => {
+            const res = await request('PUT', '/api/labels', JSON.stringify(payload));
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe(message);
+        });
+
+        it('returns 413 when PUT body exceeds maxBodySizeBytes', async () => {
+            await server.close();
+            server = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                maxBodySizeBytes: 64,
+                getStatus: () => ({})
+            });
+            await server.start();
+            port = server._server.address().port;
+            const big = JSON.stringify({ labels: { '254/56/10': 'x'.repeat(200) } });
+            const res = await request('PUT', '/api/labels', big);
+            expect(res.status).toBe(413);
+            expect(res.body).toEqual({ error: 'Payload too large' });
+        });
+
+        it('returns stable 500 when save fails without leaking err.message', async () => {
+            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => {
+                throw new Error('/tmp/secret/path/labels.json EACCES');
+            });
+            const res = await request('PUT', '/api/labels', JSON.stringify({
+                labels: { '254/56/10': 'Kitchen' }
+            }));
+            expect(res.status).toBe(500);
+            expect(res.body).toEqual({ error: 'Failed to save labels' });
+            expect(JSON.stringify(res.body)).not.toMatch(/secret|EACCES|\/tmp/);
+        });
+
         it('should save type_overrides, entity_ids, and exclude', async () => {
             const res = await request('PUT', '/api/labels', JSON.stringify({
                 labels: { '254/56/10': 'Kitchen Blind', '254/56/6': 'Pond Pump' },
@@ -206,6 +281,13 @@ describe('WebServer', () => {
             expect(res.body.labels['254/56/10']).toBe('Updated Kitchen');
             expect(res.body.labels['254/56/11']).toBe('Living Room');
             expect(res.body.labels['254/56/12']).toBe('New Entry');
+        });
+
+        it('rejects non-string PATCH values with 400', async () => {
+            const res = await request('PATCH', '/api/labels',
+                JSON.stringify({ '254/56/10': ['array'] }));
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Label values must be strings');
         });
 
         it('should remove labels when value is null', async () => {
@@ -380,82 +462,35 @@ describe('WebServer', () => {
     });
 
     describe('CORS', () => {
-        it('should handle OPTIONS preflight', async () => {
-            const res = await new Promise((resolve, reject) => {
-                const req = http.request({
-                    hostname: '127.0.0.1',
-                    port,
-                    path: '/api/labels',
-                    method: 'OPTIONS'
-                }, (response) => {
-                    resolve({ status: response.statusCode, headers: response.headers });
-                });
-                req.on('error', reject);
-                req.end();
-            });
-
+        it('should handle OPTIONS preflight without an Origin allowlist', async () => {
+            const res = await rawRequest(port, 'OPTIONS', '/api/labels', { parseJson: false });
             expect(res.status).toBe(204);
             expect(res.headers['access-control-allow-origin']).toBeUndefined();
         });
 
-        it('should return an allowlisted origin when configured', async () => {
+        it.each([
+            ['OPTIONS', '/api/labels', 'https://ha.local', 'https://ha.local', 'https://ha.local'],
+            ['OPTIONS', '/api/labels', 'https://ha.local', 'https://evil.example', undefined],
+            ['GET', '/api/status', 'http://trusted.local', 'http://trusted.local', 'http://trusted.local'],
+            ['GET', '/api/status', 'http://trusted.local', 'http://evil.com', undefined],
+        ])('%s %s allowlist=%s origin=%s => Allow-Origin %s', async (method, pathName, allowlist, origin, expected) => {
             const corsServer = new WebServer({
                 port: 0,
                 labelLoader,
-                allowedOrigins: ['https://ha.local'],
+                allowUnauthenticatedMutations: true,
+                maxReadRequestsPerWindow: 1000,
+                allowedOrigins: [allowlist],
                 getStatus: () => ({})
             });
             await corsServer.start();
             const corsPort = corsServer._server.address().port;
-
-            const res = await new Promise((resolve, reject) => {
-                const req = http.request({
-                    hostname: '127.0.0.1',
-                    port: corsPort,
-                    path: '/api/labels',
-                    method: 'OPTIONS',
-                    headers: { Origin: 'https://ha.local' }
-                }, (response) => {
-                    resolve({ status: response.statusCode, headers: response.headers });
-                });
-                req.on('error', reject);
-                req.end();
-            });
-            await corsServer.close();
-
-            expect(res.status).toBe(204);
-            expect(res.headers['access-control-allow-origin']).toBe('https://ha.local');
-        });
-
-        it('should omit Access-Control-Allow-Origin on OPTIONS preflight from a disallowed origin', async () => {
-            const corsServer = new WebServer({
-                port: 0,
-                labelLoader,
-                allowedOrigins: ['https://ha.local'],
-                getStatus: () => ({})
-            });
-            await corsServer.start();
-            const corsPort = corsServer._server.address().port;
-
             try {
-                const res = await new Promise((resolve, reject) => {
-                    const req = http.request({
-                        hostname: '127.0.0.1',
-                        port: corsPort,
-                        path: '/api/labels',
-                        method: 'OPTIONS',
-                        headers: { Origin: 'https://evil.example' }
-                    }, (response) => {
-                        resolve({ status: response.statusCode, headers: response.headers });
-                    });
-                    req.on('error', reject);
-                    req.end();
+                const res = await rawRequest(corsPort, method, pathName, {
+                    headers: { Origin: origin },
+                    parseJson: false
                 });
-
-                // Browsers treat a missing Allow-Origin header on the preflight
-                // response as a hard CORS denial. Server should NEVER reflect an
-                // origin that is not in the allowlist.
-                expect(res.headers['access-control-allow-origin']).toBeUndefined();
+                expect(res.headers['access-control-allow-origin']).toBe(expected);
+                if (method === 'OPTIONS') expect(res.status).toBe(204);
             } finally {
                 await corsServer.close();
             }
@@ -1013,34 +1048,46 @@ describe('WebServer', () => {
             expect(second.body).toEqual({ error: 'Too many requests' });
         });
 
-        it('does not rate-limit GET / read traffic regardless of frequency', async () => {
-            // Mutation budget is 1 per window, but reads must never be capped -
-            // a noisy dashboard polling /api/labels shouldn't lock itself out.
+        it('does not apply the mutation limiter to sensitive GET traffic', async () => {
+            // Mutation budget is 1 per window; reads use a separate bucket.
             limitedServer = new WebServer({
                 port: 0,
                 labelLoader,
                 allowUnauthenticatedMutations: true,
                 maxMutationRequestsPerWindow: 1,
+                maxReadRequestsPerWindow: 1000,
                 getStatus: () => ({})
             });
             await limitedServer.start();
             limitedPort = limitedServer._server.address().port;
 
-            const doGet = () => new Promise((resolve, reject) => {
-                http.get({
-                    hostname: '127.0.0.1',
-                    port: limitedPort,
-                    path: '/api/labels'
-                }, (res) => {
-                    res.on('data', () => {});
-                    res.on('end', () => resolve({ status: res.statusCode }));
-                }).on('error', reject);
-            });
-
-            // Fire well past the mutation budget on GET - none should 429.
             for (let i = 0; i < 5; i++) {
-                const r = await doGet();
+                const r = await rawRequest(limitedPort, 'GET', '/api/labels');
                 expect(r.status).toBe(200);
+            }
+        });
+
+        it.each([
+            [2, 2, 200],
+            [2, 3, 429],
+        ])('sensitive GET rate limit: max=%i request#%i => %i', async (maxRead, requestNumber, expectedStatus) => {
+            limitedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                allowUnauthenticatedMutations: true,
+                maxReadRequestsPerWindow: maxRead,
+                getStatus: () => ({})
+            });
+            await limitedServer.start();
+            limitedPort = limitedServer._server.address().port;
+
+            let last;
+            for (let i = 1; i <= requestNumber; i++) {
+                last = await rawRequest(limitedPort, 'GET', '/api/status');
+            }
+            expect(last.status).toBe(expectedStatus);
+            if (expectedStatus === 429) {
+                expect(last.body).toEqual({ error: 'Too many requests' });
             }
         });
 
@@ -1063,6 +1110,27 @@ describe('WebServer', () => {
     });
 
     describe('Constructor options', () => {
+        it('refuses allowUnauthenticatedMutations when bindHost is not loopback', () => {
+            const s = new WebServer({
+                labelLoader,
+                bindHost: '0.0.0.0',
+                allowUnauthenticatedMutations: true,
+                getStatus: () => ({})
+            });
+            expect(s.allowUnauthenticatedMutations).toBe(false);
+            expect(s._apiAuth.allowUnauthenticatedMutations).toBe(false);
+        });
+
+        it.each(['127.0.0.1', '::1', 'localhost'])('allows unauthenticated mutations on loopback bindHost=%s', (bindHost) => {
+            const s = new WebServer({
+                labelLoader,
+                bindHost,
+                allowUnauthenticatedMutations: true,
+                getStatus: () => ({})
+            });
+            expect(s.allowUnauthenticatedMutations).toBe(true);
+        });
+
         it('accepts allowedOrigins as a comma-separated string', () => {
             const s = new WebServer({
                 labelLoader,
@@ -1101,17 +1169,19 @@ describe('WebServer', () => {
 
     describe('Error handling', () => {
         it('returns 500 when PUT /api/labels labelLoader.save throws', async () => {
-            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full'); });
+            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full at /tmp/secret'); });
             const res = await request('PUT', '/api/labels', JSON.stringify({ labels: { '254/56/1': 'Test' } }));
             expect(res.status).toBe(500);
-            expect(res.body.error).toContain('disk full');
+            expect(res.body.error).toBe('Failed to save labels');
+            expect(JSON.stringify(res.body)).not.toMatch(/disk full|\/tmp\/secret/);
         });
 
         it('returns 500 when PATCH /api/labels labelLoader.save throws', async () => {
-            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full'); });
+            jest.spyOn(labelLoader, 'save').mockImplementationOnce(() => { throw new Error('disk full at /tmp/secret'); });
             const res = await request('PATCH', '/api/labels', JSON.stringify({ '254/56/1': 'Test' }));
             expect(res.status).toBe(500);
-            expect(res.body.error).toContain('disk full');
+            expect(res.body.error).toBe('Failed to save labels');
+            expect(JSON.stringify(res.body)).not.toMatch(/disk full|\/tmp\/secret/);
         });
 
         it('returns 400 when PATCH body is null JSON', async () => {
@@ -1366,9 +1436,10 @@ describe('WebServer', () => {
     });
 
     describe('request body size limit', () => {
-        it('resolves null and destroys the request when body exceeds 10MB', async () => {
+        it('resolves BODY_TOO_LARGE and pauses the request when body exceeds 10MB', async () => {
             const EventEmitter = require('events');
             const mockReq = new EventEmitter();
+            mockReq.pause = jest.fn();
             mockReq.destroy = jest.fn();
 
             const resultPromise = readRequestBody(mockReq);
@@ -1376,21 +1447,32 @@ describe('WebServer', () => {
             mockReq.emit('data', bigChunk);
 
             const result = await resultPromise;
-            expect(result).toBeNull();
-            expect(mockReq.destroy).toHaveBeenCalled();
+            expect(result).toBe(BODY_TOO_LARGE);
+            expect(mockReq.pause).toHaveBeenCalled();
+            expect(mockReq.destroy).not.toHaveBeenCalled();
         });
 
-        it('resolves null for raw body when body exceeds 10MB', async () => {
+        it('resolves BODY_TOO_LARGE for raw body when body exceeds 10MB', async () => {
             const EventEmitter = require('events');
             const mockReq = new EventEmitter();
+            mockReq.pause = jest.fn();
             mockReq.destroy = jest.fn();
 
             const resultPromise = readRequestBody(mockReq, 10 * 1024 * 1024, { raw: true });
             mockReq.emit('data', Buffer.alloc(11 * 1024 * 1024));
 
             const result = await resultPromise;
-            expect(result).toBeNull();
-            expect(mockReq.destroy).toHaveBeenCalled();
+            expect(result).toBe(BODY_TOO_LARGE);
+            expect(mockReq.pause).toHaveBeenCalled();
+        });
+
+        it('resolves null on request error (distinct from too-large)', async () => {
+            const EventEmitter = require('events');
+            const mockReq = new EventEmitter();
+            mockReq.destroy = jest.fn();
+            const resultPromise = readRequestBody(mockReq);
+            mockReq.emit('error', new Error('socket hang up'));
+            expect(await resultPromise).toBeNull();
         });
     });
 
@@ -1621,15 +1703,36 @@ describe('WebServer', () => {
         it('sends 403 when resolved filePath escapes static dir', () => {
             const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
             const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
-
-            // Inject a path that path.join resolves to a location outside STATIC_DIR
-            const origJoin = path.join;
-            jest.spyOn(path, 'join').mockImplementationOnce(() => '/etc/passwd');
+            const realResolve = path.resolve.bind(path);
+            let calls = 0;
+            jest.spyOn(path, 'resolve').mockImplementation((...args) => {
+                calls += 1;
+                // First resolve is staticRoot; force the candidate outside it.
+                if (calls >= 2) return '/etc/passwd';
+                return realResolve(...args);
+            });
             staticFiles.serve('/anything', fakeRes);
-            path.join = origJoin;
-
             expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
             expect(fakeRes.end).toHaveBeenCalledWith('Forbidden');
+        });
+
+        it('rejects prefix matches that lack a path separator after the root', () => {
+            const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
+            const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
+            const realResolve = path.resolve.bind(path);
+            let calls = 0;
+            let staticRoot;
+            jest.spyOn(path, 'resolve').mockImplementation((...args) => {
+                calls += 1;
+                if (calls === 1) {
+                    staticRoot = realResolve(...args);
+                    return staticRoot;
+                }
+                // /public_evil would pass a naive startsWith(/public) check.
+                return staticRoot + '_evil/secret.txt';
+            });
+            staticFiles.serve('/secret.txt', fakeRes);
+            expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
         });
     });
 
@@ -2287,64 +2390,88 @@ describe('WebServer', () => {
             const names = res.body.areas.map(a => a.name);
             expect(names).toEqual(['Bedroom', 'Kitchen', 'Lounge']);
         });
+
+        it('merges Supervisor HA areas with label areas and dedups case-insensitively', async () => {
+            labelLoader.save({
+                version: 1,
+                labels: { '254/56/10': 'Kitchen Light' },
+                areas: { '254/56/10': 'Kitchen' }
+            });
+            const EventEmitter = require('events');
+            let requestCount = 0;
+            const fakeHttp = {
+                request: (_url, _opts, cb) => {
+                    requestCount += 1;
+                    const resp = new EventEmitter();
+                    resp.statusCode = 200;
+                    process.nextTick(() => {
+                        cb(resp);
+                        resp.emit('data', JSON.stringify(['Lounge', 'kitchen']));
+                        resp.emit('end');
+                    });
+                    const req = new EventEmitter();
+                    req.write = jest.fn();
+                    req.end = jest.fn();
+                    req.destroy = jest.fn();
+                    return req;
+                }
+            };
+            const prev = process.env.SUPERVISOR_TOKEN;
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+            server._statusRoutes._http = fakeHttp;
+            try {
+                const res = await request('GET', '/api/areas');
+                expect(res.status).toBe(200);
+                const byName = Object.fromEntries(res.body.areas.map(a => [a.name.toLowerCase(), a]));
+                expect(byName.kitchen.source).toBe('homeassistant');
+                expect(byName.lounge).toEqual({ name: 'Lounge', source: 'homeassistant' });
+                expect(requestCount).toBe(1);
+
+                const cached = await request('GET', '/api/areas');
+                expect(cached.status).toBe(200);
+                expect(requestCount).toBe(1);
+            } finally {
+                if (prev === undefined) delete process.env.SUPERVISOR_TOKEN;
+                else process.env.SUPERVISOR_TOKEN = prev;
+            }
+        });
+
+        it('continues with label areas when Supervisor request errors or times out', async () => {
+            labelLoader.save({
+                version: 1,
+                labels: { '254/56/10': 'X' },
+                areas: { '254/56/10': 'OnlyLabels' }
+            });
+            const EventEmitter = require('events');
+            const fakeHttp = {
+                request: (_url, _opts, _cb) => {
+                    const req = new EventEmitter();
+                    req.write = jest.fn();
+                    req.end = jest.fn(() => {
+                        process.nextTick(() => req.emit('error', new Error('ECONNREFUSED')));
+                    });
+                    req.destroy = jest.fn();
+                    return req;
+                }
+            };
+            const prev = process.env.SUPERVISOR_TOKEN;
+            process.env.SUPERVISOR_TOKEN = 'test-token';
+            server._statusRoutes._http = fakeHttp;
+            try {
+                const res = await request('GET', '/api/areas');
+                expect(res.status).toBe(200);
+                expect(res.body.areas).toEqual([{ name: 'OnlyLabels', source: 'labels' }]);
+            } finally {
+                if (prev === undefined) delete process.env.SUPERVISOR_TOKEN;
+                else process.env.SUPERVISOR_TOKEN = prev;
+            }
+        });
     });
 
     describe('Security headers', () => {
         it('should include X-Content-Type-Options: nosniff', async () => {
             const res = await request('GET', '/api/status');
             expect(res.headers['x-content-type-options']).toBe('nosniff');
-        });
-
-        it('should not set CORS header for disallowed origins', async () => {
-            const corsServer = new WebServer({
-                port: 0,
-                labelLoader,
-                allowedOrigins: ['http://trusted.local'],
-                getStatus: () => ({})
-            });
-            await corsServer.start();
-            const corsPort = corsServer._server.address().port;
-
-            try {
-                const res = await new Promise((resolve, reject) => {
-                    http.get(`http://127.0.0.1:${corsPort}/api/status`, {
-                        headers: { 'Origin': 'http://evil.com' }
-                    }, (resp) => {
-                        resp.on('data', () => {});
-                        resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
-                    }).on('error', reject);
-                });
-
-                expect(res.headers['access-control-allow-origin']).toBeUndefined();
-            } finally {
-                await corsServer.close();
-            }
-        });
-
-        it('should set CORS header for allowed origins', async () => {
-            const corsServer = new WebServer({
-                port: 0,
-                labelLoader,
-                allowedOrigins: ['http://trusted.local'],
-                getStatus: () => ({})
-            });
-            await corsServer.start();
-            const corsPort = corsServer._server.address().port;
-
-            try {
-                const res = await new Promise((resolve, reject) => {
-                    http.get(`http://127.0.0.1:${corsPort}/api/status`, {
-                        headers: { 'Origin': 'http://trusted.local' }
-                    }, (resp) => {
-                        resp.on('data', () => {});
-                        resp.on('end', () => resolve({ status: resp.statusCode, headers: resp.headers }));
-                    }).on('error', reject);
-                });
-
-                expect(res.headers['access-control-allow-origin']).toBe('http://trusted.local');
-            } finally {
-                await corsServer.close();
-            }
         });
     });
 });
