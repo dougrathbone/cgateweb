@@ -337,10 +337,14 @@ class CbusProjectParser {
             }
         }
         return new Promise((resolve, reject) => {
-            parseString(xmlString, { explicitArray: false, ignoreAttrs: false, mergeAttrs: true }, (err, result) => {
-                if (err) reject(new Error(`XML parse error: ${err.message}`));
-                else resolve(result);
-            });
+            try {
+                parseString(xmlString, { explicitArray: false, ignoreAttrs: false, mergeAttrs: true }, (err, result) => {
+                    if (err) reject(new Error(`XML parse error: ${err.message}`));
+                    else resolve(result);
+                });
+            } catch (e) {
+                reject(new Error(`XML parse error: ${e && e.message ? e.message : e}`));
+            }
         });
     }
 
