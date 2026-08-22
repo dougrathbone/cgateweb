@@ -29,6 +29,7 @@ describe('CgateWebBridge._discoverIngressBasePath (GitHub #33)', () => {
         fakeBridge = {
             webServer,
             logger: { info: jest.fn(), warn: jest.fn(), debug: jest.fn(), error: jest.fn() },
+            settings: {},
             _discoverIngressBasePath: CgateWebBridge.prototype._discoverIngressBasePath
         };
     });
@@ -47,7 +48,13 @@ describe('CgateWebBridge._discoverIngressBasePath (GitHub #33)', () => {
 
         await fakeBridge._discoverIngressBasePath();
 
-        expect(discoverIngressEntry).toHaveBeenCalledWith(expect.objectContaining({ token: 'tok' }));
+        expect(discoverIngressEntry).toHaveBeenCalledWith(expect.objectContaining({
+            token: 'tok',
+            timeoutMs: 5000,
+            attempts: 4,
+            initialRetryDelayMs: 1000,
+            maxRetryDelayMs: 8000
+        }));
         expect(webServer.basePath).toBe('/api/hassio_ingress/discovered123');
     });
 

@@ -1,4 +1,5 @@
 {
+  "airconSetpointDebounceMs": 3000,
   "autoDiscoverNetworks": true,
   "cbusRawEventLogApps": [],
   "cbus_aircon_app_id": null,
@@ -77,7 +78,10 @@
   "ha_discovery_type_from_unit": false,
   "ha_hvac_temperature_unit": "C",
   "healthCheckInterval": 30000,
+  "ingressDiscoveryAttempts": 4,
+  "ingressDiscoveryInitialRetryDelayMs": 1000,
   "ingressDiscoveryMaxBackoffMs": 8000,
+  "ingressDiscoveryTimeoutMs": 5000,
   "initDebounceMs": 10000,
   "keepAliveInterval": 60000,
   "labelReloadRetryMs": 2000,
