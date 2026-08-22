@@ -94,9 +94,6 @@ const SECURITY_ARM_MODE_BY_PAYLOAD = {
     ARM_HOME: 'day',
     ARM_VACATION: 'vacation'
 };
-// Debounce window for native-aircon setpoint writes (spec §25.12.11: wait a
-// few seconds after the user finishes adjusting, then send a single message).
-const AIRCON_SETPOINT_DEBOUNCE_MS = 3000;
 
 class MqttCommandRouter extends EventEmitter {
     /**
@@ -1154,13 +1151,14 @@ class MqttCommandRouter extends EventEmitter {
         const key = `${network}/${unit}`;
         const pending = this._airconSetpointTimers.get(key);
         if (pending) clearTimeout(pending.handle);
+        const delayMs = resolveSetting(this.settings, 'airconSetpointDebounceMs');
         const handle = setTimeout(() => {
             this._airconSetpointTimers.delete(key);
             this._sendAirconSetpoint(network, application, unit, clamped);
-        }, AIRCON_SETPOINT_DEBOUNCE_MS);
+        }, delayMs);
         if (typeof handle.unref === 'function') handle.unref();
         this._airconSetpointTimers.set(key, { handle });
-        this.logger.debug(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C queued (debounced ${AIRCON_SETPOINT_DEBOUNCE_MS}ms)`);
+        this.logger.debug(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C queued (debounced ${delayMs}ms)`);
     }
 
     /**

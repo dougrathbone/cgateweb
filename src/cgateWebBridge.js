@@ -546,6 +546,9 @@ class CgateWebBridge {
 
         return discoverIngressEntry({
             token: supervisorToken,
+            timeoutMs: resolveSetting(this.settings, 'ingressDiscoveryTimeoutMs'),
+            attempts: resolveSetting(this.settings, 'ingressDiscoveryAttempts'),
+            initialRetryDelayMs: resolveSetting(this.settings, 'ingressDiscoveryInitialRetryDelayMs'),
             maxRetryDelayMs: resolveSetting(this.settings, 'ingressDiscoveryMaxBackoffMs')
         })
             .then((ingressEntry) => {

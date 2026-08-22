@@ -696,6 +696,15 @@ const SETTINGS_SCHEMA = {
         description: 'Allow Home Assistant to CONTROL native Air Conditioning thermostats (set mode/setpoint) via AIRCON commands.',
         reason: 'Opt-in. Off by default - it writes to live heating/cooling. Requires cbus_aircon_app_id to be set.'
     },
+    airconSetpointDebounceMs: {
+        key: 'airconSetpointDebounceMs',
+        type: 'number',
+        default: 3000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Wait after the last native-aircon setpoint change before sending a single AIRCON write (spec timeout on adjustment).',
+        reason: TUNING_ONLY_REASON
+    },
 
     // --- Security (application 208) -----------------------------------------
     cbus_security_app_id: {
@@ -953,6 +962,33 @@ const SETTINGS_SCHEMA = {
         unit: 'ms',
         exposure: 'standalone',
         description: 'Ceiling for the Supervisor ingress-path discovery retry backoff after add-on start.',
+        reason: TUNING_ONLY_REASON
+    },
+    ingressDiscoveryTimeoutMs: {
+        key: 'ingressDiscoveryTimeoutMs',
+        type: 'number',
+        default: 5000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Per-request timeout for Supervisor ingress-path discovery after add-on start.',
+        reason: TUNING_ONLY_REASON
+    },
+    ingressDiscoveryAttempts: {
+        key: 'ingressDiscoveryAttempts',
+        type: 'number',
+        default: 4,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'How many Supervisor ingress-path lookup attempts to make after add-on start.',
+        reason: TUNING_ONLY_REASON
+    },
+    ingressDiscoveryInitialRetryDelayMs: {
+        key: 'ingressDiscoveryInitialRetryDelayMs',
+        type: 'number',
+        default: 1000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Initial backoff between Supervisor ingress-path discovery retries.',
         reason: TUNING_ONLY_REASON
     },
     web_auth_failure_rate_limit_per_minute: {
