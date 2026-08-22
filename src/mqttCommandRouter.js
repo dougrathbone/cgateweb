@@ -23,6 +23,7 @@ const {
     MQTT_CMD_TYPE_HVAC_SETPOINT,
     MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_CMD_TYPE_HVAC_FAN_MODE,
+    MQTT_CMD_TYPE_TEMPERATURE,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
@@ -44,6 +45,7 @@ const {
     SECURITY_ARM_TOPIC_REGEX,
     SECURITY_BYPASS_TOPIC_REGEX,
     MEASUREMENT_DATA_TOPIC_REGEX,
+    DEFAULT_CBUS_APP_TEMPERATURE,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C
 } = require('./constants');
@@ -56,6 +58,7 @@ const {
 } = require('./airconControlRegistry');
 const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
 const { buildMeasurementDataCommand } = require('./measurementCommand');
+const { buildTemperatureBroadcastCommand, celsiusToTemperatureBroadcastByte } = require('./temperatureCommand');
 const RateLimiter = require('./web/rateLimiter');
 const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
@@ -323,6 +326,9 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_HVAC_FAN_MODE:
                 this._handleHvacFanMode(command, payload, topic);
+                break;
+            case MQTT_CMD_TYPE_TEMPERATURE:
+                this._handleTemperatureBroadcast(command, payload, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -607,6 +613,33 @@ class MqttCommandRouter extends EventEmitter {
         });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Measurement data: ${network}/${application}/${device}/${channel} -> ${value} x 10^${multiplier} (units ${unitsCode})`);
+    }
+
+    /**
+     * Inject a Temperature Broadcast (app 25 / $19):
+     * cbus/write/{net}/{app}/{group}/temperature with a Celsius payload.
+     * @private
+     */
+    _handleTemperatureBroadcast(command, payload, topic) {
+        if (String(command.getApplication()) !== DEFAULT_CBUS_APP_TEMPERATURE) {
+            this.logger.warn(`Temperature command for non-broadcast application ${command.getApplication()} on topic ${topic}`);
+            return;
+        }
+        const celsius = parseFloat(String(payload).trim());
+        const rawByte = celsiusToTemperatureBroadcastByte(celsius);
+        if (rawByte === null) {
+            this.logger.warn(`Invalid temperature "${payload}" on topic ${topic} (expected 0.0–63.75 °C)`);
+            return;
+        }
+        const cmd = buildTemperatureBroadcastCommand({
+            cbusname: this.cbusname,
+            network: command.getNetwork(),
+            application: command.getApplication(),
+            group: command.getGroup(),
+            rawByte
+        });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Temperature broadcast: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} -> ${celsius} °C (raw ${rawByte})`);
     }
 
     /**

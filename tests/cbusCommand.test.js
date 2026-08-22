@@ -571,6 +571,10 @@ describe('CBusCommand', () => {
             const command = new CBusCommand('cbus/write/254/56/1/remap', '100');
             expect(command.isValid()).toBe(false);
         });
+
+        it('should accept the temperature command type', () => {
+            expect(new CBusCommand('cbus/write/254/25/3/temperature', '21.5').isValid()).toBe(true);
+        });
     });
 
     // === toString ===

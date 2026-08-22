@@ -1350,4 +1350,21 @@ describe('MqttCommandRouter', () => {
             expect(typeof rampRouter.coverRampTracker.startRamp).toBe('function');
         });
     });
+
+    describe('temperature broadcast inject', () => {
+        it('sends TEMPERATURE BROADCAST with a raw byte of °C × 4', () => {
+            router.routeMessage('cbus/write/254/25/3/temperature', '21.5');
+            expect(mockQueue.add).toHaveBeenCalledWith('TEMPERATURE BROADCAST //TestProject/254/25/3 86\n');
+        });
+
+        it('rejects a temperature outside 0–63.75 °C', () => {
+            router.routeMessage('cbus/write/254/25/3/temperature', '80');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('rejects a temperature command on a non-broadcast application', () => {
+            router.routeMessage('cbus/write/254/56/3/temperature', '21.5');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+    });
 });
