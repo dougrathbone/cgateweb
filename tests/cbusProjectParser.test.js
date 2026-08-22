@@ -224,6 +224,18 @@ describe('CbusProjectParser', () => {
                 .rejects.toThrow(/too many elements/i);
         });
 
+        it('rejects when xml2js throws synchronously instead of hanging the promise', async () => {
+            await jest.isolateModulesAsync(async () => {
+                jest.doMock('xml2js', () => ({
+                    parseString: () => { throw new Error('sync boom'); }
+                }));
+                const IsolatedParser = require('../src/cbusProjectParser');
+                const isolated = new IsolatedParser();
+                await expect(isolated.parseXML('<?xml version="1.0"?><Network/>'))
+                    .rejects.toThrow(/XML parse error: sync boom/);
+            });
+        });
+
         it('should handle Label attribute as alternative to TagName', async () => {
             const xml = `<?xml version="1.0"?>
                 <Network Address="254">
