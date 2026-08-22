@@ -276,3 +276,39 @@ jobs:
             exit 1
             ;;
         esac
+
+  # Cheap check that this repo's ci-assets release still serves the zips the
+  # integration download/upload legs pin. The Schneider job above does not
+  # watch GitHub; a deleted or re-uploaded asset would only fail on the next
+  # code push that actually runs those legs.
+  cgate-ci-assets-check:
+    name: Verify ci-assets C-Gate zip (${{ matrix.cgate.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        cgate:
+          - version: "3.3.1"
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
+            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
+          - version: "3.3.2"
+            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip"
+            sha256: "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+    steps:
+    - name: Download and verify hosted C-Gate package
+      env:
+        URL: ${{ matrix.cgate.url }}
+        EXPECTED_SHA256: ${{ matrix.cgate.sha256 }}
+      run: |
+        set -euo pipefail
+        curl -fSL --retry 3 --retry-all-errors --retry-delay 10 \
+          --max-time 600 --connect-timeout 30 \
+          -o cgate.zip "$URL"
+        ACTUAL=$(sha256sum cgate.zip | awk '{print $1}')
+        if [[ "$ACTUAL" != "$EXPECTED_SHA256" ]]; then
+          echo "::error::ci-assets C-Gate ${{ matrix.cgate.version }} sha256 ${ACTUAL} does not match pin ${EXPECTED_SHA256}."
+          exit 1
+        fi
+        echo "ci-assets C-Gate ${{ matrix.cgate.version }} verified."

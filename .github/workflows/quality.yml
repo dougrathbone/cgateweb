@@ -37,8 +37,9 @@ on:
       require-upload-integration:
         description: >-
           When true (release path), the upload-mode C-Gate integration leg must
-          succeed; a skip because CGATE_UPLOAD_TEST_URL is unset fails the gate.
-          When false (PR path), skipped remains OK.
+          succeed. If CGATE_UPLOAD_TEST_URL is unset the job uses the hosted
+          3.3.1 ci-assets zip so a missing variable no longer skips the gate.
+          When false (PR path), skipped remains OK unless the variable is set.
         type: boolean
         required: false
         default: false
@@ -378,17 +379,17 @@ jobs:
       timeout-minutes: 15
 
   # Exercises a C-Gate version that is NOT openly downloadable (3.3.3, 3.7.x) by
-  # fetching a self-hosted zip and installing it via upload mode. Activates only
-  # when the CGATE_UPLOAD_TEST_URL repository variable points at a hosted zip
-  # (e.g. a release asset on this repo); otherwise the job is skipped. On the
-  # PR path the aggregator treats a skip as a pass; on the release path
-  # (require-upload-integration) a skip fails the gate.
+  # fetching a self-hosted zip and installing it via upload mode. On the PR path
+  # this job stays skipped unless CGATE_UPLOAD_TEST_URL is set. On the release
+  # path (require-upload-integration) it always runs: if the variable is empty
+  # it falls back to the already-hosted 3.3.1 ci-assets zip so the installer
+  # upload path is covered without redistributing a non-public Schneider build.
   integration-upload:
     name: Integration upload (hosted)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs: test
-    if: ${{ inputs.run-expensive && vars.CGATE_UPLOAD_TEST_URL != '' }}
+    if: ${{ inputs.run-expensive && (vars.CGATE_UPLOAD_TEST_URL != '' || inputs.require-upload-integration) }}
 
     steps:
     - name: Checkout repository
@@ -409,11 +410,28 @@ jobs:
     - name: Fetch hosted C-Gate zip into the upload share volume
       env:
         CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
+        CGATE_UPLOAD_TEST_SHA256: ${{ vars.CGATE_UPLOAD_TEST_SHA256 }}
+        DEFAULT_UPLOAD_URL: https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip
+        DEFAULT_UPLOAD_SHA256: a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f
       run: |
+        set -euo pipefail
+        URL="${CGATE_UPLOAD_TEST_URL:-$DEFAULT_UPLOAD_URL}"
+        if [[ -n "${CGATE_UPLOAD_TEST_URL:-}" ]]; then
+          EXPECTED="${CGATE_UPLOAD_TEST_SHA256:-}"
+        else
+          EXPECTED="$DEFAULT_UPLOAD_SHA256"
+        fi
         mkdir -p test-env/volumes/share/cgate
         curl -fSL --retry 3 --retry-all-errors --retry-delay 10 \
           --max-time 600 --connect-timeout 30 \
-          -o test-env/volumes/share/cgate/cgate-hosted.zip "$CGATE_UPLOAD_TEST_URL"
+          -o test-env/volumes/share/cgate/cgate-hosted.zip "$URL"
+        if [[ -n "$EXPECTED" ]]; then
+          ACTUAL=$(sha256sum test-env/volumes/share/cgate/cgate-hosted.zip | awk '{print $1}')
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            echo "::error::Hosted C-Gate zip sha256 ${ACTUAL} does not match pin ${EXPECTED}."
+            exit 1
+          fi
+        fi
 
     - name: Set up managed-upload test options
       run: cp test-env/options-managed-upload.json test-env/active-options.json
