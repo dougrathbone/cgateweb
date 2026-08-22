@@ -1,6 +1,6 @@
 // @ts-check
 const { EventEmitter } = require('events');
-const { createLogger } = require('./logger');
+const { createLogger, resolveLogLevelFromSettings } = require('./logger');
 
 /**
  * Manages all connections for the CgateWebBridge.
@@ -31,7 +31,7 @@ class ConnectionManager extends EventEmitter {
         
         this.logger = createLogger({ 
             component: 'connection-manager', 
-            level: settings.log_level || (settings.logging ? 'info' : 'warn'),
+            level: resolveLogLevelFromSettings(settings),
             enabled: true 
         });
 

@@ -1,7 +1,8 @@
 // @ts-check
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
-const { clampSetting, evictOldestFifo } = require('./utils');
+const { evictOldestFifo } = require('./utils');
+const { resolveSetting } = require('./config/schema');
 const {
     MQTT_TOPIC_SUFFIX_LEVEL,
     CGATE_CMD_ON,
@@ -62,7 +63,7 @@ class DeviceStateManager {
         this._lastSeen = new Map();
 
         // Bound on _deviceLevels / _lastSeen growth.
-        this._maxEntries = clampSetting(this.settings.deviceStateMaxEntries, 100, 5000);
+        this._maxEntries = Math.max(100, resolveSetting(this.settings, 'deviceStateMaxEntries'));
     }
 
     /**

@@ -1,5 +1,5 @@
 // @ts-check
-const { createLogger } = require('./logger');
+const { createLogger, resolveLogLevelFromSettings } = require('./logger');
 const { clampSetting, evictOldestFifo } = require('./utils');
 const {
     MQTT_TOPIC_PREFIX_READ,
@@ -121,7 +121,7 @@ class EventPublisher {
         
         this.logger = options.logger || createLogger({ 
             component: 'event-publisher', 
-            level: this.settings.log_level || (this.settings.logging ? 'info' : 'warn'),
+            level: resolveLogLevelFromSettings(this.settings),
             enabled: true 
         });
     }

@@ -4,6 +4,7 @@ const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
 const { temperatureToCbusLevel, redactMqttPayload, describeCbusAddressRangeError } = require('./utils');
+const { resolveSetting } = require('./config/schema');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_TOPIC_PREFIX_READ,
@@ -128,7 +129,7 @@ class MqttCommandRouter extends EventEmitter {
 
         // Use shared tracker if provided, otherwise create a private one
         this._coverRampTracker = options.coverRampTracker
-            || new CoverRampTracker(this.settings.coverRampUpdateIntervalMs || 500);
+            || new CoverRampTracker(resolveSetting(this.settings, 'coverRampUpdateIntervalMs'));
 
         // Brute-force limit on disarm, keyed by network/application. Built
         // lazily on first disarm so the settings object can be mutated after
@@ -155,8 +156,8 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _getDisarmLimiter() {
-        const maxRequests = this.settings.securityDisarmMaxAttempts ?? 10;
-        const windowMs = this.settings.securityDisarmAttemptWindowMs ?? 600000;
+        const maxRequests = resolveSetting(this.settings, 'securityDisarmMaxAttempts');
+        const windowMs = resolveSetting(this.settings, 'securityDisarmAttemptWindowMs');
         if (!this._disarmLimiter
             || this._disarmLimiter.maxRequests !== maxRequests
             || this._disarmLimiter.windowMs !== windowMs) {
@@ -749,7 +750,7 @@ class MqttCommandRouter extends EventEmitter {
         // DeviceStateManager (single owner of relative-level operations).
         this.deviceStateManager.cancelRelativeLevelOperation(levelAddress);
 
-        const timeoutMs = this.settings.relativeLevelTimeoutMs || 5000;
+        const timeoutMs = resolveSetting(this.settings, 'relativeLevelTimeoutMs');
         this.deviceStateManager.setupRelativeLevelOperation(levelAddress, (currentLevel) => {
             const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
             this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
@@ -904,7 +905,7 @@ class MqttCommandRouter extends EventEmitter {
         const startLevel = (this.deviceStateManager && this.deviceStateManager.getLevel(network, application, group)) || 0;
         const duration = durationMs !== null && durationMs !== undefined
             ? durationMs
-            : (this.settings.cover_ramp_duration_ms || 5000);
+            : resolveSetting(this.settings, 'cover_ramp_duration_ms');
 
         const mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
         const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;

@@ -1,6 +1,7 @@
 // @ts-check
 const httpDefault = require('http');
 const { backoffDelay } = require('./backoff');
+const { resolveSetting } = require('./config/schema');
 
 /**
  * Fetch this add-on's own info from the Supervisor API. Every installed add-on
@@ -51,12 +52,16 @@ function _fetchAddonInfo({ token, httpModule = httpDefault, timeoutMs = 5000 } =
  * @param {number} [options.timeoutMs=5000] - per-request timeout
  * @param {number} [options.attempts=4] - total attempts before giving up
  * @param {number} [options.initialRetryDelayMs=1000] - base delay for the retry backoff
+ * @param {number} [options.maxRetryDelayMs] - ceiling for the retry backoff (schema: ingressDiscoveryMaxBackoffMs)
  * @param {Function} [options.sleep] - sleep implementation override (testing)
  * @returns {Promise<string|null>} the ingress entry path, or null when it could not be determined
  */
-async function discoverIngressEntry({ token, httpModule, timeoutMs, attempts = 4, initialRetryDelayMs = 1000, sleep } = {}) {
+async function discoverIngressEntry({ token, httpModule, timeoutMs, attempts = 4, initialRetryDelayMs = 1000, maxRetryDelayMs, sleep } = {}) {
     if (!token) return null;
     const doSleep = sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const maxMs = maxRetryDelayMs !== undefined
+        ? maxRetryDelayMs
+        : resolveSetting({}, 'ingressDiscoveryMaxBackoffMs');
 
     for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
@@ -70,7 +75,7 @@ async function discoverIngressEntry({ token, httpModule, timeoutMs, attempts = 4
             throw new Error('Supervisor response did not include an ingress entry path');
         } catch {
             if (attempt >= attempts) break;
-            await doSleep(backoffDelay(attempt - 1, { initialMs: initialRetryDelayMs, maxMs: 8000 }));
+            await doSleep(backoffDelay(attempt - 1, { initialMs: initialRetryDelayMs, maxMs }));
         }
     }
 

@@ -3,6 +3,7 @@ const net = require('net');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 const { backoffDelay } = require('./backoff');
+const { resolveSetting, resolveClampedSetting } = require('./config/schema');
 const { 
     CGATE_CMD_EVENT_MODE_L6, 
     CGATE_CMD_LOGIN, 
@@ -38,10 +39,10 @@ class CgateConnection extends EventEmitter {
         this.connected = false;
         this.reconnectAttempts = 0;
         this.reconnectTimeout = null;
-        this.maxReconnectAttempts = settings.cgateMaxReconnectAttempts || 10;
-        this.reconnectInitialDelay = settings.reconnectinitialdelay || 1000;
-        this.reconnectMaxDelay = settings.reconnectmaxdelay || 60000;
-        this.connectionTimeout = Math.max(1000, settings.connectionTimeout || 5000);
+        this.maxReconnectAttempts = resolveSetting(settings, 'cgateMaxReconnectAttempts');
+        this.reconnectInitialDelay = resolveSetting(settings, 'reconnectinitialdelay');
+        this.reconnectMaxDelay = resolveSetting(settings, 'reconnectmaxdelay');
+        this.connectionTimeout = resolveClampedSetting(settings, 'connectionTimeout', { min: 1000 });
         this.logger = createLogger({ component: `CgateConnection-${type}` });
         
         // Pool support properties
@@ -52,10 +53,19 @@ class CgateConnection extends EventEmitter {
         this.isWritable = true;
         this._drainWaiters = [];
 
-        // Keep-alive for event connection
+        // Keep-alive for event connection. eventConnectionKeepAliveInterval
+        // wins when present; otherwise keepAliveInterval (add-on sets both).
         this.keepAliveTimer = null;
+        let keepAliveMs;
+        if (Object.prototype.hasOwnProperty.call(settings, 'eventConnectionKeepAliveInterval')) {
+            keepAliveMs = resolveSetting(settings, 'eventConnectionKeepAliveInterval');
+        } else if (Object.prototype.hasOwnProperty.call(settings, 'keepAliveInterval')) {
+            keepAliveMs = resolveSetting(settings, 'keepAliveInterval');
+        } else {
+            keepAliveMs = resolveSetting(settings, 'eventConnectionKeepAliveInterval');
+        }
         this.keepAliveInterval = type === 'event'
-            ? Math.max(10000, settings.eventConnectionKeepAliveInterval || settings.keepAliveInterval || 60000)
+            ? Math.max(10000, keepAliveMs)
             : null;
     }
 
