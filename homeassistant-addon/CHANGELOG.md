@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.29.0] - 2026-08-22
+
+### Added
+
+- **The C-Bus network clock can now be turned on in the add-on.** Date and time from the bus become two diagnostic sensors. Off by default; cgateweb never sets the clock. (#66)
+- **PIR and relay applications can now be chosen in the add-on.**
+- **Groups that appear on the bus but not in Toolkit can become Home Assistant entities.** Off by default; leftover discovery configs have to be cleaned off the broker by hand. (#63)
+- **Temperature Broadcast groups accept a Celsius write** between 0 and 63.75.
+- **Scene Module play and record work over MQTT.** Off by default because record overwrites module memory.
+- **Alarm zones now get C-Gate names, a loop-fault sensor, and password-entry codes 1 to 4.**
+
+### Fixed
+
+- **Clock ticks that arrive with a C-Gate status-channel prefix are now decoded.** (#66)
+
 ## [1.28.1] - 2026-08-22
 
 ### Fixed
