@@ -156,10 +156,16 @@ class MqttCommandRouter extends EventEmitter {
     _getDisarmLimiter() {
         const maxRequests = resolveSetting(this.settings, 'securityDisarmMaxAttempts');
         const windowMs = resolveSetting(this.settings, 'securityDisarmAttemptWindowMs');
+        const maxTrackedSources = resolveSetting(this.settings, 'securityDisarmMaxTrackedKeys');
         if (!this._disarmLimiter
             || this._disarmLimiter.maxRequests !== maxRequests
-            || this._disarmLimiter.windowMs !== windowMs) {
-            this._disarmLimiter = new RateLimiter({ windowMs, maxRequests, maxTrackedSources: 256 });
+            || this._disarmLimiter.windowMs !== windowMs
+            || this._disarmLimiter.maxTrackedSources !== maxTrackedSources) {
+            this._disarmLimiter = new RateLimiter({
+                windowMs,
+                maxRequests,
+                maxTrackedSources
+            });
         }
         return this._disarmLimiter;
     }
@@ -664,7 +670,7 @@ class MqttCommandRouter extends EventEmitter {
         } else if (action === MQTT_STATE_OFF) {
             cgateCommand = `${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`;
         } else {
-            this.logger.warn(`Invalid payload for switch command: ${payload}`);
+            this.logger.warn(`Invalid payload for switch command: ${redactMqttPayload(payload)}`);
             return;
         }
 
@@ -741,7 +747,7 @@ class MqttCommandRouter extends EventEmitter {
                 levelPercent
             });
         } else {
-            this.logger.warn(`Invalid payload for ramp command: ${payload}`);
+            this.logger.warn(`Invalid payload for ramp command: ${redactMqttPayload(payload)}`);
         }
     }
 

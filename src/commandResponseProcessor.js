@@ -105,7 +105,7 @@ class CommandResponseProcessor {
 
             this._processCommandResponse(parsedResponse.responseCode, parsedResponse.statusData);
         } catch (e) {
-            this.logger.error(`Error processing command data line:`, e, `Line: ${line}`); 
+            this.logger.error(`Error processing command data line: ${e.message}`, { line: redactCgateLine(line) }); 
         }
     }
 

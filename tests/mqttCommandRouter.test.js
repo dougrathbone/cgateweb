@@ -822,6 +822,22 @@ describe('MqttCommandRouter', () => {
                 expect(queueSpy).not.toHaveBeenCalled();
             });
 
+            it('redacts MQTT secrets in invalid switch payload warnings', () => {
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+                const command = {
+                    getGroup: () => '1',
+                    getTopic: () => 'cbus/write/254/56/1/switch',
+                    getNetwork: () => '254',
+                    getApplication: () => '56'
+                };
+                router._handleSwitch(command, '{"action":"DISARM","code":"1234"}');
+                expect(warnSpy).toHaveBeenCalledTimes(1);
+                expect(warnSpy.mock.calls[0][0]).toContain('Invalid payload for switch command:');
+                expect(warnSpy.mock.calls[0][0]).toContain('***');
+                expect(warnSpy.mock.calls[0][0]).not.toContain('1234');
+                warnSpy.mockRestore();
+            });
+
             it('should treat a STOP payload on the switch topic as a cover stop', () => {
                 // Home Assistant's MQTT cover platform has no separate stop topic;
                 // it publishes payload_stop ("STOP") to the command (switch) topic.
@@ -852,6 +868,24 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/56/1/ramp', '75');
                 
                 expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 191\n');
+            });
+
+            it('redacts MQTT secrets in invalid ramp payload warnings', () => {
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+                const command = {
+                    getLevel: () => null,
+                    getRampTime: () => null,
+                    getNetwork: () => '254',
+                    getApplication: () => '56',
+                    getGroup: () => '1'
+                };
+                router._handleAbsoluteLevel(command, '//TestProject/254/56/1', '{"action":"DISARM","code":"9999"}');
+                expect(queueSpy).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledTimes(1);
+                expect(warnSpy.mock.calls[0][0]).toContain('Invalid payload for ramp command:');
+                expect(warnSpy.mock.calls[0][0]).toContain('***');
+                expect(warnSpy.mock.calls[0][0]).not.toContain('9999');
+                warnSpy.mockRestore();
             });
 
             it('echoes dimmer level and ON to read topics before the C-Gate event (issue #52)', () => {
