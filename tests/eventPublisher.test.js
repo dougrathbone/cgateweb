@@ -867,15 +867,19 @@ describe('EventPublisher', () => {
         });
 
         it.each([
-            ['unsealed', 'ON', '{"zone_state":"unsealed"}', 2],
-            ['sealed', 'OFF', '{"zone_state":"sealed"}', 2],
-            ['open', 'ON', '{"zone_state":"open"}', 2],
-            ['short', 'ON', '{"zone_state":"short"}', 2]
+            ['unsealed', 'ON', '{"zone_state":"unsealed"}', 3],
+            ['sealed', 'OFF', '{"zone_state":"sealed"}', 3],
+            ['open', 'ON', '{"zone_state":"open"}', 3],
+            ['short', 'ON', '{"zone_state":"short"}', 3]
         ])('should publish security zone %s as state=%s', (zoneState, state, attrs, times) => {
             publish('58', { kind: 'security_zone', zoneState }, '254', '208');
             expect(mockPublishFn).toHaveBeenCalledTimes(times);
             expectCall('cbus/read/254/208/58/state', state);
             expectCall('cbus/read/254/208/58/attributes', attrs);
+            expectCall(
+                'cbus/read/254/208/58/loop_fault',
+                zoneState === 'open' || zoneState === 'short' ? 'ON' : 'OFF'
+            );
         });
 
         it('should keep the non-isolated attributes payload byte-identical for every zone state', () => {
@@ -900,9 +904,10 @@ describe('EventPublisher', () => {
             // A bypassed zone that is unsealed is still unsealed: isolation is
             // extra context on the attributes topic, never a new on/off meaning.
             publish('58', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }, '254', '208');
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            expect(mockPublishFn).toHaveBeenCalledTimes(3);
             expectCall('cbus/read/254/208/58/state', 'ON');
             expectCall('cbus/read/254/208/58/attributes', '{"zone_state":"unsealed","isolated":true}');
+            expectCall('cbus/read/254/208/58/loop_fault', 'OFF');
         });
 
         it.each([

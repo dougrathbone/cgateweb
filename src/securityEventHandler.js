@@ -5,7 +5,7 @@ const securityDecoder = require('./applicationDecoders/securityDecoder');
 const { isAppEventLine, LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
 const { securityZoneLabelKey } = require('./securityZoneLabels');
 const SecurityPanelState = require('./securityPanelState');
-const { buildSecurityStatusRequest } = require('./securityCommand');
+const { buildSecurityStatusRequest, buildSecurityRequestZoneName } = require('./securityCommand');
 const { redactCgateLine } = require('./utils');
 const { NEWLINE } = require('./constants');
 const { describePanelCondition } = require('./securityPanelConditions');
@@ -25,7 +25,10 @@ const SYNC_TRIGGER_SLOTS = {
     resync: null
 };
 
-const SYNC_EXEMPT_KINDS = new Set(['status_request', 'arm_command_echo', 'keypad_command_echo']);
+const SYNC_EXEMPT_KINDS = new Set([
+    'status_request', 'arm_command_echo', 'keypad_command_echo',
+    'zone_name_request_echo', 'zone_name', 'password_entry'
+]);
 
 /**
  * Dispatch table for decoded security readings. Unknown kinds fall through to
@@ -34,6 +37,7 @@ const SYNC_EXEMPT_KINDS = new Set(['status_request', 'arm_command_echo', 'keypad
 const LINE_KIND_HANDLERS = {
     zone(handler, reading) {
         handler._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
+        handler._maybeRequestZoneName(reading.network, reading.application, reading.zone);
         // DEBUG, not INFO: zone changes are routine traffic and would
         // fill the log over months on a busy panel (issue #42 feedback).
         if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
@@ -44,6 +48,20 @@ const LINE_KIND_HANDLERS = {
             reading.zoneState === 'sealed' ? 'off' : 'on',
             handler._zoneLabel(reading.network, reading.zone),
             `Zone ${reading.zoneState}`);
+    },
+
+    zone_name(handler, reading) {
+        handler._applyZoneName(reading);
+    },
+
+    zone_name_request_echo(handler, reading) {
+        if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
+            handler.logger.debug(`Security zone_name request echo (${reading.network}/${reading.application}, zone ${reading.zone})`);
+        }
+    },
+
+    password_entry(handler, reading) {
+        handler._publishPasswordEntry(reading);
     },
 
     status_report_1(handler, reading) {
@@ -113,6 +131,8 @@ const LINE_KIND_HANDLERS = {
  * @property {string|null} [detail] - detail-suffixed trouble verbs' free-text argument
  * @property {string} [condition] - panel_trouble only: 'mains'|'battery'|'tamper'|'panic'|'line'|'arm_failed'|'fire'
  * @property {boolean} [active] - panel_trouble only: true = raised, false = cleared
+ * @property {string} [name] - zone_name only
+ * @property {number|null} [code] - password_entry only: 1-4, or null when unrecognised
  */
 
 /**
@@ -158,6 +178,9 @@ class SecurityEventHandler {
         // e.g. a bridge restart on an already-synced network); 'postSync'
         // covers the 762 sync-ok trigger. At most one pair each per session.
         this._syncState = new Map();
+        // Zones we have already asked C-Gate to name this session (do not fire
+        // a request per event, and never a bulk 80-zone dump on connect).
+        this._zoneNameRequested = new Set();
         // Panel-wide trouble conditions, so repeated verbs don't republish.
         this.panelState = new SecurityPanelState();
         // The panel offers no way to query mains/battery/line/arm-fail/fire,
@@ -435,6 +458,76 @@ class SecurityEventHandler {
         }
         this.logger.info(`C-Bus Security: zone isolation cleared for ${cleared.length} zone(s) (${network}/${application})`);
         this._persistPanelState();
+    }
+
+    /**
+     * Ask C-Gate for a zone's name the first time we see the zone without a
+     * Toolkit application-1 label. Not fired on connect (that would dump 80
+     * requests); repeats are dropped for the rest of the session.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @param {string} zone
+     * @private
+     */
+    _maybeRequestZoneName(network, application, zone) {
+        if (!this.sendCommand || !this.cbusname) return;
+        if (zone === null || zone === undefined) return;
+        const zoneNum = parseInt(String(zone), 10);
+        if (!Number.isInteger(zoneNum) || zoneNum < 1 || zoneNum > 127) return;
+
+        const requestKey = `${network}/${application}/${zone}`;
+        if (this._zoneNameRequested.has(requestKey)) return;
+
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery && haDiscovery.labelMap && haDiscovery.labelMap.get(securityZoneLabelKey(network, zone))) {
+            this._zoneNameRequested.add(requestKey);
+            return;
+        }
+
+        this._zoneNameRequested.add(requestKey);
+        const cmd = buildSecurityRequestZoneName({
+            cbusname: this.cbusname,
+            network,
+            application,
+            zone
+        });
+        this.sendCommand(cmd + NEWLINE);
+    }
+
+    /**
+     * Apply a zone_name reading: store it as an application-1 label when none
+     * exists yet, and re-announce the HA entity so the name reaches Home
+     * Assistant.
+     *
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _applyZoneName(reading) {
+        if (!reading.zone || !reading.name) return;
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery && typeof haDiscovery.applySecurityZoneName === 'function') {
+            haDiscovery.applySecurityZoneName(reading.network, reading.zone, reading.name);
+        }
+    }
+
+    /**
+     * Publish a password-entry code onto the panel device as a diagnostic
+     * MQTT value. Codes outside 1–4 are consumed quietly (fail closed).
+     *
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _publishPasswordEntry(reading) {
+        if (reading.code === null || reading.code === undefined) return;
+        this.eventPublisher.publishReading(reading.network, reading.application, 'panel', {
+            kind: 'security_password_entry',
+            code: reading.code
+        });
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery) {
+            haDiscovery.ensureSecurityPanelDiscovery(reading.network, reading.application);
+        }
     }
 
     /**

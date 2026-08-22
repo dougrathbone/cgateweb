@@ -13,6 +13,8 @@ const {
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
+    MQTT_TOPIC_SUFFIX_LOOP_FAULT,
+    MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
@@ -58,6 +60,7 @@ const {
     HA_DISCOVERY_SUFFIX,
     HA_MODEL_LIGHTING,
     HA_MODEL_TRIGGER,
+    DEFAULT_CBUS_APP_LIGHTING,
     entityIdFields
 } = require('./constants');
 const { PANEL_CONDITIONS } = require('./securityPanelConditions');
@@ -276,6 +279,9 @@ class _HaDiscoveryPublishers {
     labelMap;
 
     /** @type {Map<string, string>} */
+    typeOverrides;
+
+    /** @type {Map<string, string>} */
     entityIds;
 
     /** @type {Set<string>} */
@@ -301,6 +307,15 @@ class _HaDiscoveryPublishers {
 
     /** @type {Set<string>} */
     _securityZoneSeen;
+
+    /** @type {Set<string>} */
+    _unlistedGroupSeen;
+
+    /** @type {Set<string>} */
+    _treeDiscoveredGroups;
+
+    /** @type {boolean} */
+    _recordingTreeGroups;
 
     /** @type {Set<string>} */
     _securityPanelSeen;
@@ -360,6 +375,10 @@ class _HaDiscoveryPublishers {
         if (groupId === undefined || groupId === null || groupId === '') {
             this.logger.warn(`Skipping lighting group in HA Discovery due to missing/invalid GroupAddress`, { group });
             return;
+        }
+
+        if (this._recordingTreeGroups !== false) {
+            this._treeDiscoveredGroups.add(`${networkId}/${appId}/${groupId}`);
         }
 
         const labelKey = `${networkId}/${appId}/${groupId}`;
@@ -642,6 +661,10 @@ class _HaDiscoveryPublishers {
                 return;
             }
 
+            if (this._recordingTreeGroups !== false) {
+                this._treeDiscoveredGroups.add(`${networkId}/${appAddress}/${groupId}`);
+            }
+
             if (discoveryType === 'hvac') {
                 this._createHvacDiscovery(networkId, appAddress, groupId, group.Label);
             } else {
@@ -859,6 +882,83 @@ class _HaDiscoveryPublishers {
             ),
             create: () => this._createTemperatureDiscovery(String(network), String(appId), String(group))
         });
+    }
+
+    /**
+     * Opt-in: announce a Home Assistant entity the first time a lighting-style
+     * group appears on the bus even if it is missing from the Toolkit project
+     * (#63). Off by default because scene addresses and unused groups also
+     * appear in the event stream, and retained discovery configs have to be
+     * cleaned off the broker by hand.
+     *
+     * @param {string|number} network
+     * @param {string|number} appId
+     * @param {string|number} group
+     * @returns {boolean}
+     */
+    ensureUnlistedGroupDiscovery(network, appId, group) {
+        if (!this.settings.ha_discovery_enabled) return false;
+        if (!this.settings.ha_discovery_unlisted_groups) return false;
+        if (network === null || network === undefined || appId === null || appId === undefined
+            || group === null || group === undefined || group === '') {
+            return false;
+        }
+
+        const key = `${network}/${appId}/${group}`;
+        if (this._treeDiscoveredGroups.has(key) || this._unlistedGroupSeen.has(key)) {
+            return false;
+        }
+
+        const isLighting = String(appId) === DEFAULT_CBUS_APP_LIGHTING;
+        const typed = getDiscoveryTypeForApp(this.settings, appId);
+        if (!isLighting && !typed) return false;
+        if (typed === 'trigger') return false;
+
+        const restoreSnapshot = !this._labelSnapshot;
+        if (restoreSnapshot) {
+            this._labelSnapshot = {
+                exclude: this.exclude,
+                labelMap: this.labelMap,
+                typeOverrides: this.typeOverrides,
+                entityIds: this.entityIds,
+                areas: this.areas
+            };
+        }
+        // Tree processors finish via _finishTreeEntity, which records topics on
+        // _currentRunTopics rather than _publishedTopics. Own a run set when
+        // this is not already inside a TREEXML pass, then promote those topics
+        // onto the event-driven sets so a later tree scan does not retract them.
+        const ownRunTopics = !this._currentRunTopics;
+        if (ownRunTopics) this._currentRunTopics = new Set();
+        const topicsBefore = this._currentRunTopics.size;
+        this._recordingTreeGroups = false;
+        try {
+            if (isLighting) {
+                this._processOneLightingGroup(network, appId, { GroupAddress: group });
+            } else {
+                this._processEnableControlGroups(network, appId, [{ GroupAddress: group }]);
+            }
+            this._unlistedGroupSeen.add(key);
+
+            let published = false;
+            if (ownRunTopics) {
+                for (const topic of this._currentRunTopics) {
+                    this._publishedTopics.add(topic);
+                    this._eventDrivenDiscoveryTopics.add(topic);
+                    published = true;
+                }
+            } else if (this._currentRunTopics.size > topicsBefore) {
+                for (const topic of this._currentRunTopics) {
+                    this._eventDrivenDiscoveryTopics.add(topic);
+                }
+                published = true;
+            }
+            return published;
+        } finally {
+            this._recordingTreeGroups = true;
+            if (ownRunTopics) this._currentRunTopics = null;
+            if (restoreSnapshot) this._labelSnapshot = null;
+        }
     }
 
     /**
@@ -1125,9 +1225,14 @@ class _HaDiscoveryPublishers {
             // an exclusion can be recorded against either key shape.
             excludeKeys: [key, securityZoneLabelKey(network, zone)],
             describe: `security zone ${key}`,
-            retract: () => this._retractEventDrivenConfig(
-                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/cgateweb_${network}_${appId}_${zone}/${HA_DISCOVERY_SUFFIX}`
-            ),
+            retract: () => {
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/cgateweb_${network}_${appId}_${zone}/${HA_DISCOVERY_SUFFIX}`
+                );
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/cgateweb_${network}_${appId}_${zone}_loop_fault/${HA_DISCOVERY_SUFFIX}`
+                );
+            },
             create: () => this._createSecurityZoneDiscovery(String(network), String(appId), String(zone))
         });
     }
@@ -1161,6 +1266,26 @@ class _HaDiscoveryPublishers {
             model: SECURITY_ZONE_ENTITY.model,
             area,
             logInfo: `Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`
+        });
+
+        const loopFaultUniqueId = `${uniqueId}_loop_fault`;
+        this._finishEventDrivenEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${loopFaultUniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId: loopFaultUniqueId,
+            entityId: undefined,
+            component: HA_COMPONENT_BINARY_SENSOR,
+            name: 'Loop fault',
+            fields: {
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${zone}/${MQTT_TOPIC_SUFFIX_LOOP_FAULT}`,
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF,
+                device_class: 'problem',
+                entity_category: 'diagnostic'
+            },
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: SECURITY_ZONE_ENTITY.model,
+            area
         });
     }
 
@@ -1196,6 +1321,9 @@ class _HaDiscoveryPublishers {
                     );
                 }
                 this._retractEventDrivenConfig(this._securityAlarmTopic(String(network), String(appId)));
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_password_entry/${HA_DISCOVERY_SUFFIX}`
+                );
             },
             create: () => this._createSecurityPanelDiscovery(String(network), String(appId))
         });
@@ -1273,6 +1401,20 @@ class _HaDiscoveryPublishers {
         this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_CONDITIONS.length} conditions)`);
 
         this._createSecurityAlarmDiscovery(networkId, appId, deviceName);
+
+        this._finishEventDrivenEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${networkId}_${appId}_password_entry/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId: `cgateweb_${networkId}_${appId}_password_entry`,
+            component: HA_COMPONENT_SENSOR,
+            name: 'Password entry',
+            fields: {
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY}`,
+                entity_category: 'diagnostic'
+            },
+            deviceIdentifiers,
+            deviceName,
+            model: 'C-Bus Security Panel'
+        });
     }
 
     /**

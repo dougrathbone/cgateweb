@@ -33,6 +33,8 @@ const {
     MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
+    MQTT_TOPIC_SUFFIX_LOOP_FAULT,
+    MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY,
     MQTT_TOPIC_SUFFIX_VALUE,
     MQTT_TOPIC_SUFFIX_UNIT,
     MQTT_STATE_ON,
@@ -316,6 +318,15 @@ const READING_KIND_HANDLERS = {
                 ep.mqttOptions
             );
         }
+        if (hasZoneState) {
+            ep._publishIfNeeded(
+                `${base}/${MQTT_TOPIC_SUFFIX_LOOP_FAULT}`,
+                (reading.zoneState === 'open' || reading.zoneState === 'short')
+                    ? MQTT_STATE_ON
+                    : MQTT_STATE_OFF,
+                ep.mqttOptions
+            );
+        }
     },
 
     security_panel(ep, base, reading) {
@@ -344,6 +355,14 @@ const READING_KIND_HANDLERS = {
         ep._publishIfNeeded(
             `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
             JSON.stringify(attributes),
+            ep.mqttOptions
+        );
+    },
+
+    security_password_entry(ep, base, reading) {
+        ep._publishIfNeeded(
+            `${base}/${MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY}`,
+            String(reading.code),
             ep.mqttOptions
         );
     },

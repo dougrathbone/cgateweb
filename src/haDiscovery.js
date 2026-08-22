@@ -1,7 +1,7 @@
 // @ts-check
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
-const { parseSecurityZoneLabelKey } = require('./securityZoneLabels');
+const { parseSecurityZoneLabelKey, securityZoneLabelKey } = require('./securityZoneLabels');
 const { resolveSetting } = require('./config/schema');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
@@ -26,6 +26,7 @@ const CONFIG_TOPIC_SUFFIX = `/${HA_DISCOVERY_SUFFIX}`;
  * @property {(networkId: string|number, appId: string|number, groups: Array<Object>) => void} _processLightingGroups
  * @property {(networkId: string|number, appAddress: string|number, groups: Array<Object>) => void} _processEnableControlGroups
  * @property {(network: string|number, appId: string|number, zone: string|number) => boolean} ensureSecurityZoneDiscovery
+ * @property {(network: string|number, appId: string|number, group: string|number) => boolean} ensureUnlistedGroupDiscovery
  */
 class HaDiscovery {
     /**
@@ -125,6 +126,12 @@ class HaDiscovery {
         // event or status report) and from application-1 labels during tree
         // runs. Tracks "network/app/zone" keys already published this session.
         this._securityZoneSeen = new Set();
+
+        // Lighting-style groups announced from live bus traffic rather than
+        // TREEXML (opt-in ha_discovery_unlisted_groups). Tracks
+        // "network/app/group" keys already handled this session.
+        this._unlistedGroupSeen = new Set();
+        this._treeDiscoveredGroups = new Set();
 
         // Measurement (app 228) channels are discovered event-driven (first
         // reading for that device/channel). Tracks "network/app/device/channel"
@@ -234,6 +241,31 @@ class HaDiscovery {
         if (republished > 0) {
             this.logger.info(`Republished ${republished} security zone discovery config(s) after label changes`);
         }
+    }
+
+    /**
+     * Store a C-Gate zone_name as an application-1 label when Toolkit did not
+     * already supply one, then re-announce the zone so Home Assistant picks
+     * up the name. Does not overwrite an existing label.
+     *
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @param {string} name
+     * @returns {boolean} true if a discovery config was (re)published
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     */
+    applySecurityZoneName(network, zone, name) {
+        const trimmed = typeof name === 'string' ? name.trim() : '';
+        if (!trimmed) return false;
+        const appId = this.settings.cbus_security_app_id;
+        if (!appId || String(appId) === '0') return false;
+        const labelKey = securityZoneLabelKey(network, zone);
+        const existing = this.labelMap.get(labelKey);
+        if (existing) return false;
+        this.labelMap.set(labelKey, trimmed);
+        const seenKey = `${network}/${appId}/${zone}`;
+        this._securityZoneSeen.delete(seenKey);
+        return this.ensureSecurityZoneDiscovery(network, appId, zone);
     }
 
     _applyLabelData(labelData) {

@@ -3,7 +3,8 @@
 const {
     buildSecurityStatusRequest,
     buildSecurityArmCommand,
-    buildSecurityEmulateKeypadCommand
+    buildSecurityEmulateKeypadCommand,
+    buildSecurityRequestZoneName
 } = require('../src/securityCommand');
 
 describe('securityCommand builders', () => {
@@ -61,6 +62,13 @@ describe('securityCommand builders', () => {
                 .toBe('security emulate_keypad //HOME/254/208 $0A');
             expect(buildSecurityEmulateKeypadCommand({ ...base, key: 0xbc }))
                 .toBe('security emulate_keypad //HOME/254/208 $BC');
+        });
+    });
+
+    describe('buildSecurityRequestZoneName', () => {
+        it('builds a C-Gate request_zone_name command', () => {
+            expect(buildSecurityRequestZoneName({ ...base, zone: 12 }))
+                .toBe('security request_zone_name //HOME/254/208 12');
         });
     });
 });
