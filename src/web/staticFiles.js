@@ -38,17 +38,18 @@ class StaticFileServer {
         }
 
         const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, '');
-        const filePath = path.join(STATIC_DIR, safePath);
+        const staticRoot = path.resolve(STATIC_DIR);
+        const resolved = path.resolve(staticRoot, safePath.replace(/^[/\\]+/, ''));
 
-        if (!filePath.startsWith(STATIC_DIR)) {
+        // Require path.sep after the root so `/public` cannot match `/public_evil`.
+        if (resolved !== staticRoot && !resolved.startsWith(staticRoot + path.sep)) {
             res.writeHead(403);
             res.end('Forbidden');
             return;
         }
 
-        if (!fs.existsSync(filePath)) {
-            // SPA fallback: serve index.html for non-API, non-file routes
-            const indexPath = path.join(STATIC_DIR, 'index.html');
+        if (!fs.existsSync(resolved)) {
+            const indexPath = path.resolve(staticRoot, 'index.html');
             if (fs.existsSync(indexPath)) {
                 this._streamFile(indexPath, MIME_TYPES['.html'], res);
                 return;
@@ -58,9 +59,9 @@ class StaticFileServer {
             return;
         }
 
-        const ext = path.extname(filePath).toLowerCase();
+        const ext = path.extname(resolved).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        this._streamFile(filePath, contentType, res);
+        this._streamFile(resolved, contentType, res);
     }
 
     /**
@@ -71,10 +72,6 @@ class StaticFileServer {
      */
     _streamFile(filePath, contentType, res) {
         const stream = fs.createReadStream(filePath);
-        // Handle read failures (file removed mid-request, permission error).
-        // Errors on open (ENOENT/EACCES) fire before 'open', so headers are not
-        // yet sent and we can return a 500. A mid-stream read error arrives
-        // after headers are sent, leaving no option but to destroy the response.
         stream.on('error', (err) => {
             this.logger.error(`Error streaming static file ${filePath}: ${err.message}`);
             if (!res.headersSent) {
@@ -84,8 +81,6 @@ class StaticFileServer {
                 res.destroy(err);
             }
         });
-        // Defer the success header until the file descriptor is open so an open
-        // failure can still produce a clean 500 rather than a truncated 200.
         stream.on('open', () => {
             res.writeHead(200, { 'Content-Type': contentType });
             stream.pipe(res);

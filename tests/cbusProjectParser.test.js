@@ -201,6 +201,15 @@ describe('CbusProjectParser', () => {
                 .rejects.toThrow('XML parse error');
         });
 
+        it.each([
+            ['DOCTYPE', '<!DOCTYPE foo [<!ENTITY x "y">]><Network/>'],
+            ['ENTITY', '<!ENTITY x SYSTEM "file:///etc/passwd"><Network/>'],
+            ['lowercase doctype', '<!doctype html><Network/>'],
+        ])('rejects XML with %s declarations before parsing', async (_label, xml) => {
+            await expect(parser.parseXML(xml))
+                .rejects.toThrow('XML with DTD or entity declarations is not supported');
+        });
+
         it('should handle Label attribute as alternative to TagName', async () => {
             const xml = `<?xml version="1.0"?>
                 <Network Address="254">
