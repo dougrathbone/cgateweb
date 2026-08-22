@@ -599,6 +599,40 @@ describe('CgateWebBridge', () => {
 
             updateSpy.mockRestore();
         });
+
+        it('marks the bridge not ready when a command pool connection is lost', async () => {
+            await new Promise(resolve => setImmediate(resolve));
+            bridge.mqttManager.connected = true;
+            bridge.eventConnection.connected = true;
+            mockConnectionPool.getStats.mockReturnValue({
+                poolSize: 3,
+                totalConnections: 3,
+                healthyConnections: 2,
+                pendingReconnects: 0,
+                retryCounts: [0, 0, 0],
+                isStarted: true,
+                isShuttingDown: false
+            });
+            bridge._updateBridgeReadiness('all-connected');
+            const updateSpy = jest.spyOn(bridge, '_updateBridgeReadiness');
+
+            mockConnectionPool.emit('connectionLost');
+
+            expect(updateSpy).toHaveBeenCalledWith('command-pool-connection-lost');
+            updateSpy.mockRestore();
+        });
+
+        it('routes pool data events through _handleCommandData', async () => {
+            await new Promise(resolve => setImmediate(resolve));
+            const handleSpy = jest.spyOn(bridge, '_handleCommandData');
+            const conn = { poolIndex: 0 };
+            const data = Buffer.from('200-OK\n');
+
+            mockConnectionPool.emit('data', data, conn);
+
+            expect(handleSpy).toHaveBeenCalledWith(data, conn);
+            handleSpy.mockRestore();
+        });
     });
 
 
@@ -707,6 +741,23 @@ describe('CgateWebBridge', () => {
                 expect(processSpy).toHaveBeenCalledWith('343-Begin tree');
                 expect(processSpy).toHaveBeenCalledWith('344-End tree');
                 processSpy.mockRestore();
+            });
+
+            it('redacts keypad echoes when command-line processing throws', () => {
+                const errorSpy = jest.spyOn(bridge, 'error');
+                jest.spyOn(bridge.commandResponseProcessor, 'processLine').mockImplementation(() => {
+                    throw new Error('boom');
+                });
+                const line = '200-OK security emulate_keypad //P/254/208 7';
+
+                bridge._handleCommandData(Buffer.from(`${line}\n`), { poolIndex: 0 });
+
+                expect(errorSpy).toHaveBeenCalledWith(
+                    'Error processing command data line: boom',
+                    expect.objectContaining({ line: expect.stringContaining('***') })
+                );
+                expect(errorSpy.mock.calls[0][1].line).not.toMatch(/emulate_keypad \S+\s+7\b/i);
+                errorSpy.mockRestore();
             });
         });
 
