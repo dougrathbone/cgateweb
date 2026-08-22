@@ -2,6 +2,25 @@
 const crypto = require('crypto');
 
 /**
+ * Normalize a configured web API key for auth checks.
+ *
+ * resolveSetting preserves empty strings (unlike `||`), and the HA add-on
+ * default for web_api_key is an empty field because Ingress authenticates.
+ * Trimming then treating blank as unset keeps that default from becoming a
+ * valid password (timingSafeEqual against an empty provided key) while still
+ * accepting keys the operator padded with whitespace.
+ *
+ * @param {unknown} raw
+ * @returns {string|null}
+ */
+function normalizeApiKey(raw) {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    return trimmed === '' ? null : trimmed;
+}
+
+/**
  * API route classification and authorization: API key / bearer checks and
  * Home Assistant ingress request detection.
  */
@@ -13,7 +32,7 @@ class ApiAuth {
      * @param {Function} options.getBasePath - Returns the current ingress base path (may change after startup)
      */
     constructor({ apiKey, allowUnauthenticatedMutations = false, getBasePath }) {
-        this.apiKey = apiKey || null;
+        this.apiKey = normalizeApiKey(apiKey);
         this.allowUnauthenticatedMutations = allowUnauthenticatedMutations === true;
         this.getBasePath = getBasePath;
     }
