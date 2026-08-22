@@ -6,6 +6,6 @@ For full documentation, see [DOCS.md](DOCS.md).
 
 For the main project, visit [github.com/dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb).
 
-For Home Assistant installation, add this repository URL in Add-on Store:
+For Home Assistant installation, add this repository URL in the **Add-on Store** (not HACS):
 
 `https://github.com/dougrathbone/cgateweb-homeassistant`

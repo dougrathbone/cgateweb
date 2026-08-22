@@ -13,10 +13,16 @@ The add-on supports two modes:
 
 ## Installation
 
-1. Add this repository to your Home Assistant add-on store
-2. Install the "C-Gate Web Bridge" add-on
-3. Configure the add-on settings (see Configuration section below)
-4. Start the add-on
+This is a **Supervisor add-on**, not a HACS integration. Add the repository in the Add-on Store (Settings → Add-ons → Add-on Store → ⋮ → Repositories), not in HACS.
+
+### First 10 minutes
+
+1. Add `https://github.com/dougrathbone/cgateweb-homeassistant` as an add-on repository and refresh the store.
+2. Install **C-Gate Web Bridge**. MQTT is auto-detected if you run the Mosquitto add-on.
+3. On the Configuration tab set **C-Gate host** and **C-Gate project**. Leave the rest unless you need it.
+4. Start the add-on. The Log tab should show C-Gate and MQTT connected; entities appear under Settings → Devices & services → MQTT.
+
+If you do not already run C-Gate somewhere on the network, switch `cgate_mode` to `managed` so this add-on installs C-Gate itself. Details are under [C-Gate Managed Mode Settings](#c-gate-managed-mode-settings).
 
 ## Configuration
 
