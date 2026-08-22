@@ -40,6 +40,114 @@ jobs:
       run-expensive: true
       require-upload-integration: true
 
+  # Publish one architecture-specific tag per build, then combine them into the
+  # generic multi-architecture image that config.yaml tells Supervisor to pull.
+  # The release must not be advertised before every architecture exists.
+  publish-images:
+    name: Publish add-on image (${{ matrix.arch }})
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, aarch64, armv7, armhf, i386]
+
+    steps:
+    - name: Checkout source repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Set up QEMU (multi-arch emulation)
+      if: matrix.arch != 'amd64'
+      uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
+
+    - name: Assemble add-on build context
+      run: |
+        mkdir -p ctx
+        cp -r homeassistant-addon/rootfs ctx/
+        cp homeassistant-addon/run.sh ctx/
+        cp homeassistant-addon/Dockerfile ctx/
+        cp -r src public ctx/
+        cp index.js package.json package-lock.json ctx/
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+    - name: Log in to GitHub Container Registry
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+    - name: Build and publish image
+      env:
+        ARCH: ${{ matrix.arch }}
+        VERSION: ${{ github.ref_name }}
+      run: |
+        VERSION=${VERSION#v}
+        case "${ARCH}" in
+          amd64) platform=linux/amd64 ;;
+          aarch64) platform=linux/arm64 ;;
+          armv7) platform=linux/arm/v7 ;;
+          armhf) platform=linux/arm/v6 ;;
+          i386) platform=linux/386 ;;
+          *) echo "Unknown arch ${ARCH}"; exit 1 ;;
+        esac
+        docker buildx build \
+          --platform "$platform" \
+          --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ARCH}-base:3.21" \
+          --build-arg "BUILD_ARCH=${ARCH}" \
+          --build-arg "BUILD_VERSION=${VERSION}" \
+          --build-arg "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+          --build-arg "BUILD_REF=${GITHUB_SHA}" \
+          --provenance=false \
+          --push \
+          -t "ghcr.io/dougrathbone/cgateweb:${VERSION}-${ARCH}" \
+          ctx
+
+  publish-manifest:
+    name: Publish multi-architecture manifest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+    - name: Log in to GitHub Container Registry
+      env:
+        GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+    - name: Publish manifest
+      env:
+        VERSION: ${{ github.ref_name }}
+      run: |
+        VERSION=${VERSION#v}
+        docker buildx imagetools create \
+          --tag "ghcr.io/dougrathbone/cgateweb:${VERSION}" \
+          "ghcr.io/dougrathbone/cgateweb:${VERSION}-amd64" \
+          "ghcr.io/dougrathbone/cgateweb:${VERSION}-aarch64" \
+          "ghcr.io/dougrathbone/cgateweb:${VERSION}-armv7" \
+          "ghcr.io/dougrathbone/cgateweb:${VERSION}-armhf" \
+          "ghcr.io/dougrathbone/cgateweb:${VERSION}-i386"
+
+    - name: Verify users can pull the image anonymously
+      env:
+        VERSION: ${{ github.ref_name }}
+      run: |
+        VERSION=${VERSION#v}
+        docker logout ghcr.io
+        docker buildx imagetools inspect "ghcr.io/dougrathbone/cgateweb:${VERSION}"
+
   build-and-deploy:
     timeout-minutes: 20
     permissions:
@@ -54,7 +162,7 @@ jobs:
     # is usually skipped, and a skipped upstream used to skip this job too. With
     # one upstream that reports success on skips, the plain form is correct.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: quality
+    needs: publish-manifest
     runs-on: ubuntu-latest
 
     steps:
