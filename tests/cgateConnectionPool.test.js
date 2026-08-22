@@ -648,6 +648,63 @@ describe('CgateConnectionPool', () => {
 
             await expect(pool.execute('cmd\n')).rejects.toThrow('No healthy connections available in pool');
         });
+
+        it('spreads concurrent execute() calls across least-loaded connections', async () => {
+            // Hold each sendWithBackpressure pending so in-flight counts stay
+            // elevated while the next execute() picks the next least-loaded
+            // connection. Proves load spreads rather than pinning one socket.
+            const connections = await startWithConnections();
+            const resolvers = [];
+            for (const c of connections) {
+                c.sendWithBackpressure = jest.fn().mockImplementation(() => new Promise((resolve) => {
+                    resolvers.push(resolve);
+                }));
+            }
+
+            const p0 = pool.execute('cmd-0\n');
+            await Promise.resolve();
+            expect(pool.connectionInFlight.get(connections[0])).toBe(1);
+            expect(connections[0].sendWithBackpressure).toHaveBeenCalledWith('cmd-0\n');
+
+            const p1 = pool.execute('cmd-1\n');
+            await Promise.resolve();
+            expect(pool.connectionInFlight.get(connections[1])).toBe(1);
+            expect(connections[1].sendWithBackpressure).toHaveBeenCalledWith('cmd-1\n');
+
+            const p2 = pool.execute('cmd-2\n');
+            await Promise.resolve();
+            expect(pool.connectionInFlight.get(connections[2])).toBe(1);
+            expect(connections[2].sendWithBackpressure).toHaveBeenCalledWith('cmd-2\n');
+
+            // Three distinct connections each hold one in-flight command
+            expect(resolvers).toHaveLength(3);
+            for (const c of connections) {
+                expect(pool.connectionInFlight.get(c)).toBe(1);
+                expect(c.sendWithBackpressure).toHaveBeenCalledTimes(1);
+            }
+
+            for (const resolve of resolvers) resolve(true);
+            await expect(Promise.all([p0, p1, p2])).resolves.toEqual([true, true, true]);
+            for (const c of connections) {
+                expect(pool.connectionInFlight.get(c) || 0).toBe(0);
+            }
+        });
+
+        it('marks connection unhealthy and tries next when sendWithBackpressure throws', async () => {
+            const connections = await startWithConnections();
+            connections[0].sendWithBackpressure = jest.fn().mockRejectedValue(new Error('socket write failed'));
+            connections[1].sendWithBackpressure = jest.fn().mockResolvedValue(true);
+            connections[2].sendWithBackpressure = jest.fn().mockResolvedValue(true);
+
+            const markSpy = jest.spyOn(pool, '_markConnectionUnhealthy');
+            const result = await pool.execute('cmd\n');
+
+            expect(result).toBe(true);
+            expect(markSpy).toHaveBeenCalledWith(connections[0]);
+            expect(connections[0].sendWithBackpressure).toHaveBeenCalled();
+            expect(connections[1].sendWithBackpressure).toHaveBeenCalled();
+            expect(pool.connectionInFlight.get(connections[0]) || 0).toBe(0);
+        });
     });
 
     describe('Health monitoring', () => {

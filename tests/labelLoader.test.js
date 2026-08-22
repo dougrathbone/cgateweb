@@ -494,6 +494,103 @@ describe('LabelLoader', () => {
             loader.unwatch();
         });
     });
+
+    describe('watch callback debounce and self-write grace (fake timers)', () => {
+        const { EventEmitter } = require('events');
+        const DEBOUNCE_MS = 500;
+        const GRACE_MS = 1000;
+
+        let watchListener;
+        let mockWatcher;
+        let loader;
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                labels: { '254/56/10': 'Original' }
+            }));
+
+            watchListener = null;
+            mockWatcher = new EventEmitter();
+            mockWatcher.close = jest.fn();
+            jest.spyOn(fs, 'watch').mockImplementation((_dir, listener) => {
+                watchListener = listener;
+                return mockWatcher;
+            });
+
+            loader = new LabelLoader(labelFile, {
+                labelWatchDebounceMs: DEBOUNCE_MS,
+                labelWatchSelfWriteGraceMs: GRACE_MS
+            });
+            loader.load();
+            loader.watch();
+            expect(watchListener).toEqual(expect.any(Function));
+        });
+
+        afterEach(() => {
+            loader.unwatch();
+            jest.useRealTimers();
+        });
+
+        it('debounces fs.watch events then reloads and emits labels-changed', () => {
+            const handler = jest.fn();
+            loader.on('labels-changed', handler);
+
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                labels: { '254/56/10': 'External Edit' }
+            }));
+
+            watchListener('change', path.basename(labelFile));
+            expect(handler).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(DEBOUNCE_MS - 1);
+            expect(handler).not.toHaveBeenCalled();
+
+            jest.advanceTimersByTime(1);
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('External Edit');
+            expect(loader.getLabels().get('254/56/10')).toBe('External Edit');
+        });
+
+        it('ignores watch events inside the self-write grace window after save()', () => {
+            const handler = jest.fn();
+            loader.on('labels-changed', handler);
+
+            // save() emits once synchronously and stamps _lastSaveTime
+            loader.save({ '254/56/10': 'Via Save' });
+            expect(handler).toHaveBeenCalledTimes(1);
+
+            // Watcher fires for our own write — still within grace → ignored
+            watchListener('change', path.basename(labelFile));
+            jest.advanceTimersByTime(DEBOUNCE_MS);
+            expect(handler).toHaveBeenCalledTimes(1);
+
+            // Past grace: an external change must still reload
+            jest.advanceTimersByTime(GRACE_MS);
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                labels: { '254/56/10': 'After Grace' }
+            }));
+            watchListener('change', path.basename(labelFile));
+            jest.advanceTimersByTime(DEBOUNCE_MS);
+            expect(handler).toHaveBeenCalledTimes(2);
+            expect(handler.mock.calls[1][0].labels.get('254/56/10')).toBe('After Grace');
+        });
+
+        it('ignores watch events for unrelated filenames', () => {
+            const onChanged = jest.spyOn(loader, '_onFileChanged');
+            watchListener('change', 'other-file.json');
+            jest.advanceTimersByTime(DEBOUNCE_MS);
+            expect(onChanged).not.toHaveBeenCalled();
+        });
+
+        it('logs watcher error events without throwing', () => {
+            expect(() => mockWatcher.emit('error', new Error('watch failed'))).not.toThrow();
+            expect(console.warn).toHaveBeenCalled();
+        });
+    });
 });
 
 describe('reload robustness (transient file absence, e.g. HA backup)', () => {
