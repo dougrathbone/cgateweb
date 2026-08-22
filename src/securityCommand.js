@@ -86,8 +86,24 @@ function buildSecurityEmulateKeypadCommand({ cbusname, network, application, key
     return `security emulate_keypad //${cbusname}/${network}/${application} ${hexKey}`;
 }
 
+/**
+ * Build a `security request_zone_name` command (C-Gate manual §4.5).
+ * The panel replies with a zone_name event carrying the 11-character name.
+ *
+ * @param {Object} opts
+ * @param {string} opts.cbusname
+ * @param {string|number} opts.network
+ * @param {string|number} opts.application
+ * @param {string|number} opts.zone
+ * @returns {string}
+ */
+function buildSecurityRequestZoneName({ cbusname, network, application, zone }) {
+    return `security request_zone_name //${cbusname}/${network}/${application} ${zone}`;
+}
+
 module.exports = {
     buildSecurityStatusRequest,
     buildSecurityArmCommand,
-    buildSecurityEmulateKeypadCommand
+    buildSecurityEmulateKeypadCommand,
+    buildSecurityRequestZoneName
 };

@@ -354,6 +354,31 @@ describe('securityDecoder', () => {
         });
     });
 
+    describe('zone_name and password_entry', () => {
+        it('decodes a zone_name reply with a padded name', () => {
+            expect(securityDecoder.decodeLine('security zone_name //MIDSTRM/254/208/12 Front Door   '))
+                .toMatchObject({
+                    kind: 'zone_name',
+                    network: '254',
+                    application: '208',
+                    zone: '12',
+                    name: 'Front Door'
+                });
+        });
+
+        it('consumes a request_zone_name echo without treating it as a name', () => {
+            expect(securityDecoder.decodeLine('security request_zone_name //MIDSTRM/254/208 12'))
+                .toMatchObject({ kind: 'zone_name_request_echo', zone: '12' });
+        });
+
+        it('decodes password_entry codes 1-4 and fails closed otherwise', () => {
+            expect(securityDecoder.decodeLine('security password_entry //MIDSTRM/254/208 2'))
+                .toMatchObject({ kind: 'password_entry', code: 2 });
+            expect(securityDecoder.decodeLine('security password_entry //MIDSTRM/254/208 9'))
+                .toMatchObject({ kind: 'password_entry', code: null });
+        });
+    });
+
     describe('exports', () => {
         it('exposes the default app id and zone-state constants', () => {
             expect(securityDecoder.appId).toBe('208');

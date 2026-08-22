@@ -3206,7 +3206,7 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityZoneDiscovery('254', '208', '13');
         publishFn.mockClear();
 
-        expect(d.republishDiscoveryConfigs()).toBe(1);
+        expect(d.republishDiscoveryConfigs()).toBe(2);
         expect(publishFn).toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_254_208_13/config',
             expect.stringContaining('cgateweb_254_208_13'),
@@ -3220,8 +3220,8 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityPanelDiscovery('254', '208');
         publishFn.mockClear();
 
-        // 2 zones + 9 panel conditions + 1 alarm_control_panel
-        expect(d.republishDiscoveryConfigs()).toBe(12);
+        // 2 zones × (zone + loop-fault) + 9 panel conditions + 1 alarm + 1 password-entry
+        expect(d.republishDiscoveryConfigs()).toBe(15);
     });
 
     it('does not replay a retracted config', () => {
@@ -3230,7 +3230,7 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityZoneDiscovery('254', '208', '14'); // retracts with an empty payload
         publishFn.mockClear();
 
-        expect(d.republishDiscoveryConfigs()).toBe(1);
+        expect(d.republishDiscoveryConfigs()).toBe(2);
         expect(publishFn).not.toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_254_208_14/config',
             expect.anything(),

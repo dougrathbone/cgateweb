@@ -699,9 +699,10 @@ describe('SecurityEventHandler', () => {
             const handler = new SecurityEventHandler(deps);
             handler.handleLine(ZONE_UNSEALED_LINE);
             handler.handleLine(ZONE_SEALED_LINE); // same network again
-            expect(deps.sendCommand).toHaveBeenCalledTimes(2);
-            expect(deps.sendCommand).toHaveBeenNthCalledWith(1, 'security status_request //MIDSTRM/254/208 1\n');
-            expect(deps.sendCommand).toHaveBeenNthCalledWith(2, 'security status_request //MIDSTRM/254/208 2\n');
+            expect(deps.sendCommand).toHaveBeenCalledTimes(3);
+            expect(deps.sendCommand).toHaveBeenCalledWith('security request_zone_name //MIDSTRM/254/208 58\n');
+            expect(deps.sendCommand).toHaveBeenCalledWith('security status_request //MIDSTRM/254/208 1\n');
+            expect(deps.sendCommand).toHaveBeenCalledWith('security status_request //MIDSTRM/254/208 2\n');
         });
 
         it('sends at most one "early" pair across the connect and traffic triggers', () => {
@@ -710,7 +711,7 @@ describe('SecurityEventHandler', () => {
             expect(handler.requestStatusSync('254', 'connect')).toBe(true);
             expect(handler.requestStatusSync('254', 'connect')).toBe(false); // duplicate
             handler.handleLine(ZONE_UNSEALED_LINE); // traffic — early slot already used
-            expect(deps.sendCommand).toHaveBeenCalledTimes(2);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(3);
         });
 
         it('allows one post-762 pair in addition to the early pair', () => {
@@ -720,7 +721,7 @@ describe('SecurityEventHandler', () => {
             expect(handler.requestStatusSync('254', 'sync')).toBe(true);  // 762 → second pair
             expect(handler.requestStatusSync('254', 'sync')).toBe(false); // deduped
             handler.handleLine(ZONE_UNSEALED_LINE);                        // still deduped
-            expect(deps.sendCommand).toHaveBeenCalledTimes(4);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(5);
         });
 
         // Issue #44: HA can restart any number of times in one bridge session,
@@ -788,7 +789,7 @@ describe('SecurityEventHandler', () => {
             const handler = new SecurityEventHandler(deps);
             handler.handleLine(ZONE_UNSEALED_LINE);
             expect(handler.requestStatusSync('254', 'connect')).toBe(false); // too late, traffic won
-            expect(deps.sendCommand).toHaveBeenCalledTimes(2);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(3);
         });
 
         it('logs when a request is sent, and does not log when skipped as duplicate', () => {
@@ -811,7 +812,7 @@ describe('SecurityEventHandler', () => {
             const handler = new SecurityEventHandler(deps);
             handler.handleLine(ZONE_UNSEALED_LINE); // network 254
             handler.handleLine('# security zone_unsealed //MIDSTRM/255/208/3'); // network 255
-            expect(deps.sendCommand).toHaveBeenCalledTimes(4);
+            expect(deps.sendCommand).toHaveBeenCalledTimes(6);
             expect(deps.sendCommand).toHaveBeenLastCalledWith('security status_request //MIDSTRM/255/208 2\n');
         });
 
@@ -924,5 +925,55 @@ describe('panel state persistence', () => {
         const handler = new SecurityEventHandler(makeDeps());
         handler.handleLine(MAINS_FAILURE_LINE);
         expect(fs.existsSync(stateFile)).toBe(false);
+    });
+});
+
+describe('SecurityEventHandler — zone names and password entry', () => {
+    it('requests a zone name once when a zone event arrives without a Toolkit label', () => {
+        const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+        const handler = new SecurityEventHandler(deps);
+        handler.handleLine(ZONE_UNSEALED_LINE);
+        handler.handleLine(ZONE_SEALED_LINE);
+        const nameRequests = deps.sendCommand.mock.calls
+            .map((c) => c[0])
+            .filter((cmd) => cmd.includes('request_zone_name'));
+        expect(nameRequests).toEqual(['security request_zone_name //MIDSTRM/254/208 58\n']);
+    });
+
+    it('does not request a name when the Toolkit already labelled the zone', () => {
+        const deps = makeDeps({
+            cbusname: 'MIDSTRM',
+            sendCommand: jest.fn(),
+            getHaDiscovery: () => ({
+                labelMap: new Map([['254/1/58', 'Front Door']]),
+                ensureSecurityZoneDiscovery: jest.fn()
+            })
+        });
+        const handler = new SecurityEventHandler(deps);
+        handler.handleLine(ZONE_UNSEALED_LINE);
+        expect(deps.sendCommand.mock.calls.map((c) => c[0]).join('\n'))
+            .not.toContain('request_zone_name');
+    });
+
+    it('applies a zone_name reply through HaDiscovery', () => {
+        const applySecurityZoneName = jest.fn();
+        const deps = makeDeps({
+            getHaDiscovery: () => ({ applySecurityZoneName, ensureSecurityZoneDiscovery: jest.fn() })
+        });
+        const handler = new SecurityEventHandler(deps);
+        handler.handleLine('security zone_name //MIDSTRM/254/208/12 Front Door');
+        expect(applySecurityZoneName).toHaveBeenCalledWith('254', '12', 'Front Door');
+    });
+
+    it('publishes password_entry codes 1-4 and ignores unknown codes', () => {
+        const deps = makeDeps();
+        const handler = new SecurityEventHandler(deps);
+        handler.handleLine('security password_entry //MIDSTRM/254/208 3');
+        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+            '254', '208', 'panel', { kind: 'security_password_entry', code: 3 }
+        );
+        deps.eventPublisher.publishReading.mockClear();
+        handler.handleLine('security password_entry //MIDSTRM/254/208 9');
+        expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
     });
 });

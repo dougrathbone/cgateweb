@@ -88,7 +88,7 @@ const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
 // whole line was dropped.
 const ZONE_ADDRESS_VERBS = new Set([
     'zone_sealed', 'zone_unsealed', 'zone_open', 'zone_short', 'zone_isolated',
-    'arm_not_ready', 'arm_ready', 'entry_delay_started'
+    'arm_not_ready', 'arm_ready', 'entry_delay_started', 'zone_name'
 ]);
 
 // …but arm_ready's zone is optional in practice: the #42 capture is a bare
@@ -102,7 +102,7 @@ const ZONE_ADDRESS_VERBS = new Set([
 // panel naming that zone the way arm_not_ready names its blocker is entirely
 // plausible. Accepting both shapes costs one Set entry and means neither
 // possibility drops the most automation-useful event the panel emits.
-const OPTIONAL_ZONE_ADDRESS_VERBS = new Set(['arm_ready', 'entry_delay_started']);
+const OPTIONAL_ZONE_ADDRESS_VERBS = new Set(['arm_ready', 'entry_delay_started', 'zone_name']);
 
 // Verbs where zone 0 is meaningful rather than out of range. Spec §5.5.1.25:
 // the Arm Ready / Not Ready message is sent with a <zone number> of 0 when the
@@ -329,6 +329,40 @@ function decodeLine(line) {
     if (verb === 'status_request') {
         const report = params.length > 0 ? parseInt(params[0], 10) : NaN;
         return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
+    }
+
+    // Echo of `security request_zone_name //PROJECT/<net>/<app> <zone>`.
+    if (verb === 'request_zone_name') {
+        const zoneParam = params.length > 0 ? parseInt(params[0], 10) : NaN;
+        return {
+            kind: 'zone_name_request_echo',
+            network,
+            application,
+            zone: Number.isInteger(zoneParam) ? String(zoneParam) : zone,
+            verb
+        };
+    }
+
+    // Panel zone-name reply. Name is 11 bytes, space-padded in the spec;
+    // C-Gate's text form is inferred (no live capture). Empty names still
+    // consume the line so they do not warn-spam.
+    if (verb === 'zone_name') {
+        const name = params.join(' ').replace(/^["']|["']$/g, '').trim();
+        if (zone === null) return { kind: 'zone_name', network, application, zone: null, name, verb };
+        return { kind: 'zone_name', network, application, zone, name, verb };
+    }
+
+    // Spec $90 password-entry codes 1–4. C-Gate verb inferred as
+    // password_entry; unknown extra tokens still consume the line.
+    if (verb === 'password_entry') {
+        const code = params.length > 0 ? parseInt(params[0], 10) : NaN;
+        return {
+            kind: 'password_entry',
+            network,
+            application,
+            code: Number.isInteger(code) && code >= 1 && code <= 4 ? code : null,
+            verb
+        };
     }
 
     // Same for our own `security arm` commands ("security arm //PROJECT/254/208
