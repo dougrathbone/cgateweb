@@ -193,6 +193,63 @@ const CLOCK_VARIANTS = [
     { id: 'time', name: 'Clock Time', icon: 'mdi:clock-outline' }
 ];
 
+/**
+ * Static shape for the app-25 temperature sensor. Identity (label, unique id,
+ * area, topic) is resolved per call; everything else is fixed by the wire
+ * format (byte/4 → °C).
+ */
+const TEMPERATURE_ENTITY = {
+    component: HA_COMPONENT_SENSOR,
+    model: 'C-Bus Temperature Sensor',
+    fallbackLabel: (networkId, appId, group) => `CBus Temperature ${networkId}/${appId}/${group}`,
+    fields: (networkId, appId, group) => ({
+        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${group}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+        device_class: 'temperature',
+        state_class: 'measurement',
+        unit_of_measurement: '°C'
+    })
+};
+
+/**
+ * Static shape for an app-208 security zone binary_sensor. device_class is
+ * filled in at publish time from the zone's application-1 label.
+ */
+const SECURITY_ZONE_ENTITY = {
+    component: HA_COMPONENT_BINARY_SENSOR,
+    model: 'C-Bus Security Zone',
+    fallbackLabel: (networkId, appId, zone) => `CBus Security Zone ${networkId}/${appId}/${zone}`,
+    fields: (networkId, appId, zone, deviceClass) => {
+        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${zone}`;
+        return {
+            state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            payload_on: MQTT_STATE_ON,
+            payload_off: MQTT_STATE_OFF,
+            json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+            ...(deviceClass && { device_class: deviceClass })
+        };
+    }
+};
+
+/**
+ * Measurement (app 228) is heterogeneous: unit/device_class/state_class come
+ * from the decoded reading. Only the model and component are fixed here.
+ */
+const MEASUREMENT_ENTITY = {
+    component: HA_COMPONENT_SENSOR,
+    model: 'C-Bus Measurement Sensor',
+    fallbackLabel: (networkId, appId, device, channel) =>
+        `CBus Measurement ${networkId}/${appId}/${device}/${channel}`,
+    fields: (networkId, appId, device, channel, reading) => ({
+        state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${device}/${channel}/${MQTT_TOPIC_SUFFIX_VALUE}`,
+        // From the reading, not hardcoded: Home Assistant rejects
+        // device_class 'energy' paired with state_class 'measurement', so
+        // Wh readings carry 'total_increasing' instead (see UNIT_TABLE).
+        state_class: (reading && reading.stateClass) || 'measurement',
+        ...(reading && reading.deviceClass ? { device_class: reading.deviceClass } : {}),
+        ...(reading && reading.unit ? { unit_of_measurement: reading.unit } : {})
+    })
+};
+
 class _HaDiscoveryPublishers {
     // Host-provided instance state. This class is never instantiated: its
     // prototype methods are copied onto HaDiscovery (see the Object.assign in
@@ -662,29 +719,23 @@ class _HaDiscoveryPublishers {
         if (this._cniDiscoverySeen.has(net)) return false;
 
         const uniqueId = `cgateweb_${net}_cni`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-        const payload = {
+        this._finishEventDrivenEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId,
+            component: HA_COMPONENT_BINARY_SENSOR,
             name: 'CNI Connectivity',
-            unique_id: uniqueId,
-            device_class: 'connectivity',
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${net}/cni/state`,
-            payload_on: MQTT_STATE_ON,
-            payload_off: MQTT_STATE_OFF,
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [`cgateweb_network_${net}`],
-                name: `C-Bus Network ${net}`,
-                model: 'C-Bus Network Interface'
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+            fields: {
+                device_class: 'connectivity',
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${net}/cni/state`,
+                payload_on: MQTT_STATE_ON,
+                payload_off: MQTT_STATE_OFF
+            },
+            deviceIdentifiers: [`cgateweb_network_${net}`],
+            deviceName: `C-Bus Network ${net}`,
+            model: 'C-Bus Network Interface',
+            logInfo: `CNI connectivity binary_sensor published for network ${net}`
+        });
         this._cniDiscoverySeen.add(net);
-        this.discoveryCount++;
-        this.logger.info(`CNI connectivity binary_sensor published for network ${net}`);
         return true;
     }
 
@@ -774,30 +825,24 @@ class _HaDiscoveryPublishers {
     _createClockDiscovery(networkId, appId) {
         for (const variant of CLOCK_VARIANTS) {
             const uniqueId = this._clockUniqueId(networkId, appId, variant.id);
-            const discoveryTopic = this._clockTopic(uniqueId);
-
-            const payload = {
+            this._finishEventDrivenEntity({
+                discoveryTopic: this._clockTopic(uniqueId),
+                uniqueId,
+                component: HA_COMPONENT_SENSOR,
                 // Two entities on the shared network device, so each needs its
                 // own name rather than inheriting the device's.
                 name: variant.name,
-                unique_id: uniqueId,
-
-                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/clock/${variant.id}`,
-                // No device_class and no unit_of_measurement, deliberately —
-                // see the note on ensureClockDiscovery.
-                entity_category: 'diagnostic',
-                icon: variant.icon,
-
-                qos: 0,
-                device: buildDeviceBlock({
-                    identifiers: [`cgateweb_network_${networkId}`],
-                    name: `C-Bus Network ${networkId}`,
-                    model: 'C-Bus Network Interface'
-                }),
-                origin: buildOriginBlock()
-            };
-
-            this._publishEventDrivenConfig(discoveryTopic, payload);
+                fields: {
+                    state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/clock/${variant.id}`,
+                    // No device_class and no unit_of_measurement, deliberately —
+                    // see the note on ensureClockDiscovery.
+                    entity_category: 'diagnostic',
+                    icon: variant.icon
+                },
+                deviceIdentifiers: [`cgateweb_network_${networkId}`],
+                deviceName: `C-Bus Network ${networkId}`,
+                model: 'C-Bus Network Interface'
+            });
         }
         this.logger.info(`Network clock sensors published: ${networkId}/${appId}`);
     }
@@ -866,42 +911,102 @@ class _HaDiscoveryPublishers {
     }
 
     /**
-     * Build and publish the temperature sensor discovery payload for one group.
-     * State comes from the app-25 temperatureDecoder reading topic
-     * (cbus/read/{net}/{app}/{group}/current_temperature, °C = byte/4).
+     * Finish an event-driven discovery entity: wrap component-specific fields
+     * with the shared name / unique_id / entity-id hint / qos / device / origin
+     * shell and publish via {@link _publishEventDrivenConfig}.
      *
+     * @param {Object} spec
+     * @param {string} spec.discoveryTopic
+     * @param {string} spec.uniqueId
+     * @param {string} [spec.entityId]
+     * @param {string} spec.component
+     * @param {string|null} [spec.name=null]
+     * @param {Object} spec.fields
+     * @param {string[]} spec.deviceIdentifiers
+     * @param {string} spec.deviceName
+     * @param {string} spec.model
+     * @param {string} [spec.area]
+     * @param {string} [spec.logInfo]
+     * @private
+     */
+    _finishEventDrivenEntity({
+        discoveryTopic, uniqueId, entityId, component, name = null, fields,
+        deviceIdentifiers, deviceName, model, area, logInfo
+    }) {
+        this._publishEventDrivenConfig(discoveryTopic, {
+            name,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(component, entityId)),
+            ...fields,
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: deviceIdentifiers,
+                name: deviceName,
+                model,
+                area
+            }),
+            origin: buildOriginBlock()
+        });
+        if (logInfo) this.logger.info(logInfo);
+    }
+
+    /**
+     * Read/write topic bases for a single address under a network/app.
+     * @private
+     */
+    _topicBases(networkId, appId, address) {
+        return {
+            readBase: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${address}`,
+            writeBase: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${address}`
+        };
+    }
+
+    /**
+     * Temperature unit for climate entities. Defaults to Celsius; only 'F'
+     * (case-insensitive) selects Fahrenheit.
+     * @returns {'C'|'F'}
+     * @private
+     */
+    _hvacTemperatureUnit() {
+        return (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
+    }
+
+    /**
+     * Shared climate range fields for both lighting-HVAC and native aircon.
+     * Modes and command topics stay per-path — they are not interchangeable.
+     * @private
+     */
+    _climateRangeFields() {
+        return {
+            temperature_unit: this._hvacTemperatureUnit(),
+            min_temp: HVAC_MIN_TEMP_C,
+            max_temp: HVAC_MAX_TEMP_C,
+            temp_step: 0.5
+        };
+    }
+
+    /**
+     * Build and publish the temperature sensor discovery payload for one group.
      * @private
      */
     _createTemperatureDiscovery(networkId, appId, group) {
         const labelKey = `${networkId}/${appId}/${group}`;
         const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
             networkId, appId, groupId: group, labelKey,
-            component: HA_COMPONENT_SENSOR,
-            fallbackLabel: `CBus Temperature ${networkId}/${appId}/${group}`
+            component: TEMPERATURE_ENTITY.component,
+            fallbackLabel: TEMPERATURE_ENTITY.fallbackLabel(networkId, appId, group)
         });
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_SENSOR, entityId)),
-
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${group}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
-            device_class: 'temperature',
-            state_class: 'measurement',
-            unit_of_measurement: '°C', // app-25 wire format is always °C (byte/4)
-
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: 'C-Bus Temperature Sensor',
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Temperature sensor entity published: ${labelKey} (${finalLabel})`);
+        this._finishEventDrivenEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: TEMPERATURE_ENTITY.component,
+            fields: TEMPERATURE_ENTITY.fields(networkId, appId, group),
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: TEMPERATURE_ENTITY.model,
+            area,
+            logInfo: `Temperature sensor entity published: ${labelKey} (${finalLabel})`
+        });
     }
 
     /**
@@ -947,35 +1052,20 @@ class _HaDiscoveryPublishers {
         const labelKey = `${networkId}/${appId}/${device}/${channel}`;
         const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
             networkId, appId, groupId, labelKey,
-            component: HA_COMPONENT_SENSOR,
-            fallbackLabel: `CBus Measurement ${networkId}/${appId}/${device}/${channel}`
+            component: MEASUREMENT_ENTITY.component,
+            fallbackLabel: MEASUREMENT_ENTITY.fallbackLabel(networkId, appId, device, channel)
         });
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_SENSOR, entityId)),
-
-            state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${device}/${channel}/${MQTT_TOPIC_SUFFIX_VALUE}`,
-            // From the reading, not hardcoded: Home Assistant rejects
-            // device_class 'energy' paired with state_class 'measurement', so
-            // Wh readings carry 'total_increasing' instead (see UNIT_TABLE).
-            state_class: (reading && reading.stateClass) || 'measurement',
-            ...(reading && reading.deviceClass ? { device_class: reading.deviceClass } : {}),
-            ...(reading && reading.unit ? { unit_of_measurement: reading.unit } : {}),
-
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: 'C-Bus Measurement Sensor',
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Measurement sensor entity published: ${labelKey} (${finalLabel})`);
+        this._finishEventDrivenEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: MEASUREMENT_ENTITY.component,
+            fields: MEASUREMENT_ENTITY.fields(networkId, appId, device, channel, reading),
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: MEASUREMENT_ENTITY.model,
+            area,
+            logInfo: `Measurement sensor entity published: ${labelKey} (${finalLabel})`
+        });
     }
 
     /**
@@ -1025,35 +1115,21 @@ class _HaDiscoveryPublishers {
         const labelKey = securityZoneLabelKey(networkId, zone);
         const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
             networkId, appId, groupId: zone, labelKey,
-            component: HA_COMPONENT_BINARY_SENSOR,
-            fallbackLabel: `CBus Security Zone ${networkId}/${appId}/${zone}`
+            component: SECURITY_ZONE_ENTITY.component,
+            fallbackLabel: SECURITY_ZONE_ENTITY.fallbackLabel(networkId, appId, zone)
         });
-        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${zone}`;
         const deviceClass = classifySecurityZoneDeviceClass(finalLabel, this.settings);
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_BINARY_SENSOR, entityId)),
-
-            state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            payload_on: MQTT_STATE_ON,
-            payload_off: MQTT_STATE_OFF,
-            json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-            ...(deviceClass && { device_class: deviceClass }),
-
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: 'C-Bus Security Zone',
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`);
+        this._finishEventDrivenEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: SECURITY_ZONE_ENTITY.component,
+            fields: SECURITY_ZONE_ENTITY.fields(networkId, appId, zone, deviceClass),
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: SECURITY_ZONE_ENTITY.model,
+            area,
+            logInfo: `Security zone binary_sensor published: ${networkId}/${appId}/${zone} (${finalLabel})`
+        });
     }
 
     /**
@@ -1138,33 +1214,29 @@ class _HaDiscoveryPublishers {
      */
     _createSecurityPanelDiscovery(networkId, appId) {
         const deviceName = `C-Bus Security Panel ${networkId}/${appId}`;
+        const deviceIdentifiers = [`cgateweb_${networkId}_${appId}_panel`];
         for (const condition of PANEL_CONDITIONS) {
             const uniqueId = this._securityPanelUniqueId(networkId, appId, condition.id);
-            const discoveryTopic = this._securityPanelTopic(uniqueId);
             const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${condition.id}`;
 
-            const payload = {
+            this._finishEventDrivenEntity({
+                discoveryTopic: this._securityPanelTopic(uniqueId),
+                uniqueId,
+                component: HA_COMPONENT_BINARY_SENSOR,
                 // Several entities on one shared device, so each needs its own
                 // name (zones use null, taking the device name instead).
                 name: condition.name,
-                unique_id: uniqueId,
-
-                state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
-                payload_on: MQTT_STATE_ON,
-                payload_off: MQTT_STATE_OFF,
-                device_class: condition.deviceClass,
-                entity_category: 'diagnostic',
-
-                qos: 0,
-                device: buildDeviceBlock({
-                    identifiers: [`cgateweb_${networkId}_${appId}_panel`],
-                    name: deviceName,
-                    model: 'C-Bus Security Panel'
-                }),
-                origin: buildOriginBlock()
-            };
-
-            this._publishEventDrivenConfig(discoveryTopic, payload);
+                fields: {
+                    state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                    payload_on: MQTT_STATE_ON,
+                    payload_off: MQTT_STATE_OFF,
+                    device_class: condition.deviceClass,
+                    entity_category: 'diagnostic'
+                },
+                deviceIdentifiers,
+                deviceName,
+                model: 'C-Bus Security Panel'
+            });
         }
         this.logger.info(`Security panel binary_sensors published: ${networkId}/${appId} (${PANEL_CONDITIONS.length} conditions)`);
 
@@ -1208,60 +1280,54 @@ class _HaDiscoveryPublishers {
         // alarm card never offers a "force arm" the bridge will refuse.
         const bypassEnabled = controlEnabled && !!this.settings.cbus_security_bypass_enabled;
 
-        const payload = {
+        this._finishEventDrivenEntity({
+            discoveryTopic, uniqueId,
+            component: HA_COMPONENT_ALARM_PANEL,
             // Primary entity on the shared panel device: takes the device name.
-            name: null,
-            unique_id: uniqueId,
-
-            state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
-            json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
-            // Arm away/night/home(day-stay)/vacation, plus arm_custom_bypass.
-            // No manual trigger on this panel, and disarm is not in this list
-            // because HA has no such flag — see the note above.
-            //
-            // arm_custom_bypass is mapped to the '#' keypress that forces an
-            // arm past an open zone. That is not quite HA's literal meaning
-            // (arm while excluding chosen zones), but it is the closest native
-            // action and it is what the panel actually offers, so the bypass
-            // appears on the alarm card itself instead of only as a separate
-            // button entity (#62). Present only with cbus_security_bypass_enabled.
-            supported_features: [
-                'arm_home', 'arm_away', 'arm_night', 'arm_vacation',
-                ...(bypassEnabled ? ['arm_custom_bypass'] : [])
-            ],
-            // Home Assistant defaults both of these to true and then refuses to
-            // publish an arm/disarm without a code — it pops "PIN required" and
-            // the command never reaches MQTT at all, which is how 1.23.1 shipped
-            // an arm button that did nothing (#42). Arming carries no PIN on
-            // C-Bus, so there is never a code to enter for it.
-            code_arm_required: false,
-            code_disarm_required: disarmEnabled,
-            ...(controlEnabled && {
-                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
-            }),
-            ...(disarmEnabled && {
-                // REMOTE_CODE: show HA's numeric keypad but skip HA's local
-                // validation, since only the panel can judge the PIN. A literal
-                // code here would be a second PIN to keep in sync and would
-                // block the real one from ever reaching the panel.
-                code: 'REMOTE_CODE',
-                // tojson rather than hand-quoting: a code is user input, and an
-                // embedded quote would otherwise produce malformed JSON. Arm
-                // actions come through here too with an empty code.
-                command_template:
-                    '{"action": {{ action | tojson }}, "code": {{ (code or "") | tojson }}}'
-            }),
-
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: deviceName,
-                model: 'C-Bus Security Panel'
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
+            fields: {
+                state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
+                json_attributes_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                // Arm away/night/home(day-stay)/vacation, plus arm_custom_bypass.
+                // No manual trigger on this panel, and disarm is not in this list
+                // because HA has no such flag — see the note above.
+                //
+                // arm_custom_bypass is mapped to the '#' keypress that forces an
+                // arm past an open zone. That is not quite HA's literal meaning
+                // (arm while excluding chosen zones), but it is the closest native
+                // action and it is what the panel actually offers, so the bypass
+                // appears on the alarm card itself instead of only as a separate
+                // button entity (#62). Present only with cbus_security_bypass_enabled.
+                supported_features: [
+                    'arm_home', 'arm_away', 'arm_night', 'arm_vacation',
+                    ...(bypassEnabled ? ['arm_custom_bypass'] : [])
+                ],
+                // Home Assistant defaults both of these to true and then refuses to
+                // publish an arm/disarm without a code — it pops "PIN required" and
+                // the command never reaches MQTT at all, which is how 1.23.1 shipped
+                // an arm button that did nothing (#42). Arming carries no PIN on
+                // C-Bus, so there is never a code to enter for it.
+                code_arm_required: false,
+                code_disarm_required: disarmEnabled,
+                ...(controlEnabled && {
+                    command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
+                }),
+                ...(disarmEnabled && {
+                    // REMOTE_CODE: show HA's numeric keypad but skip HA's local
+                    // validation, since only the panel can judge the PIN. A literal
+                    // code here would be a second PIN to keep in sync and would
+                    // block the real one from ever reaching the panel.
+                    code: 'REMOTE_CODE',
+                    // tojson rather than hand-quoting: a code is user input, and an
+                    // embedded quote would otherwise produce malformed JSON. Arm
+                    // actions come through here too with an empty code.
+                    command_template:
+                        '{"action": {{ action | tojson }}, "code": {{ (code or "") | tojson }}}'
+                })
+            },
+            deviceIdentifiers: [uniqueId],
+            deviceName,
+            model: 'C-Bus Security Panel'
+        });
         const mode = !controlEnabled
             ? 'read-only'
             : [disarmEnabled ? 'arm + disarm' : 'arm only', bypassEnabled ? '+ bypass' : ''].filter(Boolean).join(' ');
@@ -1285,23 +1351,19 @@ class _HaDiscoveryPublishers {
      */
     _createSecurityBypassDiscovery(networkId, appId, deviceName) {
         const uniqueId = `cgateweb_${networkId}_${appId}_panel_bypass`;
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-
-        const payload = {
+        this._finishEventDrivenEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId,
+            component: HA_COMPONENT_BUTTON,
             name: 'Bypass open zones',
-            unique_id: uniqueId,
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/bypass`,
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [`cgateweb_${networkId}_${appId}_panel`],
-                name: deviceName,
-                model: 'C-Bus Security Panel'
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Security panel zone-bypass button published: ${networkId}/${appId}`);
+            fields: {
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/bypass`
+            },
+            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_panel`],
+            deviceName,
+            model: 'C-Bus Security Panel',
+            logInfo: `Security panel zone-bypass button published: ${networkId}/${appId}`
+        });
     }
 
     /**
@@ -1389,64 +1451,53 @@ class _HaDiscoveryPublishers {
             component: HA_COMPONENT_CLIMATE,
             fallbackLabel: `CBus HVAC ${networkId}/${appId}/${sourceUnit}`
         });
-        const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
-        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${sourceUnit}`;
-        const writeBase = `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${sourceUnit}`;
+        const { readBase, writeBase } = this._topicBases(networkId, appId, sourceUnit);
         const controlEnabled = !!this.settings.cbus_aircon_control_enabled;
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_CLIMATE, entityId)),
+        this._finishEventDrivenEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: HA_COMPONENT_CLIMATE,
+            fields: {
+                // State topics published by the native aircon decoder.
+                current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+                temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+                mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+                action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
+                // Humidity state (spec-derived humidity verbs; only populated on
+                // installs with humidity plant). Read-only — no humidity writes.
+                // Note the key is target_humidity_state_topic: the MQTT climate
+                // schema has no "humidity_state_topic" — that key is silently dead.
+                current_humidity_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY}`,
+                target_humidity_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT}`,
+                min_humidity: 0,
+                max_humidity: 100,
+                // Fan mode from the Aux Level (spec §25.6.11 bit 6). HA accepts an
+                // arbitrary fan_modes list; the C-Bus values are automatic/continuous.
+                // (Raw 0-63 fan speed still has no HA climate equivalent, so it stays
+                // off this entity — it gets its own diagnostic sensor instead, see
+                // NATIVE_AIRCON_SENSORS.)
+                fan_mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`,
+                fan_modes: ['automatic', 'continuous'],
 
-            // State topics published by the native aircon decoder.
-            current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
-            temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
-            mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
-            action_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_ACTION}`,
-            // Humidity state (spec-derived humidity verbs; only populated on
-            // installs with humidity plant). Read-only — no humidity writes.
-            // Note the key is target_humidity_state_topic: the MQTT climate
-            // schema has no "humidity_state_topic" — that key is silently dead.
-            current_humidity_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_HUMIDITY}`,
-            target_humidity_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_HUMIDITY_SETPOINT}`,
-            min_humidity: 0,
-            max_humidity: 100,
-            // Fan mode from the Aux Level (spec §25.6.11 bit 6). HA accepts an
-            // arbitrary fan_modes list; the C-Bus values are automatic/continuous.
-            // (Raw 0-63 fan speed still has no HA climate equivalent, so it stays
-            // off this entity — it gets its own diagnostic sensor instead, see
-            // NATIVE_AIRCON_SENSORS.)
-            fan_mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`,
-            fan_modes: ['automatic', 'continuous'],
+                // Command topics — only when control is opt-in enabled.
+                // Distinct from lighting-HVAC: native AC uses aircon write verbs.
+                ...(controlEnabled && {
+                    temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
+                    mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
+                    fan_mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_FAN_MODE}`
+                }),
 
-            // Command topics — only when control is opt-in enabled.
-            ...(controlEnabled && {
-                temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
-                mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
-                fan_mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_FAN_MODE}`
-            }),
+                // Verified against real hardware (captures 2026-06-11).
+                modes: ['off', 'heat', 'cool', 'auto', 'fan_only'],
 
-            // Verified against real hardware (captures 2026-06-11).
-            modes: ['off', 'heat', 'cool', 'auto', 'fan_only'],
-
-            temperature_unit: temperatureUnit,
-            min_temp: HVAC_MIN_TEMP_C,
-            max_temp: HVAC_MAX_TEMP_C,
-            temp_step: 0.5,
-
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: NATIVE_AIRCON_MODEL,
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publishEventDrivenConfig(discoveryTopic, payload);
-        this.logger.info(`Native HVAC climate entity published: ${labelKey} (${finalLabel})`);
+                ...this._climateRangeFields()
+            },
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: NATIVE_AIRCON_MODEL,
+            area,
+            logInfo: `Native HVAC climate entity published: ${labelKey} (${finalLabel})`
+        });
 
         this._createNativeAirconCompanionEntities(uniqueId, finalLabel, area, readBase);
     }
@@ -1487,43 +1538,47 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _createNativeAirconCompanionEntities(uniqueId, finalLabel, area, readBase) {
-        const device = buildDeviceBlock({
-            identifiers: [uniqueId],
-            name: finalLabel,
-            model: NATIVE_AIRCON_MODEL,
-            area
-        });
+        const deviceIdentifiers = [uniqueId];
+        const deviceName = finalLabel;
 
         for (const def of NATIVE_AIRCON_BINARY_SENSORS) {
             const sensorUniqueId = `${uniqueId}_${def.suffix}`;
-            const topic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._publishEventDrivenConfig(topic, {
+            this._finishEventDrivenEntity({
+                discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BINARY_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`,
+                uniqueId: sensorUniqueId,
+                component: HA_COMPONENT_BINARY_SENSOR,
                 name: def.name,
-                unique_id: sensorUniqueId,
-                ...(def.deviceClass && { device_class: def.deviceClass }),
-                ...(def.entityCategory && { entity_category: def.entityCategory }),
-                state_topic: `${readBase}/${def.topicSuffix}`,
-                payload_on: MQTT_STATE_ON,
-                payload_off: MQTT_STATE_OFF,
-                qos: 0,
-                device,
-                origin: buildOriginBlock()
+                fields: {
+                    ...(def.deviceClass && { device_class: def.deviceClass }),
+                    ...(def.entityCategory && { entity_category: def.entityCategory }),
+                    state_topic: `${readBase}/${def.topicSuffix}`,
+                    payload_on: MQTT_STATE_ON,
+                    payload_off: MQTT_STATE_OFF
+                },
+                deviceIdentifiers,
+                deviceName,
+                model: NATIVE_AIRCON_MODEL,
+                area
             });
         }
 
         for (const def of NATIVE_AIRCON_SENSORS) {
             const sensorUniqueId = `${uniqueId}_${def.suffix}`;
-            const topic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`;
-            this._publishEventDrivenConfig(topic, {
+            this._finishEventDrivenEntity({
+                discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${sensorUniqueId}/${HA_DISCOVERY_SUFFIX}`,
+                uniqueId: sensorUniqueId,
+                component: HA_COMPONENT_SENSOR,
                 name: def.name,
-                unique_id: sensorUniqueId,
-                entity_category: 'diagnostic',
-                state_topic: `${readBase}/${def.topicSuffix}`,
-                ...(def.unit && { unit_of_measurement: def.unit }),
-                ...(def.stateClass && { state_class: def.stateClass }),
-                qos: 0,
-                device,
-                origin: buildOriginBlock()
+                fields: {
+                    entity_category: 'diagnostic',
+                    state_topic: `${readBase}/${def.topicSuffix}`,
+                    ...(def.unit && { unit_of_measurement: def.unit }),
+                    ...(def.stateClass && { state_class: def.stateClass })
+                },
+                deviceIdentifiers,
+                deviceName,
+                model: NATIVE_AIRCON_MODEL,
+                area
             });
         }
     }
@@ -1571,11 +1626,7 @@ class _HaDiscoveryPublishers {
             labels: this._labelSnapshot
         });
 
-        const temperatureUnit = (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
-
-        // Topic layout for this HVAC group
-        const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}`;
-        const writeBase = `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}`;
+        const { readBase, writeBase } = this._topicBases(networkId, appId, groupId);
 
         const payload = {
             name: null,
@@ -1603,10 +1654,7 @@ class _HaDiscoveryPublishers {
             // Home Assistant buttons that send a bare ON and then snap back to auto.
             modes: ['off', 'auto'],
 
-            temperature_unit: temperatureUnit,
-            min_temp: HVAC_MIN_TEMP_C,
-            max_temp: HVAC_MAX_TEMP_C,
-            temp_step: 0.5,
+            ...this._climateRangeFields(),
 
             qos: 0,
             // command topics must NOT be retained (see _createDiscovery note)
@@ -1641,22 +1689,24 @@ class _HaDiscoveryPublishers {
             labels: this._labelSnapshot
         });
 
+        const { readBase, writeBase } = this._topicBases(networkId, appId, groupId);
+
         // HA event entities use a dedicated event topic (not state topic) and must not be retained
         const stateTopic = config.isTrigger
-            ? `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_EVENT}`
-            : `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_STATE}`;
+            ? `${readBase}/${MQTT_TOPIC_SUFFIX_EVENT}`
+            : `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`;
 
         const payload = {
             name: null,
             unique_id: uniqueId,
             ...(entityId && entityIdFields(config.component, entityId)),
             state_topic: stateTopic,
-            ...(!config.omitCommandTopic && { command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}` }),
+            ...(!config.omitCommandTopic && { command_topic: `${writeBase}/${MQTT_CMD_TYPE_SWITCH}` }),
             ...config.payloads,
             ...(config.positionSupport && {
-                position_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_POSITION}`,
-                set_position_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_POSITION}`,
-                stop_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_STOP}`,
+                position_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+                set_position_topic: `${writeBase}/${MQTT_CMD_TYPE_POSITION}`,
+                stop_topic: `${writeBase}/${MQTT_CMD_TYPE_STOP}`,
                 payload_stop: MQTT_COMMAND_STOP,
                 position_open: 100,
                 position_closed: 0,
