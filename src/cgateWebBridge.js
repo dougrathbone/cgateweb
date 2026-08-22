@@ -787,7 +787,7 @@ class CgateWebBridge {
             return;
         }
         if (measurementState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed measurement line (captured, not a standard event): ${line}`);
+            this.logger.debug(`Unparsed measurement line (captured, not a standard event): ${redactCgateLine(line)}`);
             return;
         }
         // Reached when the feature is off, or on but the line was a shape the
@@ -815,10 +815,10 @@ class CgateWebBridge {
                     }
                 }
             } else {
-                this.warn(`Could not parse event line: ${line}`);
+                this.warn(`Could not parse event line: ${redactCgateLine(line)}`);
             }
         } catch (e) {
-            this.error(`Error processing event data line: ${e.message}`, { line });
+            this.error(`Error processing event data line: ${e.message}`, { line: redactCgateLine(line) });
         }
     }
 

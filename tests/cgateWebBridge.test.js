@@ -772,6 +772,54 @@ describe('CgateWebBridge', () => {
                 publishEventSpy.mockRestore();
             });
 
+            it('redacts keypad echoes in failed event-parse warnings', () => {
+                const warnSpy = jest.spyOn(bridge, 'warn');
+                const line = 'not-an-event security emulate_keypad //P/254/208 7';
+
+                bridge._processEventLine(line);
+
+                expect(warnSpy).toHaveBeenCalledTimes(1);
+                const message = warnSpy.mock.calls[0][0];
+                expect(message).toContain('Could not parse event line:');
+                expect(message).toContain('***');
+                expect(message).not.toMatch(/emulate_keypad \S+\s+7\b/i);
+                warnSpy.mockRestore();
+            });
+
+            it('redacts keypad echoes in unparsed measurement debug logs', () => {
+                const debugSpy = jest.spyOn(bridge.logger, 'debug');
+                const line = 'measurement not_a_real_verb //P/254/228/1/0 security emulate_keypad //P/254/208 7';
+                bridge.settings.cbus_measurement_app_id = '228';
+
+                bridge._processEventLine(line);
+
+                const messages = debugSpy.mock.calls.map((c) => String(c[0]));
+                expect(messages.some((m) => m.includes('Unparsed measurement line'))).toBe(true);
+                expect(messages.join('\n')).toContain('***');
+                expect(messages.join('\n')).not.toMatch(/emulate_keypad \S+\s+7\b/i);
+                debugSpy.mockRestore();
+            });
+
+            it('redacts keypad echoes when processing an event line throws', () => {
+                const errorSpy = jest.spyOn(bridge, 'error');
+                const line = 'lighting on 254/56/1 security emulate_keypad //P/254/208 7';
+                jest.spyOn(bridge.deviceStateManager, 'updateLevelFromEvent').mockImplementation(() => {
+                    throw new Error('boom');
+                });
+
+                bridge._processEventLine(line);
+
+                expect(errorSpy).toHaveBeenCalledWith(
+                    'Error processing event data line: boom',
+                    expect.objectContaining({
+                        line: expect.stringContaining('***')
+                    })
+                );
+                const logged = errorSpy.mock.calls[0][1].line;
+                expect(logged).not.toMatch(/emulate_keypad \S+\s+7\b/i);
+                errorSpy.mockRestore();
+            });
+
             it('should ignore clock date events without publishing', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 
