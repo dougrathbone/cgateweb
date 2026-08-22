@@ -102,10 +102,23 @@ describe('CommandResponseProcessor', () => {
             processor.processLine('invalid-line');
             
             expect(mockLogger.error).toHaveBeenCalledWith(
-                expect.stringContaining('Error processing command data line:'),
-                expect.any(Error),
-                'Line: invalid-line'
+                'Error processing command data line: Parse error',
+                { line: 'invalid-line' }
             );
+        });
+
+        it('redacts keypad echoes when command-line processing throws', () => {
+            const parseSpy = jest.spyOn(processor, '_parseCommandResponseLine');
+            parseSpy.mockImplementation(() => { throw new Error('Parse error'); });
+            const line = '200-OK security emulate_keypad //P/254/208 7';
+
+            processor.processLine(line);
+
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                'Error processing command data line: Parse error',
+                expect.objectContaining({ line: expect.stringContaining('***') })
+            );
+            expect(mockLogger.error.mock.calls[0][1].line).not.toMatch(/emulate_keypad \S+\s+7\b/i);
         });
 
         it('should skip processing if parsing returns null', () => {

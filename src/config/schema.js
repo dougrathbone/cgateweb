@@ -770,6 +770,15 @@ const SETTINGS_SCHEMA = {
         description: 'Sliding window for the securityDisarmMaxAttempts brute-force limit (10 minutes).',
         reason: 'A runtime tunable rather than an add-on option on purpose: this is a safety floor, and a UI field inviting people to raise it defeats the point.'
     },
+    securityDisarmMaxTrackedKeys: {
+        key: 'securityDisarmMaxTrackedKeys',
+        type: 'number',
+        default: 256,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Cap on distinct network/application keys tracked by the disarm attempt limiter.',
+        reason: TUNING_ONLY_REASON
+    },
 
     // --- Measurement (application 228) --------------------------------------
     cbus_measurement_app_id: {
@@ -989,6 +998,15 @@ const SETTINGS_SCHEMA = {
         unit: 'ms',
         exposure: 'standalone',
         description: 'Initial backoff between Supervisor ingress-path discovery retries.',
+        reason: TUNING_ONLY_REASON
+    },
+    supervisorMqttDetectTimeoutMs: {
+        key: 'supervisorMqttDetectTimeoutMs',
+        type: 'number',
+        default: 5000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Timeout for add-on MQTT broker auto-detection from the Supervisor services API.',
         reason: TUNING_ONLY_REASON
     },
     web_auth_failure_rate_limit_per_minute: {
@@ -1298,6 +1316,24 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'standalone',
         description: 'Maximum size (bytes) for POST/PUT/PATCH request bodies on the web UI\'s label-editing API. Default 10MB covers typical .cbz uploads.',
+        reason: TUNING_ONLY_REASON
+    },
+    cgateLineBufferMaxBytes: {
+        key: 'cgateLineBufferMaxBytes',
+        type: 'number',
+        default: 1024 * 1024,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Cap on the per-connection C-Gate line assembler buffer. Truncates when a socket delivers data without a newline past this size.',
+        reason: TUNING_ONLY_REASON
+    },
+    webDashboardMaxDevices: {
+        key: 'webDashboardMaxDevices',
+        type: 'number',
+        default: 200,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Maximum device rows included in GET /api/dashboard.',
         reason: TUNING_ONLY_REASON
     },
     deviceStateMaxEntries: {

@@ -197,7 +197,7 @@ class CgateWebBridge {
         // Each TCP connection gets its own processor so partial reads on one connection
         // don't corrupt lines being assembled on another.
         this.commandLineProcessors = new Map();
-        this.eventLineProcessor = new LineProcessor();
+        this.eventLineProcessor = this._createLineProcessor();
         // Networks discovered by the init service (via auto-discovery). Read live
         // by the init service and by _resolveGetallNetworks; starts unset.
         this.discoveredNetworks = null;
@@ -338,6 +338,7 @@ class CgateWebBridge {
             activeDeviceWindowMs: resolveSetting(this.settings, 'web_active_device_window_ms'),
             haAreasCacheTtlMs: resolveSetting(this.settings, 'web_ha_areas_cache_ttl_ms'),
             haApiTimeoutMs: resolveSetting(this.settings, 'web_ha_api_timeout_ms'),
+            maxDashboardDevices: resolveSetting(this.settings, 'webDashboardMaxDevices'),
             maxSseConnections: resolveSetting(this.settings, 'web_max_sse_connections'),
             _sseKeepaliveMs: resolveSetting(this.settings, 'webSseKeepaliveMs'),
             triggerAppId: resolveSetting(this.settings, 'ha_discovery_trigger_app_id'),
@@ -633,18 +634,24 @@ class CgateWebBridge {
 
 
 
+    _createLineProcessor() {
+        return new LineProcessor({
+            maxBufferBytes: resolveSetting(this.settings, 'cgateLineBufferMaxBytes')
+        });
+    }
+
     _handleCommandData(data, connection) {
         const key = connection.poolIndex !== undefined ? connection.poolIndex : connection;
         let processor = this.commandLineProcessors.get(key);
         if (!processor) {
-            processor = new LineProcessor();
+            processor = this._createLineProcessor();
             this.commandLineProcessors.set(key, processor);
         }
         processor.processData(data, (line) => {
             try {
                 this.commandResponseProcessor.processLine(line);
             } catch (e) {
-                this.error(`Error processing command data line: ${e.message}`, { line });
+                this.error(`Error processing command data line: ${e.message}`, { line: redactCgateLine(line) });
             }
         });
     }
