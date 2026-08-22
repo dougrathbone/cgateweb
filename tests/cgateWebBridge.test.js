@@ -1189,6 +1189,18 @@ describe('CgateWebBridge', () => {
                 expect(bridge.haDiscovery.ensureTemperatureDiscovery).toHaveBeenCalledWith('254', '25', '3');
             });
 
+            it('asks HA discovery about an unlisted lighting group on a live event', () => {
+                bridge.haDiscovery = {
+                    ensureTemperatureDiscovery: jest.fn(),
+                    ensureUnlistedGroupDiscovery: jest.fn()
+                };
+
+                bridge._processEventLine('lighting on 254/56/251');
+
+                expect(bridge.haDiscovery.ensureUnlistedGroupDiscovery)
+                    .toHaveBeenCalledWith('254', '56', '251');
+            });
+
             it('should log a warning for unknown mode codes and still consume the line', () => {
                 const warnSpy = jest.spyOn(bridge.logger, 'warn');
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');

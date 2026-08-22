@@ -513,6 +513,17 @@ describe('CommandResponseProcessor', () => {
             expect(mockOnObjectStatus).toHaveBeenCalledWith(expect.any(CBusEvent));
         });
 
+        it('asks HA discovery about an unlisted lighting group on a command-port status', () => {
+            mockHaDiscovery.ensureUnlistedGroupDiscovery = jest.fn();
+            processor._processCommandObjectStatus('//SHAC/254/56/251: level=255');
+            expect(mockHaDiscovery.ensureUnlistedGroupDiscovery).toHaveBeenCalledWith('254', '56', '251');
+        });
+
+        it('does not throw when unlisted-group discovery is not on the HA discovery object', () => {
+            expect(() => processor._processCommandObjectStatus('//SHAC/254/56/1: level=255')).not.toThrow();
+            expect(mockEventPublisher.publishEvent).toHaveBeenCalled();
+        });
+
         it('should warn about invalid object status data', () => {
             const statusData = 'invalid status data';
             

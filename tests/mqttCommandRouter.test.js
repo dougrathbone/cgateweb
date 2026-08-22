@@ -1358,8 +1358,11 @@ describe('MqttCommandRouter', () => {
         });
 
         it('rejects a temperature outside 0–63.75 °C', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
             router.routeMessage('cbus/write/254/25/3/temperature', '80');
             expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid temperature'));
+            warnSpy.mockRestore();
         });
 
         it('rejects a temperature command on a non-broadcast application', () => {
@@ -1370,8 +1373,11 @@ describe('MqttCommandRouter', () => {
 
     describe('scene module play/record', () => {
         it('ignores play when the feature is off', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
             router.routeMessage('cbus/write/254/203/1/play', '4');
             expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus_scene_module_enabled is off'));
+            warnSpy.mockRestore();
         });
 
         it('sends scene play and record when enabled', () => {
@@ -1381,6 +1387,18 @@ describe('MqttCommandRouter', () => {
             mockQueue.add.mockClear();
             router.routeMessage('cbus/write/254/203/1/record', '4');
             expect(mockQueue.add).toHaveBeenCalledWith('scene record 1 4\n');
+        });
+
+        it('rejects a scene number outside 0–255', () => {
+            router.settings.cbus_scene_module_enabled = true;
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            for (const payload of ['256', '-1', 'nope']) {
+                mockQueue.add.mockClear();
+                router.routeMessage('cbus/write/254/203/1/play', payload);
+                expect(mockQueue.add).not.toHaveBeenCalled();
+            }
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid Scene Module scene'));
+            warnSpy.mockRestore();
         });
     });
 });
