@@ -1712,37 +1712,19 @@ describe('WebServer', () => {
     });
 
     describe('Path traversal guard', () => {
-        it('sends 403 when resolved filePath escapes static dir', () => {
+        it('sends 403 when path.relative reports an escape', () => {
             const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
             const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
-            const realResolve = path.resolve.bind(path);
-            let calls = 0;
-            jest.spyOn(path, 'resolve').mockImplementation((...args) => {
-                calls += 1;
-                // First resolve is staticRoot; force the candidate outside it.
-                if (calls >= 2) return '/etc/passwd';
-                return realResolve(...args);
-            });
+            jest.spyOn(path, 'relative').mockReturnValue(`..${path.sep}passwd`);
             staticFiles.serve('/anything', fakeRes);
             expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
             expect(fakeRes.end).toHaveBeenCalledWith('Forbidden');
         });
 
-        it('rejects prefix matches that lack a path separator after the root', () => {
+        it('rejects a relative path whose segments include .. after resolve', () => {
             const staticFiles = new StaticFileServer({ logger: { error: jest.fn() } });
             const fakeRes = { writeHead: jest.fn(), end: jest.fn() };
-            const realResolve = path.resolve.bind(path);
-            let calls = 0;
-            let staticRoot;
-            jest.spyOn(path, 'resolve').mockImplementation((...args) => {
-                calls += 1;
-                if (calls === 1) {
-                    staticRoot = realResolve(...args);
-                    return staticRoot;
-                }
-                // /public_evil would pass a naive startsWith(/public) check.
-                return staticRoot + '_evil/secret.txt';
-            });
+            jest.spyOn(path, 'relative').mockReturnValue(`..${path.sep}public_evil${path.sep}secret.txt`);
             staticFiles.serve('/secret.txt', fakeRes);
             expect(fakeRes.writeHead).toHaveBeenCalledWith(403);
         });

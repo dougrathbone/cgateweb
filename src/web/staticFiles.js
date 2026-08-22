@@ -4,6 +4,32 @@ const path = require('path');
 
 const STATIC_DIR = path.join(__dirname, '..', '..', 'public');
 
+/**
+ * Map a request path to a file under STATIC_DIR, or null if it escapes.
+ *
+ * Rebuilds the path from path.relative() after rejecting `..` and absolute
+ * relatives, so fs APIs never see the raw request URL.
+ *
+ * @param {string} urlPath
+ * @returns {string|null}
+ */
+function containedStaticPath(urlPath) {
+    const requested = path.normalize(String(urlPath || ''))
+        .replace(/^(\.\.[/\\])+/, '')
+        .replace(/^[/\\]+/, '');
+    const staticRoot = path.resolve(STATIC_DIR);
+    const resolved = path.resolve(staticRoot, requested || 'index.html');
+    const relative = path.relative(staticRoot, resolved);
+    if (
+        relative.startsWith('..')
+        || path.isAbsolute(relative)
+        || relative.split(/[/\\]/).includes('..')
+    ) {
+        return null;
+    }
+    return path.join(staticRoot, relative);
+}
+
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
@@ -37,20 +63,16 @@ class StaticFileServer {
             urlPath = '/index.html';
         }
 
-        const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, '');
-        const staticRoot = path.resolve(STATIC_DIR);
-        const resolved = path.resolve(staticRoot, safePath.replace(/^[/\\]+/, ''));
-
-        // Require path.sep after the root so `/public` cannot match `/public_evil`.
-        if (resolved !== staticRoot && !resolved.startsWith(staticRoot + path.sep)) {
+        const filePath = containedStaticPath(urlPath);
+        if (!filePath) {
             res.writeHead(403);
             res.end('Forbidden');
             return;
         }
 
-        if (!fs.existsSync(resolved)) {
-            const indexPath = path.resolve(staticRoot, 'index.html');
-            if (fs.existsSync(indexPath)) {
+        if (!fs.existsSync(filePath)) {
+            const indexPath = containedStaticPath('/index.html');
+            if (indexPath && fs.existsSync(indexPath)) {
                 this._streamFile(indexPath, MIME_TYPES['.html'], res);
                 return;
             }
@@ -59,9 +81,9 @@ class StaticFileServer {
             return;
         }
 
-        const ext = path.extname(resolved).toLowerCase();
+        const ext = path.extname(filePath).toLowerCase();
         const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-        this._streamFile(resolved, contentType, res);
+        this._streamFile(filePath, contentType, res);
     }
 
     /**
