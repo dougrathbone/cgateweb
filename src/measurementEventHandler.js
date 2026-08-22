@@ -3,6 +3,7 @@
 
 const measurementDecoder = require('./applicationDecoders/measurementDecoder');
 const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
+const { redactCgateLine } = require('./utils');
 
 /**
  * Handles C-Bus Measurement Application (app 228 / $E4) event lines, which
@@ -78,7 +79,7 @@ class MeasurementEventHandler {
         // Don't consume it — the bridge logs it as unparsed and keeps it out of
         // the standard parser.
         if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`Measurement line not natively decoded: ${line}`);
+            this.logger.debug(`Measurement line not natively decoded: ${redactCgateLine(line)}`);
         }
         return LINE_UNPARSED;
     }
