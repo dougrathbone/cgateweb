@@ -364,6 +364,91 @@ const READING_KIND_HANDLERS = {
     }
 };
 
+/**
+ * Dispatch table for publishEvent after shared classification/setup:
+ * kind → handler(ep, ctx). Handlers keep the historical publish semantics;
+ * the table only removes the if/else chain among trigger / hvac / tilt / status.
+ */
+const EVENT_KIND_HANDLERS = {
+    trigger(ep, ctx) {
+        const eventPayload = ctx.rawLevel !== null
+            ? JSON.stringify({ event_type: 'trigger', level: ctx.rawLevel })
+            : JSON.stringify({ event_type: 'trigger' });
+
+        if (ep.logger.isLevelEnabled && ep.logger.isLevelEnabled('debug')) {
+            ep.logger.debug(
+                `C-Bus Trigger ${ctx.source}: ${ctx.network}/${ctx.application}/${ctx.group}`
+                + (ctx.rawLevel !== null ? ` level=${ctx.rawLevel}` : '')
+            );
+        }
+
+        ep._publishIfNeeded(
+            ctx.topics.event,
+            eventPayload,
+            ep._triggerMqttOptions
+        );
+    },
+
+    hvac(ep, ctx) {
+        ep._publishHvacEvent(
+            ctx.network,
+            ctx.application,
+            ctx.group,
+            ctx.rawLevel,
+            ctx.action,
+            ctx.source
+        );
+    },
+
+    tilt(ep, ctx) {
+        // Same 0-100 rounding as levelPercent (HA integer percent).
+        if (ep.logger.isLevelEnabled && ep.logger.isLevelEnabled('debug')) {
+            ep.logger.debug(
+                `C-Bus Tilt ${ctx.source}: ${ctx.network}/${ctx.application}/${ctx.group} ${ctx.levelPercent}%`
+            );
+        }
+
+        ep._publishIfNeeded(
+            `${MQTT_TOPIC_PREFIX_READ}/${ctx.network}/${ctx.application}/${ctx.group}/${MQTT_TOPIC_SUFFIX_TILT}`,
+            ctx.levelPercent.toString(),
+            ep.mqttOptions
+        );
+    },
+
+    // Lighting, cover, and PIR: state always; level/position unless PIR.
+    status(ep, ctx) {
+        if (ep.logger.isLevelEnabled && ep.logger.isLevelEnabled('debug')) {
+            ep.logger.debug(
+                `C-Bus Status ${ctx.source}: ${ctx.network}/${ctx.application}/${ctx.group} ${ctx.state}`
+                + (ctx.isPirSensor ? '' : ` (${ctx.levelPercent}%)`)
+            );
+        }
+
+        ep._publishIfNeeded(
+            ctx.topics.state,
+            ctx.state,
+            ep.mqttOptions
+        );
+
+        if (!ctx.isPirSensor) {
+            ep._publishIfNeeded(
+                ctx.topics.level,
+                ctx.levelPercent.toString(),
+                ep.mqttOptions
+            );
+
+            // Position mirrors level on a separate topic for the HA cover entity.
+            if (ctx.isCover) {
+                ep._publishIfNeeded(
+                    ctx.topics.position,
+                    ctx.levelPercent.toString(),
+                    ep.mqttOptions
+                );
+            }
+        }
+    }
+};
+
 class EventPublisher {
     /**
      * Creates a new EventPublisher instance.
@@ -483,11 +568,11 @@ class EventPublisher {
 
         let state;
         if (isPirSensor) {
-            // PIR sensors: state based on action (motion detected/cleared)
+            // PIR: ON/OFF from action (motion detected/cleared), not level.
             state = actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF;
         } else {
-            // Covers and lighting: state based on raw level, not quantized
-            // percent — rawLevel 1-2 rounds to 0% but the device IS on/open.
+            // Covers and lighting: state from raw level, not quantized percent —
+            // rawLevel 1-2 rounds to 0% but the device IS on/open.
             state = rawLevel !== null
                 ? ((rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
                 : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
@@ -495,11 +580,11 @@ class EventPublisher {
        
         // Emit event log entry for live event stream (before any early returns)
         if (this.onEventLog) {
-            const action = event.getAction();
+            const logAction = event.getAction();
             let eventType = 'update';
-            if (action === 'ramp') eventType = 'ramp';
-            else if (action === 'on') eventType = 'on';
-            else if (action === 'off') eventType = 'off';
+            if (logAction === 'ramp') eventType = 'ramp';
+            else if (logAction === 'on') eventType = 'on';
+            else if (logAction === 'off') eventType = 'off';
             this.onEventLog({
                 ts: Date.now(),
                 network: network,
@@ -510,77 +595,24 @@ class EventPublisher {
             });
         }
 
-        // Trigger groups publish as HA event entities - never retain
-        if (isTrigger) {
-            const eventPayload = rawLevel !== null
-                ? JSON.stringify({ event_type: 'trigger', level: rawLevel })
-                : JSON.stringify({ event_type: 'trigger' });
-
-            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                this.logger.debug(`C-Bus Trigger ${source}: ${network}/${application}/${group}` + (rawLevel !== null ? ` level=${rawLevel}` : ''));
-            }
-
-            // Trigger events must not be retained - always publish with retain: false
-            this._publishIfNeeded(
-                topics.event,
-                eventPayload,
-                this._triggerMqttOptions
-            );
-            return;
-        }
-
-        // HVAC groups publish temperature/mode to dedicated climate topics
-        if (isHvac) {
-            this._publishHvacEvent(network, application, group, rawLevel, action, source);
-            return;
-        }
-
-        // Tilt app groups publish tilt angle to the tilt topic only (0-100%)
-        if (isTiltApp) {
-            const tiltPercent = rawLevel !== null
-                ? Math.round(rawLevel / CGATE_LEVEL_MAX * 100)
-                : (actionIsOn ? 100 : 0);
-
-            if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                this.logger.debug(`C-Bus Tilt ${source}: ${network}/${application}/${group} ${tiltPercent}%`);
-            }
-
-            this._publishIfNeeded(
-                `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}/${MQTT_TOPIC_SUFFIX_TILT}`,
-                tiltPercent.toString(),
-                this.mqttOptions
-            );
-            return;
-        }
-
-        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-            this.logger.debug(`C-Bus Status ${source}: ${network}/${application}/${group} ${state}` + (isPirSensor ? '' : ` (${levelPercent}%)`));
-        }
-
-        // Publish state message directly (no throttle)
-        this._publishIfNeeded(
-            topics.state,
+        const kind = isTrigger ? 'trigger'
+            : isHvac ? 'hvac'
+                : isTiltApp ? 'tilt'
+                    : 'status';
+        EVENT_KIND_HANDLERS[kind](this, {
+            network,
+            application,
+            group,
+            action,
+            rawLevel,
+            actionIsOn,
+            source,
+            topics,
+            isPirSensor,
+            isCover,
             state,
-            this.mqttOptions
-        );
-
-        // Publish level/position message for non-PIR sensors
-        if (!isPirSensor) {
-            this._publishIfNeeded(
-                topics.level,
-                levelPercent.toString(),
-                this.mqttOptions
-            );
-
-            // Also publish position for covers (same value, different topic for HA cover entity)
-            if (isCover) {
-                this._publishIfNeeded(
-                    topics.position,
-                    levelPercent.toString(),
-                    this.mqttOptions
-                );
-            }
-        }
+            levelPercent
+        });
     }
 
     /**
