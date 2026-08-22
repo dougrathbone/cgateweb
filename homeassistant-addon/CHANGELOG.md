@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.28.1] - 2026-08-22
+
+### Fixed
+
+- **The 1.28.0 release now actually ships.** A release step could not set the new image package's visibility and stopped the publish after the images had been built.
+
 ## [1.28.0] - 2026-08-22
 
 ### Added
