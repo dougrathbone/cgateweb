@@ -270,6 +270,12 @@ class CbusProjectParser {
     }
 
     _parseXML(xmlString) {
+        // Reject DTDs / entity declarations before handing to the XML parser —
+        // xml2js (and libxml-backed parsers) can expand external entities or
+        // blow up on billion-laughs style entity expansion.
+        if (/<!DOCTYPE/i.test(xmlString) || /<!ENTITY/i.test(xmlString)) {
+            return Promise.reject(new Error('XML with DTD or entity declarations is not supported'));
+        }
         return new Promise((resolve, reject) => {
             parseString(xmlString, { explicitArray: false, ignoreAttrs: false, mergeAttrs: true }, (err, result) => {
                 if (err) reject(new Error(`XML parse error: ${err.message}`));

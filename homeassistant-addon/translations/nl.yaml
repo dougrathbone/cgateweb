@@ -1,5 +1,4 @@
 configuration:
-  # ── Verplichte velden (altijd zichtbaar) ──
   cgate_mode:
     name: C-Gate Modus
     description: >-
@@ -9,119 +8,125 @@ configuration:
   cgate_host:
     name: C-Gate Host (verplicht)
     description: >-
-      IP-adres of hostnaam van uw C-Gate server. In de externe modus het
-      adres van de machine met C-Gate invoeren. In de beheerde modus
-      127.0.0.1 gebruiken.
+      IP-adres of hostnaam van uw C-Gate server. In de externe modus het adres
+      van de machine met C-Gate invoeren. In de beheerde modus 127.0.0.1
+      gebruiken.
   cgate_project:
     name: C-Gate Projectnaam (verplicht)
     description: >-
-      De naam van uw C-Bus project zoals geconfigureerd in C-Gate (bijv.
-      HOME, MYHOUSE). Vind dit in C-Gate Toolkit onder uw projectboom.
+      De naam van uw C-Bus project zoals geconfigureerd in C-Gate (bijv. HOME,
+      MYHOUSE). Vind dit in C-Gate Toolkit onder uw projectboom.
   ha_discovery_enabled:
     name: Home Assistant Discovery inschakelen
     description: >-
       Registreer C-Bus apparaten automatisch bij Home Assistant met MQTT
-      Discovery. De meeste gebruikers moeten dit ingeschakeld laten.
-      Apparaten verschijnen als entiteiten zonder handmatige
-      YAML-configuratie.
+      Discovery. De meeste gebruikers moeten dit ingeschakeld laten. Apparaten
+      verschijnen als entiteiten zonder handmatige YAML-configuratie.
   log_level:
     name: Logniveau
     description: >-
-      Logboekuitgebreidheid. Gebruik "info" voor normaal gebruik, "debug"
-      voor het oplossen van verbindings- of discovery-problemen.
-
-  # ── C-Gate Verbinding (optioneel, verstandige standaardwaarden) ──
+      Logboekuitgebreidheid. Gebruik "info" voor normaal gebruik, "debug" voor
+      het oplossen van verbindings- of discovery-problemen.
   cgate_port:
     name: C-Gate Commandopoort
     description: >-
-      TCP-poort voor C-Gate commandoverbindingen. Alleen wijzigen als uw
-      C-Gate een niet-standaard poort gebruikt. Standaard: 20023.
+      TCP-poort voor C-Gate commandoverbindingen. Alleen wijzigen als uw C-Gate
+      een niet-standaard poort gebruikt. Standaard: 20023.
   cgate_event_port:
     name: C-Gate Gebeurtenispoort
     description: >-
       TCP-poort voor C-Gate gebeurtenisverbindingen. Alleen wijzigen als uw
       C-Gate een niet-standaard poort gebruikt. Standaard: 20025.
-
-  # ── C-Gate Beheerde Modus ──
   cgate_install_source:
     name: C-Gate Installatiebron
     description: >-
-      Alleen gebruikt in beheerde modus. "download" haalt C-Gate
-      automatisch op. "upload" zoekt naar een zipbestand dat u in
-      /share/cgate/ plaatst.
+      Alleen gebruikt in beheerde modus. "download" haalt C-Gate automatisch op.
+      "upload" zoekt naar een zipbestand dat u in /share/cgate/ plaatst.
   cgate_download_url:
     name: C-Gate Download URL
     description: >-
-      Alleen gebruikt in beheerde modus met downloadbron. Overschrijf als
-      de officiële Clipsal download-URL wijzigt. Laat leeg voor de
-      standaard-URL.
+      Alleen gebruikt in beheerde modus met downloadbron. Overschrijf als de
+      officiële Clipsal download-URL wijzigt. Laat leeg voor de standaard-URL.
   cgate_download_sha256:
     name: C-Gate Download SHA256
     description: >-
-      Optionele SHA256-checksum om de C-Gate download te verifiëren.
-      Aanbevolen bij gebruik van een aangepaste download-URL.
+      Optionele SHA256-checksum om de C-Gate download te verifiëren. Aanbevolen
+      bij gebruik van een aangepaste download-URL.
   cgate_force_reinstall:
     name: C-Gate herinstallatie forceren
     description: >-
-      Alleen gebruikt in managed-modus. Eenmaal geïnstalleerd blijft C-Gate normaal gesproken ongewijzigd. Schakel dit in om C-Gate bij de volgende start opnieuw te installeren/bij te werken vanaf de installatiebron (uw projectdatabases en configuratie blijven behouden); in upload-modus kunt u in plaats daarvan een nieuwere zip in /share/cgate plaatsen. Schakel dit na de upgrade weer uit.
-
+      Alleen gebruikt in managed-modus. Eenmaal geïnstalleerd blijft C-Gate
+      normaal gesproken ongewijzigd. Schakel dit in om C-Gate bij de volgende
+      start opnieuw te installeren/bij te werken vanaf de installatiebron (uw
+      projectdatabases en configuratie blijven behouden); in upload-modus kunt u
+      in plaats daarvan een nieuwere zip in /share/cgate plaatsen. Schakel dit
+      na de upgrade weer uit.
   cgate_serial_device:
     name: Serieel PCI-apparaat (beta)
     description: >-
-      BETA: ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU) — getest met beide interfaces. Selecteer een gedetecteerd serieel apparaat in de vervolgkeuzelijst; gebruik bij voorkeur paden onder /dev/serial/by-id/. Om een aangepast pad in te voeren, schakelt u de configuratie-editor over naar de YAML-modus. Vereist de managed-modus en een C-Bus Toolkit-project dat is geconfigureerd voor een seriële pc-interface. Meld problemen op GitHub (issue #28).
+      BETA: ondersteuning voor USB-seriële pc-interfaces (5500PC/5500PCU) —
+      getest met beide interfaces. Selecteer een gedetecteerd serieel apparaat
+      in de vervolgkeuzelijst; gebruik bij voorkeur paden onder
+      /dev/serial/by-id/. Om een aangepast pad in te voeren, schakelt u de
+      configuratie-editor over naar de YAML-modus. Vereist de managed-modus en
+      een C-Bus Toolkit-project dat is geconfigureerd voor een seriële
+      pc-interface. Meld problemen op GitHub (issue #28).
   cgate_external_clients:
     name: Externe C-Gate-clients
     description: >-
-      Adressen die verbinding mogen maken met de beheerde C-Gate, voor tools zoals C-Bus Toolkit. Laat leeg om alleen deze add-on toe te staan. C-Gate heeft geen authenticatie, en het niveau program staat herprogrammering van C-Bus-eenheden toe, dus geef specifieke adressen op in plaats van een heel subnet. Een octet met de waarde 255 komt overeen met elke waarde, dus 192.168.1.255 betekent het hele netwerk 192.168.1.x. U moet ook de poorten van C-Gate publiceren in het netwerkpaneel.
-  # ── MQTT (meestal automatisch gedetecteerd) ──
+      Adressen die verbinding mogen maken met de beheerde C-Gate, voor tools
+      zoals C-Bus Toolkit. Laat leeg om alleen deze add-on toe te staan. C-Gate
+      heeft geen authenticatie, en het niveau program staat herprogrammering van
+      C-Bus-eenheden toe, dus geef specifieke adressen op in plaats van een heel
+      subnet. Een octet met de waarde 255 komt overeen met elke waarde, dus
+      192.168.1.255 betekent het hele netwerk 192.168.1.x. U moet ook de poorten
+      van C-Gate publiceren in het netwerkpaneel.
   mqtt_host:
     name: MQTT Broker Host
     description: >-
-      Automatisch gedetecteerd via de Mosquitto add-on — de meeste
-      gebruikers moeten dit leeg laten. Alleen instellen bij gebruik van
-      een externe MQTT broker.
+      Automatisch gedetecteerd via de Mosquitto add-on — de meeste gebruikers
+      moeten dit leeg laten. Alleen instellen bij gebruik van een externe MQTT
+      broker.
   mqtt_port:
     name: MQTT Broker Poort
     description: >-
-      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen
-      voor externe brokers. Standaard: 1883.
+      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen voor
+      externe brokers. Standaard: 1883.
   mqtt_username:
     name: MQTT Gebruikersnaam
     description: >-
-      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen
-      voor externe brokers of om inloggegevens te overschrijven.
+      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen voor
+      externe brokers of om inloggegevens te overschrijven.
   mqtt_password:
     name: MQTT Wachtwoord
     description: >-
-      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen
-      voor externe brokers of om inloggegevens te overschrijven.
+      Automatisch gedetecteerd via de Mosquitto add-on. Alleen instellen voor
+      externe brokers of om inloggegevens te overschrijven.
   mqtt_use_tls:
     name: MQTT TLS inschakelen
     description: >-
       Verbinden met MQTT via TLS (mqtts://). Inschakelen voor brokers die
-      versleutelde verbindingen vereisen (meestal poort 8883). Niet nodig
-      voor de standaard Mosquitto add-on.
+      versleutelde verbindingen vereisen (meestal poort 8883). Niet nodig voor
+      de standaard Mosquitto add-on.
   mqtt_ca_file:
     name: MQTT CA-certificaatbestand
     description: >-
-      Pad naar CA-certificaat voor het verifiëren van het TLS-certificaat
-      van de broker. Meestal opgeslagen in /ssl/ (bijv. /ssl/ca.crt).
-      Alleen nodig voor zelfondertekende certificaten.
+      Pad naar CA-certificaat voor het verifiëren van het TLS-certificaat van de
+      broker. Meestal opgeslagen in /ssl/ (bijv. /ssl/ca.crt). Alleen nodig voor
+      zelfondertekende certificaten.
   mqtt_reject_unauthorized:
     name: MQTT TLS-certificaat verifiëren
     description: >-
       Verbindingen weigeren als het TLS-certificaat van de broker niet
       geverifieerd kan worden. Ingeschakeld houden voor beveiliging. Alleen
       uitschakelen voor zelfondertekende certificaten zonder CA-bestand.
-
-  # ── C-Bus Monitoring ──
   auto_discover_networks:
     name: C-Bus netwerken automatisch ontdekken
     description: >-
-      Automatisch netwerk-ID's ontdekken van C-Gate bij verbinding.
-      Ontdekte netwerken worden gebruikt voor polling en HA Discovery.
-      Alleen uitschakelen als auto-ontdekking problemen veroorzaakt.
-      Standaard: ingeschakeld.
+      Automatisch netwerk-ID's ontdekken van C-Gate bij verbinding. Ontdekte
+      netwerken worden gebruikt voor polling en HA Discovery. Alleen
+      uitschakelen als auto-ontdekking problemen veroorzaakt. Standaard:
+      ingeschakeld.
   getall_networks:
     name: Te monitoren C-Bus netwerken
     description: >-
@@ -131,41 +136,35 @@ configuration:
   getall_on_start:
     name: Alle apparaten opvragen bij opstarten
     description: >-
-      Alle apparaatstatussen opvragen wanneer de add-on start, om Home
-      Assistant te synchroniseren met de huidige C-Bus status. Standaard:
-      ingeschakeld.
+      Alle apparaatstatussen opvragen wanneer de add-on start, om Home Assistant
+      te synchroniseren met de huidige C-Bus status. Standaard: ingeschakeld.
   getall_period:
     name: Opvraaginterval (seconden)
     description: >-
-      Hoe vaak alle apparaatstatussen opnieuw worden opgevraagd. Lagere
-      waarden = actuelere statussen maar meer C-Gate verkeer. Standaard:
-      3600 (1 uur).
+      Hoe vaak alle apparaatstatussen opnieuw worden opgevraagd. Lagere waarden
+      = actuelere statussen maar meer C-Gate verkeer. Standaard: 3600 (1 uur).
   getall_app_periods:
     name: Opvraagintervallen per applicatie
     description: >-
-      Het opvraaginterval overschrijven voor specifieke C-Bus applicaties.
-      Elke vermelding heeft een app_id (bijv. "56" voor Verlichting) en
-      period_sec (0 om uit te schakelen).
-
-  # ── MQTT Publicatie ──
+      Het opvraaginterval overschrijven voor specifieke C-Bus applicaties. Elke
+      vermelding heeft een app_id (bijv. "56" voor Verlichting) en period_sec (0
+      om uit te schakelen).
   retain_reads:
     name: MQTT Statusberichten bewaren
     description: >-
-      De MQTT retain-vlag instellen op statusberichten zodat nieuwe
-      abonnees direct de laatst bekende apparaatstatus ontvangen.
-      Standaard: uitgeschakeld.
+      De MQTT retain-vlag instellen op statusberichten zodat nieuwe abonnees
+      direct de laatst bekende apparaatstatus ontvangen. Standaard:
+      uitgeschakeld.
   message_interval:
     name: Commando-interval (ms)
     description: >-
-      Minimale vertraging tussen commando's naar C-Gate. Voorkomt
-      overbelasting van C-Gate met snelle commando's. Standaard: 200ms.
-
-  # ── Home Assistant Discovery ──
+      Minimale vertraging tussen commando's naar C-Gate. Voorkomt overbelasting
+      van C-Gate met snelle commando's. Standaard: 200ms.
   ha_discovery_prefix:
     name: Discovery Topicprefix
     description: >-
-      MQTT topicprefix voor HA Discovery berichten. Moet overeenkomen met
-      uw Home Assistant MQTT Discovery prefix. Standaard: homeassistant.
+      MQTT topicprefix voor HA Discovery berichten. Moet overeenkomen met uw
+      Home Assistant MQTT Discovery prefix. Standaard: homeassistant.
   ha_discovery_networks:
     name: Discovery Netwerken
     description: >-
@@ -176,8 +175,8 @@ configuration:
     name: Cover Applicatie-ID
     description: >-
       C-Bus app-ID voor covers (rolluiken, jaloezieën, garagedeuren).
-      Veelgebruikte waarde: 203 (Enable Control). Laat leeg om
-      cover-detectie over te slaan.
+      Veelgebruikte waarde: 203 (Enable Control). Laat leeg om cover-detectie
+      over te slaan.
   ha_discovery_cover_tilt_app_id:
     name: Cover Kantel Applicatie-ID
     description: >-
@@ -186,25 +185,25 @@ configuration:
   ha_discovery_switch_app_id:
     name: Schakelaar Applicatie-ID
     description: >-
-      C-Bus app-ID voor schakelaargroepen. Laat leeg om
-      schakelaar-detectie over te slaan.
+      C-Bus app-ID voor schakelaargroepen. Laat leeg om schakelaar-detectie over
+      te slaan.
   ha_discovery_trigger_app_id:
     name: Trigger Applicatie-ID
     description: >-
-      C-Bus app-ID voor triggergroepen (keypads, scènes). Veelgebruikte
-      waarde: 202. Laat leeg om trigger-detectie over te slaan.
+      C-Bus app-ID voor triggergroepen (keypads, scènes). Veelgebruikte waarde:
+      202. Laat leeg om trigger-detectie over te slaan.
   ha_discovery_scene_enabled:
     name: Scène-entiteiten inschakelen
     description: >-
-      Een Home Assistant scène-entiteit aanmaken voor elke triggergroep,
-      naast gebeurtenis- en knop-entiteiten. Standaard: ingeschakeld.
+      Een Home Assistant scène-entiteit aanmaken voor elke triggergroep, naast
+      gebeurtenis- en knop-entiteiten. Standaard: ingeschakeld.
   ha_discovery_auto_type:
     name: Auto-detect Device Types
     description: >-
       Automatically classify Lighting (56) groups whose label looks like a
       motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence.
-      Default: enabled.
+      instead of lights. Manual type overrides always take precedence. Default:
+      enabled.
   ha_discovery_auto_type_name_heuristics:
     name: Auto-detect Using Label Keywords
     description: >-
@@ -221,68 +220,86 @@ configuration:
     name: HVAC Applicatie-ID
     description: >-
       C-Bus app-ID voor een verlichtingscompatibele HVAC-groep
-      (PAC/touchscreen-blootgesteld). NIET de native Air Conditioning app
-      172 — gebruik alleen voor groepen die door een PAC of touchscreen
-      worden gespiegeld op een verlichtingsstijl app. Laat leeg om
-      HVAC-detectie over te slaan.
+      (PAC/touchscreen-blootgesteld). NIET de native Air Conditioning app 172 —
+      gebruik alleen voor groepen die door een PAC of touchscreen worden
+      gespiegeld op een verlichtingsstijl app. Laat leeg om HVAC-detectie over
+      te slaan.
   ha_hvac_temperature_unit:
     name: HVAC Temperatuureenheid
     description: >-
-      Temperatuureenheid voor HVAC klimaat-entiteiten. C voor Celsius, F
-      voor Fahrenheit. Standaard: C.
-
+      Temperatuureenheid voor HVAC klimaat-entiteiten. C voor Celsius, F voor
+      Fahrenheit. Standaard: C.
   cbus_aircon_app_id:
     name: Applicatie-ID voor airconditioning
     description: >-
-      C-Bus Air Conditioning applicatie-id (bijv. 172) voor native alleen-lezen kamertemperatuur. Decodeert zone_temperature-broadcasts en publiceert current_temperature naar cbus/read/{network}/172/{zone}/current_temperature. Standaard uitgeschakeld.
-
+      C-Bus Air Conditioning applicatie-id (bijv. 172) voor native alleen-lezen
+      kamertemperatuur. Decodeert zone_temperature-broadcasts en publiceert
+      current_temperature naar
+      cbus/read/{network}/172/{zone}/current_temperature. Standaard
+      uitgeschakeld.
   cbus_aircon_control_enabled:
     name: Airconditioning-besturing
     description: >-
-      Sta Home Assistant toe om native C-Bus-thermostaten te bedienen (modus en temperatuur). Standaard uitgeschakeld — het schrijft naar de actieve verwarming/koeling. Vereist een ingestelde airconditioning-applicatie-id.
+      Sta Home Assistant toe om native C-Bus-thermostaten te bedienen (modus en
+      temperatuur). Standaard uitgeschakeld — het schrijft naar de actieve
+      verwarming/koeling. Vereist een ingestelde airconditioning-applicatie-id.
   cbus_security_app_id:
     name: Beveiligingsapplicatie-id
     description: >-
-      C-Bus-beveiligingsapplicatie-id (standaard 208) voor alarmzonesensoren. Publiceert één binaire sensor per zone — sealed is uit; unsealed, open of short is aan — en synchroniseert de zonestatus bij verbinding. Stel in op 0 om uit te schakelen.
-
+      C-Bus-beveiligingsapplicatie-id (standaard 208) voor alarmzonesensoren.
+      Publiceert één binaire sensor per zone — sealed is uit; unsealed, open of
+      short is aan — en synchroniseert de zonestatus bij verbinding. Stel in op
+      0 om uit te schakelen.
   cbus_security_control_enabled:
     name: Alarmpaneel-bediening
     description: >-
-      Sta Home Assistant toe het alarmsysteem in te schakelen (away, night, home, vacation). Alleen inschakelen: C-Bus heeft geen uitschakelcommando, dus de Disarm-knop in Home Assistant doet niets. Standaard uitgeschakeld: het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het commando-topic kan publiceren kan uw alarmsysteem inschakelen. Vereist een ingestelde beveiligingsapplicatie-id.
+      Sta Home Assistant toe het alarmsysteem in te schakelen (away, night,
+      home, vacation). Alleen inschakelen: C-Bus heeft geen uitschakelcommando,
+      dus de Disarm-knop in Home Assistant doet niets. Standaard uitgeschakeld:
+      het arm-commando bevat geen PIN op de C-Bus, dus alles wat op het
+      commando-topic kan publiceren kan uw alarmsysteem inschakelen. Vereist een
+      ingestelde beveiligingsapplicatie-id.
   cbus_security_disarm_enabled:
     name: Alarm uitschakelen
     description: >-
-      Sta Home Assistant ook toe het alarmsysteem uit te schakelen. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. C-Bus heeft geen uitschakelcommando, dus de pincode wordt via toetsenbordemulatie op het paneel ingevoerd: Home Assistant toont een eigen toetsenblok en stuurt uw invoer via MQTT. De pincode wordt nergens opgeslagen, maar gaat bij elke uitschakeling via uw MQTT-broker. Schakel dit alleen in op een broker die u vertrouwt, bij voorkeur met TLS.
+      Sta Home Assistant ook toe het alarmsysteem uit te schakelen. Vereist
+      Alarmpaneel-bediening. Standaard uitgeschakeld. C-Bus heeft geen
+      uitschakelcommando, dus de pincode wordt via toetsenbordemulatie op het
+      paneel ingevoerd: Home Assistant toont een eigen toetsenblok en stuurt uw
+      invoer via MQTT. De pincode wordt nergens opgeslagen, maar gaat bij elke
+      uitschakeling via uw MQTT-broker. Schakel dit alleen in op een broker die
+      u vertrouwt, bij voorkeur met TLS.
   cbus_security_bypass_enabled:
     name: Inschakelen forceren bij open zones
     description: >-
-      Sta Home Assistant toe het inschakelen te forceren terwijl een zone open is, met de #-toets van het paneel. Vereist Alarmpaneel-bediening. Standaard uitgeschakeld. Bewust gescheiden van inschakelen: een alarm dat is ingeschakeld met een open deur lijkt ingeschakeld maar bewaakt die deur niet, dus dat hoort een bewuste keuze te zijn. Gebeurt nooit automatisch.
-
+      Sta Home Assistant toe het inschakelen te forceren terwijl een zone open
+      is, met de #-toets van het paneel. Vereist Alarmpaneel-bediening.
+      Standaard uitgeschakeld. Bewust gescheiden van inschakelen: een alarm dat
+      is ingeschakeld met een open deur lijkt ingeschakeld maar bewaakt die deur
+      niet, dus dat hoort een bewuste keuze te zijn. Gebeurt nooit automatisch.
   cbus_measurement_app_id:
     name: Meettoepassing-ID
     description: >-
-      C-Bus Meettoepassing-id (standaard 228) voor analoge/numerieke sensormetingen (temperatuur, vermogen, lichtniveau, enz). Publiceert cbus/read/{network}/228/{device}/{channel}/value en /unit, en accepteert geïnjecteerde metingen op cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — bijvoorbeeld voor gescripte/virtuele sensoren. Standaard uitgeschakeld.
-
-
-  # ── Bridge Diagnostiek ──
+      C-Bus Meettoepassing-id (standaard 228) voor analoge/numerieke
+      sensormetingen (temperatuur, vermogen, lichtniveau, enz). Publiceert
+      cbus/read/{network}/228/{device}/{channel}/value en /unit, en accepteert
+      geïnjecteerde metingen op cbus/write/{network}/228/{device}/{channel}/data
+      (payload "value,multiplier,units") — bijvoorbeeld voor gescripte/virtuele
+      sensoren. Standaard uitgeschakeld.
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen
     description: >-
-      Bridge-gezondheidsentiteiten (gereedstatus, verbindingen,
-      wachtrijdiepte) publiceren naar Home Assistant. Standaard:
-      ingeschakeld.
+      Bridge-gezondheidsentiteiten (gereedstatus, verbindingen, wachtrijdiepte)
+      publiceren naar Home Assistant. Standaard: ingeschakeld.
   ha_bridge_diagnostics_interval_sec:
     name: Diagnostiekinterval (seconden)
-    description: >-
-      Hoe vaak bridge-diagnostiekstatussen worden vernieuwd. Standaard: 60.
-
-  # ── C-Bus Network (CNI) Monitoring ──
+    description: "Hoe vaak bridge-diagnostiekstatussen worden vernieuwd. Standaard: 60."
   cni_offline_notification:
     name: CNI-offline melding
     description: >-
-      Een Home Assistant-melding tonen als de CNI/PCI-verbinding van een C-Bus-netwerk offline gaat, en deze verwijderen bij herverbinding. Vereist de Home Assistant add-on-omgeving. Standaard uitgeschakeld.
-
-  # ── Detectie van verouderde apparaten ──
+      Een Home Assistant-melding tonen als de CNI/PCI-verbinding van een
+      C-Bus-netwerk offline gaat, en deze verwijderen bij herverbinding. Vereist
+      de Home Assistant add-on-omgeving. Standaard uitgeschakeld.
   stale_device_detection_enabled:
     name: Detectie van verouderde apparaten inschakelen
     description: >-
@@ -295,41 +312,33 @@ configuration:
       beschouwd. Standaard: 24.
   stale_device_check_interval_sec:
     name: Controle-interval voor verouderde apparaten (seconden)
-    description: >-
-      Hoe vaak er wordt gezocht naar verouderde apparaten. Standaard: 3600
-      (1 uur).
-
-  # ── Geavanceerd: Verbindingspool ──
+    description: "Hoe vaak er wordt gezocht naar verouderde apparaten. Standaard: 3600 (1
+      uur)."
   connection_pool_size:
     name: Verbindingspool grootte
     description: >-
-      Aantal parallelle TCP-verbindingen naar C-Gate. Verhogen voor
-      installaties met hoge doorvoer, verlagen naar 1 voor ouder C-Gate.
-      Standaard: 3.
+      Aantal parallelle TCP-verbindingen naar C-Gate. Verhogen voor installaties
+      met hoge doorvoer, verlagen naar 1 voor ouder C-Gate. Standaard: 3.
   connection_health_check_interval_sec:
     name: Gezondheidscontrole-interval (seconden)
-    description: >-
-      Hoe vaak wordt gecontroleerd of C-Gate verbindingen gezond zijn.
-      Standaard: 30.
+    description: "Hoe vaak wordt gecontroleerd of C-Gate verbindingen gezond zijn.
+      Standaard: 30."
   connection_keep_alive_interval_sec:
     name: Keep-Alive-interval (seconden)
     description: >-
-      Hoe vaak C-Gate verbindingen worden gepingd. Voorkomt stille
-      TCP-verbroken verbindingen. Standaard: 60.
+      Hoe vaak C-Gate verbindingen worden gepingd. Voorkomt stille TCP-verbroken
+      verbindingen. Standaard: 60.
   cover_ramp_duration_sec:
     name: Cover Rampduur (seconden)
     description: >-
-      Verwachte tijd voor een cover om volledig te openen/sluiten. De
-      bridge publiceert geschatte posities tijdens dit venster.
-      Standaard: 5.
-
-  # ── Geavanceerd: Labelbestand & Web API ──
+      Verwachte tijd voor een cover om volledig te openen/sluiten. De bridge
+      publiceert geschatte posities tijdens dit venster. Standaard: 5.
   cbus_label_file:
     name: Aangepast labelbestand
     description: >-
       Pad naar een JSON-bestand met aangepaste apparaatnamen. Automatisch
-      gedetecteerd van gangbare paden indien niet ingesteld. Het bestand
-      wordt bewaakt op wijzigingen.
+      gedetecteerd van gangbare paden indien niet ingesteld. Het bestand wordt
+      bewaakt op wijzigingen.
   web_api_key:
     name: Web API-sleutel
     description: >-
@@ -338,8 +347,8 @@ configuration:
   web_allow_unauthenticated_mutations:
     name: Ongeauthenticeerde webschrijfbewerkingen toestaan (onveilig)
     description: >-
-      Schrijf-endpoints zonder API-sleutel toestaan. Uitgeschakeld houden
-      tenzij u volledig vertrouwt op netwerktoegang tot deze add-on.
+      Schrijf-endpoints zonder API-sleutel toestaan. Uitgeschakeld houden tenzij
+      u volledig vertrouwt op netwerktoegang tot deze add-on.
   web_allowed_origins:
     name: Toegestane weborigines (CORS)
     description: >-
@@ -348,16 +357,26 @@ configuration:
       schakelen.
   web_mutation_rate_limit_per_minute:
     name: Web schrijflimiet
-    description: >-
-      Maximum aantal muterende API-verzoeken per minuut per client.
-      Standaard: 120.
+    description: "Maximum aantal muterende API-verzoeken per minuut per client. Standaard:
+      120."
   ha_discovery_type_from_label_prefix:
     name: Type uit labelprefix
     description: >-
-      Behandel een groepslabel dat begint met een entiteitsdomein-prefix als dat apparaattype (bijv. cover.slaapkamer_luik wordt een cover, switch.verandalamp een schakelaar). Ondersteunde prefixes: light., cover., switch., relay., pir. Een handmatige type_overrides-vermelding gaat altijd voor. Standaard uit.
-
+      Behandel een groepslabel dat begint met een entiteitsdomein-prefix als dat
+      apparaattype (bijv. cover.slaapkamer_luik wordt een cover,
+      switch.verandalamp een schakelaar). Ondersteunde prefixes: light., cover.,
+      switch., relay., pir. Een handmatige type_overrides-vermelding gaat altijd
+      voor. Standaard uit.
   ha_discovery_type_from_unit:
     name: Type uit C-Bus-unittype
     description: >-
-      Bepaal het type van elke entiteit op basis van de C-Bus-unit die de groep aanstuurt, voor groepen waarvan de naam nog geen zonwering aanduidt. Dimmerkanalen worden dimbare lampen, relaiskanalen aan/uit-lampen, en groepen die alleen door een invoerunit zoals een bus coupler worden aangestuurd worden binaire sensoren. Een handmatige type_overrides-vermelding en een naam die zonwering aanduidt (bijv. blind, shutter) gaan nog steeds voor, omdat een relais net zo goed een lamp, zonwering of een klep kan aansturen. Groepen met niet-herkende unittypes blijven onveranderd. Dit aanzetten kan het type van bestaande entiteiten wijzigen.
-
+      Bepaal het type van elke entiteit op basis van de C-Bus-unit die de groep
+      aanstuurt, voor groepen waarvan de naam nog geen zonwering aanduidt.
+      Dimmerkanalen worden dimbare lampen, relaiskanalen aan/uit-lampen, en
+      groepen die alleen door een invoerunit zoals een bus coupler worden
+      aangestuurd worden binaire sensoren. Een handmatige
+      type_overrides-vermelding en een naam die zonwering aanduidt (bijv. blind,
+      shutter) gaan nog steeds voor, omdat een relais net zo goed een lamp,
+      zonwering of een klep kan aansturen. Groepen met niet-herkende unittypes
+      blijven onveranderd. Dit aanzetten kan het type van bestaande entiteiten
+      wijzigen.

@@ -1,17 +1,16 @@
 configuration:
-  # ── Obligatoriske felter (altid synlige) ──
   cgate_mode:
     name: C-Gate tilstand
     description: >-
-      Hvordan C-Gate leveres. "remote" forbinder til en C-Gate server der
-      kører et andet sted på dit netværk (mest almindelig). "managed"
-      downloader og kører C-Gate lokalt i denne tilføjelse.
+      Hvordan C-Gate leveres. "remote" forbinder til en C-Gate server der kører
+      et andet sted på dit netværk (mest almindelig). "managed" downloader og
+      kører C-Gate lokalt i denne tilføjelse.
   cgate_host:
     name: C-Gate vært (påkrævet)
     description: >-
       IP-adresse eller værtsnavn for din C-Gate server. I fjerntilstand
-      indtastes adressen på maskinen der kører C-Gate. I administreret
-      tilstand bruges 127.0.0.1.
+      indtastes adressen på maskinen der kører C-Gate. I administreret tilstand
+      bruges 127.0.0.1.
   cgate_project:
     name: C-Gate projektnavn (påkrævet)
     description: >-
@@ -20,168 +19,164 @@ configuration:
   ha_discovery_enabled:
     name: Aktivér Home Assistant Discovery
     description: >-
-      Registrer automatisk C-Bus enheder i Home Assistant ved hjælp af
-      MQTT Discovery. De fleste brugere bør lade dette være aktiveret.
-      Enheder vises som entiteter uden manuel YAML-konfiguration.
+      Registrer automatisk C-Bus enheder i Home Assistant ved hjælp af MQTT
+      Discovery. De fleste brugere bør lade dette være aktiveret. Enheder vises
+      som entiteter uden manuel YAML-konfiguration.
   log_level:
     name: Logniveau
     description: >-
-      Logningsdetalje. Brug "info" til normal drift, "debug" til
-      fejlfinding af forbindelses- eller opdagelsesproblemer.
-
-  # ── C-Gate forbindelse (valgfrit, fornuftige standardværdier) ──
+      Logningsdetalje. Brug "info" til normal drift, "debug" til fejlfinding af
+      forbindelses- eller opdagelsesproblemer.
   cgate_port:
     name: C-Gate kommandoport
     description: >-
-      TCP-port til C-Gate kommandoforbindelser. Ændres kun hvis din
-      C-Gate bruger en ikke-standard port. Standard: 20023.
+      TCP-port til C-Gate kommandoforbindelser. Ændres kun hvis din C-Gate
+      bruger en ikke-standard port. Standard: 20023.
   cgate_event_port:
     name: C-Gate hændelsesport
     description: >-
-      TCP-port til C-Gate hændelsesforbindelser. Ændres kun hvis din
-      C-Gate bruger en ikke-standard port. Standard: 20025.
-
-  # ── C-Gate administreret tilstand ──
+      TCP-port til C-Gate hændelsesforbindelser. Ændres kun hvis din C-Gate
+      bruger en ikke-standard port. Standard: 20025.
   cgate_install_source:
     name: C-Gate installationskilde
     description: >-
-      Bruges kun i administreret tilstand. "download" henter C-Gate
-      automatisk. "upload" leder efter en zip-fil du har placeret i
-      /share/cgate/.
+      Bruges kun i administreret tilstand. "download" henter C-Gate automatisk.
+      "upload" leder efter en zip-fil du har placeret i /share/cgate/.
   cgate_download_url:
     name: C-Gate download URL
     description: >-
-      Bruges kun i administreret tilstand med downloadkilde. Tilsidesæt
-      hvis den officielle Clipsal download-URL ændres. Lad stå tomt for
-      standard-URL'en.
+      Bruges kun i administreret tilstand med downloadkilde. Tilsidesæt hvis den
+      officielle Clipsal download-URL ændres. Lad stå tomt for standard-URL'en.
   cgate_download_sha256:
     name: C-Gate download SHA256
     description: >-
-      Valgfri SHA256-kontrolsum til at verificere C-Gate downloaden.
-      Anbefales ved brug af en brugerdefineret download-URL.
+      Valgfri SHA256-kontrolsum til at verificere C-Gate downloaden. Anbefales
+      ved brug af en brugerdefineret download-URL.
   cgate_force_reinstall:
     name: Gennemtving geninstallation af C-Gate
     description: >-
-      Bruges kun i administreret tilstand. Når C-Gate først er installeret, bevares det normalt, som det er. Slå dette til for at geninstallere/opgradere C-Gate fra installationskilden ved næste start (dine projektdatabaser og konfiguration bevares); i upload-tilstand kan du i stedet lægge en nyere zip i /share/cgate. Slå det fra igen efter opgraderingen.
-
+      Bruges kun i administreret tilstand. Når C-Gate først er installeret,
+      bevares det normalt, som det er. Slå dette til for at
+      geninstallere/opgradere C-Gate fra installationskilden ved næste start
+      (dine projektdatabaser og konfiguration bevares); i upload-tilstand kan du
+      i stedet lægge en nyere zip i /share/cgate. Slå det fra igen efter
+      opgraderingen.
   cgate_serial_device:
     name: Seriel PCI-enhed (beta)
     description: >-
-      BETA: understøttelse af USB-serielle PC-interfaces (5500PC/5500PCU) — testet med begge interfaces. Vælg en registreret seriel enhed i rullemenuen; foretræk stier under /dev/serial/by-id/. For at angive en brugerdefineret sti skifter du konfigurationseditoren til YAML-tilstand. Kræver administreret tilstand og et C-Bus Toolkit-projekt konfigureret til et serielt PC-interface. Rapportér problemer på GitHub (issue #28).
+      BETA: understøttelse af USB-serielle PC-interfaces (5500PC/5500PCU) —
+      testet med begge interfaces. Vælg en registreret seriel enhed i
+      rullemenuen; foretræk stier under /dev/serial/by-id/. For at angive en
+      brugerdefineret sti skifter du konfigurationseditoren til YAML-tilstand.
+      Kræver administreret tilstand og et C-Bus Toolkit-projekt konfigureret til
+      et serielt PC-interface. Rapportér problemer på GitHub (issue #28).
   cgate_external_clients:
     name: Eksterne C-Gate-klienter
     description: >-
-      Adresser, der har tilladelse til at oprette forbindelse til den administrerede C-Gate, til værktøjer som C-Bus Toolkit. Lad stå tomt for kun at tillade denne add-on. C-Gate har ingen autentificering, og niveauet program tillader omprogrammering af C-Bus-enheder, så angiv specifikke adresser i stedet for et helt undernet. En oktet med værdien 255 matcher enhver værdi, så 192.168.1.255 betyder hele netværket 192.168.1.x. Du skal også udgive C-Gates porte i netværkspanelet.
-  # ── MQTT (registreres normalt automatisk) ──
+      Adresser, der har tilladelse til at oprette forbindelse til den
+      administrerede C-Gate, til værktøjer som C-Bus Toolkit. Lad stå tomt for
+      kun at tillade denne add-on. C-Gate har ingen autentificering, og niveauet
+      program tillader omprogrammering af C-Bus-enheder, så angiv specifikke
+      adresser i stedet for et helt undernet. En oktet med værdien 255 matcher
+      enhver værdi, så 192.168.1.255 betyder hele netværket 192.168.1.x. Du skal
+      også udgive C-Gates porte i netværkspanelet.
   mqtt_host:
     name: MQTT Broker vært
     description: >-
-      Registreres automatisk fra Mosquitto tilføjelsen — de fleste
-      brugere bør lade dette stå tomt. Indstilles kun hvis du bruger en
-      ekstern MQTT broker.
+      Registreres automatisk fra Mosquitto tilføjelsen — de fleste brugere bør
+      lade dette stå tomt. Indstilles kun hvis du bruger en ekstern MQTT broker.
   mqtt_port:
     name: MQTT Broker port
     description: >-
-      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun
-      for eksterne brokere. Standard: 1883.
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun for
+      eksterne brokere. Standard: 1883.
   mqtt_username:
     name: MQTT brugernavn
     description: >-
-      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun
-      for eksterne brokere eller for at tilsidesætte loginoplysninger.
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun for
+      eksterne brokere eller for at tilsidesætte loginoplysninger.
   mqtt_password:
     name: MQTT adgangskode
     description: >-
-      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun
-      for eksterne brokere eller for at tilsidesætte loginoplysninger.
+      Registreres automatisk fra Mosquitto tilføjelsen. Indstilles kun for
+      eksterne brokere eller for at tilsidesætte loginoplysninger.
   mqtt_use_tls:
     name: Aktivér MQTT TLS
     description: >-
-      Forbind til MQTT med TLS (mqtts://). Aktivér for brokere der
-      kræver krypterede forbindelser (typisk port 8883). Ikke nødvendig
-      for standard Mosquitto tilføjelsen.
+      Forbind til MQTT med TLS (mqtts://). Aktivér for brokere der kræver
+      krypterede forbindelser (typisk port 8883). Ikke nødvendig for standard
+      Mosquitto tilføjelsen.
   mqtt_ca_file:
     name: MQTT CA-certifikatfil
     description: >-
-      Sti til CA-certifikat til at verificere brokerens TLS-certifikat.
-      Normalt gemt i /ssl/ (f.eks. /ssl/ca.crt). Kun nødvendig for
-      selvunderskrevne certifikater.
+      Sti til CA-certifikat til at verificere brokerens TLS-certifikat. Normalt
+      gemt i /ssl/ (f.eks. /ssl/ca.crt). Kun nødvendig for selvunderskrevne
+      certifikater.
   mqtt_reject_unauthorized:
     name: Verificér MQTT TLS-certifikat
     description: >-
-      Afvis forbindelser hvis brokerens TLS-certifikat ikke kan
-      verificeres. Behold aktiveret for sikkerhed. Deaktivér kun for
-      selvunderskrevne certifikater uden CA-fil.
-
-  # ── C-Bus overvågning ──
+      Afvis forbindelser hvis brokerens TLS-certifikat ikke kan verificeres.
+      Behold aktiveret for sikkerhed. Deaktivér kun for selvunderskrevne
+      certifikater uden CA-fil.
   auto_discover_networks:
     name: Auto-opdagelse af C-Bus netværk
     description: >-
-      Opdag automatisk netværks-ID'er fra C-Gate ved forbindelse.
-      Opdagede netværk bruges til forespørgsel og HA Discovery.
-      Deaktivér kun hvis auto-opdagelse forårsager problemer. Standard:
-      aktiveret.
+      Opdag automatisk netværks-ID'er fra C-Gate ved forbindelse. Opdagede
+      netværk bruges til forespørgsel og HA Discovery. Deaktivér kun hvis
+      auto-opdagelse forårsager problemer. Standard: aktiveret.
   getall_networks:
     name: C-Bus netværk at overvåge
     description: >-
-      C-Bus netværks-ID'er til at forespørge enhedstilstande. Standard:
-      254 (standard C-Bus netværk for de fleste installationer). Find
-      dine netværks-ID'er i C-Gate Toolkit under dit projekttræ.
+      C-Bus netværks-ID'er til at forespørge enhedstilstande. Standard: 254
+      (standard C-Bus netværk for de fleste installationer). Find dine
+      netværks-ID'er i C-Gate Toolkit under dit projekttræ.
   getall_on_start:
     name: Forespørg alle enheder ved opstart
     description: >-
-      Hent alle enhedstilstande når tilføjelsen starter, for at
-      synkronisere Home Assistant med aktuel C-Bus tilstand. Standard:
-      aktiveret.
+      Hent alle enhedstilstande når tilføjelsen starter, for at synkronisere
+      Home Assistant med aktuel C-Bus tilstand. Standard: aktiveret.
   getall_period:
     name: Forespørgselsinterval (sekunder)
     description: >-
-      Hvor ofte alle enhedstilstande hentes igen. Lavere værdier =
-      mere opdaterede tilstande men mere C-Gate trafik. Standard: 3600
-      (1 time).
+      Hvor ofte alle enhedstilstande hentes igen. Lavere værdier = mere
+      opdaterede tilstande men mere C-Gate trafik. Standard: 3600 (1 time).
   getall_app_periods:
     name: Forespørgselsintervaller per applikation
     description: >-
-      Tilsidesæt forespørgselsintervallet for specifikke C-Bus
-      applikationer. Hver post har en app_id (f.eks. "56" for Belysning) og
-      period_sec (0 for at deaktivere).
-
-  # ── MQTT publicering ──
+      Tilsidesæt forespørgselsintervallet for specifikke C-Bus applikationer.
+      Hver post har en app_id (f.eks. "56" for Belysning) og period_sec (0 for
+      at deaktivere).
   retain_reads:
     name: Bevar MQTT statusbeskeder
     description: >-
-      Sæt MQTT retain-flaget på statusbeskeder så nye abonnenter straks
-      modtager sidst kendte enhedstilstande. Standard: deaktiveret.
+      Sæt MQTT retain-flaget på statusbeskeder så nye abonnenter straks modtager
+      sidst kendte enhedstilstande. Standard: deaktiveret.
   message_interval:
     name: Kommandointerval (ms)
     description: >-
       Minimumsforsinkelse mellem kommandoer til C-Gate. Forhindrer
       overbelastning af C-Gate med hurtige kommandoer. Standard: 200ms.
-
-  # ── Home Assistant Discovery ──
   ha_discovery_prefix:
     name: Discovery emnepræfiks
     description: >-
-      MQTT emnepræfiks for HA Discovery beskeder. Skal matche dit Home
-      Assistant MQTT Discovery præfiks. Standard: homeassistant.
+      MQTT emnepræfiks for HA Discovery beskeder. Skal matche dit Home Assistant
+      MQTT Discovery præfiks. Standard: homeassistant.
   ha_discovery_networks:
     name: Discovery netværk
     description: >-
-      C-Bus netværks-ID'er der skal scannes for enhedsopdagelse. Hvis
-      tomt, bruges netværkene fra "C-Bus netværk at overvåge". Standard:
-      254.
+      C-Bus netværks-ID'er der skal scannes for enhedsopdagelse. Hvis tomt,
+      bruges netværkene fra "C-Bus netværk at overvåge". Standard: 254.
   ha_discovery_cover_app_id:
     name: Applikations-ID for afdækninger
     description: >-
-      C-Bus app-ID for afdækninger (persienner, rullegardiner,
-      garageporte). Almindelig værdi: 203 (Enable Control). Lad stå tomt
-      for at springe afdækningsopdagelse over.
+      C-Bus app-ID for afdækninger (persienner, rullegardiner, garageporte).
+      Almindelig værdi: 203 (Enable Control). Lad stå tomt for at springe
+      afdækningsopdagelse over.
   ha_discovery_cover_tilt_app_id:
     name: Applikations-ID for afdækningstilt
     description: >-
-      C-Bus app-ID for tiltstyring af persienner. Kobles via
-      gruppenummer med afdækninger. Lad stå tomt for at springe tilt
-      over.
+      C-Bus app-ID for tiltstyring af persienner. Kobles via gruppenummer med
+      afdækninger. Lad stå tomt for at springe tilt over.
   ha_discovery_switch_app_id:
     name: Applikations-ID for kontakter
     description: >-
@@ -190,20 +185,20 @@ configuration:
   ha_discovery_trigger_app_id:
     name: Applikations-ID for udløsere
     description: >-
-      C-Bus app-ID for udløsergrupper (tastaturer, scener). Almindelig
-      værdi: 202. Lad stå tomt for at springe udløseroppdagelse over.
+      C-Bus app-ID for udløsergrupper (tastaturer, scener). Almindelig værdi:
+      202. Lad stå tomt for at springe udløseroppdagelse over.
   ha_discovery_scene_enabled:
     name: Aktivér sceneentiteter
     description: >-
-      Opret en Home Assistant sceneentitet for hver udløsergruppe, ud
-      over hændelses- og knapentiteter. Standard: aktiveret.
+      Opret en Home Assistant sceneentitet for hver udløsergruppe, ud over
+      hændelses- og knapentiteter. Standard: aktiveret.
   ha_discovery_auto_type:
     name: Auto-detect Device Types
     description: >-
       Automatically classify Lighting (56) groups whose label looks like a
       motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence.
-      Default: enabled.
+      instead of lights. Manual type overrides always take precedence. Default:
+      enabled.
   ha_discovery_auto_type_name_heuristics:
     name: Auto-detect Using Label Keywords
     description: >-
@@ -220,67 +215,84 @@ configuration:
     name: HVAC applikations-ID
     description: >-
       C-Bus app-ID for en belysningskompatibel HVAC-gruppe
-      (PAC/touchscreen-eksponeret). IKKE den native Air Conditioning-app
-      172 — brug kun for grupper der spejles til en belysningsstil-app af
-      en PAC eller touchscreen. Lad stå tomt for at springe
-      HVAC-opdagelse over.
+      (PAC/touchscreen-eksponeret). IKKE den native Air Conditioning-app 172 —
+      brug kun for grupper der spejles til en belysningsstil-app af en PAC eller
+      touchscreen. Lad stå tomt for at springe HVAC-opdagelse over.
   ha_hvac_temperature_unit:
     name: HVAC temperaturenhed
     description: >-
-      Temperaturenhed for HVAC klimaentiteter. C for Celsius, F for
-      Fahrenheit. Standard: C.
-
+      Temperaturenhed for HVAC klimaentiteter. C for Celsius, F for Fahrenheit.
+      Standard: C.
   cbus_aircon_app_id:
     name: Applikations-ID for klimaanlæg
     description: >-
-      C-Bus Air Conditioning-applikations-id (f.eks. 172) til indbygget skrivebeskyttet rumtemperatur. Afkoder zone_temperature-udsendelser og udgiver current_temperature til cbus/read/{network}/172/{zone}/current_temperature. Slået fra som standard.
-
+      C-Bus Air Conditioning-applikations-id (f.eks. 172) til indbygget
+      skrivebeskyttet rumtemperatur. Afkoder zone_temperature-udsendelser og
+      udgiver current_temperature til
+      cbus/read/{network}/172/{zone}/current_temperature. Slået fra som
+      standard.
   cbus_aircon_control_enabled:
     name: Styring af klimaanlæg
     description: >-
-      Tillad Home Assistant at styre indbyggede C-Bus-termostater (tilstand og temperatur). Slået fra som standard — det skriver til aktiv opvarmning/køling. Kræver, at applikations-id for klimaanlæg er angivet.
+      Tillad Home Assistant at styre indbyggede C-Bus-termostater (tilstand og
+      temperatur). Slået fra som standard — det skriver til aktiv
+      opvarmning/køling. Kræver, at applikations-id for klimaanlæg er angivet.
   cbus_security_app_id:
     name: Sikkerhedsapplikations-id
     description: >-
-      C-Bus sikkerhedsapplikations-id (standard 208) til alarmzonesensorer. Udgiver én binær sensor pr. zone — sealed er fra; unsealed, open eller short er til — og synkroniserer zonernes status ved tilslutning. Sæt til 0 for at deaktivere.
-
+      C-Bus sikkerhedsapplikations-id (standard 208) til alarmzonesensorer.
+      Udgiver én binær sensor pr. zone — sealed er fra; unsealed, open eller
+      short er til — og synkroniserer zonernes status ved tilslutning. Sæt til 0
+      for at deaktivere.
   cbus_security_control_enabled:
     name: Alarmstyring
     description: >-
-      Tillad Home Assistant at tilkoble alarmcentralen (away, night, home, vacation). Kun tilkobling: C-Bus har ingen frakoblingskommando, så Disarm-knappen i Home Assistant gør ingenting. Slået fra som standard: tilkoblingskommandoen bærer ingen PIN på C-Bus, så alt der kan publicere på kommando-topic'en kan tilkoble din alarm. Kræver, at sikkerhedsapplikations-id er angivet.
+      Tillad Home Assistant at tilkoble alarmcentralen (away, night, home,
+      vacation). Kun tilkobling: C-Bus har ingen frakoblingskommando, så
+      Disarm-knappen i Home Assistant gør ingenting. Slået fra som standard:
+      tilkoblingskommandoen bærer ingen PIN på C-Bus, så alt der kan publicere
+      på kommando-topic'en kan tilkoble din alarm. Kræver, at
+      sikkerhedsapplikations-id er angivet.
   cbus_security_disarm_enabled:
     name: Frakobling af alarm
     description: >-
-      Tillad også Home Assistant at frakoble alarmcentralen. Kræver Alarmstyring. Slået fra som standard. C-Bus har ingen frakoblingskommando, så PIN-koden indtastes på centralen via tastaturemulering: Home Assistant viser sit eget tastatur og sender det, du taster, over MQTT. PIN-koden gemmes ingen steder, men den passerer din MQTT-broker ved hver frakobling, så aktivér kun dette på en broker, du stoler på, helst med TLS.
+      Tillad også Home Assistant at frakoble alarmcentralen. Kræver
+      Alarmstyring. Slået fra som standard. C-Bus har ingen frakoblingskommando,
+      så PIN-koden indtastes på centralen via tastaturemulering: Home Assistant
+      viser sit eget tastatur og sender det, du taster, over MQTT. PIN-koden
+      gemmes ingen steder, men den passerer din MQTT-broker ved hver frakobling,
+      så aktivér kun dette på en broker, du stoler på, helst med TLS.
   cbus_security_bypass_enabled:
     name: Tvungen tilkobling med åbne zoner
     description: >-
-      Tillad Home Assistant at gennemtvinge tilkobling, når en zone er åben, med centralens #-tast. Kræver Alarmstyring. Slået fra som standard. Bevidst adskilt fra tilkobling: et alarmsystem tilkoblet forbi en åben dør ser tilkoblet ud, men dækker ikke den dør, så det bør være et bevidst valg. Sker aldrig automatisk.
-
+      Tillad Home Assistant at gennemtvinge tilkobling, når en zone er åben, med
+      centralens #-tast. Kræver Alarmstyring. Slået fra som standard. Bevidst
+      adskilt fra tilkobling: et alarmsystem tilkoblet forbi en åben dør ser
+      tilkoblet ud, men dækker ikke den dør, så det bør være et bevidst valg.
+      Sker aldrig automatisk.
   cbus_measurement_app_id:
     name: Måleapplikations-id
     description: >-
-      C-Bus måleapplikations-id (standard 228) til analoge/numeriske sensoraflæsninger (temperatur, effekt, lysniveau osv). Publicerer cbus/read/{network}/228/{device}/{channel}/value og /unit, og accepterer injicerede aflæsninger på cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — f.eks. til scriptede/virtuelle sensorer. Slået fra som standard.
-
-
-  # ── Bridge diagnostik ──
+      C-Bus måleapplikations-id (standard 228) til analoge/numeriske
+      sensoraflæsninger (temperatur, effekt, lysniveau osv). Publicerer
+      cbus/read/{network}/228/{device}/{channel}/value og /unit, og accepterer
+      injicerede aflæsninger på cbus/write/{network}/228/{device}/{channel}/data
+      (payload "value,multiplier,units") — f.eks. til scriptede/virtuelle
+      sensorer. Slået fra som standard.
   ha_bridge_diagnostics_enabled:
     name: Aktivér bridge-diagnostik
     description: >-
-      Publicer bridge-sundhedsentiteter (klar-status, forbindelser,
-      kødybde) til Home Assistant. Standard: aktiveret.
+      Publicer bridge-sundhedsentiteter (klar-status, forbindelser, kødybde) til
+      Home Assistant. Standard: aktiveret.
   ha_bridge_diagnostics_interval_sec:
     name: Diagnostikinterval (sekunder)
-    description: >-
-      Hvor ofte bridge-diagnostikstatuser opdateres. Standard: 60.
-
-  # ── C-Bus Network (CNI) Monitoring ──
+    description: "Hvor ofte bridge-diagnostikstatuser opdateres. Standard: 60."
   cni_offline_notification:
     name: CNI offline-notifikation
     description: >-
-      Vis en Home Assistant-notifikation hvis en C-Bus-netværks CNI/PCI-forbindelse går offline, og afvis den ved genforbindelse. Kræver Home Assistant-tilføjelsesmiljøet. Slået fra som standard.
-
-  # ── Opdagelse af inaktive enheder ──
+      Vis en Home Assistant-notifikation hvis en C-Bus-netværks
+      CNI/PCI-forbindelse går offline, og afvis den ved genforbindelse. Kræver
+      Home Assistant-tilføjelsesmiljøet. Slået fra som standard.
   stale_device_detection_enabled:
     name: Aktivér opdagelse af inaktive enheder
     description: >-
@@ -288,73 +300,69 @@ configuration:
       advarselssensor. Standard: aktiveret.
   stale_device_threshold_hours:
     name: Tærskel for inaktiv enhed (timer)
-    description: >-
-      Timer uden statusopdatering før en enhed anses for inaktiv.
-      Standard: 24.
+    description: "Timer uden statusopdatering før en enhed anses for inaktiv. Standard: 24."
   stale_device_check_interval_sec:
     name: Kontrolinterval for inaktive enheder (sekunder)
-    description: >-
-      Hvor ofte der søges efter inaktive enheder. Standard: 3600
-      (1 time).
-
-  # ── Avanceret: Forbindelsespool ──
+    description: "Hvor ofte der søges efter inaktive enheder. Standard: 3600 (1 time)."
   connection_pool_size:
     name: Forbindelsespoolstørrelse
     description: >-
-      Antal parallelle TCP-forbindelser til C-Gate. Forøg for
-      højtydende installationer, reducer til 1 for ældre C-Gate.
-      Standard: 3.
+      Antal parallelle TCP-forbindelser til C-Gate. Forøg for højtydende
+      installationer, reducer til 1 for ældre C-Gate. Standard: 3.
   connection_health_check_interval_sec:
     name: Sundhedstjekinterval (sekunder)
-    description: >-
-      Hvor ofte C-Gate forbindelser kontrolleres. Standard: 30.
+    description: "Hvor ofte C-Gate forbindelser kontrolleres. Standard: 30."
   connection_keep_alive_interval_sec:
     name: Keep-Alive interval (sekunder)
     description: >-
-      Hvor ofte C-Gate forbindelser pinges. Forhindrer stille
-      TCP-afbrydelser. Standard: 60.
+      Hvor ofte C-Gate forbindelser pinges. Forhindrer stille TCP-afbrydelser.
+      Standard: 60.
   cover_ramp_duration_sec:
     name: Afdækningsbevægelsesvarighed (sekunder)
     description: >-
-      Forventet tid for en afdækning at åbne/lukke helt. Bridge
-      publicerer estimerede positioner i dette vindue. Standard: 5.
-
-  # ── Avanceret: Etikettfil & Web API ──
+      Forventet tid for en afdækning at åbne/lukke helt. Bridge publicerer
+      estimerede positioner i dette vindue. Standard: 5.
   cbus_label_file:
     name: Brugerdefineret etikettfil
     description: >-
-      Sti til en JSON-fil med brugerdefinerede enhedsnavne. Opdages
-      automatisk fra almindelige stier hvis ikke angivet. Filen overvåges
-      for ændringer.
+      Sti til en JSON-fil med brugerdefinerede enhedsnavne. Opdages automatisk
+      fra almindelige stier hvis ikke angivet. Filen overvåges for ændringer.
   web_api_key:
     name: Web API-nøgle
     description: >-
-      API-nøgle til skriveoperationer i etiketredigereren. Indstilles
-      når port 8080 eksponeres ud over HA ingress.
+      API-nøgle til skriveoperationer i etiketredigereren. Indstilles når port
+      8080 eksponeres ud over HA ingress.
   web_allow_unauthenticated_mutations:
     name: Tillad uautentificerede webskrivninger (usikkert)
     description: >-
-      Tillad skriveendepunkter uden API-nøgle. Behold deaktiveret
-      medmindre du fuldt ud stoler på netværksadgangen til denne
-      tilføjelse.
+      Tillad skriveendepunkter uden API-nøgle. Behold deaktiveret medmindre du
+      fuldt ud stoler på netværksadgangen til denne tilføjelse.
   web_allowed_origins:
     name: Tilladte webkilder (CORS)
     description: >-
-      CORS-tilladelsesliste for browseradgang. Indtast fulde
-      kildeadresser som https://ha.example.com. Lad stå tomt for at
-      deaktivere cross-origin adgang.
+      CORS-tilladelsesliste for browseradgang. Indtast fulde kildeadresser som
+      https://ha.example.com. Lad stå tomt for at deaktivere cross-origin
+      adgang.
   web_mutation_rate_limit_per_minute:
     name: Webskrivningsgrænse
-    description: >-
-      Maksimalt antal muterende API-forespørgsler per minut per klient.
-      Standard: 120.
+    description: "Maksimalt antal muterende API-forespørgsler per minut per klient.
+      Standard: 120."
   ha_discovery_type_from_label_prefix:
     name: Type fra label-præfiks
     description: >-
-      Behandl en gruppelabel, der starter med et entitetsdomæne-præfiks, som den enhedstype (f.eks. cover.sovevaerelse_persienne bliver en cover, switch.have_lys en switch). Understøttede præfikser: light., cover., switch., relay., pir. En manuel type_overrides-post vinder altid. Fra som standard.
-
+      Behandl en gruppelabel, der starter med et entitetsdomæne-præfiks, som den
+      enhedstype (f.eks. cover.sovevaerelse_persienne bliver en cover,
+      switch.have_lys en switch). Understøttede præfikser: light., cover.,
+      switch., relay., pir. En manuel type_overrides-post vinder altid. Fra som
+      standard.
   ha_discovery_type_from_unit:
     name: Type fra C-Bus-enhedstype
     description: >-
-      Bestem hver entitets type ud fra den C-Bus-enhed, der styrer gruppen, for grupper hvis navn ikke allerede identificerer en persienne. Dæmperkanaler bliver dæmpbare lys, relækanaler bliver tænd/sluk-lys, og grupper der kun styres af en indgangsenhed som en bus coupler bliver binære sensorer. En manuel type_overrides-post og et persienne-identificerende navn (f.eks. blind, shutter) vinder stadig, da et relæ lige så godt kan styre et lys, en persienne eller en ventil. Grupper med ukendte enhedstyper forbliver uændrede. At slå dette til kan ændre typen på entiteter, du allerede har.
-
+      Bestem hver entitets type ud fra den C-Bus-enhed, der styrer gruppen, for
+      grupper hvis navn ikke allerede identificerer en persienne. Dæmperkanaler
+      bliver dæmpbare lys, relækanaler bliver tænd/sluk-lys, og grupper der kun
+      styres af en indgangsenhed som en bus coupler bliver binære sensorer. En
+      manuel type_overrides-post og et persienne-identificerende navn (f.eks.
+      blind, shutter) vinder stadig, da et relæ lige så godt kan styre et lys,
+      en persienne eller en ventil. Grupper med ukendte enhedstyper forbliver
+      uændrede. At slå dette til kan ændre typen på entiteter, du allerede har.

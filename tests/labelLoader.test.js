@@ -473,6 +473,26 @@ describe('LabelLoader', () => {
             loader.watch(); // should not throw
             loader.unwatch();
         });
+
+        it('should not start a watcher when the parent directory is missing', () => {
+            const missingPath = path.join(tmpDir, 'does-not-exist', 'labels.json');
+            const loader = new LabelLoader(missingPath);
+            loader.watch();
+            expect(loader._watcher).toBeNull();
+            loader.unwatch();
+        });
+
+        it('should log and continue when fs.watch throws', () => {
+            fs.writeFileSync(labelFile, JSON.stringify({ version: 1, labels: {} }));
+            jest.spyOn(fs, 'watch').mockImplementation(() => {
+                throw new Error('ENOSPC: System limit for number of file watchers reached');
+            });
+            const loader = new LabelLoader(labelFile);
+            expect(() => loader.watch()).not.toThrow();
+            expect(loader._watcher).toBeNull();
+            expect(console.warn).toHaveBeenCalled();
+            loader.unwatch();
+        });
     });
 });
 

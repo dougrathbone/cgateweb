@@ -4,6 +4,32 @@ const path = require('path');
 
 const STATIC_DIR = path.join(__dirname, '..', '..', 'public');
 
+/**
+ * Map a request path to a file under STATIC_DIR, or null if it escapes.
+ *
+ * Rebuilds the path from path.relative() after rejecting `..` and absolute
+ * relatives, so fs APIs never see the raw request URL.
+ *
+ * @param {string} urlPath
+ * @returns {string|null}
+ */
+function containedStaticPath(urlPath) {
+    const requested = path.normalize(String(urlPath || ''))
+        .replace(/^(\.\.[/\\])+/, '')
+        .replace(/^[/\\]+/, '');
+    const staticRoot = path.resolve(STATIC_DIR);
+    const resolved = path.resolve(staticRoot, requested || 'index.html');
+    const relative = path.relative(staticRoot, resolved);
+    if (
+        relative.startsWith('..')
+        || path.isAbsolute(relative)
+        || relative.split(/[/\\]/).includes('..')
+    ) {
+        return null;
+    }
+    return path.join(staticRoot, relative);
+}
+
 const MIME_TYPES = {
     '.html': 'text/html; charset=utf-8',
     '.css': 'text/css; charset=utf-8',
@@ -37,19 +63,16 @@ class StaticFileServer {
             urlPath = '/index.html';
         }
 
-        const safePath = path.normalize(urlPath).replace(/^(\.\.[/\\])+/, '');
-        const filePath = path.join(STATIC_DIR, safePath);
-
-        if (!filePath.startsWith(STATIC_DIR)) {
+        const filePath = containedStaticPath(urlPath);
+        if (!filePath) {
             res.writeHead(403);
             res.end('Forbidden');
             return;
         }
 
         if (!fs.existsSync(filePath)) {
-            // SPA fallback: serve index.html for non-API, non-file routes
-            const indexPath = path.join(STATIC_DIR, 'index.html');
-            if (fs.existsSync(indexPath)) {
+            const indexPath = containedStaticPath('/index.html');
+            if (indexPath && fs.existsSync(indexPath)) {
                 this._streamFile(indexPath, MIME_TYPES['.html'], res);
                 return;
             }
@@ -71,10 +94,6 @@ class StaticFileServer {
      */
     _streamFile(filePath, contentType, res) {
         const stream = fs.createReadStream(filePath);
-        // Handle read failures (file removed mid-request, permission error).
-        // Errors on open (ENOENT/EACCES) fire before 'open', so headers are not
-        // yet sent and we can return a 500. A mid-stream read error arrives
-        // after headers are sent, leaving no option but to destroy the response.
         stream.on('error', (err) => {
             this.logger.error(`Error streaming static file ${filePath}: ${err.message}`);
             if (!res.headersSent) {
@@ -84,8 +103,6 @@ class StaticFileServer {
                 res.destroy(err);
             }
         });
-        // Defer the success header until the file descriptor is open so an open
-        // failure can still produce a clean 500 rather than a truncated 200.
         stream.on('open', () => {
             res.writeHead(200, { 'Content-Type': contentType });
             stream.pipe(res);

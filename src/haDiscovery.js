@@ -2,6 +2,7 @@
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
 const { parseSecurityZoneLabelKey } = require('./securityZoneLabels');
+const { resolveSetting } = require('./config/schema');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
@@ -81,13 +82,15 @@ class HaDiscovery {
         this._treeParseEpoch = new Map();
         // Networks whose TreeXML is currently in parseString (session already cleared).
         this._parsingNetworks = new Set();
-        this._maxTreeRetryAttempts = (settings && settings.haDiscoveryMaxTreeRetryAttempts) || 8;
-        this._treeRetryInitialDelayMs = (settings && settings.haDiscoveryTreeRetryInitialDelayMs) || 2000;
-        this._treeRetryMaxDelayMs = (settings && settings.haDiscoveryTreeRetryMaxDelayMs) || 60000;
-        this._treeRequestTimeoutMs = (settings && settings.haDiscoveryTreeRequestTimeoutMs) || 8000;
-        // Defaults to the request timeout so existing installs see no change.
-        this._treeStreamStallMs = (settings && settings.haDiscoveryTreeStreamStallMs)
-            || this._treeRequestTimeoutMs;
+        this._maxTreeRetryAttempts = resolveSetting(settings || {}, 'haDiscoveryMaxTreeRetryAttempts');
+        this._treeRetryInitialDelayMs = resolveSetting(settings || {}, 'haDiscoveryTreeRetryInitialDelayMs');
+        this._treeRetryMaxDelayMs = resolveSetting(settings || {}, 'haDiscoveryTreeRetryMaxDelayMs');
+        this._treeRequestTimeoutMs = resolveSetting(settings || {}, 'haDiscoveryTreeRequestTimeoutMs');
+        // When stream-stall is unset, reuse the request timeout so existing
+        // installs that only tuned the latter still see matching behaviour.
+        this._treeStreamStallMs = settings && settings.haDiscoveryTreeStreamStallMs !== undefined
+            ? resolveSetting(settings, 'haDiscoveryTreeStreamStallMs')
+            : this._treeRequestTimeoutMs;
 
         // Re-fetch budget for trees that were accepted (they carry device
         // data) but still contain units with empty <Groups> because C-Gate
@@ -97,9 +100,9 @@ class HaDiscovery {
         // an unchanged re-fetch result stops the cycle early.
         // networkId -> { attempts, handle, signature }
         this._treeResyncState = new Map();
-        this._maxTreeResyncAttempts = (settings && settings.haDiscoveryMaxTreeResyncAttempts) || 3;
-        this._treeResyncInitialDelayMs = (settings && settings.haDiscoveryTreeResyncInitialDelayMs) || 30000;
-        this._treeResyncMaxDelayMs = (settings && settings.haDiscoveryTreeResyncMaxDelayMs) || 120000;
+        this._maxTreeResyncAttempts = resolveSetting(settings || {}, 'haDiscoveryMaxTreeResyncAttempts');
+        this._treeResyncInitialDelayMs = resolveSetting(settings || {}, 'haDiscoveryTreeResyncInitialDelayMs');
+        this._treeResyncMaxDelayMs = resolveSetting(settings || {}, 'haDiscoveryTreeResyncMaxDelayMs');
 
         // Tracks per-network HA Discovery health. The status field is used to
         // de-dup repeated state publishes; configPublished gates the (one-shot)
@@ -307,7 +310,7 @@ class HaDiscovery {
     handleNetworkCreated(networkId) {
         if (!this.settings.ha_discovery_enabled) return;
         const networkKey = String(networkId);
-        const configured = this.settings.ha_discovery_networks || [];
+        const configured = resolveSetting(this.settings, 'ha_discovery_networks');
         if (configured.length > 0 && !configured.map(String).includes(networkKey)) {
             this.logger.debug(`Network ${networkKey} created but not in ha_discovery_networks; skipping refresh`);
             return;
@@ -329,7 +332,7 @@ class HaDiscovery {
     handleNetworkSyncComplete(networkId) {
         if (!this.settings.ha_discovery_enabled) return;
         const networkKey = String(networkId);
-        const configured = this.settings.ha_discovery_networks || [];
+        const configured = resolveSetting(this.settings, 'ha_discovery_networks');
         if (configured.length > 0 && !configured.map(String).includes(networkKey)) {
             this.logger.debug(`Network ${networkKey} sync complete but not in ha_discovery_networks; skipping refresh`);
             return;

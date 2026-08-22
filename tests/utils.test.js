@@ -2,6 +2,7 @@ const {
     clampSetting,
     evictOldestFifo,
     temperatureToCbusLevel,
+    cbusLevelToTemperature,
     redactCgateLine,
     redactMqttPayload,
     isCbusAddressComponentInRange,
@@ -76,6 +77,20 @@ describe('temperatureToCbusLevel', () => {
     it('clamps to the valid 0-255 range', () => {
         expect(temperatureToCbusLevel(-5)).toBe(0);
         expect(temperatureToCbusLevel(200)).toBe(255);
+    });
+});
+
+describe('cbusLevelToTemperature', () => {
+    it('decodes at 0.5°C resolution (temp = level / 2)', () => {
+        expect(cbusLevelToTemperature(0)).toBe(0);
+        expect(cbusLevelToTemperature(42)).toBe(21);
+        expect(cbusLevelToTemperature(43)).toBe(21.5);
+    });
+
+    it('is the inverse of temperatureToCbusLevel for representable temps', () => {
+        for (const temp of [0, 21, 21.5, 50]) {
+            expect(cbusLevelToTemperature(temperatureToCbusLevel(temp))).toBe(temp);
+        }
     });
 });
 

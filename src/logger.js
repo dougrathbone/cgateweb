@@ -217,6 +217,23 @@ class Logger {
     }
 }
 
+/**
+ * Resolve the logger level from runtime settings.
+ *
+ * Uses schema defaults via resolveSetting so an unset log_level becomes
+ * 'info'. The legacy `logging` boolean is only consulted when log_level
+ * resolves to a falsy value (historic `log_level || (logging ? 'info' : 'warn')`).
+ *
+ * @param {Object|null|undefined} settings
+ * @returns {string}
+ */
+function resolveLogLevelFromSettings(settings) {
+    const { resolveSetting } = require('./config/schema');
+    const level = resolveSetting(settings || {}, 'log_level');
+    if (level) return level;
+    return resolveSetting(settings || {}, 'logging') ? 'info' : 'warn';
+}
+
 // Metadata keys whose values must never be written to logs in clear text.
 Logger.SENSITIVE_KEY_PATTERN = /pass|secret|token|credential|api[-_]?key|auth/i;
 
@@ -227,6 +244,7 @@ const defaultLogger = new Logger();
 module.exports = {
     Logger,
     createLogger: (options) => new Logger(options),
+    resolveLogLevelFromSettings,
     logger: defaultLogger,
     // Convenience exports for default logger
     error: (msg, meta) => defaultLogger.error(msg, meta),

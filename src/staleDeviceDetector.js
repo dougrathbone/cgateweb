@@ -2,6 +2,7 @@
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_DEVICE_VIA } = require('./constants');
 const { clampSetting } = require('./utils');
+const { resolveSetting } = require('./config/schema');
 
 /**
  * Periodically checks for C-Bus devices that have not reported a state change
@@ -152,7 +153,7 @@ class StaleDeviceDetector {
      * @private
      */
     _publishDiscovery() {
-        const prefix = this.settings.ha_discovery_prefix || 'homeassistant';
+        const prefix = resolveSetting(this.settings, 'ha_discovery_prefix');
         const topic = `${prefix}/${HA_COMPONENT_SENSOR}/cgateweb_stale_devices/config`;
         const payload = {
             name: 'C-Bus Stale Devices',

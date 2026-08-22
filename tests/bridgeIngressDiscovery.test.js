@@ -47,7 +47,7 @@ describe('CgateWebBridge._discoverIngressBasePath (GitHub #33)', () => {
 
         await fakeBridge._discoverIngressBasePath();
 
-        expect(discoverIngressEntry).toHaveBeenCalledWith({ token: 'tok' });
+        expect(discoverIngressEntry).toHaveBeenCalledWith(expect.objectContaining({ token: 'tok' }));
         expect(webServer.basePath).toBe('/api/hassio_ingress/discovered123');
     });
 

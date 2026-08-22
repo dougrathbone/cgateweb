@@ -1,7 +1,7 @@
 # cgateweb Add-on Test Environment
 
 Simulates the Home Assistant Supervisor environment locally using Docker Compose.
-The HA base image (`ghcr.io/home-assistant/amd64-base:3.19`) ships with `bashio` and
+The HA base image (`ghcr.io/home-assistant/amd64-base:3.21`) ships with `bashio` and
 `s6-overlay`, so all addon scripts run identically to a real HA installation.
 The only thing mocked is `/data/options.json`.
 
@@ -87,9 +87,10 @@ bug, #23). It has three parts:
     --body "https://github.com/dougrathbone/cgateweb/releases/download/cgate-test-artifacts/cgate-3.7.1_2287.zip"
   ```
 - **Aggregator** (`integration`): the single required status check. Green only
-  if every download leg passed and the upload leg passed or was skipped. Its
-  name is fixed, so adding/removing matrix versions never touches branch
-  protection.
+  if every download leg passed and the upload leg passed or was skipped (on
+  PRs). On tagged releases the upload leg is required — a skip fails the gate
+  so releases cannot ship without `CGATE_UPLOAD_TEST_URL`. Its name is fixed,
+  so adding/removing matrix versions never touches branch protection.
 
 To run a specific version locally, edit `cgate_download_url` in
 `active-options.json` (download mode) or drop the zip in `volumes/share/cgate/`

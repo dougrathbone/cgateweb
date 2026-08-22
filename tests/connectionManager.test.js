@@ -64,6 +64,9 @@ describe('ConnectionManager', () => {
 
     afterEach(() => {
         jest.clearAllMocks();
+        mockConnections.mqttManager.removeAllListeners();
+        mockConnections.commandConnectionPool.removeAllListeners();
+        mockConnections.eventConnection.removeAllListeners();
     });
 
     describe('constructor', () => {

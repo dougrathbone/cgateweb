@@ -1,4 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { findDiscoveryPayload } = require('./helpers/discovery');
 
 describe('HaDiscovery — app 25 temperature sensors', () => {
     let publishFn;
@@ -18,9 +19,8 @@ describe('HaDiscovery — app 25 temperature sensors', () => {
 
     it('publishes a temperature sensor pointing at the current_temperature topic', () => {
         expect(d.ensureTemperatureDiscovery('254', '25', '3')).toBe(true);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_25_3/config');
-        expect(call).toBeDefined();
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_25_3/config');
+        expect(payload).toBeDefined();
         expect(payload.device_class).toBe('temperature');
         expect(payload.state_class).toBe('measurement');
         expect(payload.unit_of_measurement).toBe('°C');
@@ -37,8 +37,7 @@ describe('HaDiscovery — app 25 temperature sensors', () => {
             { labels: new Map([['254/25/3', 'Living Room Temperature']]) }
         );
         labelled.ensureTemperatureDiscovery('254', '25', '3');
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_25_3/config');
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_25_3/config');
         expect(payload.device.name).toBe('Living Room Temperature');
     });
 

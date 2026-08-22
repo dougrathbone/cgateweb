@@ -301,6 +301,7 @@ The sensors carry no `device_class`. Home Assistant's `timestamp` class wants IS
 | `stale_device_check_interval_sec` | `stale_device_check_interval_sec` | integer (**seconds**) | `3600` | How often the check runs. Same unit on both sides. Floor of 60 s. |
 | `cniMonitorIntervalMs` | *standalone only* | integer (ms) | `30000` | How often each network's CNI/PCI interface state is polled so a C-Gate-to-C-Bus dropout surfaces on the status page. `0` disables. |
 | `cni_offline_notification` | `cni_offline_notification` | boolean | `false` | Raise a Home Assistant persistent notification when a CNI/PCI goes offline, dismissed on recovery. Requires the add-on environment (`SUPERVISOR_TOKEN`); inert standalone. |
+| `haNotifierTimeoutMs` | *standalone only* | integer (ms) | `5000` | Timeout for Home Assistant persistent-notification create/dismiss calls via the Supervisor Core API proxy. |
 
 ---
 
@@ -309,6 +310,9 @@ The sensors carry no `device_class`. Home Assistant's `timestamp` class wants IS
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
 | `cbus_label_file` | `cbus_label_file` | string \| null | `null` | Path to the JSON file holding imported group labels, manual `type_overrides` and the web UI's saved edits. Without it, discovered entities get generic names and the web UI cannot save. The security panel state file is written alongside it. In the add-on this is auto-detected across `/homeassistant`, the legacy `/config` mount and `/data`, and a saved `/config/...` path is migrated to `/homeassistant/...` when the old one is gone. |
+| `labelWatchDebounceMs` | *standalone only* | integer (ms) | `500` | Debounce window for label-file `fs.watch` events before reloading from disk. |
+| `labelWatchSelfWriteGraceMs` | *standalone only* | integer (ms) | `1000` | Ignore watch events within this window after our own `save()`, so the in-process emit is not double-fired by the watcher. |
+| `labelReloadRetryMs` | *standalone only* | integer (ms) | `2000` | Delay before a single retry when a watched label file is briefly unreadable (e.g. during a Home Assistant backup). |
 
 The label file itself is not a settings file, but note that `type_overrides` inside it takes precedence over every automatic type-classification setting above.
 
@@ -323,10 +327,13 @@ The web server hosts the status page and the label-editing API. Under the add-on
 | `web_port` | *standalone only in practice* | integer | `8080` | Listen port. `addonOptionMap` has a `web_port` rule, but **`config.yaml` declares no such option**, so add-on users cannot set it; Ingress uses 8080 regardless. |
 | `web_bind_host` | *forced in add-on* | string | `127.0.0.1` | Bind address. **Loopback by default deliberately** — the API can modify your labels. The add-on forces `0.0.0.0` because the Ingress proxy connects from outside the container's loopback. Change it standalone only if you understand what you are exposing. |
 | `web_api_key` | `web_api_key` | string \| null | `null` | **Security-sensitive.** API key required for `POST`/`PUT`/`PATCH` on label endpoints when reached directly (not via Ingress). Set this whenever the port is reachable from anywhere but localhost. |
-| `web_allow_unauthenticated_mutations` | `web_allow_unauthenticated_mutations` | boolean | `false` | **Security-sensitive.** Unsafe override allowing writes with no authentication at all. Anyone who can reach `web_port` can rewrite your labels. Leave off unless the port is genuinely isolated. |
+| `web_allow_unauthenticated_mutations` | `web_allow_unauthenticated_mutations` | boolean | `false` | **Security-sensitive.** Unsafe override allowing writes with no authentication at all. Only takes effect when the web server binds loopback; the add-on binds all interfaces for Ingress, so a host-mapped port needs an API key. |
 | `web_allowed_origins` | `web_allowed_origins` | string[] \| string \| null | `null` | CORS allowlist of browser origins, e.g. `['https://ha.example.com']`. A comma-separated string is accepted standalone. Empty/null blocks all cross-origin access. |
 | `web_mutation_rate_limit_per_minute` | `web_mutation_rate_limit_per_minute` | integer | `120` | Per-client write rate limit on mutating endpoints, over a fixed 60 s window. |
+| `web_read_rate_limit_per_minute` | *standalone only* | integer | `300` | Per-client read rate limit on non-mutating web endpoints, over `webRateLimitWindowMs`. Passed through to the web server as `maxReadRequestsPerWindow`. |
+| `webRateLimitWindowMs` | *standalone only* | integer (ms) | `60000` | Sliding window length for web API per-client rate limits (mutation, read, and auth-failure buckets). |
 | `web_auth_failure_rate_limit_per_minute` | *standalone only* | integer | `20` | Stricter, separate bucket for **failed** authentication attempts, so an exposed `web_api_key` cannot be brute-forced unthrottled. |
+| `ingressDiscoveryMaxBackoffMs` | *standalone only* | integer (ms) | `8000` | Ceiling for the Supervisor ingress-path discovery retry backoff after add-on start. |
 | `web_max_sse_connections` | *standalone only* | integer | `32` | Cap on concurrent clients of the `/api/events/stream` SSE endpoint. A denial-of-service guard for exposed ports. |
 | `webSseKeepaliveMs` | *standalone only* | integer (ms) | `15000` | SSE comment keepalive interval, so reverse proxies do not idle-close the stream. |
 | `webMaxBodySizeBytes` | *standalone only* | integer (bytes) | `10485760` (10 MB) | Maximum `POST`/`PUT`/`PATCH` body size on the label API. The default covers typical `.cbz` project uploads. |
@@ -342,7 +349,7 @@ The web server hosts the status page and the label-editing API. Under the add-on
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
 | `log_level` | `log_level` | `'error'` \| `'warn'` \| `'info'` \| `'debug'` \| `'trace'` | `'info'` | The real logging control. Hot-reloadable via `SIGUSR1`. The add-on UI only offers `debug`, `info`, `warn`, `error` — `trace` is standalone-only. Anything unrecognised in the add-on falls back to `info`. |
-| `logging` | *(none)* | boolean | `true` | **Does nothing.** It is only ever read as `settings.log_level \|\| (settings.logging ? 'info' : 'warn')`, and `log_level` always has a value because the defaults set it. The branch is unreachable. Kept for backwards compatibility with old `settings.js` files; set `log_level` instead. |
+| `logging` | *(none)* | boolean | `true` | **Does nothing.** Loggers resolve level via `resolveLogLevelFromSettings`, which uses schema defaults for `log_level` (`info`), so the legacy `logging` fallback is unreachable. Kept for backwards compatibility with old `settings.js` files; set `log_level` instead. |
 
 ### The LOG_LEVEL environment variable
 
@@ -376,10 +383,13 @@ Mostly standalone-only knobs. Defaults are chosen for a typical install; change 
 | `eventConnectionKeepAliveInterval` | `connection_keep_alive_interval_sec` | integer (ms) | `60000` | Keep-alive for the single event connection. Takes precedence over `keepAliveInterval` for that connection. Floor of 10000 ms. |
 | `connectionTimeout` | *standalone only* | integer (ms) | `5000` | Socket timeout for establishing a C-Gate connection, and the idle socket timeout thereafter. Floor of 1000 ms. |
 | `maxRetries` | *standalone only* | integer | `3` | Reconnect attempts per pooled connection before the pool gives up on it. Floor of 1. |
+| `connectionPoolShutdownForceCloseMs` | *standalone only* | integer (ms) | `1000` | How long `stop()` waits for each pooled connection to close before forcing the shutdown promise to resolve. |
+| `connectionPoolUnhealthyRecheckMs` | *standalone only* | integer (ms) | `1000` | Delay before re-checking a pooled connection marked potentially unhealthy after a failed send. |
 | `cgateMaxReconnectAttempts` | *standalone only* | integer | `10` | Reconnect attempts for a standalone (non-pooled) C-Gate connection, i.e. the event connection. Pool members use `maxRetries` instead. |
 | `reconnectinitialdelay` | *standalone only* | integer (ms) | `1000` | Initial exponential-backoff delay for C-Gate reconnection. Floor of 100 ms in the pool. |
 | `reconnectmaxdelay` | *standalone only* | integer (ms) | `60000` | Backoff ceiling. Never lower than `reconnectinitialdelay`. |
 | `initDebounceMs` | *standalone only* | integer (ms) | `10000` | Debounce window for bridge re-initialisation when all connections flap together, so a single outage does not fire duplicate getall/discovery passes. |
+| `networkDiscoveryTimeoutMs` | *standalone only* | integer (ms) | `5000` | How long auto-discovery waits for C-Gate `tree //PROJECT` responses before applying whatever networks were collected. |
 
 ### Event publishing
 
@@ -460,7 +470,7 @@ Anything below can cause a write to real hardware, or removes a control on who m
 | `cbus_security_control_enabled` | Anything that can publish to the panel command topic can **arm** the alarm. The C-Bus arm command carries no PIN. |
 | `cbus_security_disarm_enabled` | Adds **disarm**. The PIN is replayed through keypad emulation and therefore crosses the MQTT broker in the command payload on every disarm. Anyone who can read that topic learns the PIN. |
 | `cbus_security_bypass_enabled` | Allows arming **past an open zone**. The panel reports armed while a door or window is not actually covered. |
-| `web_allow_unauthenticated_mutations` | Removes authentication from the label-editing API entirely. Anyone who can reach `web_port` can rewrite labels. |
+| `web_allow_unauthenticated_mutations` | Removes authentication from the label-editing API entirely when the server binds loopback. Ignored on non-loopback binds, including the add-on. |
 | `web_bind_host` | Moving off `127.0.0.1` exposes the API. Pair with `web_api_key`. |
 | `web_api_key` | Leaving it `null` on an exposed port means writes are refused (safe) — but combined with the override above, writes are open. |
 | `mqttRejectUnauthorized` | Setting `false` disables broker certificate verification and permits a man-in-the-middle. |

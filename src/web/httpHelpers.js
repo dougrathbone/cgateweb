@@ -16,6 +16,22 @@ function sendJSON(res, statusCode, data) {
 }
 
 /**
+ * Send JSON then destroy the request socket so a paused oversized body cannot
+ * hold the connection until Node's request timeout.
+ *
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ * @param {number} statusCode
+ * @param {Object} data
+ */
+function sendJSONAndClose(req, res, statusCode, data) {
+    res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify(data), () => {
+        req.destroy();
+    });
+}
+
+/**
  * Apply the baseline security headers sent with every response.
  * Don't leak the addon's URL (which includes the HA Ingress token in the
  * path) to any external resource the UI fetches. The CSP is defence-in-depth:
@@ -87,6 +103,7 @@ function sanitizePlainObject(obj) {
 
 module.exports = {
     sendJSON,
+    sendJSONAndClose,
     setSecurityHeaders,
     setCorsHeaders,
     isUnsafeObjectKey,

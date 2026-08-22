@@ -1,20 +1,15 @@
 configuration:
-  # ── 必填字段（始终可见）──
   cgate_mode:
     name: C-Gate 模式
     description: >-
-      C-Gate 的提供方式。"remote" 连接到网络上其他位置运行的 C-Gate 服务器
-      （最常见）。"managed" 在此附加组件内本地下载并运行 C-Gate。
+      C-Gate 的提供方式。"remote" 连接到网络上其他位置运行的 C-Gate 服务器 （最常见）。"managed"
+      在此附加组件内本地下载并运行 C-Gate。
   cgate_host:
     name: C-Gate 主机（必填）
-    description: >-
-      C-Gate 服务器的 IP 地址或主机名。远程模式下，输入运行 C-Gate 的机器
-      地址。托管模式下，使用 127.0.0.1。
+    description: C-Gate 服务器的 IP 地址或主机名。远程模式下，输入运行 C-Gate 的机器 地址。托管模式下，使用 127.0.0.1。
   cgate_project:
     name: C-Gate 项目名称（必填）
-    description: >-
-      在 C-Gate 中配置的 C-Bus 项目名称（例如 HOME、MYHOUSE）。在 C-Gate
-      Toolkit 的项目树中查找。
+    description: 在 C-Gate 中配置的 C-Bus 项目名称（例如 HOME、MYHOUSE）。在 C-Gate Toolkit 的项目树中查找。
   ha_discovery_enabled:
     name: 启用 Home Assistant Discovery
     description: >-
@@ -22,165 +17,112 @@ configuration:
       用户应保持启用。设备将作为实体出现，无需手动 YAML 配置。
   log_level:
     name: 日志级别
-    description: >-
-      日志详细程度。正常运行使用 "info"，排查连接或发现问题使用 "debug"。
-
-  # ── C-Gate 连接（可选，有合理默认值）──
+    description: 日志详细程度。正常运行使用 "info"，排查连接或发现问题使用 "debug"。
   cgate_port:
     name: C-Gate 命令端口
-    description: >-
-      C-Gate 命令连接的 TCP 端口。仅在 C-Gate 使用非标准端口时更改。
-      默认：20023。
+    description: C-Gate 命令连接的 TCP 端口。仅在 C-Gate 使用非标准端口时更改。 默认：20023。
   cgate_event_port:
     name: C-Gate 事件端口
-    description: >-
-      C-Gate 事件连接的 TCP 端口。仅在 C-Gate 使用非标准端口时更改。
-      默认：20025。
-
-  # ── C-Gate 托管模式 ──
+    description: C-Gate 事件连接的 TCP 端口。仅在 C-Gate 使用非标准端口时更改。 默认：20025。
   cgate_install_source:
     name: C-Gate 安装来源
-    description: >-
-      仅在托管模式下使用。"download" 自动下载 C-Gate。"upload" 查找您
-      放置在 /share/cgate/ 中的 zip 文件。
+    description: 仅在托管模式下使用。"download" 自动下载 C-Gate。"upload" 查找您 放置在 /share/cgate/ 中的 zip 文件。
   cgate_download_url:
     name: C-Gate 下载 URL
-    description: >-
-      仅在使用下载来源的托管模式下使用。如果官方 Clipsal 下载 URL 更改，
-      则进行覆盖。留空使用默认 URL。
+    description: 仅在使用下载来源的托管模式下使用。如果官方 Clipsal 下载 URL 更改， 则进行覆盖。留空使用默认 URL。
   cgate_download_sha256:
     name: C-Gate 下载 SHA256
-    description: >-
-      可选的 SHA256 校验和，用于验证 C-Gate 下载。使用自定义下载 URL 时
-      建议使用。
+    description: 可选的 SHA256 校验和，用于验证 C-Gate 下载。使用自定义下载 URL 时 建议使用。
   cgate_force_reinstall:
     name: 强制重新安装 C-Gate
     description: >-
-      仅在托管模式下使用。C-Gate 安装后通常保持不变。启用此选项可在下次启动时从安装源重新安装/升级 C-Gate（您的项目数据库和配置会被保留）；在上传模式下，您也可以将较新的 zip 放入 /share/cgate。升级完成后请将其关闭。
-
+      仅在托管模式下使用。C-Gate 安装后通常保持不变。启用此选项可在下次启动时从安装源重新安装/升级
+      C-Gate（您的项目数据库和配置会被保留）；在上传模式下，您也可以将较新的 zip 放入 /share/cgate。升级完成后请将其关闭。
   cgate_serial_device:
     name: 串口 PCI 设备（Beta）
     description: >-
-      BETA: USB 串口 PC 接口（5500PC/5500PCU）支持——已在两种接口上实测。从下拉列表中选择检测到的串口设备；建议使用 /dev/serial/by-id/ 路径。如需输入自定义路径，请将配置编辑器切换为 YAML 模式。需要托管模式，并且 C-Bus Toolkit 项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
+      BETA: USB 串口 PC 接口（5500PC/5500PCU）支持——已在两种接口上实测。从下拉列表中选择检测到的串口设备；建议使用
+      /dev/serial/by-id/ 路径。如需输入自定义路径，请将配置编辑器切换为 YAML 模式。需要托管模式，并且 C-Bus Toolkit
+      项目需配置为串口 PC 接口。请在 GitHub 上报告问题（issue #28）。
   cgate_external_clients:
     name: 外部 C-Gate 客户端
     description: >-
-      允许连接到受管理 C-Gate 的地址，供 C-Bus Toolkit 等工具使用。留空则仅允许此附加组件访问。C-Gate 没有身份验证，且 program 级别允许重新编程 C-Bus 单元，因此请列出具体地址而非整个子网。字节值为 255 时匹配任意值，例如 192.168.1.255 表示整个 192.168.1.x 网络。您还必须在网络面板中发布 C-Gate 的端口。
-  # ── MQTT（通常自动检测）──
+      允许连接到受管理 C-Gate 的地址，供 C-Bus Toolkit 等工具使用。留空则仅允许此附加组件访问。C-Gate 没有身份验证，且
+      program 级别允许重新编程 C-Bus 单元，因此请列出具体地址而非整个子网。字节值为 255 时匹配任意值，例如 192.168.1.255
+      表示整个 192.168.1.x 网络。您还必须在网络面板中发布 C-Gate 的端口。
   mqtt_host:
     name: MQTT 代理主机
-    description: >-
-      从 Mosquitto 附加组件自动检测 - 大多数用户应留空。仅在使用外部
-      MQTT 代理时设置。
+    description: 从 Mosquitto 附加组件自动检测 - 大多数用户应留空。仅在使用外部 MQTT 代理时设置。
   mqtt_port:
     name: MQTT 代理端口
-    description: >-
-      从 Mosquitto 附加组件自动检测。仅为外部代理设置。默认：1883。
+    description: 从 Mosquitto 附加组件自动检测。仅为外部代理设置。默认：1883。
   mqtt_username:
     name: MQTT 用户名
-    description: >-
-      从 Mosquitto 附加组件自动检测。仅为外部代理设置或覆盖凭据。
+    description: 从 Mosquitto 附加组件自动检测。仅为外部代理设置或覆盖凭据。
   mqtt_password:
     name: MQTT 密码
-    description: >-
-      从 Mosquitto 附加组件自动检测。仅为外部代理设置或覆盖凭据。
+    description: 从 Mosquitto 附加组件自动检测。仅为外部代理设置或覆盖凭据。
   mqtt_use_tls:
     name: 启用 MQTT TLS
-    description: >-
-      使用 TLS (mqtts://) 连接 MQTT。为要求加密连接的代理启用（通常端口
-      8883）。标准 Mosquitto 附加组件不需要。
+    description: 使用 TLS (mqtts://) 连接 MQTT。为要求加密连接的代理启用（通常端口 8883）。标准 Mosquitto 附加组件不需要。
   mqtt_ca_file:
     name: MQTT CA 证书文件
-    description: >-
-      用于验证代理 TLS 证书的 CA 证书路径。通常存储在 /ssl/（例如
-      /ssl/ca.crt）。仅自签名证书需要。
+    description: 用于验证代理 TLS 证书的 CA 证书路径。通常存储在 /ssl/（例如 /ssl/ca.crt）。仅自签名证书需要。
   mqtt_reject_unauthorized:
     name: 验证 MQTT TLS 证书
-    description: >-
-      如果无法验证代理的 TLS 证书则拒绝连接。保持启用以确保安全。仅在
-      没有 CA 文件的自签名证书时禁用。
-
-  # ── C-Bus 监控 ──
+    description: 如果无法验证代理的 TLS 证书则拒绝连接。保持启用以确保安全。仅在 没有 CA 文件的自签名证书时禁用。
   auto_discover_networks:
     name: 自动发现 C-Bus 网络
-    description: >-
-      连接时自动从 C-Gate 发现网络 ID。发现的网络用于轮询和 HA Discovery。
-      仅在自动发现导致问题时禁用。默认：启用。
+    description: 连接时自动从 C-Gate 发现网络 ID。发现的网络用于轮询和 HA Discovery。 仅在自动发现导致问题时禁用。默认：启用。
   getall_networks:
     name: 监控的 C-Bus 网络
-    description: >-
-      用于轮询设备状态的 C-Bus 网络 ID。默认：254（大多数安装的标准
-      C-Bus 网络）。在 C-Gate Toolkit 的项目树中查找您的网络 ID。
+    description: 用于轮询设备状态的 C-Bus 网络 ID。默认：254（大多数安装的标准 C-Bus 网络）。在 C-Gate Toolkit
+      的项目树中查找您的网络 ID。
   getall_on_start:
     name: 启动时轮询所有设备
-    description: >-
-      附加组件启动时请求所有设备状态，将 Home Assistant 与当前 C-Bus
-      状态同步。默认：启用。
+    description: 附加组件启动时请求所有设备状态，将 Home Assistant 与当前 C-Bus 状态同步。默认：启用。
   getall_period:
     name: 轮询间隔（秒）
-    description: >-
-      重新轮询所有设备状态的频率。较低的值 = 更新的状态但更多 C-Gate
-      流量。默认：3600（1 小时）。
+    description: 重新轮询所有设备状态的频率。较低的值 = 更新的状态但更多 C-Gate 流量。默认：3600（1 小时）。
   getall_app_periods:
     name: 按应用的轮询间隔
-    description: >-
-      覆盖特定 C-Bus 应用的轮询间隔。每个条目有一个 app_id（例如 "56"
-      用于照明）和 period_sec（0 表示禁用）。
-
-  # ── MQTT 发布 ──
+    description: 覆盖特定 C-Bus 应用的轮询间隔。每个条目有一个 app_id（例如 "56" 用于照明）和 period_sec（0 表示禁用）。
   retain_reads:
     name: 保留 MQTT 状态消息
-    description: >-
-      在状态消息上设置 MQTT 保留标志，以便新订阅者立即收到最后已知的
-      设备状态。默认：禁用。
+    description: 在状态消息上设置 MQTT 保留标志，以便新订阅者立即收到最后已知的 设备状态。默认：禁用。
   message_interval:
     name: 命令间隔（毫秒）
-    description: >-
-      发送到 C-Gate 的命令之间的最小延迟。防止快速命令使 C-Gate 过载。
-      默认：200ms。
-
-  # ── Home Assistant Discovery ──
+    description: 发送到 C-Gate 的命令之间的最小延迟。防止快速命令使 C-Gate 过载。 默认：200ms。
   ha_discovery_prefix:
     name: Discovery 主题前缀
     description: >-
-      HA Discovery 消息的 MQTT 主题前缀。必须与您的 Home Assistant
-      MQTT Discovery 前缀匹配。默认：homeassistant。
+      HA Discovery 消息的 MQTT 主题前缀。必须与您的 Home Assistant MQTT Discovery
+      前缀匹配。默认：homeassistant。
   ha_discovery_networks:
     name: Discovery 网络
-    description: >-
-      用于设备发现扫描的 C-Bus 网络 ID。如果为空，则使用"监控的 C-Bus
-      网络"中的网络。默认：254。
+    description: 用于设备发现扫描的 C-Bus 网络 ID。如果为空，则使用"监控的 C-Bus 网络"中的网络。默认：254。
   ha_discovery_cover_app_id:
     name: 窗帘应用程序 ID
-    description: >-
-      用于窗帘（百叶窗、卷帘、车库门）的 C-Bus 应用 ID。常用值：203
-      （Enable Control）。留空以跳过窗帘发现。
+    description: 用于窗帘（百叶窗、卷帘、车库门）的 C-Bus 应用 ID。常用值：203 （Enable Control）。留空以跳过窗帘发现。
   ha_discovery_cover_tilt_app_id:
     name: 窗帘倾斜应用程序 ID
-    description: >-
-      用于百叶窗倾斜控制的 C-Bus 应用 ID。通过组号与窗帘配对。留空以
-      跳过倾斜。
+    description: 用于百叶窗倾斜控制的 C-Bus 应用 ID。通过组号与窗帘配对。留空以 跳过倾斜。
   ha_discovery_switch_app_id:
     name: 开关应用程序 ID
-    description: >-
-      用于开关组的 C-Bus 应用 ID。留空以跳过开关发现。
+    description: 用于开关组的 C-Bus 应用 ID。留空以跳过开关发现。
   ha_discovery_trigger_app_id:
     name: 触发器应用程序 ID
-    description: >-
-      用于触发器组（键盘、场景）的 C-Bus 应用 ID。常用值：202。留空以
-      跳过触发器发现。
+    description: 用于触发器组（键盘、场景）的 C-Bus 应用 ID。常用值：202。留空以 跳过触发器发现。
   ha_discovery_scene_enabled:
     name: 启用场景实体
-    description: >-
-      为每个触发器组创建 Home Assistant 场景实体，除了事件和按钮实体。
-      默认：启用。
+    description: 为每个触发器组创建 Home Assistant 场景实体，除了事件和按钮实体。 默认：启用。
   ha_discovery_auto_type:
     name: Auto-detect Device Types
     description: >-
       Automatically classify Lighting (56) groups whose label looks like a
       motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence.
-      Default: enabled.
+      instead of lights. Manual type overrides always take precedence. Default:
+      enabled.
   ha_discovery_auto_type_name_heuristics:
     name: Auto-detect Using Label Keywords
     description: >-
@@ -196,130 +138,106 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC 应用程序 ID
     description: >-
-      用于照明兼容 HVAC 组（PAC/触摸屏暴露）的 C-Bus 应用 ID。不是原生
-      Air Conditioning 应用 172 — 仅用于由 PAC 或触摸屏镜像到照明风格应用
-      的组。留空以跳过 HVAC 发现。
+      用于照明兼容 HVAC 组（PAC/触摸屏暴露）的 C-Bus 应用 ID。不是原生 Air Conditioning 应用 172 — 仅用于由
+      PAC 或触摸屏镜像到照明风格应用 的组。留空以跳过 HVAC 发现。
   ha_hvac_temperature_unit:
     name: HVAC 温度单位
-    description: >-
-      HVAC 气候实体的温度单位。C 表示摄氏度，F 表示华氏度。默认：C。
-
+    description: HVAC 气候实体的温度单位。C 表示摄氏度，F 表示华氏度。默认：C。
   cbus_aircon_app_id:
     name: 空调应用 ID
     description: >-
-      C-Bus 空调（Air Conditioning）应用 ID（例如 172），用于原生只读室温。解码 zone_temperature 广播并将 current_temperature 发布到 cbus/read/{network}/172/{zone}/current_temperature。默认关闭。
-
+      C-Bus 空调（Air Conditioning）应用 ID（例如 172），用于原生只读室温。解码 zone_temperature 广播并将
+      current_temperature 发布到
+      cbus/read/{network}/172/{zone}/current_temperature。默认关闭。
   cbus_aircon_control_enabled:
     name: 空调控制
-    description: >-
-      允许 Home Assistant 控制原生 C-Bus 温控器（设置模式和温度）。默认关闭——它会写入正在运行的供暖/制冷。需要设置空调应用 ID。
+    description: 允许 Home Assistant 控制原生 C-Bus 温控器（设置模式和温度）。默认关闭——它会写入正在运行的供暖/制冷。需要设置空调应用 ID。
   cbus_security_app_id:
     name: 安防应用 ID
     description: >-
-      用于报警区域传感器的 C-Bus 安防（Security）应用 ID（默认 208）。每个区域发布一个二进制传感器——sealed 为关；unsealed、open 或 short 为开——并在连接时同步区域状态。设置为 0 可禁用。
-
+      用于报警区域传感器的 C-Bus 安防（Security）应用 ID（默认 208）。每个区域发布一个二进制传感器——sealed
+      为关；unsealed、open 或 short 为开——并在连接时同步区域状态。设置为 0 可禁用。
   cbus_security_control_enabled:
     name: 安防面板控制
     description: >-
-      允许 Home Assistant 布防安防面板（away、night、home、vacation）。仅布防：C-Bus 没有撤防命令，因此 Home Assistant 的 Disarm 按钮不起作用。默认关闭：布防命令在 C-Bus 上不携带 PIN 码，因此任何能向命令主题发布消息的实体都能布防您的面板。需要设置安防应用 ID。
+      允许 Home Assistant 布防安防面板（away、night、home、vacation）。仅布防：C-Bus 没有撤防命令，因此
+      Home Assistant 的 Disarm 按钮不起作用。默认关闭：布防命令在 C-Bus 上不携带 PIN
+      码，因此任何能向命令主题发布消息的实体都能布防您的面板。需要设置安防应用 ID。
   cbus_security_disarm_enabled:
     name: 安防面板撤防
     description: >-
-      同时允许 Home Assistant 撤防安防面板。需要先启用安防面板控制。默认关闭。C-Bus 没有撤防命令，因此通过键盘模拟在面板上输入 PIN 码：Home Assistant 显示自己的键盘并通过 MQTT 发送您输入的内容。PIN 码不会保存在任何地方，但每次撤防都会经过您的 MQTT 代理，因此请仅在您信任的代理上启用，最好配合 TLS。
+      同时允许 Home Assistant 撤防安防面板。需要先启用安防面板控制。默认关闭。C-Bus 没有撤防命令，因此通过键盘模拟在面板上输入
+      PIN 码：Home Assistant 显示自己的键盘并通过 MQTT 发送您输入的内容。PIN 码不会保存在任何地方，但每次撤防都会经过您的
+      MQTT 代理，因此请仅在您信任的代理上启用，最好配合 TLS。
   cbus_security_bypass_enabled:
     name: 忽略未闭合区域强制布防
     description: >-
-      允许 Home Assistant 在区域未闭合时，使用面板的 # 键强制布防。需要先启用安防面板控制。默认关闭。这与布防特意分开：忽略未关闭的门强制布防后，警报看起来已布防，但并未防护该门，因此应当是有意识的选择。绝不会自动执行。
-
+      允许 Home Assistant 在区域未闭合时，使用面板的 #
+      键强制布防。需要先启用安防面板控制。默认关闭。这与布防特意分开：忽略未关闭的门强制布防后，警报看起来已布防，但并未防护该门，因此应当是有意识的选择。绝不会自动执行。
   cbus_measurement_app_id:
     name: 测量应用 ID
     description: >-
-      C-Bus 测量应用 ID（默认 228），用于模拟/数值传感器读数（温度、功率、光照度等）。发布到 cbus/read/{network}/228/{device}/{channel}/value 和 /unit，并接受通过 cbus/write/{network}/228/{device}/{channel}/data（负载为 "value,multiplier,units"）注入的读数——例如用于脚本/虚拟传感器。默认关闭。
-
-
-  # ── Bridge 诊断 ──
+      C-Bus 测量应用 ID（默认 228），用于模拟/数值传感器读数（温度、功率、光照度等）。发布到
+      cbus/read/{network}/228/{device}/{channel}/value 和 /unit，并接受通过
+      cbus/write/{network}/228/{device}/{channel}/data（负载为
+      "value,multiplier,units"）注入的读数——例如用于脚本/虚拟传感器。默认关闭。
   ha_bridge_diagnostics_enabled:
     name: 启用 Bridge 诊断
-    description: >-
-      向 Home Assistant 发布 Bridge 健康实体（就绪状态、连接、队列深度）。
-      默认：启用。
+    description: 向 Home Assistant 发布 Bridge 健康实体（就绪状态、连接、队列深度）。 默认：启用。
   ha_bridge_diagnostics_interval_sec:
     name: 诊断间隔（秒）
-    description: >-
-      Bridge 诊断状态的刷新频率。默认：60。
-
-  # ── C-Bus Network (CNI) Monitoring ──
+    description: Bridge 诊断状态的刷新频率。默认：60。
   cni_offline_notification:
     name: CNI 离线通知
     description: >-
-      当 C-Bus 网络的 CNI/PCI 连接离线时显示 Home Assistant 通知，并在重新连接时关闭。需要 Home Assistant 加载项环境。默认关闭。
-
-  # ── 过时设备检测 ──
+      当 C-Bus 网络的 CNI/PCI 连接离线时显示 Home Assistant 通知，并在重新连接时关闭。需要 Home Assistant
+      加载项环境。默认关闭。
   stale_device_detection_enabled:
     name: 启用过时设备检测
-    description: >-
-      检测停止报告的 C-Bus 设备并发布警告传感器。默认：启用。
+    description: 检测停止报告的 C-Bus 设备并发布警告传感器。默认：启用。
   stale_device_threshold_hours:
     name: 过时设备阈值（小时）
-    description: >-
-      设备被视为过时之前没有状态更新的小时数。默认：24。
+    description: 设备被视为过时之前没有状态更新的小时数。默认：24。
   stale_device_check_interval_sec:
     name: 过时检查间隔（秒）
-    description: >-
-      扫描过时设备的频率。默认：3600（1 小时）。
-
-  # ── 高级：连接池 ──
+    description: 扫描过时设备的频率。默认：3600（1 小时）。
   connection_pool_size:
     name: 连接池大小
-    description: >-
-      到 C-Gate 的并行 TCP 连接数。高吞吐量安装可增加，旧版 C-Gate 减少
-      到 1。默认：3。
+    description: 到 C-Gate 的并行 TCP 连接数。高吞吐量安装可增加，旧版 C-Gate 减少 到 1。默认：3。
   connection_health_check_interval_sec:
     name: 健康检查间隔（秒）
-    description: >-
-      验证 C-Gate 连接健康状况的频率。默认：30。
+    description: 验证 C-Gate 连接健康状况的频率。默认：30。
   connection_keep_alive_interval_sec:
     name: Keep-Alive 间隔（秒）
-    description: >-
-      Ping C-Gate 连接的频率。防止静默 TCP 断开。默认：60。
+    description: Ping C-Gate 连接的频率。防止静默 TCP 断开。默认：60。
   cover_ramp_duration_sec:
     name: 窗帘升降持续时间（秒）
-    description: >-
-      窗帘完全打开/关闭的预期时间。Bridge 在此窗口期间发布估计位置。
-      默认：5。
-
-  # ── 高级：标签文件和 Web API ──
+    description: 窗帘完全打开/关闭的预期时间。Bridge 在此窗口期间发布估计位置。 默认：5。
   cbus_label_file:
     name: 自定义标签文件
-    description: >-
-      包含自定义设备名称的 JSON 文件路径。如未设置，将从常见路径自动
-      检测。文件会被监视以检测更改。
+    description: 包含自定义设备名称的 JSON 文件路径。如未设置，将从常见路径自动 检测。文件会被监视以检测更改。
   web_api_key:
     name: Web API 密钥
-    description: >-
-      标签编辑器中写入操作的 API 密钥。在将端口 8080 暴露到 HA ingress
-      之外时设置此项。
+    description: 标签编辑器中写入操作的 API 密钥。在将端口 8080 暴露到 HA ingress 之外时设置此项。
   web_allow_unauthenticated_mutations:
     name: 允许未认证的 Web 写入（不安全）
-    description: >-
-      允许不带 API 密钥的写入端点。除非完全信任对此附加组件的网络访问，
-      否则保持禁用。
+    description: 允许不带 API 密钥的写入端点。除非完全信任对此附加组件的网络访问， 否则保持禁用。
   web_allowed_origins:
     name: 允许的 Web 来源（CORS）
-    description: >-
-      用于浏览器访问的 CORS 允许列表。输入完整来源如
-      https://ha.example.com。留空以禁用跨域访问。
+    description: 用于浏览器访问的 CORS 允许列表。输入完整来源如 https://ha.example.com。留空以禁用跨域访问。
   web_mutation_rate_limit_per_minute:
     name: Web 写入速率限制
-    description: >-
-      每个客户端每分钟的最大变更 API 请求数。默认：120。
+    description: 每个客户端每分钟的最大变更 API 请求数。默认：120。
   ha_discovery_type_from_label_prefix:
     name: 从标签前缀识别类型
     description: >-
-      将以实体域前缀开头的组标签识别为对应设备类型(例如 cover.bedroom_shutter 识别为窗帘,switch.porch_light 识别为开关)。支持的前缀:light.、cover.、switch.、relay.、pir.。手动 type_overrides 条目始终优先。默认关闭。
-
+      将以实体域前缀开头的组标签识别为对应设备类型(例如 cover.bedroom_shutter 识别为窗帘,switch.porch_light
+      识别为开关)。支持的前缀:light.、cover.、switch.、relay.、pir.。手动 type_overrides
+      条目始终优先。默认关闭。
   ha_discovery_type_from_unit:
     name: 从 C-Bus 单元类型识别类型
     description: >-
-      对于组名称尚未表明是遮阳帘的组,根据驱动该组的 C-Bus 单元类型来决定每个实体的类型。调光器通道识别为可调光灯,继电器通道识别为开关式灯,仅由输入单元(例如 bus coupler)驱动的组识别为二元传感器。手动 type_overrides 条目以及能识别遮阳帘的名称(例如 blind、shutter)仍然优先,因为继电器同样可以驱动灯、遮阳帘或阀门。由无法识别的单元类型驱动的组保持不变。开启此项可能会改变现有实体的类型。
-
+      对于组名称尚未表明是遮阳帘的组,根据驱动该组的 C-Bus
+      单元类型来决定每个实体的类型。调光器通道识别为可调光灯,继电器通道识别为开关式灯,仅由输入单元(例如 bus
+      coupler)驱动的组识别为二元传感器。手动 type_overrides 条目以及能识别遮阳帘的名称(例如
+      blind、shutter)仍然优先,因为继电器同样可以驱动灯、遮阳帘或阀门。由无法识别的单元类型驱动的组保持不变。开启此项可能会改变现有实体的类型。

@@ -553,6 +553,52 @@ describe('CgateWebBridge', () => {
             bridge._updateBridgeReadiness('test-ready');
             expect(bridge._getBridgeStatus().lifecycle.state).toBe('ready');
         });
+
+        it('marks bridge not ready when the pool emits allConnectionsUnhealthy', async () => {
+            await bridge.start();
+            // Flush the pool mock's setImmediate('started') so start() teardown
+            // and later emits do not race with a stale started handler.
+            await new Promise(resolve => setImmediate(resolve));
+
+            bridge.mqttManager.connected = true;
+            bridge.eventConnection.connected = true;
+            mockConnectionPool.getStats.mockReturnValue({
+                poolSize: 3,
+                totalConnections: 3,
+                healthyConnections: 3,
+                pendingReconnects: 0,
+                retryCounts: [0, 0, 0],
+                isStarted: true,
+                isShuttingDown: false
+            });
+            bridge._updateBridgeReadiness('all-connected');
+            expect(bridge._getBridgeStatus().ready).toBe(true);
+            expect(bridge._getBridgeStatus().lifecycle.state).toBe('ready');
+
+            const updateSpy = jest.spyOn(bridge, '_updateBridgeReadiness');
+            mockConnectionPool.getStats.mockReturnValue({
+                poolSize: 3,
+                totalConnections: 3,
+                healthyConnections: 0,
+                pendingReconnects: 0,
+                retryCounts: [1, 1, 1],
+                isStarted: true,
+                isShuttingDown: false
+            });
+            mockConnectionPool.healthyConnections = { size: 0 };
+
+            mockConnectionPool.emit('allConnectionsUnhealthy');
+
+            expect(updateSpy).toHaveBeenCalledWith('command-pool-unhealthy');
+            const status = bridge._getBridgeStatus();
+            expect(status.ready).toBe(false);
+            expect(status.connections.commandPool.healthyConnections).toBe(0);
+            expect(status.lifecycle.state).toBe('degraded');
+            expect(status.lifecycle.reason).toBe('command-pool-unhealthy');
+            expect(bridge.bridgeReadiness.getLifecycleSnapshot().reason).toBe('command-pool-unhealthy');
+
+            updateSpy.mockRestore();
+        });
     });
 
 

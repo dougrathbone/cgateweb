@@ -34,6 +34,14 @@ on:
         type: string
         required: false
         default: 'no build-relevant files changed'
+      require-upload-integration:
+        description: >-
+          When true (release path), the upload-mode C-Gate integration leg must
+          succeed; a skip because CGATE_UPLOAD_TEST_URL is unset fails the gate.
+          When false (PR path), skipped remains OK.
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -101,7 +109,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ACTIONLINT_VERSION: "1.7.12"
+      ACTIONLINT_SHA256: "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"
       HADOLINT_VERSION: "2.14.0"
+      HADOLINT_SHA256: "6bf226944684f56c84dd014e8b979d27425c0148f61b3bd99bcc6f39e9dc5a47"
     steps:
     - name: Checkout repository
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -131,6 +141,7 @@ jobs:
         curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
           --connect-timeout 30 --max-time 300 -o /tmp/actionlint.tar.gz \
           "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+        echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
         tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
         /tmp/actionlint -color
 
@@ -139,6 +150,7 @@ jobs:
         curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 \
           --connect-timeout 30 --max-time 300 -o /tmp/hadolint \
           "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-Linux-x86_64"
+        echo "${HADOLINT_SHA256}  /tmp/hadolint" | sha256sum -c -
         chmod +x /tmp/hadolint
         /tmp/hadolint homeassistant-addon/Dockerfile test-env/Dockerfile
 
@@ -200,7 +212,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, aarch64, armv7]
+        arch: [amd64, aarch64, armv7, armhf, i386]
     steps:
     - name: Note that the build was skipped
       if: ${{ !inputs.run-expensive }}
@@ -253,6 +265,8 @@ jobs:
           amd64) platform=linux/amd64 ;;
           aarch64) platform=linux/arm64 ;;
           armv7) platform=linux/arm/v7 ;;
+          armhf) platform=linux/arm/v6 ;;
+          i386) platform=linux/386 ;;
           *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
         docker buildx build \
@@ -279,6 +293,9 @@ jobs:
           amd64) platform=linux/amd64 ;;
           aarch64) platform=linux/arm64 ;;
           armv7) platform=linux/arm/v7 ;;
+          armhf) platform=linux/arm/v6 ;;
+          i386) platform=linux/386 ;;
+          *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
         docker run --rm --platform "$platform" --entrypoint /bin/bash "cgateweb-addon:ci-${ARCH}" -c '
           set -e
@@ -341,7 +358,7 @@ jobs:
       run: npm ci
 
     - name: Install podman-compose
-      run: pip3 install podman-compose
+      run: pip3 install podman-compose==1.3.0
 
     # No availability probe here. These zips come from this repo's own
     # ci-assets release (see the matrix above), not from Schneider, so there is
@@ -363,8 +380,9 @@ jobs:
   # Exercises a C-Gate version that is NOT openly downloadable (3.3.3, 3.7.x) by
   # fetching a self-hosted zip and installing it via upload mode. Activates only
   # when the CGATE_UPLOAD_TEST_URL repository variable points at a hosted zip
-  # (e.g. a release asset on this repo); otherwise the job is skipped, which the
-  # aggregator below treats as a pass.
+  # (e.g. a release asset on this repo); otherwise the job is skipped. On the
+  # PR path the aggregator treats a skip as a pass; on the release path
+  # (require-upload-integration) a skip fails the gate.
   integration-upload:
     name: Integration upload (hosted)
     runs-on: ubuntu-latest
@@ -386,7 +404,7 @@ jobs:
       run: npm ci
 
     - name: Install podman-compose
-      run: pip3 install podman-compose
+      run: pip3 install podman-compose==1.3.0
 
     - name: Fetch hosted C-Gate zip into the upload share volume
       env:
@@ -407,11 +425,12 @@ jobs:
   # Required status check. Keeping this single, stable job name means branch
   # protection needs no change when we add or remove matrix versions.
   #
-  # It must distinguish three states, which is why it does not simply require
+  # It must distinguish these states, which is why it does not simply require
   # 'success' from its upstreams:
   #   - a leg failed                          -> fail
-  #   - a leg was skipped because there is no  -> pass (integration-upload has
-  #     hosted artifact configured                 no CGATE_UPLOAD_TEST_URL)
+  #   - upload skipped (no CGATE_UPLOAD_TEST_URL):
+  #       require-upload-integration false    -> pass (PR path)
+  #       require-upload-integration true     -> fail (release path)
   #   - every leg was skipped because the      -> pass, and say so plainly so a
   #     change could not affect them               green tick is not mistaken
   #                                                for "the suite ran"
@@ -428,10 +447,11 @@ jobs:
         DOWNLOAD_RESULT: ${{ needs.integration-download.result }}
         UPLOAD_RESULT: ${{ needs.integration-upload.result }}
         RUN_EXPENSIVE: ${{ inputs.run-expensive }}
+        REQUIRE_UPLOAD: ${{ inputs.require-upload-integration }}
         REASON: ${{ inputs.expensive-skip-reason }}
       run: |
         echo "download-mode legs: $DOWNLOAD_RESULT"
-        echo "upload-mode leg:    $UPLOAD_RESULT (skipped is OK when no hosted artifact is configured)"
+        echo "upload-mode leg:    $UPLOAD_RESULT (require-upload=${REQUIRE_UPLOAD})"
 
         if [[ "$RUN_EXPENSIVE" != "true" ]]; then
           # Nothing was meant to run. Fail loudly if something ran anyway and
@@ -453,7 +473,13 @@ jobs:
           echo "::error::One or more download-mode C-Gate integration tests failed."
           exit 1
         fi
-        if [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
+        if [[ "$REQUIRE_UPLOAD" == "true" ]]; then
+          if [[ "$UPLOAD_RESULT" != "success" ]]; then
+            echo "::error::Upload-mode C-Gate integration is required on this path but result was '${UPLOAD_RESULT}'."
+            echo "::error::Set repository variable CGATE_UPLOAD_TEST_URL to a hosted C-Gate zip URL (see test-env/README.md)."
+            exit 1
+          fi
+        elif [[ "$UPLOAD_RESULT" != "success" && "$UPLOAD_RESULT" != "skipped" ]]; then
           echo "::error::The upload-mode C-Gate integration test failed."
           exit 1
         fi

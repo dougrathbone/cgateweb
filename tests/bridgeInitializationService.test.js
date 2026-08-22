@@ -639,6 +639,65 @@ describe('BridgeInitializationService', () => {
             expect(bridge.haDiscovery.trigger).toHaveBeenCalledTimes(2); // once on connect, once on labels change
         });
 
+        it('hot-reloads labels from a watched file into haDiscovery', async () => {
+            const fs = require('fs');
+            const path = require('path');
+            const os = require('os');
+            const LabelLoader = require('../src/labelLoader');
+
+            const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-label-hotreload-'));
+            const labelFile = path.join(tmpDir, 'labels.json');
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                labels: { '254/56/10': 'Original' }
+            }));
+
+            let watchHandler = null;
+            const mockWatcher = { on: jest.fn(), close: jest.fn() };
+            const watchSpy = jest.spyOn(fs, 'watch').mockImplementation((_dir, handler) => {
+                watchHandler = handler;
+                return mockWatcher;
+            });
+
+            const realLoader = new LabelLoader(labelFile);
+            realLoader.load();
+
+            const { bridge, deps } = makeBridge({ ha_discovery_enabled: true });
+            const svc = new BridgeInitializationService({
+                ...deps,
+                labelLoader: realLoader
+            });
+
+            try {
+                await svc.handleAllConnected();
+                expect(watchSpy).toHaveBeenCalled();
+                expect(typeof watchHandler).toBe('function');
+                expect(bridge.haDiscovery.trigger).toHaveBeenCalledTimes(1);
+
+                fs.writeFileSync(labelFile, JSON.stringify({
+                    version: 1,
+                    labels: { '254/56/10': 'Hot Reloaded' }
+                }));
+                watchHandler('change', path.basename(labelFile));
+
+                // LabelLoader debounce (DEBOUNCE_MS = 500)
+                jest.advanceTimersByTime(499);
+                expect(bridge.haDiscovery.updateLabels).not.toHaveBeenCalled();
+
+                jest.advanceTimersByTime(1);
+
+                expect(bridge.haDiscovery.updateLabels).toHaveBeenCalledTimes(1);
+                const updated = bridge.haDiscovery.updateLabels.mock.calls[0][0];
+                expect(updated.labels.get('254/56/10')).toBe('Hot Reloaded');
+                expect(bridge.haDiscovery.trigger).toHaveBeenCalledTimes(2);
+                expect(bridge.haDiscovery.trigger).toHaveBeenLastCalledWith(null);
+            } finally {
+                svc.stop();
+                watchSpy.mockRestore();
+                fs.rmSync(tmpDir, { recursive: true, force: true });
+            }
+        });
+
         it('passes discoveredNetworks to haDiscovery.trigger', async () => {
             const { bridge } = makeBridge({ ha_discovery_enabled: true });
             bridge.discoveredNetworks = [254, 1];

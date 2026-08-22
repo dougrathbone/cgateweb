@@ -180,7 +180,7 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'standalone',
         description: 'Legacy logging on/off flag.',
-        reason: 'Effectively inert: it is only read as `log_level || (logging ? \'info\' : \'warn\')`, and log_level always has a value from these defaults, so the branch is unreachable. Kept for backwards compatibility with old settings.js files. The add-on derives it from log_level instead of offering it.'
+        reason: 'Effectively inert: resolveLogLevelFromSettings uses the schema default for log_level (info), so the legacy logging fallback is unreachable. Kept for backwards compatibility with old settings.js files. The add-on derives it from log_level instead of offering it.'
     },
     log_level: {
         key: 'log_level',
@@ -428,6 +428,24 @@ const SETTINGS_SCHEMA = {
         description: 'Reconnect attempts per pooled connection before the pool gives up on it.',
         reason: TUNING_ONLY_REASON
     },
+    connectionPoolShutdownForceCloseMs: {
+        key: 'connectionPoolShutdownForceCloseMs',
+        type: 'number',
+        default: 1000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'How long stop() waits for each pooled connection to close before forcing the shutdown promise to resolve.',
+        reason: TUNING_ONLY_REASON
+    },
+    connectionPoolUnhealthyRecheckMs: {
+        key: 'connectionPoolUnhealthyRecheckMs',
+        type: 'number',
+        default: 1000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Delay before re-checking a pooled connection that was marked potentially unhealthy after a failed send.',
+        reason: TUNING_ONLY_REASON
+    },
     eventPublishDedupWindowMs: {
         key: 'eventPublishDedupWindowMs',
         type: 'number',
@@ -475,6 +493,15 @@ const SETTINGS_SCHEMA = {
         // The original alias, and the one this whole mechanism generalises:
         // ConfigLoader used to special-case exactly this pair.
         aliases: ['auto_discover_networks']
+    },
+    networkDiscoveryTimeoutMs: {
+        key: 'networkDiscoveryTimeoutMs',
+        type: 'number',
+        default: 5000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'How long auto-discovery waits for C-Gate tree //PROJECT responses before applying whatever networks were collected.',
+        reason: TUNING_ONLY_REASON
     },
 
     // --- Home Assistant discovery -------------------------------------------
@@ -818,6 +845,33 @@ const SETTINGS_SCHEMA = {
         description: 'Path to the JSON file holding imported group labels, manual type_overrides and the web UI\'s saved edits. Without it, discovered entities get generic names and the web UI cannot save.',
         reason: 'null here, but the add-on never leaves it null: ConfigLoader auto-detects across /homeassistant, the legacy /config mount and /data, and falls back to a writable default so the first Import creates the file rather than erroring (#3, #44).'
     },
+    labelWatchDebounceMs: {
+        key: 'labelWatchDebounceMs',
+        type: 'number',
+        default: 500,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Debounce window for label-file fs.watch events before reloading from disk.',
+        reason: TUNING_ONLY_REASON
+    },
+    labelWatchSelfWriteGraceMs: {
+        key: 'labelWatchSelfWriteGraceMs',
+        type: 'number',
+        default: 1000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Ignore label-file watch events within this window after our own save(), so an in-process emit is not double-fired by the watcher.',
+        reason: TUNING_ONLY_REASON
+    },
+    labelReloadRetryMs: {
+        key: 'labelReloadRetryMs',
+        type: 'number',
+        default: 2000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Delay before a single retry when a watched label file is briefly unreadable (e.g. during a Home Assistant backup).',
+        reason: TUNING_ONLY_REASON
+    },
 
     // --- Web interface and API ----------------------------------------------
     web_port: {
@@ -854,8 +908,8 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Allow writes to the label API with no authentication at all.',
-        reason: 'Security-sensitive unsafe override: anyone who can reach web_port can rewrite labels. Off unless the port is genuinely isolated.'
+        description: 'Allow writes to the label API with no authentication at all. Ignored unless the web server binds loopback; the add-on binds 0.0.0.0 for Ingress, so use an API key for any host-mapped port.',
+        reason: 'Security-sensitive unsafe override: anyone who can reach web_port can rewrite labels. The runtime also refuses the flag when bindHost is not loopback, so it cannot silently open the add-on host port.'
     },
     web_allowed_origins: {
         key: 'web_allowed_origins',
@@ -873,6 +927,33 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'both',
         description: 'Per-client write rate limit on mutating endpoints, over a fixed 60s window.'
+    },
+    web_read_rate_limit_per_minute: {
+        key: 'web_read_rate_limit_per_minute',
+        type: 'number',
+        default: 300,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Per-client read rate limit on non-mutating web endpoints, over webRateLimitWindowMs.',
+        reason: TUNING_ONLY_REASON
+    },
+    webRateLimitWindowMs: {
+        key: 'webRateLimitWindowMs',
+        type: 'number',
+        default: 60000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Sliding window length for web API per-client rate limits (mutation, read, and auth-failure buckets).',
+        reason: TUNING_ONLY_REASON
+    },
+    ingressDiscoveryMaxBackoffMs: {
+        key: 'ingressDiscoveryMaxBackoffMs',
+        type: 'number',
+        default: 8000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Ceiling for the Supervisor ingress-path discovery retry backoff after add-on start.',
+        reason: TUNING_ONLY_REASON
     },
     web_auth_failure_rate_limit_per_minute: {
         key: 'web_auth_failure_rate_limit_per_minute',
@@ -984,6 +1065,15 @@ const SETTINGS_SCHEMA = {
         exposure: 'both',
         description: 'When true, raise a Home Assistant persistent notification (via the Supervisor API) if a C-Bus network\'s CNI/PCI goes offline, and dismiss it on recovery.',
         reason: 'Requires the add-on environment (SUPERVISOR_TOKEN); inert standalone.'
+    },
+    haNotifierTimeoutMs: {
+        key: 'haNotifierTimeoutMs',
+        type: 'number',
+        default: 5000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Timeout for Home Assistant persistent-notification create/dismiss calls via the Supervisor Core API proxy.',
+        reason: TUNING_ONLY_REASON
     },
 
     // --- Managed C-Gate and USB serial recovery ------------------------------
@@ -1351,6 +1441,54 @@ function resolveSettingKey(name) {
 }
 
 /**
+ * Read a runtime setting, falling back to the schema default when unset.
+ *
+ * This is the only supported way for runtime code to apply schema defaults.
+ * It never uses `||`, so `0`, `false` and `''` are preserved as configured
+ * values. `null` is returned only when the entry is nullable; otherwise a
+ * null falls back to the default (same as "feature left at shipped value").
+ *
+ * @param {Object|null|undefined} settings
+ * @param {string} key - canonical schema key (not an alias)
+ * @returns {*}
+ */
+function resolveSetting(settings, key) {
+    if (!Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, key)) {
+        throw new Error(`Unknown setting key: ${key}`);
+    }
+    const entry = /** @type {SettingSchemaEntry} */ (
+        SETTINGS_SCHEMA[/** @type {keyof typeof SETTINGS_SCHEMA} */ (key)]
+    );
+    const value = settings !== null && settings !== undefined ? settings[key] : undefined;
+    if (value === undefined) {
+        return cloneDefault(entry.default);
+    }
+    if (value === null) {
+        return entry.nullable ? null : cloneDefault(entry.default);
+    }
+    return value;
+}
+
+/**
+ * resolveSetting, then optionally clamp with Math.max(min, value).
+ *
+ * Used for connection-pool and socket floors that already applied Math.max
+ * after reading a setting.
+ *
+ * @param {Object|null|undefined} settings
+ * @param {string} key
+ * @param {{ min?: number }} [options]
+ * @returns {number}
+ */
+function resolveClampedSetting(settings, key, options = {}) {
+    const value = /** @type {number} */ (resolveSetting(settings, key));
+    if (options.min !== undefined) {
+        return Math.max(options.min, value);
+    }
+    return value;
+}
+
+/**
  * Every key that may legitimately appear on a configuration object: canonical
  * setting names, their aliases, and the internal keys above.
  *
@@ -1378,8 +1516,11 @@ module.exports = {
     listSettingAliases,
     listKnownConfigKeys,
     resolveSettingKey,
+    resolveSetting,
+    resolveClampedSetting,
     UNIT_SUFFIX_EXEMPT_KEYS,
     UNIT_KEY_SUFFIXES,
     buildDefaults,
-    getSchemaEntry
+    getSchemaEntry,
+    TUNING_ONLY_REASON
 };

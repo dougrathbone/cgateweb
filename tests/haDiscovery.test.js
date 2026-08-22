@@ -2,71 +2,18 @@
 
 const HaDiscovery = require('../src/haDiscovery');
 const { CGATE_CMD_TREEXML, NEWLINE } = require('../src/constants');
-
-// Mock XML data for testing - matches actual C-Gate tree structure
-const MOCK_TREEXML_RESULT_NET254 = {
-    Network: {
-        Interface: {
-            Network: {
-                NetworkNumber: '254',
-                Unit: [
-                    {
-                        UnitAddress: '100',
-                        Application: [
-                            {
-                                ApplicationAddress: '56',
-                                Group: [
-                                    { GroupAddress: '10', Label: 'Kitchen Light' },
-                                    { GroupAddress: '11', Label: 'Living Room' },
-                                    { GroupAddress: '12', Label: 'Bedroom Light' }
-                                ]
-                            },
-                            {
-                                ApplicationAddress: '203',
-                                Group: [
-                                    { GroupAddress: '15', Label: 'Blind 1' },
-                                    { GroupAddress: '16', Label: 'Blind 2' },
-                                    { GroupAddress: '17', Label: 'Garage Door' },
-                                    { GroupAddress: '20', Label: 'Relay Switch' }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    }
-};
-
-// Valid C-Gate TreeXML for network 254 with one App 56 lighting group. Used by
-// tests that need handleTreeEnd's real xml2js parse to yield findable network
-// data (haDiscovery captures parseString at require time, so jest.spyOn on
-// xml2js.parseString does not take effect — the real parser runs).
-const TREEXML_NET254 =
-    '<Network><NetworkNumber>254</NetworkNumber>' +
-    '<Unit><UnitAddress>100</UnitAddress>' +
-    '<Application><ApplicationAddress>56</ApplicationAddress>' +
-    '<Group><GroupAddress>10</GroupAddress><Label>Kitchen Light</Label></Group>' +
-    '</Application></Unit></Network>';
-
-// Flat-format tree for network 254 with the two units from the issue #25
-// sample, parameterised by the group bindings each reports.
-//
-// The scenario that matters is a partially-synced network: unit 13 has its
-// bindings while unit 14 still reports an empty <Groups> because C-Gate's
-// network sync has not finished. Building both trees from one function keeps
-// the only meaningful difference - unit 14's groups - visible at the call
-// site, instead of leaving two near-identical XML blobs to diff by eye.
-const flatTreeNet254 = (unit13Groups, unit14Groups = '') =>
-    '<Network><NetworkNumber>254</NetworkNumber>' +
-    `<Unit><Type>RELDN12</Type><Address>13</Address><Application>56, 255</Application><Groups>${unit13Groups}</Groups></Unit>` +
-    `<Unit><Type>RELAY2</Type><Address>14</Address><Application>56, 255</Application><Groups>${unit14Groups}</Groups></Unit>` +
-    '</Network>';
-
-// Mid-sync: unit 14 has not reported its groups yet.
-const PARTIAL_GROUPS_TREE_NET254 = flatTreeNet254('31,32');
-// What C-Gate returns for the same network once the sync has finished.
-const FULL_GROUPS_TREE_NET254 = flatTreeNet254('31,32', '115');
+const {
+    MOCK_TREEXML_RESULT_NET254,
+    TREEXML_NET254,
+    flatTreeNet254,
+    PARTIAL_GROUPS_TREE_NET254,
+    FULL_GROUPS_TREE_NET254,
+    makeDiscovery,
+    findDiscoveryPayload,
+    payloadFor,
+    rawPayload,
+    publishTree
+} = require('./helpers/discovery');
 
 describe('HaDiscovery', () => {
     let haDiscovery;
@@ -322,37 +269,22 @@ describe('HaDiscovery', () => {
             expect(warned).toBe(true);
         });
 
-        it('should publish correct configs for LIGHTING groups', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that light configs were published
+        it.each([
+            ['LIGHTING', 'testhomeassistant/light/cgateweb_254_56_10/config', '"name":"Kitchen Light"'],
+            ['COVER', 'testhomeassistant/cover/cgateweb_254_203_15/config', '"name":"Blind 1"'],
+        ])('should publish correct configs for %s groups', (_label, topic, fragment) => {
+            publishTree(haDiscovery);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/light/cgateweb_254_56_10/config',
-                expect.stringContaining('"name":"Kitchen Light"'),
-                { retain: true, qos: 0 }
-            );
-        });
-
-        it('should publish correct configs for COVER groups', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that cover configs were published
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/cover/cgateweb_254_203_15/config',
-                expect.stringContaining('"name":"Blind 1"'),
+                topic,
+                expect.stringContaining(fragment),
                 { retain: true, qos: 0 }
             );
         });
 
         it('should publish cover config with correct payload structure', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
-
+            publishTree(haDiscovery);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_15/config');
+            expect(payload).toBeDefined();
             expect(payload.device_class).toBe('shutter');
             expect(payload.position_topic).toBe('cbus/read/254/203/15/position');
             expect(payload.set_position_topic).toBe('cbus/write/254/203/15/position');
@@ -367,80 +299,35 @@ describe('HaDiscovery', () => {
             expect(payload.state_closed).toBe('OFF');
         });
 
-        it('should NOT mark light configs as retained (retained commands replay on reconnect and toggle devices)', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const lightCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(lightCall).toBeDefined();
-            const payload = JSON.parse(lightCall[1]);
-            // Sanity: this entity has a command topic, so its commands must never be retained
-            expect(payload.command_topic).toBe('cbus/write/254/56/10/ramp');
+        it.each([
+            ['light', 'testhomeassistant/light/cgateweb_254_56_10/config', null],
+            ['switch', 'testhomeassistant/switch/cgateweb_254_203_15/config', '203'],
+            ['cover', 'testhomeassistant/cover/cgateweb_254_203_15/config', null],
+        ])('should NOT mark %s configs as retained', (kind, topic, switchAppId) => {
+            if (switchAppId) {
+                mockSettings.ha_discovery_switch_app_id = switchAppId;
+                mockSettings.ha_discovery_cover_app_id = null;
+            }
+            publishTree(haDiscovery);
+            const payload = findDiscoveryPayload(mockPublishFn, topic);
+            expect(payload).toBeDefined();
+            if (kind === 'light') {
+                expect(payload.command_topic).toBe('cbus/write/254/56/10/ramp');
+            }
             expect(payload.retain).not.toBe(true);
         });
 
-        it('should NOT mark switch configs as retained', () => {
-            mockSettings.ha_discovery_switch_app_id = '203';
+        it.each([
+            ['PIR', 'pir', 'testhomeassistant/binary_sensor/cgateweb_254_203_15/config', '"device_class":"motion"'],
+            ['SWITCH', 'switch', 'testhomeassistant/switch/cgateweb_254_203_15/config', '"name":"Blind 1"'],
+            ['RELAY', 'relay', 'testhomeassistant/switch/cgateweb_254_203_15/config', '"device_class":"outlet"'],
+        ])('should publish %s configs when that app ID is configured', (_kind, settingKey, topic, fragment) => {
+            mockSettings[`ha_discovery_${settingKey}_app_id`] = '203';
             mockSettings.ha_discovery_cover_app_id = null;
-
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const switchCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/switch/cgateweb_254_203_15/config'
-            );
-            expect(switchCall).toBeDefined();
-            expect(JSON.parse(switchCall[1]).retain).not.toBe(true);
-        });
-
-        it('should NOT mark cover configs as retained', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            const coverCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            expect(JSON.parse(coverCall[1]).retain).not.toBe(true);
-        });
-
-        it('should publish PIR configs when PIR app ID is configured', () => {
-            mockSettings.ha_discovery_pir_app_id = '203';
-            mockSettings.ha_discovery_cover_app_id = null;
-            
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that PIR sensor configs were published
+            publishTree(haDiscovery);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/binary_sensor/cgateweb_254_203_15/config',
-                expect.stringContaining('"device_class":"motion"'),
-                { retain: true, qos: 0 }
-            );
-        });
-
-        it('should publish SWITCH configs when switch app ID is configured', () => {
-            mockSettings.ha_discovery_switch_app_id = '203';
-            mockSettings.ha_discovery_cover_app_id = null;
-            
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that switch configs were published
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/switch/cgateweb_254_203_15/config',
-                expect.stringContaining('"name":"Blind 1"'),
-                { retain: true, qos: 0 }
-            );
-        });
-
-        it('should publish RELAY configs when relay app ID is configured', () => {
-            mockSettings.ha_discovery_relay_app_id = '203';
-            mockSettings.ha_discovery_cover_app_id = null;
-
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
-
-            // Check that relay configs were published
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'testhomeassistant/switch/cgateweb_254_203_15/config',
-                expect.stringContaining('"device_class":"outlet"'),
+                topic,
+                expect.stringContaining(fragment),
                 { retain: true, qos: 0 }
             );
         });
@@ -449,7 +336,7 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // Check that event entity configs were published
             expect(mockPublishFn).toHaveBeenCalledWith(
@@ -459,11 +346,8 @@ describe('HaDiscovery', () => {
             );
 
             // Verify event entity payload structure
-            const eventCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/event/cgateweb_254_203_15/config'
-            );
-            expect(eventCall).toBeDefined();
-            const payload = JSON.parse(eventCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/event/cgateweb_254_203_15/config');
+            expect(payload).toBeDefined();
             expect(payload.event_types).toEqual(['trigger']);
             expect(payload.state_topic).toBe('cbus/read/254/203/15/event');
             expect(payload.retain).toBeUndefined();
@@ -473,13 +357,10 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
-            const buttonCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/button/cgateweb_254_203_15_btn/config'
-            );
-            expect(buttonCall).toBeDefined();
-            const payload = JSON.parse(buttonCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/button/cgateweb_254_203_15_btn/config');
+            expect(payload).toBeDefined();
             expect(payload.command_topic).toBe('cbus/write/254/203/15/trigger');
             expect(payload.payload_press).toBe('ON');
             expect(payload.unique_id).toBe('cgateweb_254_203_15_btn');
@@ -490,7 +371,7 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // There are 4 groups in app 203 — expect 4 event + 4 button entities
             const eventCalls = mockPublishFn.mock.calls.filter(
@@ -548,7 +429,7 @@ describe('HaDiscovery', () => {
         it('should handle numeric settings app IDs matching string ApplicationAddress', () => {
             mockSettings.ha_discovery_cover_app_id = 203;
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'testhomeassistant/cover/cgateweb_254_203_15/config',
@@ -1743,7 +1624,7 @@ describe('HaDiscovery', () => {
         it('publishes empty payloads to all entity discovery configs for the removed network', () => {
             mockSettings.ha_discovery_networks = ['254'];
             // Run a full discovery cycle to populate _publishedTopics
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
             const publishedBefore = mockPublishFn.mock.calls.length;
             expect(haDiscovery._publishedTopics.size).toBeGreaterThan(0);
 
@@ -1816,11 +1697,8 @@ describe('HaDiscovery', () => {
             const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelMap);
             haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const call = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(call).toBeDefined();
-            const payload = JSON.parse(call[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('My Custom Kitchen');
         });
@@ -1829,11 +1707,8 @@ describe('HaDiscovery', () => {
             const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, new Map());
             haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const call = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(call).toBeDefined();
-            const payload = JSON.parse(call[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Kitchen Light');
         });
@@ -1843,11 +1718,8 @@ describe('HaDiscovery', () => {
             const haWithLabels = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelMap);
             haWithLabels._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const call = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(call).toBeDefined();
-            const payload = JSON.parse(call[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_15/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Master Bedroom Blind');
         });
@@ -1870,7 +1742,7 @@ describe('HaDiscovery', () => {
             haDiscovery.updateLabels(new Map([['254/56/10', 'Updated Name']]));
             expect(haDiscovery.labelMap.get('254/56/10')).toBe('Updated Name');
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             const call = mockPublishFn.mock.calls.find(
                 c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
@@ -1956,11 +1828,8 @@ describe('HaDiscovery', () => {
             expect(lightCall).toBeDefined();
             expect(lightCall[1]).toBe('');
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Kitchen Blind');
             expect(payload.device_class).toBe('shutter');
@@ -1976,11 +1845,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const switchCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/switch/cgateweb_254_56_10/config'
-            );
-            expect(switchCall).toBeDefined();
-            const payload = JSON.parse(switchCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/switch/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Pond Pump');
         });
@@ -2007,11 +1873,8 @@ describe('HaDiscovery', () => {
             expect(lightCall).toBeDefined();
             expect(lightCall[1]).toBe('');
 
-            const climateCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/climate/cgateweb_254_56_12/config'
-            );
-            expect(climateCall).toBeDefined();
-            const payload = JSON.parse(climateCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/climate/cgateweb_254_56_12/config');
+            expect(payload).toBeDefined();
             expect(payload.device.name).toBe('Hallway Thermostat');
             expect(payload.current_temperature_topic).toBe('cbus/read/254/56/12/current_temperature');
             expect(payload.temperature_command_topic).toBe('cbus/write/254/56/12/setpoint');
@@ -2036,11 +1899,8 @@ describe('HaDiscovery', () => {
                 const ha = makeHa(settings, labelData);
                 ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-                const coverCall = mockPublishFn.mock.calls.find(
-                    c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
-                );
-                expect(coverCall).toBeDefined();
-                const payload = JSON.parse(coverCall[1]);
+                const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
                 expect(payload.device.name).toBe('Master Bedroom Blinds');
 
                 // The stale light config must be cleared with an empty retained payload.
@@ -2119,11 +1979,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const call = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(call).toBeDefined();
-            const payload = JSON.parse(call[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.default_entity_id).toBe('light.kitchen_light');
             expect(payload.object_id).toBe('kitchen_light');
         });
@@ -2138,11 +1995,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const call = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(call).toBeDefined();
-            const payload = JSON.parse(call[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.default_entity_id).toBeUndefined();
             expect(payload.object_id).toBeUndefined();
         });
@@ -2157,11 +2011,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_10/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.default_entity_id).toBe('cover.main_blind');
             expect(payload.object_id).toBe('main_blind');
             expect(payload.name).toBeNull();
@@ -2206,11 +2057,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const extraCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/light/cgateweb_254_56_200/config'
-            );
-            expect(extraCall).toBeDefined();
-            const payload = JSON.parse(extraCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_200/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Extra Group Not In Tree');
             expect(payload.default_entity_id).toBe('light.extra_group');
@@ -2267,11 +2115,8 @@ describe('HaDiscovery', () => {
             const ha = new HaDiscovery(mockSettings, mockPublishFn, mockSendCommandFn, labelData);
             ha._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/cover/cgateweb_254_56_200/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_56_200/config');
+            expect(payload).toBeDefined();
             expect(payload.name).toBeNull();
             expect(payload.device.name).toBe('Extra Blind');
             expect(payload.default_entity_id).toBe('cover.extra_blind');
@@ -2288,7 +2133,7 @@ describe('HaDiscovery', () => {
 
         it('should not send any cleanup messages on first run (no prior published topics)', () => {
             // Fresh instance — _publishedTopics is empty
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // All publishes should have non-empty payloads (no stale cleanup)
             const emptyPayloadCalls = mockPublishFn.mock.calls.filter(
@@ -2316,7 +2161,7 @@ describe('HaDiscovery', () => {
 
             // A TreeXML discovery run for the same network (startup scan, a
             // network-created event, an empty-tree retry, or a manual gettree).
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // Neither event-driven topic may be cleared with an empty payload.
             const cleared = mockPublishFn.mock.calls.filter(
@@ -2332,7 +2177,7 @@ describe('HaDiscovery', () => {
 
         it('should clear a discovery topic when the device is excluded on second run', () => {
             // First run: device 254/56/10 is included
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // Verify the topic was published normally in run 1
             expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
@@ -2346,7 +2191,7 @@ describe('HaDiscovery', () => {
             });
             mockPublishFn.mockClear();
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // The previously-published light topic should be cleared with an empty payload
             const staleCleanupCall = mockPublishFn.mock.calls.find(
@@ -2361,7 +2206,7 @@ describe('HaDiscovery', () => {
 
         it('should clear the old light topic when a device changes type from light to cover across runs', () => {
             // First run: device 254/56/10 published as a light
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
             expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
 
             // Second run: device 254/56/10 now has a type override to cover
@@ -2373,7 +2218,7 @@ describe('HaDiscovery', () => {
             });
             mockPublishFn.mockClear();
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // The old light topic must be cleared
             const lightCleanupCall = mockPublishFn.mock.calls.find(
@@ -2397,7 +2242,7 @@ describe('HaDiscovery', () => {
             haDiscovery._publishedTopics.add('testhomeassistant/light/cgateweb_200_56_5/config');
 
             // Run discovery for network 254 only
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // The network-200 topic must NOT be cleared
             const network200Cleanup = mockPublishFn.mock.calls.find(
@@ -2411,7 +2256,7 @@ describe('HaDiscovery', () => {
 
         it('should update _publishedTopics to reflect the new set of topics after each run', () => {
             // First run
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
             const topicsAfterRun1 = new Set(haDiscovery._publishedTopics);
             expect(topicsAfterRun1.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(true);
 
@@ -2422,7 +2267,7 @@ describe('HaDiscovery', () => {
                 entityIds: new Map(),
                 exclude: new Set(['254/56/10'])
             });
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
             // The excluded device should be removed from tracking
             expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(false);
@@ -2441,13 +2286,10 @@ describe('HaDiscovery', () => {
                 areas: new Map([['254/56/10', 'Kitchen']])
             });
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
-            const lightCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(lightCall).toBeDefined();
-            const payload = JSON.parse(lightCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBe('Kitchen');
         });
 
@@ -2460,13 +2302,10 @@ describe('HaDiscovery', () => {
                 areas: new Map()
             });
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
-            const lightCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_10/config'
-            );
-            expect(lightCall).toBeDefined();
-            const payload = JSON.parse(lightCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_10/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBeUndefined();
         });
 
@@ -2479,24 +2318,18 @@ describe('HaDiscovery', () => {
                 areas: new Map([['254/203/15', 'Lounge']])
             });
 
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_15/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBe('Lounge');
         });
 
         it('should not include suggested_area in cover device payload when area is not set', () => {
-            haDiscovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
+            publishTree(haDiscovery);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_15/config'
-            );
-            expect(coverCall).toBeDefined();
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_15/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBeUndefined();
         });
 
@@ -2531,11 +2364,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', hvacTreeData);
 
-            const hvacCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/climate/cgateweb_254_201_5/config'
-            );
-            expect(hvacCall).toBeDefined();
-            const payload = JSON.parse(hvacCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/climate/cgateweb_254_201_5/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBe('Office');
         });
 
@@ -2562,11 +2392,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', hvacTreeData);
 
-            const hvacCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/climate/cgateweb_254_201_5/config'
-            );
-            expect(hvacCall).toBeDefined();
-            const payload = JSON.parse(hvacCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/climate/cgateweb_254_201_5/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBeUndefined();
         });
 
@@ -2582,11 +2409,8 @@ describe('HaDiscovery', () => {
 
             discovery._publishDiscoveryFromTree('254', MOCK_TREEXML_RESULT_NET254);
 
-            const lightCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/light/cgateweb_254_56_11/config'
-            );
-            expect(lightCall).toBeDefined();
-            const payload = JSON.parse(lightCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/light/cgateweb_254_56_11/config');
+            expect(payload).toBeDefined();
             expect(payload.device.suggested_area).toBe('Living Room');
         });
     });
@@ -2628,12 +2452,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_5/config'
-            );
-            expect(coverCall).toBeDefined();
-
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_5/config');
+            expect(payload).toBeDefined();
             expect(payload.tilt_status_topic).toBe('cbus/read/254/204/5/tilt');
             expect(payload.tilt_command_topic).toBe('cbus/write/254/204/5/tilt');
             expect(payload.tilt_min).toBe(0);
@@ -2648,12 +2468,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_5/config'
-            );
-            expect(coverCall).toBeDefined();
-
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_5/config');
+            expect(payload).toBeDefined();
             expect(payload.tilt_status_topic).toBeUndefined();
             expect(payload.tilt_command_topic).toBeUndefined();
             expect(payload.tilt_min).toBeUndefined();
@@ -2681,12 +2497,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', tiltTreeData);
 
-            const coverCall = mockPublishFn.mock.calls.find(
-                call => call[0] === 'testhomeassistant/cover/cgateweb_254_203_6/config'
-            );
-            expect(coverCall).toBeDefined();
-
-            const payload = JSON.parse(coverCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_6/config');
+            expect(payload).toBeDefined();
             expect(payload.tilt_status_topic).toBe('cbus/read/254/204/6/tilt');
             expect(payload.tilt_command_topic).toBe('cbus/write/254/204/6/tilt');
         });
@@ -2795,11 +2607,8 @@ describe('HaDiscovery', () => {
         it('should include scene entity for second trigger group with correct command_topic', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_5_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
-            const payload = JSON.parse(sceneCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/scene/cgateweb_254_202_5_scene/config');
+            expect(payload).toBeDefined();
             expect(payload.command_topic).toBe('cbus/write/254/202/5/switch');
             expect(payload.unique_id).toBe('cgateweb_254_202_5_scene');
             expect(payload.device.name).toBe('Movie Mode');
@@ -2815,11 +2624,8 @@ describe('HaDiscovery', () => {
 
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
-            const sceneCall = mockPublishFn.mock.calls.find(
-                c => c[0] === 'testhomeassistant/scene/cgateweb_254_202_1_scene/config'
-            );
-            expect(sceneCall).toBeDefined();
-            const payload = JSON.parse(sceneCall[1]);
+            const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/scene/cgateweb_254_202_1_scene/config');
+            expect(payload).toBeDefined();
             expect(payload.default_entity_id).toBe('scene.entry_scene_scene');
             expect(payload.object_id).toBe('entry_scene_scene');
         });
@@ -2851,16 +2657,6 @@ describe('HaDiscovery — label domain-prefix types (issue #35)', () => {
         }
     };
 
-    function makeDiscovery(settings = {}, labelData = null) {
-        const publish = jest.fn();
-        const d = new HaDiscovery(
-            { ha_discovery_enabled: true, ha_discovery_prefix: 'testhomeassistant', ha_discovery_networks: ['254'], ...settings },
-            publish,
-            jest.fn(),
-            labelData
-        );
-        return { d, publish };
-    }
 
     it('publishes cover/switch entities for domain-prefixed labels when enabled', () => {
         const { d, publish } = makeDiscovery({ ha_discovery_type_from_label_prefix: true });
@@ -2925,28 +2721,7 @@ describe('HaDiscovery — entity type from the driving unit (issues #38, #37)', 
         }
     };
 
-    function makeDiscovery(settings = {}, labelData = null) {
-        const publish = jest.fn();
-        const d = new HaDiscovery(
-            { ha_discovery_enabled: true, ha_discovery_prefix: 'testhomeassistant', ha_discovery_networks: ['254'], ...settings },
-            publish,
-            jest.fn(),
-            labelData
-        );
-        return { d, publish };
-    }
 
-    // The raw published payload string, so byte-for-byte comparisons are possible.
-    function rawPayload(publish, component, group) {
-        const topic = `testhomeassistant/${component}/cgateweb_254_56_${group}/config`;
-        const call = publish.mock.calls.find(([t, payload]) => t === topic && payload);
-        return call ? call[1] : null;
-    }
-
-    function payloadFor(publish, component, group) {
-        const raw = rawPayload(publish, component, group);
-        return raw ? JSON.parse(raw) : null;
-    }
 
     it('publishes a dimmer-driven group as a light with brightness', () => {
         const { d, publish } = makeDiscovery({ ha_discovery_type_from_unit: true });
