@@ -28,11 +28,14 @@ jobs:
   #
   # run-expensive is pinned true: a release always builds every architecture and
   # runs every integration leg, whatever the diff happens to contain.
+  # require-upload-integration is true so a missing CGATE_UPLOAD_TEST_URL cannot
+  # silently skip the upload-mode C-Gate leg on a tagged release.
   quality:
     name: quality
     uses: ./.github/workflows/quality.yml
     with:
       run-expensive: true
+      require-upload-integration: true
 
   build-and-deploy:
     timeout-minutes: 20
@@ -156,6 +159,7 @@ jobs:
         VERSION: ${{ steps.version.outputs.version }}
       run: |
         node tools/validate-addon-config.js
+        node tools/validate-translations.js
         node tools/validate-schema-i18n.js
         # And prove the rewrite produced exactly one version key, set correctly.
         COUNT=$(grep -c '^version:' distribution/cgateweb/config.yaml)
