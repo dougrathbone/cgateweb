@@ -824,6 +824,7 @@ class CgateWebBridge {
                     if (reading && reading.kind === 'temperature') {
                         this.haDiscovery.ensureTemperatureDiscovery(event.getNetwork(), event.getApplication(), reading.group);
                     }
+                    this.haDiscovery.ensureUnlistedGroupDiscovery?.(event.getNetwork(), event.getApplication(), event.getGroup());
                 }
             } else {
                 this.warn(`Could not parse event line: ${redactCgateLine(line)}`);
