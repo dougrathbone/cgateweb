@@ -23,6 +23,7 @@
   "cniMonitorIntervalMs": 30000,
   "cni_offline_notification": false,
   "commandMinIntervalMs": 10,
+  "commandResponseMaxPendingTreeMessages": 500,
   "connectionPoolShutdownForceCloseMs": 1000,
   "connectionPoolSize": 3,
   "connectionPoolUnhealthyRecheckMs": 1000,
