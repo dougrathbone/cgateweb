@@ -25,6 +25,74 @@ const SYNC_TRIGGER_SLOTS = {
     resync: null
 };
 
+const SYNC_EXEMPT_KINDS = new Set(['status_request', 'arm_command_echo', 'keypad_command_echo']);
+
+/**
+ * Dispatch table for decoded security readings. Unknown kinds fall through to
+ * the system-state path (alarm panel + Live Events).
+ */
+const LINE_KIND_HANDLERS = {
+    zone(handler, reading) {
+        handler._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
+        // DEBUG, not INFO: zone changes are routine traffic and would
+        // fill the log over months on a busy panel (issue #42 feedback).
+        if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
+            handler.logger.debug(`Security zone ${reading.network}/${reading.application}/${reading.zone}: ${reading.zoneState}`);
+        }
+        handler._emitEventLog(reading.network, reading.application, reading.zone,
+            reading.zoneState === 'sealed' ? 0 : 255,
+            reading.zoneState === 'sealed' ? 'off' : 'on',
+            handler._zoneLabel(reading.network, reading.zone),
+            `Zone ${reading.zoneState}`);
+    },
+
+    status_report_1(handler, reading) {
+        handler._applyStatusReport(reading);
+    },
+
+    status_report_2(handler, reading) {
+        handler._applyStatusReport(reading);
+    },
+
+    panel_trouble(handler, reading) {
+        handler._publishPanelChanges(reading.network, reading.application,
+            handler.panelState.applyReading(reading));
+        handler._logSystemEvent(reading);
+    },
+
+    status_request(handler, reading) {
+        if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
+            handler.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
+        }
+    },
+
+    keypad_command_echo(handler, reading) {
+        if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
+            handler.logger.debug(`Security keypad echo (${reading.network}/${reading.application})`);
+        }
+    },
+
+    arm_command_echo(handler, reading) {
+        if (handler.logger.isLevelEnabled && handler.logger.isLevelEnabled('debug')) {
+            handler.logger.debug(`Security arm echo (${reading.network}/${reading.application}, mode ${reading.mode})`);
+        }
+    },
+
+    system_arm(handler, reading) {
+        handler._publishPanelChanges(reading.network, reading.application,
+            handler.panelState.applyReading(reading));
+        if (reading.mode === 0) {
+            handler._clearZoneIsolation(reading.network, reading.application);
+        }
+        handler._handleSystemStateVerb(reading);
+    },
+
+    zone_isolated(handler, reading) {
+        handler._markZoneIsolated(reading.network, reading.application, reading.zone);
+        handler._handleSystemStateVerb(reading);
+    }
+};
+
 /**
  * Decoded security reading produced by securityDecoder.decodeLine. The exact
  * fields vary by `kind`; only the ones this handler touches are listed.
@@ -215,110 +283,9 @@ class SecurityEventHandler {
         // Security traffic and the feature is enabled — consume it here.
         const reading = /** @type {SecurityReading|null} */ (securityDecoder.decodeLine(line));
         if (reading && reading.application === String(appId)) {
-            if (reading.kind === 'zone') {
-                this._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
-                // DEBUG, not INFO: zone changes are routine traffic and would
-                // fill the log over months on a busy panel (issue #42 feedback).
-                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                    this.logger.debug(`Security zone ${reading.network}/${reading.application}/${reading.zone}: ${reading.zoneState}`);
-                }
-                this._emitEventLog(reading.network, reading.application, reading.zone,
-                    reading.zoneState === 'sealed' ? 0 : 255,
-                    reading.zoneState === 'sealed' ? 'off' : 'on',
-                    this._zoneLabel(reading.network, reading.zone),
-                    `Zone ${reading.zoneState}`);
-            } else if (reading.kind === 'status_report_1' || reading.kind === 'status_report_2') {
-                // A report that says the panel is disarmed ends any armed
-                // period, so isolation recorded against it is stale. This is
-                // the reconciliation for a disarm the bridge never saw (event
-                // connection down, or the bridge restarted mid-armed-period and
-                // restored isolation from disk). Done before the zone loop so
-                // the zones in this report are published already-cleared rather
-                // than flapping isolated → not isolated.
-                if (reading.kind === 'status_report_1' && reading.armState === 0) {
-                    this._clearZoneIsolation(reading.network, reading.application,
-                        new Set(reading.zones.map((entry) => String(entry.zone))));
-                }
-                for (const entry of reading.zones) {
-                    this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
-                }
-                // Only report 1 carries the tamper and panic prefix bytes, which
-                // are the one authoritative source for those two conditions.
-                if (reading.kind === 'status_report_1') {
-                    this._publishPanelChanges(reading.network, reading.application,
-                        this.panelState.seedFromStatusReport(reading));
-                    // The same prefix carries the arm mode — this is how the
-                    // alarm panel entity learns its state after startup.
-                    this._publishAlarmTransition(reading.network, reading.application, reading);
-                }
-                this._logStatusReportSummary(reading);
-            } else if (reading.kind === 'panel_trouble') {
-                this._publishPanelChanges(reading.network, reading.application,
-                    this.panelState.applyReading(reading));
-                const description = this._describeSystemEvent(reading);
-                this.logger.info(
-                    `C-Bus Security: ${description} (${reading.network}/${reading.application})`
-                );
-                this._emitSystemEventLog(reading, description);
-            } else if (reading.kind === 'status_request') {
-                // Echo of our own request on the event port — consume quietly.
-                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                    this.logger.debug(`Security status_request echo (${reading.network}/${reading.application}, report ${reading.report})`);
-                }
-            } else if (reading.kind === 'keypad_command_echo') {
-                // Never logs the key: it is a digit of the user's PIN (#51).
-                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                    this.logger.debug(`Security keypad echo (${reading.network}/${reading.application})`);
-                }
-            } else if (reading.kind === 'arm_command_echo') {
-                // Echo of our own arm command. Deliberately does not touch the
-                // alarm state: the panel's exit_delay_started/system_arm events
-                // are the authority, so an echo must not pre-empt them (#42).
-                if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
-                    this.logger.debug(`Security arm echo (${reading.network}/${reading.application}, mode ${reading.mode})`);
-                }
-            } else {
-                // A disarm clears panic, arm failure and fire even though the
-                // panel sends no dedicated cleared verb for them, and a
-                // successful arm retires an earlier arm failure.
-                if (reading.kind === 'system_arm') {
-                    this._publishPanelChanges(reading.network, reading.application,
-                        this.panelState.applyReading(reading));
-                    // The disarm also ends the armed period isolation belongs
-                    // to. An arm deliberately does not clear it: the panel
-                    // announces its bypassed zones around the arm, and the
-                    // capture does not fix whether zone_isolated precedes or
-                    // follows system_arm — clearing here could erase an
-                    // isolation the panel had just declared.
-                    if (reading.mode === 0) {
-                        this._clearZoneIsolation(reading.network, reading.application);
-                    }
-                } else if (reading.kind === 'zone_isolated') {
-                    // The panel bypassed a zone for this armed period
-                    // (spec §5.5.1.15). cgateweb offers the bypass itself (the
-                    // '#' key button and arm_custom_bypass), so its consequence
-                    // — "armed, but that door is not covered" — has to be
-                    // visible somewhere in Home Assistant.
-                    this._markZoneIsolated(reading.network, reading.application, reading.zone);
-                }
-                // System-state verbs also drive the HA alarm_control_panel
-                // state machine (system_arm, arm_ready/not_ready,
-                // exit_delay_started, alarm_on/off).
-                this._publishAlarmTransition(reading.network, reading.application, reading);
-                // System-state verbs (arm_ready, system_arm, alarm_on/off, …):
-                // no zone MQTT state, but logged human-readably and surfaced
-                // in the Live Events stream.
-                const description = this._describeSystemEvent(reading);
-                this.logger.info(
-                    `C-Bus Security: ${description} (${reading.network}/${reading.application})`
-                );
-                this._emitSystemEventLog(reading, description);
-            }
-            // Echoes of our own commands are not panel traffic, so they must not
-            // trigger a sync — the panel's real events that follow will.
-            if (reading.kind !== 'status_request'
-                && reading.kind !== 'arm_command_echo'
-                && reading.kind !== 'keypad_command_echo') {
+            const kindHandler = LINE_KIND_HANDLERS[reading.kind] || ((h, r) => h._handleSystemStateVerb(r));
+            kindHandler(this, reading);
+            if (!SYNC_EXEMPT_KINDS.has(reading.kind)) {
                 this.requestStatusSync(reading.network, 'traffic');
             }
             return true;
@@ -330,6 +297,50 @@ class SecurityEventHandler {
             this.logger.debug(`Security line not decoded (verb pending support): ${redactCgateLine(line)}`);
         }
         return LINE_UNPARSED;
+    }
+
+    /**
+     * Apply a status-report reading: optional isolation clear on disarm,
+     * per-zone publishes, and report-1 panel/alarm seeding.
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _applyStatusReport(reading) {
+        if (reading.kind === 'status_report_1' && reading.armState === 0) {
+            this._clearZoneIsolation(reading.network, reading.application,
+                new Set(reading.zones.map((entry) => String(entry.zone))));
+        }
+        for (const entry of reading.zones) {
+            this._publishZone(reading.network, reading.application, String(entry.zone), entry.state);
+        }
+        if (reading.kind === 'status_report_1') {
+            this._publishPanelChanges(reading.network, reading.application,
+                this.panelState.seedFromStatusReport(reading));
+            this._publishAlarmTransition(reading.network, reading.application, reading);
+        }
+        this._logStatusReportSummary(reading);
+    }
+
+    /**
+     * Alarm-panel transition plus Live Events for system-state verbs.
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _handleSystemStateVerb(reading) {
+        this._publishAlarmTransition(reading.network, reading.application, reading);
+        this._logSystemEvent(reading);
+    }
+
+    /**
+     * @param {SecurityReading} reading
+     * @private
+     */
+    _logSystemEvent(reading) {
+        const description = this._describeSystemEvent(reading);
+        this.logger.info(
+            `C-Bus Security: ${description} (${reading.network}/${reading.application})`
+        );
+        this._emitSystemEventLog(reading, description);
     }
 
     /**
