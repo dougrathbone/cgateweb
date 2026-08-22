@@ -181,6 +181,21 @@ configuration:
     name: Applikasjons-ID for bryter
     description: C-Bus app-ID for brytergrupper. La stå tomt for å hoppe over
       bryteroppdagelse.
+  ha_discovery_relay_app_id:
+    name: Applikasjons-ID for relé
+    description: C-Bus app-ID der grupper blir relébrytere. La stå tomt for å hoppe over.
+  ha_discovery_pir_app_id:
+    name: Applikasjons-ID for PIR
+    description: >-
+      C-Bus app-ID der grupper blir bevegelsessensorer. Stopper også nivåsporing
+      for den appen. La stå tomt for å hoppe over.
+  ha_discovery_unlisted_groups:
+    name: Oppdag uglistede grupper
+    description: >-
+      Oppretter en Home Assistant-entitet første gang en belysningsgruppe vises
+      på bussen selv om den mangler i Toolkit-prosjektet. Av som standard:
+      sceneadresser vises også, og gjenværende discovery-oppsett må slettes fra
+      brokeren for hånd.
   ha_discovery_trigger_app_id:
     name: Applikasjons-ID for utløser
     description: >-
@@ -276,6 +291,18 @@ configuration:
       injiserte avlesninger på cbus/write/{network}/228/{device}/{channel}/data
       (payload "value,multiplier,units") — f.eks. for skriptede/virtuelle
       sensorer. Av som standard.
+  cbus_clock_enabled:
+    name: C-Bus nettverksklokke
+    description: >-
+      Dekoder klokke-kringkastinger (app 223) som to diagnostikksensorer og ber
+      C-Gate om oppdatering ved tilkobling. Kun lesing: setter aldri
+      nettverksklokken. Av som standard fordi formatet hviler på få live-opptak.
+  cbus_scene_module_enabled:
+    name: Scene Module-kommandoer
+    description: >-
+      Godtar MQTT-kommandoer som spiller av eller tar opp scener på en C-Bus
+      Scene Module. Av som standard: de fleste bruker Trigger Control, og opptak
+      overskriver modulminnet.
   ha_bridge_diagnostics_enabled:
     name: Aktiver bridge-diagnostikk
     description: >-

@@ -199,7 +199,7 @@ The poll expands to `network/application` pairs covering lighting (56) plus whic
 | `ha_discovery_networks` | `ha_discovery_networks` | number[] | `[]` | Networks to scan for discovery. In the add-on this falls back to `getall_networks` when left empty. Also drives the security zone status sync. |
 | `ha_discovery_scene_enabled` | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity per trigger group alongside the `event` and `button` entities. Set `false` to suppress scenes. |
 
-> **Add-on gating:** most `ha_discovery_*` options are only applied when `ha_discovery_enabled` is on. The deliberate exceptions are `cbus_aircon_app_id`, `cbus_security_app_id`, the three `cbus_security_*_enabled` switches and `cbus_measurement_app_id` — those publish over plain MQTT and would otherwise silently stop working for MQTT-only installs.
+> **Add-on gating:** most `ha_discovery_*` options are only applied when `ha_discovery_enabled` is on. The deliberate exceptions are `cbus_aircon_app_id`, `cbus_security_app_id`, the three `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled` and `cbus_scene_module_enabled` — those publish over plain MQTT and would otherwise silently stop working for MQTT-only installs.
 
 ---
 
@@ -227,8 +227,9 @@ Each of these maps one C-Bus application ID onto a Home Assistant entity type. A
 | `ha_discovery_cover_app_id` | `ha_discovery_cover_app_id` | string \| null | `null` | Groups become `cover` entities. `203` is the usual choice, but C-Bus calls 203 Enable Control — a general-purpose application. Only set it if your blinds really are on it. |
 | `ha_discovery_cover_tilt_app_id` | `ha_discovery_cover_tilt_app_id` | string \| null | `null` | Separate application carrying slat tilt position; adds `tilt_status_topic` to cover entities. |
 | `ha_discovery_switch_app_id` | `ha_discovery_switch_app_id` | string \| null | `null` | Groups become on/off `switch` entities. |
-| `ha_discovery_relay_app_id` | *standalone only* | string \| null | `null` | Groups become relay-backed switch entities. **No add-on option exists** — add-on users cannot set this. |
-| `ha_discovery_pir_app_id` | *standalone only* | string \| null | `null` | Groups become motion `binary_sensor` entities; also suppresses level tracking for that application. **No add-on option exists.** |
+| `ha_discovery_relay_app_id` | `ha_discovery_relay_app_id` | string \| null | `null` | Groups become relay-backed switch entities (outlet device class). |
+| `ha_discovery_pir_app_id` | `ha_discovery_pir_app_id` | string \| null | `null` | Groups become motion `binary_sensor` entities; also suppresses level tracking for that application. |
+| `ha_discovery_unlisted_groups` | `ha_discovery_unlisted_groups` | boolean | `false` | Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: unused and scene addresses also appear in the event stream, and leftover discovery configs have to be cleaned off the broker by hand. (#63) |
 | `ha_discovery_trigger_app_id` | `ha_discovery_trigger_app_id` | string \| null | `null` | Keypad/scene trigger groups. Typically `202`. Publishes an `event` entity, a companion `button`, and a `scene` when `ha_discovery_scene_enabled`. Also gates the web UI's trigger label editing. |
 | `ha_discovery_hvac_app_id` | `ha_discovery_hvac_app_id` | string \| null | `null` | Lighting-style HVAC application (level encodes temperature at 0.5 °C resolution). Distinct from the native Air Conditioning application below. |
 | `ha_hvac_temperature_unit` | `ha_hvac_temperature_unit` | `'C'` \| `'F'` | `'C'` | Unit advertised on climate entities. Anything other than `F` is treated as `C`. |
@@ -282,11 +283,21 @@ Zone sensors are read-only and on by default. Every write path is separately opt
 
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
-| `cbus_clock_enabled` | *standalone only* | boolean | `false` | Decode the network clock (`223`/`$DF`) and publish the date and time it broadcasts as two diagnostic sensors on the C-Bus network device. Off by default because the message format rests on two captured lines rather than a published specification. Reading only — cgateweb never sets the C-Bus clock. |
+| `cbus_clock_enabled` | `cbus_clock_enabled` | boolean | `false` | Decode the network clock (`223`/`$DF`) and publish the date and time it broadcasts as two diagnostic sensors on the C-Bus network device. On connect, also asks C-Gate for a clock refresh. Off by default because the message format rests on two captured lines rather than a published specification. Reading only — cgateweb never sets the C-Bus clock. |
 
 Clock traffic uses a two-segment address (network and application, no group) that the standard event parser cannot read, so these lines are kept away from it whether or not this setting is on; before this existed they were discarded entirely and could not even be captured with `cbusRawEventLogApps`.
 
 The sensors carry no `device_class`. Home Assistant's `timestamp` class wants ISO 8601 with a UTC offset, and the bus sends date and time as separate broadcasts with no timezone on either — synthesising one would mean assuming the network runs in the bridge's timezone, and a timestamp entity renders as relative time, which would make a drifted clock look like a plausible instant and hide the fault the sensor exists to reveal.
+
+---
+
+## Scene Module
+
+| Setting | Add-on option | Type | Default | Notes |
+|---|---|---|---|---|
+| `cbus_scene_module_enabled` | `cbus_scene_module_enabled` | boolean | `false` | Accept MQTT `cbus/write/{net}/{app}/{set}/play` and `/record` payloads (scene number 0–255) that become C-Gate `SCENE PLAY` / `SCENE RECORD`. Off by default: most installs use Trigger Control scenes instead, and a record write overwrites module memory. |
+
+Temperature Broadcast (app 25) reads are always decoded. Writes use `cbus/write/{net}/25/{group}/temperature` with a Celsius payload (0.0–63.75); cgateweb sends `TEMPERATURE BROADCAST` with `rawByte = round(°C × 4)`.
 
 ---
 
@@ -495,7 +506,6 @@ The one setting that is read but has no effect is `logging` — see [Logging](#l
 5. **`getall_app_periods` changes shape.** Add-on: a list of `{app_id, period_sec}`. Standalone: a plain `{ '56': 3600 }` map.
 6. **`mqtt` is composed in the add-on** from `mqtt_host` and `mqtt_port`; standalone it is a single `host:port` string.
 7. **`web_port` is standalone-only, by design.** The add-on hardcodes `ingress_port: 8080` and its watchdog to the same port, so exposing it would let a user break ingress and the Supervisor watchdog at once.
-8. **`ha_discovery_relay_app_id` and `ha_discovery_pir_app_id` are standalone-only.** There is no add-on option for either, so relay and PIR application mapping is unavailable in the add-on UI.
-9. **`mqttCertFile` and `mqttKeyFile` are standalone-only.** The add-on exposes `mqtt_ca_file` but no client certificate or key option, so mutual TLS is not configurable there.
-10. **`trace` is standalone-only.** The add-on's `log_level` schema is `list(debug|info|warn|error)`; anything else falls back to `info`.
-11. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches and `cbus_measurement_app_id` — are deliberate, so MQTT-only installs keep working.
+8. **`mqttCertFile` and `mqttKeyFile` are standalone-only.** The add-on exposes `mqtt_ca_file` but no client certificate or key option, so mutual TLS is not configurable there.
+9. **`trace` is standalone-only.** The add-on's `log_level` schema is `list(debug|info|warn|error)`; anything else falls back to `info`.
+10. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled` and `cbus_scene_module_enabled` — are deliberate, so MQTT-only installs keep working.

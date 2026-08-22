@@ -180,6 +180,23 @@ configuration:
     description: >-
       ID aplikace C-Bus pro skupiny spínačů. Ponechte prázdné pro přeskočení
       objevování spínačů.
+  ha_discovery_relay_app_id:
+    name: ID aplikace relé
+    description: >-
+      ID aplikace C-Bus, jejíž skupiny se stanou reléovými spínači. Ponechte
+      prázdné pro přeskočení.
+  ha_discovery_pir_app_id:
+    name: ID aplikace PIR
+    description: >-
+      ID aplikace C-Bus, jejíž skupiny se stanou pohybovými senzory. Také
+      zastaví sledování úrovně. Ponechte prázdné pro přeskočení.
+  ha_discovery_unlisted_groups:
+    name: Objevovat skupiny mimo projekt
+    description: >-
+      Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
+      sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
+      objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
+      ručně.
   ha_discovery_trigger_app_id:
     name: ID aplikace pro spouštěče
     description: >-
@@ -276,6 +293,18 @@ configuration:
       hodnoty přes cbus/write/{network}/228/{device}/{channel}/data (payload
       "value,multiplier,units") — např. pro skriptované/virtuální senzory. Ve
       výchozím nastavení vypnuto.
+  cbus_clock_enabled:
+    name: Síťové hodiny C-Bus
+    description: >-
+      Dekóduje vysílání hodin (aplikace 223) jako dva diagnostické senzory a při
+      připojení požádá C-Gate o obnovení. Pouze čtení: hodiny sítě nenastavuje.
+      Ve výchozím stavu vypnuto, formát stojí na málo živých záznamech.
+  cbus_scene_module_enabled:
+    name: Příkazy Scene Module
+    description: >-
+      Přijímá MQTT příkazy pro přehrání nebo nahrání scén na C-Bus Scene Module.
+      Ve výchozím stavu vypnuto: většina používá scény Trigger Control a nahrání
+      přepíše paměť modulu.
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge
     description: >-

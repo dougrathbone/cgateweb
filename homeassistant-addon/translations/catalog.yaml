@@ -2652,6 +2652,193 @@ configuration:
       uk: >-
         ID застосунку C-Bus для груп вимикачів. Залиште порожнім, щоб пропустити
         виявлення вимикачів.
+  ha_discovery_relay_app_id:
+    name:
+      en: Relay Application ID
+      de: Relais-Anwendungs-ID
+      es: ID de aplicación de relés
+      fr: ID d'application des relais
+      it: ID applicazione relè
+      nl: Relais Applicatie-ID
+      pt: ID de aplicação de relés
+      ru: ID приложения реле
+      zh: 继电器应用程序 ID
+      ja: リレーアプリケーション ID
+      ko: 릴레이 애플리케이션 ID
+      pl: ID aplikacji przekaźników
+      sv: Applikations-ID för reläer
+      no: Applikasjons-ID for relé
+      da: Applikations-ID for relæer
+      cs: ID aplikace relé
+      uk: ID застосунку реле
+    description:
+      en: C-Bus app ID whose groups become relay-backed switch entities (outlet device
+        class). Leave empty to skip.
+      de: C-Bus App-ID, deren Gruppen als relaisgestützte Schalter (Steckdose)
+        erscheinen. Leer lassen zum Überspringen.
+      es: ID de app C-Bus cuyos grupos se convierten en interruptores de relé (clase
+        outlet). Dejar vacío para omitir.
+      fr: ID d'app C-Bus dont les groupes deviennent des interrupteurs relais (classe
+        prise). Laisser vide pour ignorer.
+      it: ID app C-Bus i cui gruppi diventano interruttori a relè (classe presa).
+        Lasciare vuoto per saltare.
+      nl: C-Bus app-ID waarvan groepen relais-schakelaars worden (apparaatklasse
+        stopcontact). Laat leeg om over te slaan.
+      pt: ID de app C-Bus cujos grupos viram interruptores de relé (classe tomada).
+        Deixe vazio para ignorar.
+      ru: ID приложения C-Bus, группы которого становятся релейными выключателями.
+        Оставьте пустым, чтобы пропустить.
+      zh: 其组将成为继电器开关实体（插座设备类）的 C-Bus 应用 ID。留空以跳过。
+      ja: グループがリレー駆動のスイッチ（コンセント）になる C-Bus アプリ ID。スキップするには空のまま。
+      ko: 그룹이 릴레이 스위치(콘센트)가 되는 C-Bus 앱 ID. 건너뛰려면 비워 두세요.
+      pl: ID aplikacji C-Bus, której grupy stają się przełącznikami przekaźnikowymi.
+        Pozostaw puste, aby pominąć.
+      sv: C-Bus app-ID vars grupper blir reläbaserade strömbrytare. Lämna tomt för att
+        hoppa över.
+      no: C-Bus app-ID der grupper blir relébrytere. La stå tomt for å hoppe over.
+      da: C-Bus app-ID hvis grupper bliver relækontakter. Lad stå tomt for at springe
+        over.
+      cs: ID aplikace C-Bus, jejíž skupiny se stanou reléovými spínači. Ponechte
+        prázdné pro přeskočení.
+      uk: ID застосунку C-Bus, групи якого стають реле-вимикачами. Залиште порожнім,
+        щоб пропустити.
+
+  ha_discovery_pir_app_id:
+    name:
+      en: PIR Application ID
+      de: PIR-Anwendungs-ID
+      es: ID de aplicación PIR
+      fr: ID d'application PIR
+      it: ID applicazione PIR
+      nl: PIR Applicatie-ID
+      pt: ID de aplicação PIR
+      ru: ID приложения PIR
+      zh: PIR 应用程序 ID
+      ja: PIR アプリケーション ID
+      ko: PIR 애플리케이션 ID
+      pl: ID aplikacji PIR
+      sv: Applikations-ID för PIR
+      no: Applikasjons-ID for PIR
+      da: Applikations-ID for PIR
+      cs: ID aplikace PIR
+      uk: ID застосунку PIR
+    description:
+      en: C-Bus app ID whose groups become motion binary sensors. Also stops level
+        tracking for that application. Leave empty to skip.
+      de: C-Bus App-ID, deren Gruppen Bewegungs-Binärsensoren werden. Unterdrückt
+        Level-Abfragen für diese App. Leer lassen zum Überspringen.
+      es: ID de app C-Bus cuyos grupos se convierten en sensores binarios de
+        movimiento. También desactiva el seguimiento de nivel. Dejar vacío para
+        omitir.
+      fr: ID d'app C-Bus dont les groupes deviennent des capteurs binaires de
+        mouvement. Désactive aussi le suivi de niveau. Laisser vide pour ignorer.
+      it: ID app C-Bus i cui gruppi diventano binary_sensor di movimento. Disattiva
+        anche il tracking del livello. Lasciare vuoto per saltare.
+      nl: C-Bus app-ID waarvan groepen bewegings-binary_sensors worden. Onderdrukt ook
+        niveaumeting voor die app. Laat leeg om over te slaan.
+      pt: ID de app C-Bus cujos grupos viram sensores binários de movimento. Também
+        desativa o rastreio de nível. Deixe vazio para ignorar.
+      ru: ID приложения C-Bus, группы которого становятся датчиками движения. Также
+        отключает опрос уровня. Оставьте пустым, чтобы пропустить.
+      zh: 其组将成为运动二进制传感器的 C-Bus 应用 ID。同时停止该应用的电平跟踪。留空以跳过。
+      ja: グループがモーション binary_sensor になる C-Bus アプリ ID。そのアプリのレベル追跡も停止します。スキップするには空のまま。
+      ko: 그룹이 모션 바이너리 센서가 되는 C-Bus 앱 ID. 해당 앱의 레벨 추적도 중단됩니다. 건너뛰려면 비워 두세요.
+      pl: ID aplikacji C-Bus, której grupy stają się czujnikami ruchu. Wyłącza też
+        śledzenie poziomu. Pozostaw puste, aby pominąć.
+      sv: C-Bus app-ID vars grupper blir rörelsesensorer. Stoppar också nivåspårning
+        för den appen. Lämna tomt för att hoppa över.
+      no: C-Bus app-ID der grupper blir bevegelsessensorer. Stopper også nivåsporing
+        for den appen. La stå tomt for å hoppe over.
+      da: C-Bus app-ID hvis grupper bliver bevægelsessensorer. Stopper også
+        niveausporing for den app. Lad stå tomt for at springe over.
+      cs: ID aplikace C-Bus, jejíž skupiny se stanou pohybovými senzory. Také zastaví
+        sledování úrovně. Ponechte prázdné pro přeskočení.
+      uk: ID застосунку C-Bus, групи якого стають датчиками руху. Також зупиняє
+        відстеження рівня. Залиште порожнім, щоб пропустити.
+
+  ha_discovery_unlisted_groups:
+    name:
+      en: Discover unlisted groups
+      de: Nicht gelistete Gruppen entdecken
+      es: Descubrir grupos no listados
+      fr: Découvrir les groupes non listés
+      it: Rileva gruppi non in elenco
+      nl: Onvermelde groepen ontdekken
+      pt: Descobrir grupos não listados
+      ru: Обнаруживать группы вне проекта
+      zh: 发现未列入项目的组
+      ja: プロジェクト外グループを検出
+      ko: 프로젝트에 없는 그룹 검색
+      pl: Wykrywaj grupy spoza projektu
+      sv: Upptäck ogranskade grupper
+      no: Oppdag uglistede grupper
+      da: Opdag uglistede grupper
+      cs: Objevovat skupiny mimo projekt
+      uk: Виявляти групи поза проєктом
+    description:
+      en: "Create a Home Assistant entity the first time a lighting-style group
+        appears on the bus even if it is missing from the Toolkit project. Off by
+        default: unused and scene addresses also appear in the event stream, and
+        leftover discovery configs must be removed from the broker by hand."
+      de: "Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf dem
+        Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig aus:
+        ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
+        Discovery-Configs müssen manuell vom Broker gelöscht werden."
+      es: "Crea una entidad de Home Assistant la primera vez que un grupo de
+        iluminación aparece en el bus aunque falte en el proyecto de Toolkit.
+        Desactivado por defecto: las direcciones de escena y grupos no usados
+        también aparecen, y hay que borrar a mano las configs retenidas en el
+        broker."
+      fr: "Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur le
+        bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
+        adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
+        être retirées à la main."
+      it: "Crea un'entità Home Assistant la prima volta che un gruppo di illuminazione
+        compare sul bus anche se assente dal progetto Toolkit. Disattivato di
+        default: anche indirizzi scena e gruppi inutilizzati compaiono, e le
+        config retained vanno rimosse a mano dal broker."
+      nl: "Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
+        de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
+        uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
+        handmatig van de broker halen."
+      pt: "Cria uma entidade Home Assistant na primeira vez que um grupo de iluminação
+        aparece no barramento, mesmo ausente do projeto Toolkit. Desligado por
+        padrão: endereços de cena também aparecem, e configs retidas no broker
+        precisam ser apagadas à mão."
+      ru: "Создаёт сущность Home Assistant при первом появлении группы освещения на
+        шине, даже если её нет в проекте Toolkit. По умолчанию выкл.: адреса сцен
+        тоже видны, а retained-конфиги нужно удалять с брокера вручную."
+      zh: 总线首次出现照明类组时创建 Home Assistant 实体，即使 Toolkit
+        项目中没有该组。默认关闭：场景和未使用地址也会出现，残留的发现配置需从 MQTT 代理上手动删除。
+      ja: Toolkit プロジェクトに無くても、照明系グループがバスに現れた初回に Home Assistant
+        エンティティを作ります。既定はオフ。シーン用アドレスも流れるため、残った discovery 設定はブローカーから手で消す必要があります。
+      ko: "Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 장면
+        주소도 나타나며, 남은 검색 설정은 브로커에서 직접 지워야 합니다."
+      pl: "Tworzy encję Home Assistant, gdy grupa oświetleniowa pojawi się na
+        magistrali, nawet jeśli nie ma jej w projekcie Toolkit. Domyślnie
+        wyłączone: adresy scen też się pojawiają, a retained konfiguracje trzeba
+        usunąć ręcznie z brokera."
+      sv: "Skapar en Home Assistant-entitet första gången en belysningsgrupp syns på
+        bussen även om den saknas i Toolkit-projektet. Av som standard:
+        scenadresser syns också, och kvarvarande discovery-konfig måste tas bort
+        från brokern för hand."
+      no: "Oppretter en Home Assistant-entitet første gang en belysningsgruppe vises
+        på bussen selv om den mangler i Toolkit-prosjektet. Av som standard:
+        sceneadresser vises også, og gjenværende discovery-oppsett må slettes fra
+        brokeren for hånd."
+      da: "Opretter en Home Assistant-entitet første gang en belysningsgruppe vises på
+        bussen, også hvis den mangler i Toolkit-projektet. Fra som standard:
+        sceneadresser vises også, og tilbageholdte discovery-configs skal fjernes
+        fra brokeren i hånden."
+      cs: "Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
+        sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
+        objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
+        ručně."
+      uk: "Створює сутність Home Assistant, коли освітлювальна група вперше
+        з'являється на шині, навіть якщо її немає в проєкті Toolkit. Типово
+        вимкнено: адреси сцен теж з'являються, а retained-конфіги треба прибрати з
+        брокера вручну."
+
   ha_discovery_trigger_app_id:
     name:
       en: Trigger Application ID
@@ -4107,6 +4294,157 @@ configuration:
         cbus/write/{network}/228/{device}/{channel}/data (корисне навантаження
         "value,multiplier,units") — наприклад, для скриптових/віртуальних
         датчиків. За замовчуванням вимкнено.
+  cbus_clock_enabled:
+    name:
+      en: C-Bus network clock
+      de: C-Bus Netzwerk-Uhr
+      es: Reloj de red C-Bus
+      fr: Horloge réseau C-Bus
+      it: Orologio di rete C-Bus
+      nl: C-Bus netwerkklok
+      pt: Relógio de rede C-Bus
+      ru: Сетевые часы C-Bus
+      zh: C-Bus 网络时钟
+      ja: C-Bus ネットワーク時計
+      ko: C-Bus 네트워크 시계
+      pl: Zegar sieci C-Bus
+      sv: C-Bus nätverksklocka
+      no: C-Bus nettverksklokke
+      da: C-Bus netværksur
+      cs: Síťové hodiny C-Bus
+      uk: Мережевий годинник C-Bus
+    description:
+      en: "Decode Clock and Timekeeping broadcasts (app 223) as two diagnostic
+        sensors, and ask C-Gate for a clock refresh on connect. Read-only: this
+        never sets the network clock. Off by default because the message format
+        rests on a small live capture."
+      de: "Dekodiert Uhr-Broadcasts (App 223) als zwei Diagnosesensoren und fordert
+        beim Verbinden eine Uhr-Aktualisierung an. Nur lesen: die Netzwerkuhr wird
+        nie gesetzt. Standardmäßig aus, weil das Nachrichtenformat nur durch
+        wenige Live-Mitschnitte belegt ist."
+      es: "Decodifica los avisos de reloj (app 223) como dos sensores de diagnóstico y
+        pide a C-Gate un refresco al conectar. Solo lectura: nunca pone el reloj.
+        Desactivado por defecto porque el formato se basa en pocas capturas
+        reales."
+      fr: "Décode les diffusions d'horloge (app 223) en deux capteurs de diagnostic et
+        demande un rafraîchissement à C-Gate à la connexion. Lecture seule :
+        n'écrit jamais l'horloge. Désactivé par défaut, le format reposant sur peu
+        de captures."
+      it: "Decodifica i broadcast dell'orologio (app 223) come due sensori diagnostici
+        e chiede a C-Gate un refresh all'avvio. Sola lettura: non imposta
+        l'orologio. Disattivo di default perché il formato poggia su poche catture
+        live."
+      nl: "Decodeert klok-uitzendingen (app 223) als twee diagnosesensoren en vraagt
+        C-Gate bij verbinden om een verversing. Alleen lezen: de netwerkklok wordt
+        nooit gezet. Standaard uit omdat het berichtformaat op weinig live
+        captures rust."
+      pt: "Descodifica os broadcasts do relógio (app 223) em dois sensores de
+        diagnóstico e pede ao C-Gate um refresh ao ligar. Só leitura: nunca define
+        o relógio. Desligado por padrão porque o formato assenta em poucas
+        capturas reais."
+      ru: "Декодирует широковещания часов (приложение 223) в два диагностических
+        датчика и запрашивает обновление у C-Gate при подключении. Только чтение:
+        часы сети не задаются. По умолчанию выкл., формат подтверждён немногими
+        живыми захватами."
+      zh: 将时钟广播（应用 223）解码为两个诊断传感器，并在连接时向 C-Gate 请求刷新。只读：从不设置网络时钟。默认关闭，因为报文格式仅有少量实捕获。
+      ja: 時計ブロードキャスト（アプリ 223）を2つの診断センサーとしてデコードし、接続時に C-Gate
+        へ更新を要求します。読み取り専用で、ネットワーク時計は設定しません。実キャプチャが少ないため既定はオフです。
+      ko: "시계 브로드캐스트(앱 223)를 두 개의 진단 센서로 디코딩하고 연결 시 C-Gate에 새로고침을 요청합니다. 읽기 전용: 네트워크
+        시계를 설정하지 않습니다. 실측 캡처가 적어 기본은 꺼짐입니다."
+      pl: "Dekoduje rozgłoszenia zegara (aplikacja 223) jako dwa czujniki
+        diagnostyczne i prosi C-Gate o odświeżenie przy połączeniu. Tylko odczyt:
+        nigdy nie ustawia zegara. Domyślnie wyłączone, bo format opiera się na
+        niewielu przechwyceniach."
+      sv: "Avkodar klockutsändningar (app 223) som två diagnostiksensorer och ber
+        C-Gate om en uppdatering vid anslutning. Endast läsning: sätter aldrig
+        nätverksklockan. Av som standard eftersom formatet vilar på få
+        live-inspelningar."
+      no: "Dekoder klokke-kringkastinger (app 223) som to diagnostikksensorer og ber
+        C-Gate om oppdatering ved tilkobling. Kun lesing: setter aldri
+        nettverksklokken. Av som standard fordi formatet hviler på få
+        live-opptak."
+      da: "Afkoder ur-udsendelser (app 223) som to diagnostiske sensorer og beder
+        C-Gate om en opdatering ved forbindelse. Kun læsning: sætter aldrig
+        netværksuret. Fra som standard, fordi formatet bygger på få
+        live-optagelser."
+      cs: "Dekóduje vysílání hodin (aplikace 223) jako dva diagnostické senzory a při
+        připojení požádá C-Gate o obnovení. Pouze čtení: hodiny sítě nenastavuje.
+        Ve výchozím stavu vypnuto, formát stojí na málo živých záznamech."
+      uk: "Декодує трансляції годинника (застосунок 223) як два діагностичні сенсори й
+        просить C-Gate про оновлення під час з'єднання. Лише читання: мережевий
+        годинник не встановлює. Типово вимкнено, бо формат підтверджено небагатьма
+        захопленнями."
+
+  cbus_scene_module_enabled:
+    name:
+      en: Scene Module commands
+      de: Scene-Module-Befehle
+      es: Comandos del Scene Module
+      fr: Commandes Scene Module
+      it: Comandi Scene Module
+      nl: Scene Module-commando's
+      pt: Comandos do Scene Module
+      ru: Команды Scene Module
+      zh: Scene Module 命令
+      ja: Scene Module コマンド
+      ko: Scene Module 명령
+      pl: Polecenia Scene Module
+      sv: Scene Module-kommandon
+      no: Scene Module-kommandoer
+      da: Scene Module-kommandoer
+      cs: Příkazy Scene Module
+      uk: Команди Scene Module
+    description:
+      en: "Accept MQTT commands that play or record scenes on a C-Bus Scene Module.
+        Off by default: most installs use Trigger Control scenes instead, and a
+        record write overwrites module memory."
+      de: "Akzeptiert MQTT-Befehle zum Abspielen oder Aufzeichnen von Szenen auf einem
+        C-Bus Scene Module. Standardmäßig aus: die meisten Anlagen nutzen
+        Trigger-Control-Szenen, und Record überschreibt den Modulspeicher."
+      es: "Acepta comandos MQTT para reproducir o grabar escenas en un Scene Module
+        C-Bus. Desactivado por defecto: la mayoría usa escenas de Trigger Control,
+        y grabar sobrescribe la memoria del módulo."
+      fr: "Accepte les commandes MQTT pour jouer ou enregistrer des scènes sur un
+        Scene Module C-Bus. Désactivé par défaut : la plupart des installs
+        utilisent Trigger Control, et un enregistrement écrase la mémoire du
+        module."
+      it: "Accetta comandi MQTT per riprodurre o registrare scene su un Scene Module
+        C-Bus. Disattivo di default: la maggior parte usa scene Trigger Control, e
+        la registrazione sovrascrive la memoria del modulo."
+      nl: "Accepteert MQTT-commando's om scènes op een C-Bus Scene Module af te spelen
+        of op te nemen. Standaard uit: de meeste installs gebruiken Trigger
+        Control, en opnemen overschrijft het modulegeheugen."
+      pt: "Aceita comandos MQTT para reproduzir ou gravar cenas num Scene Module
+        C-Bus. Desligado por padrão: a maioria usa cenas de Trigger Control, e
+        gravar sobrescreve a memória do módulo."
+      ru: "Принимает MQTT-команды воспроизведения и записи сцен на C-Bus Scene Module.
+        По умолчанию выкл.: чаще используют сцены Trigger Control, а запись
+        перезаписывает память модуля."
+      zh: 接受在 C-Bus Scene Module 上播放或录制场景的 MQTT 命令。默认关闭：多数安装使用 Trigger Control
+        场景，录制会覆盖模块存储器。
+      ja: C-Bus Scene Module のシーン再生・記録 MQTT コマンドを受け付けます。既定はオフ。多くは Trigger Control
+        シーンを使い、記録はモジュールメモリを上書きします。
+      ko: "C-Bus Scene Module에서 장면을 재생하거나 녹음하는 MQTT 명령을 받습니다. 기본 꺼짐: 대부분 Trigger
+        Control 장면을 쓰며, 녹음은 모듈 메모리를 덮어씁니다."
+      pl: "Przyjmuje polecenia MQTT odtwarzania i nagrywania scen na C-Bus Scene
+        Module. Domyślnie wyłączone: większość używa scen Trigger Control, a zapis
+        nadpisuje pamięć modułu."
+      sv: "Tar emot MQTT-kommandon som spelar upp eller spelar in scener på en C-Bus
+        Scene Module. Av som standard: de flesta använder Trigger Control, och
+        inspelning skriver över modulens minne."
+      no: "Godtar MQTT-kommandoer som spiller av eller tar opp scener på en C-Bus
+        Scene Module. Av som standard: de fleste bruker Trigger Control, og opptak
+        overskriver modulminnet."
+      da: "Accepterer MQTT-kommandoer der afspiller eller optager scener på et C-Bus
+        Scene Module. Fra som standard: de fleste bruger Trigger Control, og
+        optagelse overskriver modulets hukommelse."
+      cs: "Přijímá MQTT příkazy pro přehrání nebo nahrání scén na C-Bus Scene Module.
+        Ve výchozím stavu vypnuto: většina používá scény Trigger Control a nahrání
+        přepíše paměť modulu."
+      uk: "Приймає MQTT-команди відтворення й запису сцен на C-Bus Scene Module.
+        Типово вимкнено: більшість використовує сцени Trigger Control, а запис
+        перезаписує пам'ять модуля."
+
   ha_bridge_diagnostics_enabled:
     name:
       en: Enable Bridge Diagnostics

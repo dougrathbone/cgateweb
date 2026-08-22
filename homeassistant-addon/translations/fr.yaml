@@ -197,6 +197,23 @@ configuration:
     description: >-
       ID d'app C-Bus pour les groupes d'interrupteurs. Laisser vide pour ignorer
       la découverte des interrupteurs.
+  ha_discovery_relay_app_id:
+    name: ID d'application des relais
+    description: >-
+      ID d'app C-Bus dont les groupes deviennent des interrupteurs relais
+      (classe prise). Laisser vide pour ignorer.
+  ha_discovery_pir_app_id:
+    name: ID d'application PIR
+    description: >-
+      ID d'app C-Bus dont les groupes deviennent des capteurs binaires de
+      mouvement. Désactive aussi le suivi de niveau. Laisser vide pour ignorer.
+  ha_discovery_unlisted_groups:
+    name: Découvrir les groupes non listés
+    description: >-
+      Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur
+      le bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
+      adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
+      être retirées à la main.
   ha_discovery_trigger_app_id:
     name: ID d'application pour les déclencheurs
     description: >-
@@ -298,6 +315,20 @@ configuration:
       cbus/write/{network}/228/{device}/{channel}/data (payload
       "value,multiplier,units") — par exemple pour des capteurs
       virtuels/scriptés. Désactivé par défaut.
+  cbus_clock_enabled:
+    name: Horloge réseau C-Bus
+    description: >-
+      Décode les diffusions d'horloge (app 223) en deux capteurs de diagnostic
+      et demande un rafraîchissement à C-Gate à la connexion. Lecture seule :
+      n'écrit jamais l'horloge. Désactivé par défaut, le format reposant sur peu
+      de captures.
+  cbus_scene_module_enabled:
+    name: Commandes Scene Module
+    description: >-
+      Accepte les commandes MQTT pour jouer ou enregistrer des scènes sur un
+      Scene Module C-Bus. Désactivé par défaut : la plupart des installs
+      utilisent Trigger Control, et un enregistrement écrase la mémoire du
+      module.
   ha_bridge_diagnostics_enabled:
     name: Activer les diagnostics du bridge
     description: >-

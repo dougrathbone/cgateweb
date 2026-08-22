@@ -191,6 +191,23 @@ configuration:
     description: >-
       ID app C-Bus per gruppi di interruttori. Lasciare vuoto per saltare il
       rilevamento degli interruttori.
+  ha_discovery_relay_app_id:
+    name: ID applicazione relè
+    description: >-
+      ID app C-Bus i cui gruppi diventano interruttori a relè (classe presa).
+      Lasciare vuoto per saltare.
+  ha_discovery_pir_app_id:
+    name: ID applicazione PIR
+    description: >-
+      ID app C-Bus i cui gruppi diventano binary_sensor di movimento. Disattiva
+      anche il tracking del livello. Lasciare vuoto per saltare.
+  ha_discovery_unlisted_groups:
+    name: Rileva gruppi non in elenco
+    description: >-
+      Crea un'entità Home Assistant la prima volta che un gruppo di
+      illuminazione compare sul bus anche se assente dal progetto Toolkit.
+      Disattivato di default: anche indirizzi scena e gruppi inutilizzati
+      compaiono, e le config retained vanno rimosse a mano dal broker.
   ha_discovery_trigger_app_id:
     name: ID applicazione per trigger
     description: >-
@@ -294,6 +311,19 @@ configuration:
       cbus/write/{network}/228/{device}/{channel}/data (payload
       "value,multiplier,units") — ad esempio per sensori virtuali/scriptati.
       Disattivato per impostazione predefinita.
+  cbus_clock_enabled:
+    name: Orologio di rete C-Bus
+    description: >-
+      Decodifica i broadcast dell'orologio (app 223) come due sensori
+      diagnostici e chiede a C-Gate un refresh all'avvio. Sola lettura: non
+      imposta l'orologio. Disattivo di default perché il formato poggia su poche
+      catture live.
+  cbus_scene_module_enabled:
+    name: Comandi Scene Module
+    description: >-
+      Accetta comandi MQTT per riprodurre o registrare scene su un Scene Module
+      C-Bus. Disattivo di default: la maggior parte usa scene Trigger Control, e
+      la registrazione sovrascrive la memoria del modulo.
   ha_bridge_diagnostics_enabled:
     name: Abilita diagnostica del bridge
     description: >-

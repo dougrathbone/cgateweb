@@ -187,6 +187,23 @@ configuration:
     description: >-
       C-Bus app-ID voor schakelaargroepen. Laat leeg om schakelaar-detectie over
       te slaan.
+  ha_discovery_relay_app_id:
+    name: Relais Applicatie-ID
+    description: >-
+      C-Bus app-ID waarvan groepen relais-schakelaars worden (apparaatklasse
+      stopcontact). Laat leeg om over te slaan.
+  ha_discovery_pir_app_id:
+    name: PIR Applicatie-ID
+    description: >-
+      C-Bus app-ID waarvan groepen bewegings-binary_sensors worden. Onderdrukt
+      ook niveaumeting voor die app. Laat leeg om over te slaan.
+  ha_discovery_unlisted_groups:
+    name: Onvermelde groepen ontdekken
+    description: >-
+      Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
+      de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
+      uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
+      handmatig van de broker halen.
   ha_discovery_trigger_app_id:
     name: Trigger Applicatie-ID
     description: >-
@@ -286,6 +303,19 @@ configuration:
       geïnjecteerde metingen op cbus/write/{network}/228/{device}/{channel}/data
       (payload "value,multiplier,units") — bijvoorbeeld voor gescripte/virtuele
       sensoren. Standaard uitgeschakeld.
+  cbus_clock_enabled:
+    name: C-Bus netwerkklok
+    description: >-
+      Decodeert klok-uitzendingen (app 223) als twee diagnosesensoren en vraagt
+      C-Gate bij verbinden om een verversing. Alleen lezen: de netwerkklok wordt
+      nooit gezet. Standaard uit omdat het berichtformaat op weinig live
+      captures rust.
+  cbus_scene_module_enabled:
+    name: Scene Module-commando's
+    description: >-
+      Accepteert MQTT-commando's om scènes op een C-Bus Scene Module af te
+      spelen of op te nemen. Standaard uit: de meeste installs gebruiken Trigger
+      Control, en opnemen overschrijft het modulegeheugen.
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen
     description: >-

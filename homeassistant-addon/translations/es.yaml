@@ -191,6 +191,25 @@ configuration:
     description: >-
       ID de app C-Bus para grupos de interruptores. Dejar vacío para omitir el
       descubrimiento de interruptores.
+  ha_discovery_relay_app_id:
+    name: ID de aplicación de relés
+    description: >-
+      ID de app C-Bus cuyos grupos se convierten en interruptores de relé (clase
+      outlet). Dejar vacío para omitir.
+  ha_discovery_pir_app_id:
+    name: ID de aplicación PIR
+    description: >-
+      ID de app C-Bus cuyos grupos se convierten en sensores binarios de
+      movimiento. También desactiva el seguimiento de nivel. Dejar vacío para
+      omitir.
+  ha_discovery_unlisted_groups:
+    name: Descubrir grupos no listados
+    description: >-
+      Crea una entidad de Home Assistant la primera vez que un grupo de
+      iluminación aparece en el bus aunque falte en el proyecto de Toolkit.
+      Desactivado por defecto: las direcciones de escena y grupos no usados
+      también aparecen, y hay que borrar a mano las configs retenidas en el
+      broker.
   ha_discovery_trigger_app_id:
     name: ID de aplicación para triggers
     description: >-
@@ -292,6 +311,19 @@ configuration:
       cbus/write/{network}/228/{device}/{channel}/data (payload
       "value,multiplier,units") — por ejemplo, para sensores virtuales/con
       script. Desactivado por defecto.
+  cbus_clock_enabled:
+    name: Reloj de red C-Bus
+    description: >-
+      Decodifica los avisos de reloj (app 223) como dos sensores de diagnóstico
+      y pide a C-Gate un refresco al conectar. Solo lectura: nunca pone el
+      reloj. Desactivado por defecto porque el formato se basa en pocas capturas
+      reales.
+  cbus_scene_module_enabled:
+    name: Comandos del Scene Module
+    description: >-
+      Acepta comandos MQTT para reproducir o grabar escenas en un Scene Module
+      C-Bus. Desactivado por defecto: la mayoría usa escenas de Trigger Control,
+      y grabar sobrescribe la memoria del módulo.
   ha_bridge_diagnostics_enabled:
     name: Habilitar diagnósticos del bridge
     description: >-

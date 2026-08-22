@@ -11,14 +11,14 @@ describe('defaultSettings — frozen baseline', () => {
         expect(defaultSettings).toStrictEqual(defaultSettingsSnapshot);
     });
 
-    it('exports the same 136 keys as the baseline', () => {
+    it('exports the same 138 keys as the baseline', () => {
         expect(Object.keys(defaultSettings).sort())
             .toEqual(Object.keys(defaultSettingsSnapshot).sort());
         // Bumping this count is only ever legitimate alongside a genuinely NEW
         // setting added to the fixture; a changed value for an existing key is
         // the thing this baseline exists to catch, and must never be "fixed"
         // in the fixture.
-        expect(Object.keys(defaultSettings)).toHaveLength(136);
+        expect(Object.keys(defaultSettings)).toHaveLength(138);
     });
 
     it('returns a fresh object so consumers cannot mutate the schema defaults', () => {
@@ -58,6 +58,18 @@ describe('measurement app id default', () => {
 describe('clock default', () => {
     it('defaults cbus_clock_enabled to false (opt-in; the app-223 line format is under-evidenced)', () => {
         expect(defaultSettings.cbus_clock_enabled).toBe(false);
+    });
+});
+
+describe('scene module default', () => {
+    it('defaults cbus_scene_module_enabled to false (record overwrites module memory)', () => {
+        expect(defaultSettings.cbus_scene_module_enabled).toBe(false);
+    });
+});
+
+describe('unlisted group discovery default', () => {
+    it('defaults ha_discovery_unlisted_groups to false (retained configs are hard to clean up)', () => {
+        expect(defaultSettings.ha_discovery_unlisted_groups).toBe(false);
     });
 });
 

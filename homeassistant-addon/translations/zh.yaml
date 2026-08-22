@@ -110,6 +110,17 @@ configuration:
   ha_discovery_switch_app_id:
     name: 开关应用程序 ID
     description: 用于开关组的 C-Bus 应用 ID。留空以跳过开关发现。
+  ha_discovery_relay_app_id:
+    name: 继电器应用程序 ID
+    description: 其组将成为继电器开关实体（插座设备类）的 C-Bus 应用 ID。留空以跳过。
+  ha_discovery_pir_app_id:
+    name: PIR 应用程序 ID
+    description: 其组将成为运动二进制传感器的 C-Bus 应用 ID。同时停止该应用的电平跟踪。留空以跳过。
+  ha_discovery_unlisted_groups:
+    name: 发现未列入项目的组
+    description: >-
+      总线首次出现照明类组时创建 Home Assistant 实体，即使 Toolkit
+      项目中没有该组。默认关闭：场景和未使用地址也会出现，残留的发现配置需从 MQTT 代理上手动删除。
   ha_discovery_trigger_app_id:
     name: 触发器应用程序 ID
     description: 用于触发器组（键盘、场景）的 C-Bus 应用 ID。常用值：202。留空以 跳过触发器发现。
@@ -181,6 +192,14 @@ configuration:
       cbus/read/{network}/228/{device}/{channel}/value 和 /unit，并接受通过
       cbus/write/{network}/228/{device}/{channel}/data（负载为
       "value,multiplier,units"）注入的读数——例如用于脚本/虚拟传感器。默认关闭。
+  cbus_clock_enabled:
+    name: C-Bus 网络时钟
+    description: 将时钟广播（应用 223）解码为两个诊断传感器，并在连接时向 C-Gate 请求刷新。只读：从不设置网络时钟。默认关闭，因为报文格式仅有少量实捕获。
+  cbus_scene_module_enabled:
+    name: Scene Module 命令
+    description: >-
+      接受在 C-Bus Scene Module 上播放或录制场景的 MQTT 命令。默认关闭：多数安装使用 Trigger Control
+      场景，录制会覆盖模块存储器。
   ha_bridge_diagnostics_enabled:
     name: 启用 Bridge 诊断
     description: 向 Home Assistant 发布 Bridge 健康实体（就绪状态、连接、队列深度）。 默认：启用。

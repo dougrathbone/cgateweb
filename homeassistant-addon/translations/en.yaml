@@ -174,6 +174,23 @@ configuration:
   ha_discovery_switch_app_id:
     name: Switch Application ID
     description: C-Bus app ID for switch groups. Leave empty to skip switch discovery.
+  ha_discovery_relay_app_id:
+    name: Relay Application ID
+    description: >-
+      C-Bus app ID whose groups become relay-backed switch entities (outlet
+      device class). Leave empty to skip.
+  ha_discovery_pir_app_id:
+    name: PIR Application ID
+    description: >-
+      C-Bus app ID whose groups become motion binary sensors. Also stops level
+      tracking for that application. Leave empty to skip.
+  ha_discovery_unlisted_groups:
+    name: Discover unlisted groups
+    description: >-
+      Create a Home Assistant entity the first time a lighting-style group
+      appears on the bus even if it is missing from the Toolkit project. Off by
+      default: unused and scene addresses also appear in the event stream, and
+      leftover discovery configs must be removed from the broker by hand.
   ha_discovery_trigger_app_id:
     name: Trigger Application ID
     description: >-
@@ -271,6 +288,19 @@ configuration:
       injected readings on cbus/write/{network}/228/{device}/{channel}/data
       (payload "value,multiplier,units") — e.g. for scripted/virtual sensors.
       Off by default.
+  cbus_clock_enabled:
+    name: C-Bus network clock
+    description: >-
+      Decode Clock and Timekeeping broadcasts (app 223) as two diagnostic
+      sensors, and ask C-Gate for a clock refresh on connect. Read-only: this
+      never sets the network clock. Off by default because the message format
+      rests on a small live capture.
+  cbus_scene_module_enabled:
+    name: Scene Module commands
+    description: >-
+      Accept MQTT commands that play or record scenes on a C-Bus Scene Module.
+      Off by default: most installs use Trigger Control scenes instead, and a
+      record write overwrites module memory.
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: >-
