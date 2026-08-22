@@ -1,5 +1,4 @@
 configuration:
-  # ── Required fields (always visible) ──
   cgate_mode:
     name: C-Gate Mode
     description: >-
@@ -14,8 +13,8 @@ configuration:
   cgate_project:
     name: C-Gate Project Name (required)
     description: >-
-      The name of your C-Bus project as configured in C-Gate (e.g., HOME, MYHOUSE).
-      Find this in C-Gate Toolkit under your project tree.
+      The name of your C-Bus project as configured in C-Gate (e.g., HOME,
+      MYHOUSE). Find this in C-Gate Toolkit under your project tree.
   ha_discovery_enabled:
     name: Enable Home Assistant Discovery
     description: >-
@@ -27,8 +26,6 @@ configuration:
     description: >-
       Logging verbosity. Use "info" for normal operation, "debug" for
       troubleshooting connection or discovery issues.
-
-  # ── C-Gate Connection (optional, has sensible defaults) ──
   cgate_port:
     name: C-Gate Command Port
     description: >-
@@ -39,8 +36,6 @@ configuration:
     description: >-
       TCP port for C-Gate event connections. Only change this if your C-Gate
       uses a non-standard port. Default: 20025.
-
-  # ── C-Gate Managed Mode ──
   cgate_install_source:
     name: C-Gate Install Source
     description: >-
@@ -60,15 +55,18 @@ configuration:
     name: Force C-Gate Reinstall
     description: >-
       Only used in managed mode. Once C-Gate is installed it is normally kept as
-      is. Turn this on to reinstall/upgrade C-Gate from the install source on the
-      next start (your project DBs and config are preserved). In upload mode you
-      can instead just drop a newer zip into /share/cgate and it upgrades
+      is. Turn this on to reinstall/upgrade C-Gate from the install source on
+      the next start (your project DBs and config are preserved). In upload mode
+      you can instead just drop a newer zip into /share/cgate and it upgrades
       automatically. Turn this back off after the upgrade.
-
   cgate_serial_device:
     name: Serial PCI Device (Beta)
     description: >-
-      BETA: USB-serial PC Interface (5500PC/5500PCU) support — field-tested with both interfaces. Select a detected serial device from the dropdown; prefer /dev/serial/by-id/ paths. To enter a custom path, switch the config editor to YAML mode. Requires managed mode and a C-Bus Toolkit project configured for a serial PC Interface. Report issues on GitHub (issue #28).
+      BETA: USB-serial PC Interface (5500PC/5500PCU) support — field-tested with
+      both interfaces. Select a detected serial device from the dropdown; prefer
+      /dev/serial/by-id/ paths. To enter a custom path, switch the config editor
+      to YAML mode. Requires managed mode and a C-Bus Toolkit project configured
+      for a serial PC Interface. Report issues on GitHub (issue #28).
   cgate_external_clients:
     name: External C-Gate clients
     description: >-
@@ -76,9 +74,8 @@ configuration:
       C-Bus Toolkit. Leave empty to allow only this add-on. C-Gate has no
       authentication, and program level allows reprogramming C-Bus units, so
       list specific addresses rather than a whole subnet. An octet of 255
-      matches any value, so 192.168.1.255 means the entire 192.168.1.x
-      network. You must also publish C-Gate's ports in the Network panel.
-  # ── MQTT (usually auto-detected) ──
+      matches any value, so 192.168.1.255 means the entire 192.168.1.x network.
+      You must also publish C-Gate's ports in the Network panel.
   mqtt_host:
     name: MQTT Broker Host
     description: >-
@@ -92,13 +89,13 @@ configuration:
   mqtt_username:
     name: MQTT Username
     description: >-
-      Auto-detected from the Mosquitto add-on. Only set for external brokers
-      or to override credentials.
+      Auto-detected from the Mosquitto add-on. Only set for external brokers or
+      to override credentials.
   mqtt_password:
     name: MQTT Password
     description: >-
-      Auto-detected from the Mosquitto add-on. Only set for external brokers
-      or to override credentials.
+      Auto-detected from the Mosquitto add-on. Only set for external brokers or
+      to override credentials.
   mqtt_use_tls:
     name: Enable MQTT TLS
     description: >-
@@ -108,17 +105,15 @@ configuration:
   mqtt_ca_file:
     name: MQTT CA Certificate File
     description: >-
-      Path to CA certificate for verifying the broker's TLS certificate.
-      Usually stored in /ssl/ (e.g., /ssl/ca.crt). Only needed for
-      self-signed certificates.
+      Path to CA certificate for verifying the broker's TLS certificate. Usually
+      stored in /ssl/ (e.g., /ssl/ca.crt). Only needed for self-signed
+      certificates.
   mqtt_reject_unauthorized:
     name: Verify MQTT TLS Certificate
     description: >-
       Reject connections if the broker's TLS certificate cannot be verified.
       Keep enabled for security. Only disable for self-signed certificates
       without a CA file.
-
-  # ── C-Bus Monitoring ──
   auto_discover_networks:
     name: Auto-Discover C-Bus Networks
     description: >-
@@ -128,9 +123,9 @@ configuration:
   getall_networks:
     name: C-Bus Networks to Monitor
     description: >-
-      C-Bus network IDs to poll for device states. Default: 254 (standard
-      C-Bus network for most installations). Find your network IDs in C-Gate
-      Toolkit under your project tree.
+      C-Bus network IDs to poll for device states. Default: 254 (standard C-Bus
+      network for most installations). Find your network IDs in C-Gate Toolkit
+      under your project tree.
   getall_on_start:
     name: Poll All Devices on Startup
     description: >-
@@ -139,27 +134,23 @@ configuration:
   getall_period:
     name: Poll Interval (seconds)
     description: >-
-      How often to re-poll all device states. Lower values = fresher state
-      but more C-Gate traffic. Default: 3600 (1 hour).
+      How often to re-poll all device states. Lower values = fresher state but
+      more C-Gate traffic. Default: 3600 (1 hour).
   getall_app_periods:
     name: Per-App Poll Intervals
     description: >-
-      Override the poll interval for specific C-Bus applications. Each entry
-      has an app_id (e.g., "56" for Lighting) and period_sec (0 to disable).
-
-  # ── MQTT Publishing ──
+      Override the poll interval for specific C-Bus applications. Each entry has
+      an app_id (e.g., "56" for Lighting) and period_sec (0 to disable).
   retain_reads:
     name: Retain MQTT State Messages
     description: >-
-      Set the MQTT retain flag on state messages so new subscribers
-      immediately receive last known device states. Default: disabled.
+      Set the MQTT retain flag on state messages so new subscribers immediately
+      receive last known device states. Default: disabled.
   message_interval:
     name: Command Interval (ms)
     description: >-
       Minimum delay between commands sent to C-Gate. Prevents overwhelming
       C-Gate with rapid commands. Default: 200ms.
-
-  # ── Home Assistant Discovery ──
   ha_discovery_prefix:
     name: Discovery Topic Prefix
     description: >-
@@ -173,17 +164,16 @@ configuration:
   ha_discovery_cover_app_id:
     name: Cover Application ID
     description: >-
-      C-Bus app ID for covers (blinds, shutters, garage doors). Common
-      value: 203 (Enable Control). Leave empty to skip cover discovery.
+      C-Bus app ID for covers (blinds, shutters, garage doors). Common value:
+      203 (Enable Control). Leave empty to skip cover discovery.
   ha_discovery_cover_tilt_app_id:
     name: Cover Tilt Application ID
     description: >-
-      C-Bus app ID for venetian blind tilt control. Paired by group number
-      with covers. Leave empty to skip tilt.
+      C-Bus app ID for venetian blind tilt control. Paired by group number with
+      covers. Leave empty to skip tilt.
   ha_discovery_switch_app_id:
     name: Switch Application ID
-    description: >-
-      C-Bus app ID for switch groups. Leave empty to skip switch discovery.
+    description: C-Bus app ID for switch groups. Leave empty to skip switch discovery.
   ha_discovery_trigger_app_id:
     name: Trigger Application ID
     description: >-
@@ -199,8 +189,8 @@ configuration:
     description: >-
       Automatically classify Lighting (56) groups whose label looks like a
       motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence.
-      Default: enabled.
+      instead of lights. Manual type overrides always take precedence. Default:
+      enabled.
   ha_discovery_auto_type_name_heuristics:
     name: Auto-detect Using Label Keywords
     description: >-
@@ -216,9 +206,10 @@ configuration:
   ha_discovery_hvac_app_id:
     name: HVAC Application ID
     description: >-
-      C-Bus app ID for a lighting-compatible HVAC group (PAC/touchscreen-exposed).
-      NOT the native Air Conditioning app 172 — use only for groups mirrored onto
-      a lighting-style app by a PAC or touchscreen. Leave empty to skip.
+      C-Bus app ID for a lighting-compatible HVAC group
+      (PAC/touchscreen-exposed). NOT the native Air Conditioning app 172 — use
+      only for groups mirrored onto a lighting-style app by a PAC or
+      touchscreen. Leave empty to skip.
   ha_hvac_temperature_unit:
     name: HVAC Temperature Unit
     description: >-
@@ -231,58 +222,69 @@ configuration:
       room-temperature. Decodes zone_temperature broadcasts and publishes
       current_temperature to cbus/read/{network}/172/{zone}/current_temperature.
       Off by default.
-
   cbus_aircon_control_enabled:
     name: Air Conditioning Control
     description: >-
-      Allow Home Assistant to control native C-Bus thermostats (set mode and temperature). Your thermostats still appear in Home Assistant as read-only climate entities without this — enabling it only adds the set mode/temperature commands, which write to live heating/cooling and add C-Bus traffic. Off by default. Requires the Air Conditioning Application ID to be set.
+      Allow Home Assistant to control native C-Bus thermostats (set mode and
+      temperature). Your thermostats still appear in Home Assistant as read-only
+      climate entities without this — enabling it only adds the set
+      mode/temperature commands, which write to live heating/cooling and add
+      C-Bus traffic. Off by default. Requires the Air Conditioning Application
+      ID to be set.
   cbus_security_app_id:
     name: Security Application ID
     description: >-
-      C-Bus Security application id (default 208) for alarm zone sensors. Publishes one binary sensor per zone — sealed is off; unsealed, open or short is on — and syncs the zone states on connect. Set to 0 to disable.
-
+      C-Bus Security application id (default 208) for alarm zone sensors.
+      Publishes one binary sensor per zone — sealed is off; unsealed, open or
+      short is on — and syncs the zone states on connect. Set to 0 to disable.
   cbus_security_control_enabled:
     name: Security Panel Control
     description: >-
-      Allow Home Assistant to arm the security panel (away, night, home, vacation). Arming only: C-Bus has no disarm command, so Home Assistant's Disarm button does nothing. Off by default: the arm command carries no PIN on the C-Bus network, so anything that can publish to the command topic can arm your panel. Requires the Security Application ID to be set.
+      Allow Home Assistant to arm the security panel (away, night, home,
+      vacation). Arming only: C-Bus has no disarm command, so Home Assistant's
+      Disarm button does nothing. Off by default: the arm command carries no PIN
+      on the C-Bus network, so anything that can publish to the command topic
+      can arm your panel. Requires the Security Application ID to be set.
   cbus_security_disarm_enabled:
     name: Security Panel Disarm
     description: >-
-      Also allow Home Assistant to disarm the security panel. Requires Security Panel Control. Off by default. C-Bus has no disarm command, so the PIN is typed at the panel using keypad emulation: Home Assistant shows its own keypad and sends what you type over MQTT. The PIN is not stored anywhere, but it does cross your MQTT broker on every disarm, so only enable this on a broker you trust, ideally with TLS.
+      Also allow Home Assistant to disarm the security panel. Requires Security
+      Panel Control. Off by default. C-Bus has no disarm command, so the PIN is
+      typed at the panel using keypad emulation: Home Assistant shows its own
+      keypad and sends what you type over MQTT. The PIN is not stored anywhere,
+      but it does cross your MQTT broker on every disarm, so only enable this on
+      a broker you trust, ideally with TLS.
   cbus_security_bypass_enabled:
     name: Force Arm Past Open Zones
     description: >-
-      Allow Home Assistant to force the alarm to arm when a zone is open, using the panel's # key. Requires Security Panel Control. Off by default. This is separate from arming on purpose: an alarm armed past an open door looks armed but is not covering that door, so it should be a deliberate choice. It is never automatic - the add-on will not bypass a zone on your behalf.
-
+      Allow Home Assistant to force the alarm to arm when a zone is open, using
+      the panel's # key. Requires Security Panel Control. Off by default. This
+      is separate from arming on purpose: an alarm armed past an open door looks
+      armed but is not covering that door, so it should be a deliberate choice.
+      It is never automatic - the add-on will not bypass a zone on your behalf.
   cbus_measurement_app_id:
     name: Measurement Application ID
     description: >-
-      C-Bus Measurement application id (default 228) for analogue/numeric
-      sensor readings (temperature, power, light level, etc). Publishes
+      C-Bus Measurement application id (default 228) for analogue/numeric sensor
+      readings (temperature, power, light level, etc). Publishes
       cbus/read/{network}/228/{device}/{channel}/value and /unit, and accepts
       injected readings on cbus/write/{network}/228/{device}/{channel}/data
       (payload "value,multiplier,units") — e.g. for scripted/virtual sensors.
       Off by default.
-
-
-  # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: >-
-      Publish bridge health entities (ready state, connections, queue depth)
-      to Home Assistant. Default: enabled.
+      Publish bridge health entities (ready state, connections, queue depth) to
+      Home Assistant. Default: enabled.
   ha_bridge_diagnostics_interval_sec:
     name: Diagnostics Interval (seconds)
-    description: >-
-      How often bridge diagnostic states are refreshed. Default: 60.
-
-  # ── C-Bus Network (CNI) Monitoring ──
+    description: "How often bridge diagnostic states are refreshed. Default: 60."
   cni_offline_notification:
     name: CNI Offline Notification
     description: >-
-      Raise a Home Assistant persistent notification if a C-Bus network’s CNI/PCI link goes offline, and dismiss it when it reconnects. Requires the Home Assistant add-on environment. Off by default.
-
-  # ── Stale Device Detection ──
+      Raise a Home Assistant persistent notification if a C-Bus network’s
+      CNI/PCI link goes offline, and dismiss it when it reconnects. Requires the
+      Home Assistant add-on environment. Off by default.
   stale_device_detection_enabled:
     name: Enable Stale Device Detection
     description: >-
@@ -290,36 +292,28 @@ configuration:
       Default: enabled.
   stale_device_threshold_hours:
     name: Stale Device Threshold (hours)
-    description: >-
-      Hours without a state update before a device is considered stale.
-      Default: 24.
+    description: "Hours without a state update before a device is considered stale.
+      Default: 24."
   stale_device_check_interval_sec:
     name: Stale Check Interval (seconds)
-    description: >-
-      How often to scan for stale devices. Default: 3600 (1 hour).
-
-  # ── Advanced: Connection Pool ──
+    description: "How often to scan for stale devices. Default: 3600 (1 hour)."
   connection_pool_size:
     name: Connection Pool Size
     description: >-
-      Number of parallel TCP connections to C-Gate. Increase for
-      high-throughput installations, reduce to 1 for older C-Gate. Default: 3.
+      Number of parallel TCP connections to C-Gate. Increase for high-throughput
+      installations, reduce to 1 for older C-Gate. Default: 3.
   connection_health_check_interval_sec:
     name: Health Check Interval (seconds)
-    description: >-
-      How often to verify C-Gate connections are healthy. Default: 30.
+    description: "How often to verify C-Gate connections are healthy. Default: 30."
   connection_keep_alive_interval_sec:
     name: Keep-Alive Interval (seconds)
-    description: >-
-      How often to ping C-Gate connections. Prevents silent TCP drops.
-      Default: 60.
+    description: "How often to ping C-Gate connections. Prevents silent TCP drops. Default:
+      60."
   cover_ramp_duration_sec:
     name: Cover Ramp Duration (seconds)
     description: >-
       Expected time for a cover to fully open/close. The bridge publishes
       estimated positions during this window. Default: 5.
-
-  # ── Advanced: Label File & Web API ──
   cbus_label_file:
     name: Custom Label File
     description: >-
@@ -333,8 +327,8 @@ configuration:
   web_allow_unauthenticated_mutations:
     name: Allow Unauthenticated Web Writes (Unsafe)
     description: >-
-      Allow write endpoints without an API key. Keep disabled unless you
-      fully trust network access to this add-on.
+      Allow write endpoints without an API key. Keep disabled unless you fully
+      trust network access to this add-on.
   web_allowed_origins:
     name: Allowed Web Origins (CORS)
     description: >-
@@ -342,15 +336,23 @@ configuration:
       https://ha.example.com. Leave empty to disable cross-origin access.
   web_mutation_rate_limit_per_minute:
     name: Web Write Rate Limit
-    description: >-
-      Maximum mutating API requests per minute per client. Default: 120.
+    description: "Maximum mutating API requests per minute per client. Default: 120."
   ha_discovery_type_from_label_prefix:
     name: Type From Label Prefix
     description: >-
-      Treat a group label that starts with an entity-domain prefix as that device type for discovery (e.g. cover.bedroom_shutter becomes a cover, switch.porch_light a switch). Supported prefixes: light., cover., switch., relay., pir. A manual type_overrides entry always wins. Off by default.
-
+      Treat a group label that starts with an entity-domain prefix as that
+      device type for discovery (e.g. cover.bedroom_shutter becomes a cover,
+      switch.porch_light a switch). Supported prefixes: light., cover., switch.,
+      relay., pir. A manual type_overrides entry always wins. Off by default.
   ha_discovery_type_from_unit:
     name: Set entity type from C-Bus unit type
     description: >-
-      Decide each entity's type from the C-Bus unit that drives the group, for groups whose name does not already identify a cover. Dimmer channels become dimmable lights, relay channels become on/off lights, and groups driven only by an input unit such as a bus coupler become binary sensors. Manual type_overrides entries and a cover-identifying name (e.g. blind, shutter) still take priority, since a relay can equally drive a light, a blind or a valve. Groups driven by unrecognised unit types are left unchanged. Turning this on can change the type of entities you already have.
-
+      Decide each entity's type from the C-Bus unit that drives the group, for
+      groups whose name does not already identify a cover. Dimmer channels
+      become dimmable lights, relay channels become on/off lights, and groups
+      driven only by an input unit such as a bus coupler become binary sensors.
+      Manual type_overrides entries and a cover-identifying name (e.g. blind,
+      shutter) still take priority, since a relay can equally drive a light, a
+      blind or a valve. Groups driven by unrecognised unit types are left
+      unchanged. Turning this on can change the type of entities you already
+      have.
