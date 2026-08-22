@@ -746,6 +746,24 @@ describe('CgateConnectionPool', () => {
             expect(pool.healthyConnections.has(conn)).toBe(false);
         });
 
+        it('_checkConnectionHealth pings when inactive longer than twice keep-alive', async () => {
+            await pool.start();
+            const [conn] = pool.connections;
+            conn.lastActivity = Date.now() - (pool.keepAliveInterval * 2 + 1);
+            pool._checkConnectionHealth(conn);
+            expect(conn.send).toHaveBeenCalledWith(expect.stringContaining('Health check ping'));
+            expect(pool.healthyConnections.has(conn)).toBe(true);
+        });
+
+        it('_checkConnectionHealth removes the connection when the health ping throws', async () => {
+            await pool.start();
+            const [conn] = pool.connections;
+            conn.lastActivity = Date.now() - (pool.keepAliveInterval * 2 + 1);
+            conn.send = jest.fn().mockImplementation(() => { throw new Error('write failed'); });
+            pool._checkConnectionHealth(conn);
+            expect(pool.healthyConnections.has(conn)).toBe(false);
+        });
+
         it('fires health check on interval', async () => {
             await pool.start();
             const spy = jest.spyOn(pool, '_performHealthCheck');
