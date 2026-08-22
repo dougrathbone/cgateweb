@@ -1,6 +1,8 @@
 // @ts-check
 'use strict';
 
+const { resolveClampedSetting } = require('./config/schema');
+
 /**
  * Triggers that also need the retained HA Discovery configs replayed, not just
  * state. A broker restart without persistence drops the configs, so the entities
@@ -69,7 +71,7 @@ class StateResyncCoordinator {
         this._pendingTriggers.add(trigger);
 
         if (this._pending) clearTimeout(this._pending);
-        const debounceMs = Number(this.settings.stateResyncDebounceMs) || 5000;
+        const debounceMs = resolveClampedSetting(this.settings, 'stateResyncDebounceMs', { min: 0 });
         this._pending = setTimeout(() => this._runResync(), debounceMs);
         if (typeof this._pending.unref === 'function') this._pending.unref();
         return true;

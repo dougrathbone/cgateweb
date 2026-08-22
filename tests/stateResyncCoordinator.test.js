@@ -178,4 +178,13 @@ describe('StateResyncCoordinator', () => {
             expect(commandQueue.add).not.toHaveBeenCalled();
         });
     });
+
+    describe('debounceMs of 0', () => {
+        it('preserves 0 as immediate (does not fall back to the schema default)', () => {
+            settings.stateResyncDebounceMs = 0;
+            coordinator.requestResync('ha-birth');
+            jest.advanceTimersByTime(0);
+            expect(commandQueue.add).toHaveBeenCalled();
+        });
+    });
 });

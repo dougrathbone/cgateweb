@@ -661,6 +661,32 @@ describe('EventPublisher', () => {
             jest.useRealTimers();
         });
 
+        it('preserves eventPublishDedupWindowMs of 0 (dedup disabled)', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupWindowMs: 0
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+            expect(publisher.eventPublishDedupWindowMs).toBe(0);
+        });
+
+        it('clamps zero eventPublishDedupMaxEntries to the 100-entry floor', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    eventPublishDedupMaxEntries: 0
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+            expect(publisher.eventPublishDedupMaxEntries).toBe(100);
+        });
+
         it('should suppress unchanged payloads within dedup window', () => {
             const publisher = new EventPublisher({
                 settings: {

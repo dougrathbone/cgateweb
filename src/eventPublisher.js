@@ -1,6 +1,7 @@
 // @ts-check
 const { createLogger, resolveLogLevelFromSettings } = require('./logger');
-const { clampSetting, evictOldestFifo, cbusLevelToTemperature } = require('./utils');
+const { evictOldestFifo, cbusLevelToTemperature } = require('./utils');
+const { resolveClampedSetting } = require('./config/schema');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_STATE,
@@ -386,9 +387,9 @@ class EventPublisher {
         this.labelLoader = options.labelLoader || null;
         this.coverRampTracker = options.coverRampTracker || null;
         this.onEventLog = options.onEventLog || null;
-        this.eventPublishDedupWindowMs = clampSetting(this.settings.eventPublishDedupWindowMs, 0, 0);
-        this.eventPublishDedupMaxEntries = clampSetting(this.settings.eventPublishDedupMaxEntries, 100, 5000);
-        this.topicCacheMaxEntries = clampSetting(this.settings.topicCacheMaxEntries, 100, 5000);
+        this.eventPublishDedupWindowMs = resolveClampedSetting(this.settings, 'eventPublishDedupWindowMs', { min: 0 });
+        this.eventPublishDedupMaxEntries = resolveClampedSetting(this.settings, 'eventPublishDedupMaxEntries', { min: 100 });
+        this.topicCacheMaxEntries = resolveClampedSetting(this.settings, 'topicCacheMaxEntries', { min: 100 });
         this.eventPublishCoalesce = this.settings.eventPublishCoalesce === true;
         this._recentPublishes = new Map();
         this._topicCache = new Map();

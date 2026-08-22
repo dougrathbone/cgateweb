@@ -58,6 +58,9 @@ describe('resolveClampedSetting', () => {
         expect(resolveClampedSetting({ connectionTimeout: 500 }, 'connectionTimeout', { min: 1000 })).toBe(1000);
         expect(resolveClampedSetting({ connectionTimeout: 0 }, 'connectionTimeout', { min: 1000 })).toBe(1000);
         expect(resolveClampedSetting({ connectionPoolSize: 0 }, 'connectionPoolSize', { min: 1 })).toBe(1);
+        // Interval floors used by stale-device / diagnostics: 0 clamps to min, not the schema default
+        expect(resolveClampedSetting({ stale_device_check_interval_sec: 0 }, 'stale_device_check_interval_sec', { min: 60 })).toBe(60);
+        expect(resolveClampedSetting({ ha_bridge_diagnostics_interval_sec: 0 }, 'ha_bridge_diagnostics_interval_sec', { min: 10 })).toBe(10);
     });
 
     it('returns the resolved value when no min is given', () => {
