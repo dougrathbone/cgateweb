@@ -1,0 +1,18 @@
+name: Feature request
+description: A new capability for the add-on or the standalone bridge
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: What you cannot do today in Home Assistant or on C-Bus.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: Entities, options, or behaviour. Hardware details (panel model, C-Gate version) help.
+    validations:
+      required: true

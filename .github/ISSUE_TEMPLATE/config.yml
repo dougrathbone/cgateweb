@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Add-on documentation
+    url: https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/DOCS.md
+    about: Configuration reference, MQTT topics, and troubleshooting.
+  - name: Home Assistant add-on repository
+    url: https://github.com/dougrathbone/cgateweb-homeassistant
+    about: The Supervisor add-on store repo. Do not open issues there — they are overwritten on each release.
