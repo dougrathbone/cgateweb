@@ -552,9 +552,10 @@ describe('SerialDeviceRecovery', () => {
 
         it('will not let a zero timeout mean "wait forever"', () => {
             // execFileSync reads timeout: 0 as no timeout at all, which would
-            // hand a wedged helper the whole bridge.
+            // hand a wedged helper the whole bridge. 0 now clamps to the 1s
+            // floor (not the schema default) so the bound stays load-bearing.
             const zero = new SerialDeviceRecovery({ settings: { ...SETTINGS, serialRecoveryTimeoutMs: 0 } });
-            expect(zero._timeoutMs()).toBe(defaultSettings.serialRecoveryTimeoutMs);
+            expect(zero._timeoutMs()).toBe(1000);
 
             const tiny = new SerialDeviceRecovery({ settings: { ...SETTINGS, serialRecoveryTimeoutMs: 5 } });
             expect(tiny._timeoutMs()).toBe(1000);

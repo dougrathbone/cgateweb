@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
-const { clampSetting } = require('./utils');
+const { resolveClampedSetting } = require('./config/schema');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -21,7 +21,7 @@ class HaBridgeDiagnostics {
             return;
         }
 
-        const intervalSeconds = clampSetting(this.settings.ha_bridge_diagnostics_interval_sec, 10, 60);
+        const intervalSeconds = resolveClampedSetting(this.settings, 'ha_bridge_diagnostics_interval_sec', { min: 10 });
         if (this._intervalId) {
             clearInterval(this._intervalId);
         }
