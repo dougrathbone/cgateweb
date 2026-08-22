@@ -1,6 +1,8 @@
 // @ts-check
 const http = require('http');
 const { sendJSON } = require('./httpHelpers');
+const { supervisorRequest } = require('../supervisorHttp');
+const { resolveSetting } = require('../config/schema');
 
 /**
  * Route handlers for bridge status, dashboard, HA areas, and health probes.
@@ -14,8 +16,9 @@ class StatusRoutes {
      * @param {Object|null} [options.eventStream] - Event stream instance
      * @param {number} options.activeDeviceWindowMs - Window for counting active devices
      * @param {number} options.haAreasCacheTtlMs - Cache TTL for Home Assistant areas
-     * @param {number} options.haApiTimeoutMs - Timeout for Home Assistant API calls
-     * @param {Object} options.logger - Logger instance
+ * @param {number} options.haApiTimeoutMs - Timeout for Home Assistant API calls
+ * @param {number} [options.maxDashboardDevices] - Cap on dashboard device rows
+ * @param {Object} options.logger - Logger instance
      * @param {typeof http} [options.httpModule] - Injectable http module (tests)
      */
     constructor({
@@ -26,6 +29,7 @@ class StatusRoutes {
         activeDeviceWindowMs,
         haAreasCacheTtlMs,
         haApiTimeoutMs,
+        maxDashboardDevices,
         logger,
         httpModule = http
     }) {
@@ -36,6 +40,9 @@ class StatusRoutes {
         this.activeDeviceWindowMs = activeDeviceWindowMs;
         this.haAreasCacheTtlMs = haAreasCacheTtlMs;
         this.haApiTimeoutMs = haApiTimeoutMs;
+        this.maxDashboardDevices = Number.isFinite(maxDashboardDevices) && maxDashboardDevices > 0
+            ? maxDashboardDevices
+            : resolveSetting({}, 'webDashboardMaxDevices');
         this.logger = logger;
         this._http = httpModule;
         this._haAreasCache = null;
@@ -100,7 +107,7 @@ class StatusRoutes {
             devices: {
                 total: devices.length,
                 active: devices.filter(d => d.lastSeen > Date.now() - this.activeDeviceWindowMs).length,
-                list: devices.slice(0, 200)
+                list: devices.slice(0, this.maxDashboardDevices)
             },
             recentEvents: recentEvents.length
         });
@@ -113,42 +120,37 @@ class StatusRoutes {
      * @returns {Promise<Array<{name: string, source: string}>|null>}
      */
     _fetchHaAreas(supervisorToken) {
-        return new Promise((resolve) => {
-            const tmpl = '{{ areas() | map("area_name") | list | to_json }}';
-            const postBody = JSON.stringify({ template: tmpl });
-            const req = this._http.request('http://supervisor/core/api/template', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${supervisorToken}`,
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(postBody)
-                },
-                timeout: this.haApiTimeoutMs
-            }, (resp) => {
-                let body = '';
-                resp.on('data', (chunk) => { body += chunk; });
-                resp.on('end', () => {
-                    this.logger.debug(`Area API HTTP ${resp.statusCode}, body length: ${body.length}`);
-                    let data;
-                    try { data = JSON.parse(body); } catch { resolve(null); return; }
-                    if (!Array.isArray(data)) {
-                        resolve(null);
-                        return;
-                    }
-                    const haAreas = [];
-                    for (const name of data) {
-                        if (typeof name === 'string' && name) {
-                            haAreas.push({ name, source: 'homeassistant' });
-                        }
-                    }
-                    this.logger.debug(`Area template response: count=${haAreas.length}`);
-                    resolve(haAreas);
-                });
-            });
-            req.on('error', (e) => { this.logger.warn('Area API request error:', e.message); resolve(null); });
-            req.on('timeout', () => { this.logger.warn('Area API request timeout'); req.destroy(); resolve(null); });
-            req.write(postBody);
-            req.end();
+        const tmpl = '{{ areas() | map("area_name") | list | to_json }}';
+        const postBody = JSON.stringify({ template: tmpl });
+        return supervisorRequest({
+            method: 'POST',
+            url: 'http://supervisor/core/api/template',
+            token: supervisorToken,
+            httpModule: this._http,
+            timeoutMs: this.haApiTimeoutMs,
+            body: postBody
+        }).then(({ statusCode, body }) => {
+            this.logger.debug(`Area API HTTP ${statusCode}, body length: ${body.length}`);
+            let data;
+            try { data = JSON.parse(body); } catch { return null; }
+            if (!Array.isArray(data)) {
+                return null;
+            }
+            const haAreas = [];
+            for (const name of data) {
+                if (typeof name === 'string' && name) {
+                    haAreas.push({ name, source: 'homeassistant' });
+                }
+            }
+            this.logger.debug(`Area template response: count=${haAreas.length}`);
+            return haAreas;
+        }).catch((e) => {
+            if (e && e.message === 'Timeout') {
+                this.logger.warn('Area API request timeout');
+            } else {
+                this.logger.warn('Area API request error:', e && e.message);
+            }
+            return null;
         });
     }
 

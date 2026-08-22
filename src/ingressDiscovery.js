@@ -1,7 +1,7 @@
 // @ts-check
-const httpDefault = require('http');
 const { backoffDelay } = require('./backoff');
 const { resolveSetting } = require('./config/schema');
+const { supervisorJson } = require('./supervisorHttp');
 
 /**
  * Fetch this add-on's own info from the Supervisor API. Every installed add-on
@@ -11,30 +11,15 @@ const { resolveSetting } = require('./config/schema');
  *
  * @param {Object} options
  * @param {string} [options.token] - Supervisor token
- * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
- * @param {number} [options.timeoutMs=5000] - per-request timeout
+ * @param {Object} [options.httpModule] - http implementation override (testing)
+ * @param {number} [options.timeoutMs] - per-request timeout
  */
-function _fetchAddonInfo({ token, httpModule = httpDefault, timeoutMs = 5000 } = {}) {
-    return new Promise((resolve, reject) => {
-        const req = httpModule.get('http://supervisor/addons/self/info', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        }, (res) => {
-            let body = '';
-            res.on('data', (chunk) => { body += chunk; });
-            res.on('end', () => {
-                if (res.statusCode !== 200) {
-                    reject(new Error(`Supervisor API returned ${res.statusCode}`));
-                    return;
-                }
-                try {
-                    resolve(JSON.parse(body));
-                } catch (err) {
-                    reject(new Error(`Invalid Supervisor API response: ${err.message}`));
-                }
-            });
-        });
-        req.on('error', reject);
-        req.setTimeout(timeoutMs, () => { req.destroy(); reject(new Error('Timeout')); });
+function _fetchAddonInfo({ token, httpModule, timeoutMs } = {}) {
+    return supervisorJson({
+        url: 'http://supervisor/addons/self/info',
+        token,
+        httpModule,
+        timeoutMs
     });
 }
 
@@ -48,7 +33,7 @@ function _fetchAddonInfo({ token, httpModule = httpDefault, timeoutMs = 5000 } =
  *
  * @param {object} [options]
  * @param {string} [options.token] - the SUPERVISOR_TOKEN injected into the add-on container
- * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
+ * @param {typeof import('http')} [options.httpModule] - http implementation override (testing)
  * @param {number} [options.timeoutMs] - per-request timeout (schema: ingressDiscoveryTimeoutMs)
  * @param {number} [options.attempts] - total attempts before giving up (schema: ingressDiscoveryAttempts)
  * @param {number} [options.initialRetryDelayMs] - base delay for the retry backoff (schema: ingressDiscoveryInitialRetryDelayMs)

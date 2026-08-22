@@ -1,6 +1,6 @@
 // @ts-check
-const httpDefault = require('http');
 const { resolveSetting } = require('./config/schema');
+const { supervisorRequest } = require('./supervisorHttp');
 
 /**
  * Thin helper for creating/dismissing Home Assistant persistent notifications
@@ -15,43 +15,27 @@ const { resolveSetting } = require('./config/schema');
  * @param {Object} body - JSON body for the service call
  * @param {Object} options
  * @param {string} [options.token] - Supervisor token
- * @param {typeof httpDefault} [options.httpModule] - http implementation override (testing)
+ * @param {Object} [options.httpModule] - http implementation override (testing)
  * @param {number} [options.timeoutMs=5000] - request timeout
  * @private
  */
-function _postService(domainService, body, { token, httpModule = httpDefault, timeoutMs } = {}) {
+function _postService(domainService, body, { token, httpModule, timeoutMs } = {}) {
     const effectiveTimeoutMs = timeoutMs !== undefined
         ? timeoutMs
         : resolveSetting({}, 'haNotifierTimeoutMs');
-    return new Promise((resolve, reject) => {
-        const data = JSON.stringify(body);
-        const req = httpModule.request(
-            `http://supervisor/core/api/services/${domainService}`,
-            {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(data)
-                },
-                timeout: effectiveTimeoutMs
-            },
-            (res) => {
-                let bodyText = '';
-                res.on('data', (chunk) => { bodyText += chunk; });
-                res.on('end', () => resolve({ statusCode: res.statusCode, body: bodyText }));
-            }
-        );
-        req.on('error', reject);
-        req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-        req.write(data);
-        req.end();
+    return supervisorRequest({
+        method: 'POST',
+        url: `http://supervisor/core/api/services/${domainService}`,
+        token,
+        httpModule,
+        timeoutMs: effectiveTimeoutMs,
+        body
     });
 }
 
 /**
  * Create (or replace, by notification_id) an HA persistent notification.
- * @param {{notificationId:string, title:string, message:string, token:string, httpModule?:typeof httpDefault, timeoutMs?:number}} opts
+ * @param {{notificationId:string, title:string, message:string, token:string, httpModule?:object, timeoutMs?:number}} opts
  */
 function createPersistentNotification({ notificationId, title, message, token, httpModule, timeoutMs }) {
     return _postService(
@@ -63,7 +47,7 @@ function createPersistentNotification({ notificationId, title, message, token, h
 
 /**
  * Dismiss a previously-created persistent notification by id.
- * @param {{notificationId:string, token:string, httpModule?:typeof httpDefault, timeoutMs?:number}} opts
+ * @param {{notificationId:string, token:string, httpModule?:object, timeoutMs?:number}} opts
  */
 function dismissPersistentNotification({ notificationId, token, httpModule, timeoutMs }) {
     return _postService(
