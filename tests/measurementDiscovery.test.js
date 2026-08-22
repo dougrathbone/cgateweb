@@ -1,4 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { findDiscoveryPayload } = require('./helpers/discovery');
 const { decodeChannelData } = require('../src/applicationDecoders/measurementDecoder');
 
 describe('HaDiscovery — app 228 measurement sensors', () => {
@@ -21,9 +22,8 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
 
     it('publishes a measurement sensor pointing at the value topic, with unit/device_class from the reading', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config');
-        expect(call).toBeDefined();
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_0/config');
+        expect(payload).toBeDefined();
         expect(payload.device_class).toBe('power');
         expect(payload.state_class).toBe('measurement');
         expect(payload.unit_of_measurement).toBe('W');
@@ -39,8 +39,7 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
     it('publishes an energy sensor with total_increasing, not measurement', () => {
         const wh = decodeChannelData({ device: 2, channel: 0, value: 1200, multiplier: 0, unitsCode: 37 });
         d.ensureMeasurementDiscovery('254', '228', '2', '0', wh);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_2_0/config');
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_2_0/config');
         expect(payload.device_class).toBe('energy');
         expect(payload.unit_of_measurement).toBe('Wh');
         expect(payload.state_class).toBe('total_increasing');
@@ -49,22 +48,20 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
     it('keeps state_class measurement for a non-energy reading from the decoder', () => {
         const watts = decodeChannelData({ device: 3, channel: 0, value: 5042, multiplier: 0, unitsCode: 38 });
         d.ensureMeasurementDiscovery('254', '228', '3', '0', watts);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_3_0/config');
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_3_0/config');
         expect(payload.device_class).toBe('power');
         expect(payload.state_class).toBe('measurement');
     });
 
     it('falls back to state_class measurement when the reading carries none', () => {
         d.ensureMeasurementDiscovery('254', '228', '4', '0', { unit: 'lx', deviceClass: 'illuminance' });
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_4_0/config');
-        expect(JSON.parse(call[1]).state_class).toBe('measurement');
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_4_0/config');
+        expect(payload.state_class).toBe('measurement');
     });
 
     it('omits device_class/unit_of_measurement for a unitless reading', () => {
         d.ensureMeasurementDiscovery('254', '228', '1', '0', { unit: null, deviceClass: null });
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_1_0/config');
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_1_0/config');
         expect(payload.device_class).toBeUndefined();
         expect(payload.unit_of_measurement).toBeUndefined();
     });
@@ -100,8 +97,7 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
             { labels: new Map([['254/228/0/0', 'Solar Inverter Power']]) }
         );
         labelled.ensureMeasurementDiscovery('254', '228', '0', '0', reading);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config');
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_0/config');
         expect(payload.device.name).toBe('Solar Inverter Power');
     });
 

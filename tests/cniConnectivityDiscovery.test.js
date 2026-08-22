@@ -1,4 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { findDiscoveryPayload } = require('./helpers/discovery');
 
 describe('HaDiscovery — CNI connectivity binary_sensor', () => {
     let publishFn;
@@ -18,9 +19,8 @@ describe('HaDiscovery — CNI connectivity binary_sensor', () => {
 
     it('publishes a connectivity binary_sensor pointing at the cni state topic', () => {
         expect(d.ensureNetworkConnectivityDiscovery('254')).toBe(true);
-        const call = publishFn.mock.calls.find(c => c[0] === 'homeassistant/binary_sensor/cgateweb_254_cni/config');
-        expect(call).toBeDefined();
-        const payload = JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, 'homeassistant/binary_sensor/cgateweb_254_cni/config');
+        expect(payload).toBeDefined();
         expect(payload.device_class).toBe('connectivity');
         expect(payload.state_topic).toBe('cbus/read/254/cni/state');
         expect(payload.payload_on).toBe('ON');

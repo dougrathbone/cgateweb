@@ -1,4 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
+const { findDiscoveryPayload } = require('./helpers/discovery');
 
 const DATE_TOPIC = 'homeassistant/sensor/cgateweb_254_223_clock_date/config';
 const TIME_TOPIC = 'homeassistant/sensor/cgateweb_254_223_clock_time/config';
@@ -8,9 +9,9 @@ describe('HaDiscovery — app 223 network clock sensors', () => {
     let d;
 
     const payloadAt = (topic) => {
-        const call = publishFn.mock.calls.find(c => c[0] === topic);
-        expect(call).toBeDefined();
-        return JSON.parse(call[1]);
+        const payload = findDiscoveryPayload(publishFn, topic);
+        expect(payload).toBeDefined();
+        return payload;
     };
 
     beforeEach(() => {
