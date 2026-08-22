@@ -213,9 +213,9 @@ class CommandResponseProcessor {
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
                 } else if (responseCode === '200' || responseCode === '201') {
-                    this.logger.debug(`C-Gate info ${responseCode}: ${statusData}`);
+                    this.logger.debug(`C-Gate info ${responseCode}: ${this._safeStatusData(statusData)}`);
                 } else {
-                    this.logger.debug(`Unhandled C-Gate response ${responseCode}: ${statusData}`);
+                    this.logger.debug(`Unhandled C-Gate response ${responseCode}: ${this._safeStatusData(statusData)}`);
                 }
         }
     }
@@ -238,12 +238,12 @@ class CommandResponseProcessor {
         const data = statusData || '';
         const lifecycle = data.match(/Network (created|removed|deleted)/i);
         if (!lifecycle) {
-            this.logger.debug(`C-Gate system event 742 (no action): ${data}`);
+            this.logger.debug(`C-Gate system event 742 (no action): ${this._safeStatusData(data)}`);
             return;
         }
         const pathMatch = data.match(CGATE_NETWORK_PATH);
         if (!pathMatch) {
-            this.logger.debug(`C-Gate system event 742 (${lifecycle[1]}, but no network id parsed): ${data}`);
+            this.logger.debug(`C-Gate system event 742 (${lifecycle[1]}, but no network id parsed): ${this._safeStatusData(data)}`);
             return;
         }
         if (!this._haDiscovery) return;
@@ -269,7 +269,7 @@ class CommandResponseProcessor {
         const data = statusData || '';
         const pathMatch = data.match(CGATE_NETWORK_PATH);
         if (!pathMatch) {
-            this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${data}`);
+            this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${this._safeStatusData(data)}`);
             return;
         }
         if (this._haDiscovery) this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
@@ -300,7 +300,7 @@ class CommandResponseProcessor {
                 this.onObjectStatus(event);
             }
         } else {
-            this.logger.warn(`Could not parse object status: ${statusData}`);
+            this.logger.warn(`Could not parse object status: ${this._safeStatusData(statusData)}`);
         }
     }
 
@@ -346,7 +346,7 @@ class CommandResponseProcessor {
                 case '503': hint = ' (Service Unavailable)'; break;
             }
 
-            const detail = statusData ? statusData : 'No details provided';
+            const detail = statusData ? this._safeStatusData(statusData) : 'No details provided';
             const message = `${baseMessage}${hint} - ${detail}`;
             if (isWarn) {
                 this.logger.warn(message);
@@ -358,6 +358,18 @@ class CommandResponseProcessor {
         if (this.onCommandError) {
             this.onCommandError(responseCode, statusData);
         }
+    }
+
+    /**
+     * C-Gate 4xx/5xx bodies (and some 200/742/762 payloads) can echo the
+     * command that failed, including keypad digits and LOGIN passwords.
+     * Callbacks still receive the raw body; only the log line is redacted.
+     * @param {string|null|undefined} statusData
+     * @returns {string}
+     * @private
+     */
+    _safeStatusData(statusData) {
+        return redactCgateLine(String(statusData ?? ''));
     }
 
     /**
