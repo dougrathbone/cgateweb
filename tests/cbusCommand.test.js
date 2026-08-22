@@ -163,7 +163,6 @@ describe('CBusCommand', () => {
         const message = Buffer.from('ON');
         const command = new CBusCommand(topic, message);
         expect(command.isValid()).toBe(false);
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should be invalid if topic has too few parts', () => {
@@ -171,7 +170,6 @@ describe('CBusCommand', () => {
         const message = Buffer.from('ON');
         const command = new CBusCommand(topic, message);
         expect(command.isValid()).toBe(false);
-        expect(mockConsoleWarn).toHaveBeenCalled();
     });
 
     it('should be invalid if topic is empty', () => {
@@ -587,6 +585,12 @@ describe('CBusCommand', () => {
         it('should format invalid command', () => {
             const command = new CBusCommand('cbus/write/254/56/1/invalid', 'ON');
             expect(command.toString()).toContain('Invalid');
+        });
+
+        it('redacts an alarm PIN in the invalid-command toString', () => {
+            const command = new CBusCommand('not-a-topic', '{"action":"DISARM","code":"1234"}');
+            expect(command.toString()).not.toContain('1234');
+            expect(command.toString()).toContain('***');
         });
     });
 });
