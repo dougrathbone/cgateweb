@@ -140,13 +140,34 @@ jobs:
           "ghcr.io/dougrathbone/cgateweb:${VERSION}-armhf" \
           "ghcr.io/dougrathbone/cgateweb:${VERSION}-i386"
 
+    # GHCR packages default to private on first publish. Supervisor pulls
+    # anonymously, so a private package would make the advertised version
+    # uninstallable. This is a no-op once the package is already public.
+    - name: Make the package public
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        if ! gh api --method POST \
+          "/user/packages/container/cgateweb/visibility" \
+          -f visibility=public; then
+          echo "::error::Could not make ghcr.io/dougrathbone/cgateweb public. Open Package settings and set visibility to Public, then re-run this workflow."
+          exit 1
+        fi
+
     - name: Verify users can pull the image anonymously
       env:
         VERSION: ${{ github.ref_name }}
       run: |
         VERSION=${VERSION#v}
         docker logout ghcr.io
-        docker buildx imagetools inspect "ghcr.io/dougrathbone/cgateweb:${VERSION}"
+        for i in 1 2 3 4 5; do
+          if docker buildx imagetools inspect "ghcr.io/dougrathbone/cgateweb:${VERSION}"; then
+            exit 0
+          fi
+          sleep $((i * 5))
+        done
+        echo "::error::Anonymous inspect of ghcr.io/dougrathbone/cgateweb:${VERSION} failed. The package must be public."
+        exit 1
 
   build-and-deploy:
     timeout-minutes: 20

@@ -24,7 +24,7 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 ### Changed
 
-- **Home Assistant now downloads a tested prebuilt image** instead of building the add-on on your device, making installs and upgrades faster and more reliable with fewer disk writes.
+- **Home Assistant now downloads a tested prebuilt image** instead of building the add-on on your device, making installs and upgrades faster and more reliable with fewer disk writes. If an existing install still builds locally, uninstall and reinstall the add-on once.
 
 ### Security
 
