@@ -51,8 +51,7 @@ class StatusRoutes {
         sendJSON(res, 200, {
             ...status,
             labels: {
-                count: Object.keys(labels).length,
-                filePath: this.labelLoader.filePath
+                count: Object.keys(labels).length
             }
         });
     }
