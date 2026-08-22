@@ -16,7 +16,7 @@ name: cgateweb-test
 
 services:
   supervisor:
-    image: python:3.12-alpine
+    image: python:3.12.10-alpine
     command: python /server.py
     volumes:
       - ./mock-supervisor/server.py:/server.py:ro
@@ -31,7 +31,7 @@ services:
       context: ..
       dockerfile: test-env/Dockerfile
       args:
-        BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.19
+        BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.21
         BUILD_ARCH: amd64
         BUILD_DATE: "2026-01-01T00:00:00Z"
         BUILD_REF: "local-test"
@@ -56,7 +56,7 @@ services:
       - SYS_PTRACE
 
   mqtt:
-    image: eclipse-mosquitto:2.0
+    image: eclipse-mosquitto:2.0.22
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     ports:
