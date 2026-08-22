@@ -1,0 +1,45 @@
+name: Bug report
+description: Something is not working in the add-on or the standalone bridge
+labels: [bug]
+body:
+  - type: dropdown
+    id: install
+    attributes:
+      label: How are you running cgateweb?
+      options:
+        - Home Assistant add-on
+        - Standalone (Node.js / systemd)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Add-on version from the Info tab, or `package.json` for standalone.
+      placeholder: "1.27.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Add-on Log tab, or journalctl / stdout. Redact PINs, MQTT passwords, and C-Gate passwords.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: Only the options that matter. Redact credentials. For the add-on, a screenshot of the Configuration tab with secrets hidden is fine.
+      render: yaml
+    validations:
+      required: false
