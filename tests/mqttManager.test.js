@@ -494,6 +494,12 @@ describe('MqttManager', () => {
                 expect(mqttManager.haStatusTopic).toBe('somewhere/else');
             });
 
+            it('treats an empty haStatusTopic as unset', () => {
+                mqttManager.settings.haStatusTopic = '';
+                mqttManager._haStatusTopic = null;
+                expect(mqttManager.haStatusTopic).toBe('homeassistant/status');
+            });
+
             it('emits haOnline for an online birth payload, not a generic message', () => {
                 const onHaOnline = jest.fn();
                 const onMessage = jest.fn();

@@ -327,7 +327,7 @@ The web server hosts the status page and the label-editing API. Under the add-on
 | `web_port` | *standalone only in practice* | integer | `8080` | Listen port. `addonOptionMap` has a `web_port` rule, but **`config.yaml` declares no such option**, so add-on users cannot set it; Ingress uses 8080 regardless. |
 | `web_bind_host` | *forced in add-on* | string | `127.0.0.1` | Bind address. **Loopback by default deliberately** — the API can modify your labels. The add-on forces `0.0.0.0` because the Ingress proxy connects from outside the container's loopback. Change it standalone only if you understand what you are exposing. |
 | `web_api_key` | `web_api_key` | string \| null | `null` | **Security-sensitive.** API key required for `POST`/`PUT`/`PATCH` on label endpoints when reached directly (not via Ingress). Set this whenever the port is reachable from anywhere but localhost. |
-| `web_allow_unauthenticated_mutations` | `web_allow_unauthenticated_mutations` | boolean | `false` | **Security-sensitive.** Unsafe override allowing writes with no authentication at all. Anyone who can reach `web_port` can rewrite your labels. Leave off unless the port is genuinely isolated. |
+| `web_allow_unauthenticated_mutations` | `web_allow_unauthenticated_mutations` | boolean | `false` | **Security-sensitive.** Unsafe override allowing writes with no authentication at all. Only takes effect when the web server binds loopback; the add-on binds all interfaces for Ingress, so a host-mapped port needs an API key. |
 | `web_allowed_origins` | `web_allowed_origins` | string[] \| string \| null | `null` | CORS allowlist of browser origins, e.g. `['https://ha.example.com']`. A comma-separated string is accepted standalone. Empty/null blocks all cross-origin access. |
 | `web_mutation_rate_limit_per_minute` | `web_mutation_rate_limit_per_minute` | integer | `120` | Per-client write rate limit on mutating endpoints, over a fixed 60 s window. |
 | `web_read_rate_limit_per_minute` | *standalone only* | integer | `300` | Per-client read rate limit on non-mutating web endpoints, over `webRateLimitWindowMs`. Passed through to the web server as `maxReadRequestsPerWindow`. |
@@ -470,7 +470,7 @@ Anything below can cause a write to real hardware, or removes a control on who m
 | `cbus_security_control_enabled` | Anything that can publish to the panel command topic can **arm** the alarm. The C-Bus arm command carries no PIN. |
 | `cbus_security_disarm_enabled` | Adds **disarm**. The PIN is replayed through keypad emulation and therefore crosses the MQTT broker in the command payload on every disarm. Anyone who can read that topic learns the PIN. |
 | `cbus_security_bypass_enabled` | Allows arming **past an open zone**. The panel reports armed while a door or window is not actually covered. |
-| `web_allow_unauthenticated_mutations` | Removes authentication from the label-editing API entirely. Anyone who can reach `web_port` can rewrite labels. |
+| `web_allow_unauthenticated_mutations` | Removes authentication from the label-editing API entirely when the server binds loopback. Ignored on non-loopback binds, including the add-on. |
 | `web_bind_host` | Moving off `127.0.0.1` exposes the API. Pair with `web_api_key`. |
 | `web_api_key` | Leaving it `null` on an exposed port means writes are refused (safe) — but combined with the override above, writes are open. |
 | `mqttRejectUnauthorized` | Setting `false` disables broker certificate verification and permits a man-in-the-middle. |

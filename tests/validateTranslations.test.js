@@ -16,7 +16,8 @@ const {
     buildLocaleDoc,
     stringifyLocaleDoc,
     generateLocaleYamlMap,
-    localesInCatalog
+    localesInCatalog,
+    validateCatalogCompleteness
 } = require('../tools/generate-translations');
 
 describe('validate-translations', () => {
@@ -199,5 +200,20 @@ describe('generate-translations', () => {
             expect(collectKeys(parsed)).toEqual(enKeys);
             expect(parsed.configuration.log_level.name).toBe(`Log ${locale}`);
         }
+    });
+
+    it('flags a locale missing from an option description', () => {
+        const catalog = {
+            configuration: {
+                cgate_mode: {
+                    name: Object.fromEntries(SUPPORTED_LOCALES.map((l) => [l, `Mode ${l}`])),
+                    description: Object.fromEntries(
+                        SUPPORTED_LOCALES.filter((l) => l !== 'de').map((l) => [l, `Desc ${l}`])
+                    )
+                }
+            }
+        };
+        const errors = validateCatalogCompleteness(catalog);
+        expect(errors.some((e) => e.includes('cgate_mode.description.de'))).toBe(true);
     });
 });

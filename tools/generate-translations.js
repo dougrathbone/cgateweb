@@ -122,6 +122,40 @@ function stringifyLocaleDoc(doc) {
 }
 
 /**
+ * Every option must have a non-empty name and description for every supported locale.
+ * @param {Object} catalog
+ * @returns {string[]}
+ */
+function validateCatalogCompleteness(catalog) {
+    const errors = [];
+    for (const [section, options] of Object.entries(catalog || {})) {
+        if (!options || typeof options !== 'object') {
+            continue;
+        }
+        for (const [optionKey, fields] of Object.entries(options)) {
+            if (!fields || typeof fields !== 'object') {
+                errors.push(`${section}.${optionKey}: expected name and description maps`);
+                continue;
+            }
+            for (const field of ['name', 'description']) {
+                const byLocale = fields[field];
+                if (!byLocale || typeof byLocale !== 'object') {
+                    errors.push(`${section}.${optionKey}.${field}: missing locale map`);
+                    continue;
+                }
+                for (const locale of SUPPORTED_LOCALES) {
+                    const text = byLocale[locale];
+                    if (typeof text !== 'string' || text.trim() === '') {
+                        errors.push(`${section}.${optionKey}.${field}.${locale}: missing`);
+                    }
+                }
+            }
+        }
+    }
+    return errors;
+}
+
+/**
  * Generate YAML text for every supported locale.
  * @returns {{ [locale: string]: string }}
  */
@@ -172,5 +206,6 @@ module.exports = {
     buildLocaleDoc,
     stringifyLocaleDoc,
     generateLocaleYamlMap,
-    writeGeneratedLocales
+    writeGeneratedLocales,
+    validateCatalogCompleteness
 };

@@ -61,6 +61,7 @@ const {
     entityIdFields
 } = require('./constants');
 const { PANEL_CONDITIONS } = require('./securityPanelConditions');
+const { resolveSetting } = require('./config/schema');
 
 const NATIVE_AIRCON_MODEL = 'C-Bus Air Conditioning Thermostat';
 
@@ -968,7 +969,7 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _hvacTemperatureUnit() {
-        return (this.settings.ha_hvac_temperature_unit || 'C').toUpperCase() === 'F' ? 'F' : 'C';
+        return resolveSetting(this.settings, 'ha_hvac_temperature_unit').toUpperCase() === 'F' ? 'F' : 'C';
     }
 
     /**

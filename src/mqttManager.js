@@ -353,7 +353,7 @@ class MqttManager extends EventEmitter {
     get haStatusTopic() {
         if (this._haStatusTopic === null) {
             const configured = resolveSetting(this.settings, 'haStatusTopic');
-            this._haStatusTopic = configured !== null
+            this._haStatusTopic = (configured !== null && configured !== '')
                 ? String(configured)
                 : `${resolveSetting(this.settings, 'ha_discovery_prefix')}/status`;
         }

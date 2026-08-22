@@ -23,7 +23,8 @@ const {
     DIR,
     loadCatalog,
     localesInCatalog,
-    generateLocaleYamlMap
+    generateLocaleYamlMap,
+    validateCatalogCompleteness
 } = require('./generate-translations');
 
 const SOURCE = 'en.yaml';
@@ -136,6 +137,7 @@ function main() {
     const errors = [];
 
     errors.push(...validateCatalogLocales(catalog));
+    errors.push(...validateCatalogCompleteness(catalog));
     errors.push(...validateCatalogFreshness(catalog));
 
     const docsByName = {};

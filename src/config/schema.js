@@ -908,8 +908,8 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Allow writes to the label API with no authentication at all.',
-        reason: 'Security-sensitive unsafe override: anyone who can reach web_port can rewrite labels. Off unless the port is genuinely isolated.'
+        description: 'Allow writes to the label API with no authentication at all. Ignored unless the web server binds loopback; the add-on binds 0.0.0.0 for Ingress, so use an API key for any host-mapped port.',
+        reason: 'Security-sensitive unsafe override: anyone who can reach web_port can rewrite labels. The runtime also refuses the flag when bindHost is not loopback, so it cannot silently open the add-on host port.'
     },
     web_allowed_origins: {
         key: 'web_allowed_origins',
