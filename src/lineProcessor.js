@@ -1,7 +1,6 @@
 // @ts-check
 const { NEWLINE } = require('./constants');
-
-const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB — no valid C-Gate line approaches this
+const { resolveSetting } = require('./config/schema');
 
 /**
  * A lightweight line processor optimized for hot-path socket data.
@@ -13,6 +12,9 @@ class LineProcessor {
             trimLines: options.trimLines !== false, // Default to true
             skipEmptyLines: options.skipEmptyLines !== false // Default to true
         };
+        this._maxBufferBytes = Number.isFinite(options.maxBufferBytes) && options.maxBufferBytes > 0
+            ? options.maxBufferBytes
+            : resolveSetting({}, 'cgateLineBufferMaxBytes');
 
         this.lineProcessor = null;
         this._buffer = '';
@@ -53,8 +55,8 @@ class LineProcessor {
         this._buffer += Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
 
         // Prevent unbounded buffer growth from malformed data without newlines
-        if (this._buffer.length > MAX_BUFFER_SIZE) {
-            this._buffer = this._buffer.slice(-MAX_BUFFER_SIZE);
+        if (this._buffer.length > this._maxBufferBytes) {
+            this._buffer = this._buffer.slice(-this._maxBufferBytes);
         }
 
         const buffer = this._buffer;

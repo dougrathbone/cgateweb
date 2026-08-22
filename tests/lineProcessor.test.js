@@ -195,10 +195,17 @@ describe('LineProcessor', () => {
                 processor.processData(chunk, handler);
             }
 
-            // Buffer should be capped at 1MB (1024 * 1024)
+            // Buffer should be capped at the schema default (1MB)
             expect(processor.getBuffer().length).toBeLessThanOrEqual(1024 * 1024);
             // No lines emitted since there were no newlines
             expect(processedLines).toEqual([]);
+        });
+
+        it('honours a custom maxBufferBytes cap', () => {
+            const small = new LineProcessor({ maxBufferBytes: 64 });
+            small.processData('A'.repeat(200), () => {});
+            expect(small.getBuffer().length).toBeLessThanOrEqual(64);
+            small.close();
         });
     });
 });
