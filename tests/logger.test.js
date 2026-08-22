@@ -123,6 +123,22 @@ describe('Logger', () => {
 
             expect(consoleLogSpy.mock.calls[0][0]).toContain('42');
         });
+
+        it('treats a string second argument as part of the message, not metadata keys', () => {
+            testLogger.warn('Failed to fetch HA areas:', 'Timeout');
+
+            const call = consoleWarnSpy.mock.calls[0][0];
+            expect(call).toContain('Failed to fetch HA areas: Timeout');
+            expect(call).not.toContain('"0":');
+        });
+
+        it('stringifies an array second argument into the message', () => {
+            testLogger.error('Configuration validation failed:', ['cbusip is required']);
+
+            const call = consoleErrorSpy.mock.calls[0][0];
+            expect(call).toContain('cbusip is required');
+            expect(call).not.toContain('"0":');
+        });
     });
 
     describe('Sensitive metadata redaction', () => {
