@@ -553,6 +553,20 @@ describe('CommandResponseProcessor', () => {
             });
         });
 
+        it('redacts keypad digits and LOGIN passwords in the error body', () => {
+            processor._processCommandErrorResponse(
+                '400',
+                'security emulate_keypad //P/254/208 7'
+            );
+            expect(mockLogger.error.mock.calls[0][0]).toContain('***');
+            expect(mockLogger.error.mock.calls[0][0]).not.toMatch(/emulate_keypad \S+\s+7\b/i);
+
+            mockLogger.error.mockClear();
+            processor._processCommandErrorResponse('401', 'LOGIN admin hunter2');
+            expect(mockLogger.warn.mock.calls.some((c) => String(c[0]).includes('hunter2'))).toBe(false);
+            expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('LOGIN admin ***'));
+        });
+
         it('should log error without hint for unknown error codes', () => {
             processor._processCommandErrorResponse('499', 'Unknown error');
 

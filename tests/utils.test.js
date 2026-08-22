@@ -142,6 +142,17 @@ describe('redactCgateLine', () => {
     it('is case-insensitive, since C-Gate echoes verbs as sent', () => {
         expect(redactCgateLine('SECURITY EMULATE_KEYPAD //P/254/208 $31')).toContain('***');
     });
+
+    it('hides the password on a LOGIN command echo', () => {
+        expect(redactCgateLine('LOGIN admin s3cret!'))
+            .toBe('LOGIN admin ***');
+        expect(redactCgateLine('401 LOGIN admin hunter2 (Not authorized)'))
+            .toBe('401 LOGIN admin *** (Not authorized)');
+    });
+
+    it('is case-insensitive for LOGIN as well', () => {
+        expect(redactCgateLine('login admin hunter2')).toBe('login admin ***');
+    });
 });
 
 // #51 follow-up: 1.24.3 closed the C-Gate echo paths but left the payload Home

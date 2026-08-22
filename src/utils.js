@@ -140,6 +140,9 @@ function looksLikeTlsRecord(data) {
 // of the user's alarm PIN. Anchored on the verb so only that argument is
 // touched; the address and C-Gate's trailing metadata are left readable.
 const EMULATE_KEYPAD_KEY = /(security\s+emulate_keypad\s+\S+\s+)(\S+)/gi;
+// `LOGIN <user> <password>` — C-Gate echoes failed auth on the command port.
+// Same shape as the keypad pattern: keep the verb and username, hide the secret.
+const LOGIN_PASSWORD = /(login\s+\S+\s+)(\S+)/gi;
 
 /**
  * Strip secrets from a raw C-Gate protocol line before it is logged.
@@ -153,7 +156,8 @@ const EMULATE_KEYPAD_KEY = /(security\s+emulate_keypad\s+\S+\s+)(\S+)/gi;
  *
  * Applied wherever a raw C-Gate line is logged, published or written to disk,
  * rather than at each caller, so a future sensitive command cannot bypass it by
- * appearing somewhere new.
+ * appearing somewhere new. Keypad PIN digits and LOGIN passwords are stripped;
+ * the rest of the line stays readable.
  *
  * @param {string} line - Raw C-Gate line, inbound or outbound.
  * @returns {string} The line with any keypad key replaced by `***`.
@@ -164,7 +168,9 @@ function redactCgateLine(line) {
     // regex below or an echo in a different case slips through unredacted,
     // which is exactly the leak this exists to close. Only reached when debug
     // logging is on, so one regex per line costs nothing that matters.
-    return line.replace(EMULATE_KEYPAD_KEY, '$1***');
+    return line
+        .replace(EMULATE_KEYPAD_KEY, '$1***')
+        .replace(LOGIN_PASSWORD, '$1***');
 }
 
 // The `code` field of a Home Assistant alarm command payload
