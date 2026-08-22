@@ -7,6 +7,7 @@ const DEFAULT_CBUS_APP_TEMPERATURE = '25';   // C-Bus Temperature Broadcast appl
 const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning application ($AC)
 const DEFAULT_CBUS_APP_SECURITY = '208';     // C-Bus Security application ($D0)
 const DEFAULT_CBUS_APP_MEASUREMENT = '228';  // C-Bus Measurement application ($E4)
+const DEFAULT_CBUS_APP_CLOCK = '223';        // C-Bus Clock and Timekeeping application ($DF)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -88,6 +89,8 @@ const MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE = 'plant_type';           // HVAC plant 
 const MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION = 'plant_type_description'; // Human-readable HVAC plant type
 const MQTT_TOPIC_SUFFIX_SOURCE_UNIT = 'source_unit';              // C-Bus unit that last changed the group (#sourceunit)
 const MQTT_TOPIC_SUFFIX_ATTRIBUTES = 'attributes';                // JSON attributes (e.g. raw security zone state)
+const MQTT_TOPIC_SUFFIX_LOOP_FAULT = 'loop_fault';                // Security zone open/short loop fault (ON/OFF)
+const MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY = 'password_entry';        // Security panel password-entry code (1-4)
 // Measurement application (app 228/$E4) topic suffixes.
 const MQTT_TOPIC_SUFFIX_VALUE = 'value';                          // Decoded measurement value (raw x 10^multiplier)
 const MQTT_TOPIC_SUFFIX_UNIT = 'unit';                             // Unit string for the value (e.g. 'W', '°C'), '' if unitless/custom
@@ -126,6 +129,9 @@ const MQTT_CMD_TYPE_TRIGGER = 'trigger';          // Fire a C-Bus trigger group
 const MQTT_CMD_TYPE_HVAC_SETPOINT = 'setpoint';  // Set HVAC target temperature
 const MQTT_CMD_TYPE_HVAC_MODE = 'hvacmode';      // Set HVAC operating mode
 const MQTT_CMD_TYPE_HVAC_FAN_MODE = 'fanmode';   // Set HVAC fan mode (automatic/continuous)
+const MQTT_CMD_TYPE_TEMPERATURE = 'temperature';  // Inject Temperature Broadcast (°C)
+const MQTT_CMD_TYPE_PLAY = 'play';                // Scene Module PLAY
+const MQTT_CMD_TYPE_RECORD = 'record';            // Scene Module RECORD
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
@@ -224,6 +230,7 @@ module.exports = {
     DEFAULT_CBUS_APP_AIRCON,
     DEFAULT_CBUS_APP_SECURITY,
     DEFAULT_CBUS_APP_MEASUREMENT,
+    DEFAULT_CBUS_APP_CLOCK,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -282,6 +289,8 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_HVAC_PLANT_TYPE_DESCRIPTION,
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_TOPIC_SUFFIX_ATTRIBUTES,
+    MQTT_TOPIC_SUFFIX_LOOP_FAULT,
+    MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY,
     MQTT_TOPIC_SUFFIX_VALUE,
     MQTT_TOPIC_SUFFIX_UNIT,
     HVAC_MIN_TEMP_C,
@@ -308,6 +317,9 @@ module.exports = {
     MQTT_CMD_TYPE_HVAC_SETPOINT,
     MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_CMD_TYPE_HVAC_FAN_MODE,
+    MQTT_CMD_TYPE_TEMPERATURE,
+    MQTT_CMD_TYPE_PLAY,
+    MQTT_CMD_TYPE_RECORD,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,
