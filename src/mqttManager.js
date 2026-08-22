@@ -12,6 +12,7 @@ const {
     MQTT_ERROR_AUTH
 } = require('./constants');
 const { resolveSetting } = require('./config/schema');
+const { normalizeOptionalSecret } = require('./config/validationRules');
 
 /**
  * Manages MQTT broker connection and message handling for the C-Bus bridge.
@@ -249,11 +250,12 @@ class MqttManager extends EventEmitter {
             }
         };
 
-        if (this.settings.mqttusername && typeof this.settings.mqttusername === 'string') {
-            options.username = this.settings.mqttusername;
-            
-            if (this.settings.mqttpassword && typeof this.settings.mqttpassword === 'string') {
-                options.password = this.settings.mqttpassword;
+        const username = normalizeOptionalSecret(this.settings.mqttusername);
+        if (username) {
+            options.username = username;
+            const password = normalizeOptionalSecret(this.settings.mqttpassword);
+            if (password) {
+                options.password = password;
             }
         }
 

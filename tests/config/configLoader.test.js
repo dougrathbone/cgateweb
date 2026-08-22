@@ -95,6 +95,17 @@ describe('ConfigLoader', () => {
             expect(config._environment.type).toBe('addon');
         });
 
+        test('trims MQTT credentials and treats whitespace-only passwords as unset', () => {
+            const options = { ...mockAddonOptions, mqtt_username: '  user  ', mqtt_password: '   ' };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.mqttusername).toBe('user');
+            expect(config.mqttpassword).toBeNull();
+        });
+
         test('should handle minimal addon configuration', () => {
             const minimalOptions = {
                 cgate_host: '127.0.0.1',

@@ -4,7 +4,7 @@ const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
 const { listKnownConfigKeys, listSettingAliases, getSchemaEntry } = require('./schema');
 const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
-const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword } = require('./validationRules');
+const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword, normalizeOptionalSecret } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
@@ -269,6 +269,7 @@ class ConfigLoader {
             config.web_allowed_origins = options.web_allowed_origins.filter((origin) => typeof origin === 'string' && origin.trim() !== '');
         }
 
+        this._trimSecretFields(config);
         return config;
     }
 
@@ -347,6 +348,7 @@ class ConfigLoader {
             config.cbus_aircon_control_enabled = config.cbus_aircon_control_enabled.toLowerCase() === 'true';
         }
 
+        this._trimSecretFields(config);
         return config;
     }
 
@@ -457,6 +459,7 @@ class ConfigLoader {
      * @returns {Promise<Object>} settings with MQTT fields populated (mutated in place)
      */
     async applyMqttAutoDetection(settings) {
+        this._trimSecretFields(settings);
         const mqttConfig = await this.detectMqttConfig();
         if (!mqttConfig) {
             const hasDefaultBroker = DEFAULT_MQTT_VALUES.includes(settings.mqtt);
@@ -486,6 +489,21 @@ class ConfigLoader {
         }
 
         return settings;
+    }
+
+    /**
+     * Trim MQTT/C-Gate username and password fields. Blank after trim is
+     * treated as unset so a padded HA password field cannot become a secret
+     * (same rule as web_api_key).
+     * @param {Object} settings
+     * @private
+     */
+    _trimSecretFields(settings) {
+        if (!settings || typeof settings !== 'object') return;
+        for (const key of ['mqttusername', 'mqttpassword', 'cgateusername', 'cgatepassword']) {
+            if (!Object.prototype.hasOwnProperty.call(settings, key)) continue;
+            settings[key] = normalizeOptionalSecret(settings[key]);
+        }
     }
 
     /**

@@ -9,7 +9,7 @@ const {
     CGATE_CMD_LOGIN, 
     NEWLINE 
 } = require('./constants');
-const { isValidCgateUsername, isValidCgatePassword } = require('./config/validationRules');
+const { isValidCgateUsername, isValidCgatePassword, normalizeOptionalSecret } = require('./config/validationRules');
 const { looksLikeTlsRecord } = require('./utils');
 
 class CgateConnection extends EventEmitter {
@@ -328,18 +328,17 @@ class CgateConnection extends EventEmitter {
                 this.logger.info(`C-Gate Sent: ${CGATE_CMD_EVENT_MODE_L6}`);
                 
                 // 2. Send LOGIN if credentials provided
-                const user = this.settings.cgateusername;
-                const pass = this.settings.cgatepassword;
-                if (user && typeof user === 'string' && user.trim() !== '' && typeof pass === 'string') {
-                    const trimmedUser = user.trim();
-                    if (!isValidCgateUsername(trimmedUser) || !isValidCgatePassword(pass)) {
+                const user = normalizeOptionalSecret(this.settings.cgateusername);
+                const pass = normalizeOptionalSecret(this.settings.cgatepassword);
+                if (user && typeof pass === 'string') {
+                    if (!isValidCgateUsername(user) || !isValidCgatePassword(pass)) {
                         this.logger.error(
                             'Refusing to send LOGIN: username/password contain unsafe characters '
                             + '(spaces, newlines, or non-printable). Fix cgateusername/cgatepassword in settings.'
                         );
                     } else {
-                        const loginCmd = `${CGATE_CMD_LOGIN} ${trimmedUser} ${pass}${NEWLINE}`;
-                        this.logger.info(`Sending LOGIN command for user '${trimmedUser}'...`);
+                        const loginCmd = `${CGATE_CMD_LOGIN} ${user} ${pass}${NEWLINE}`;
+                        this.logger.info(`Sending LOGIN command for user '${user}'...`);
                         this.socket.write(loginCmd);
                     }
                 }
