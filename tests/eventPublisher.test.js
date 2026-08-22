@@ -317,6 +317,21 @@ describe('EventPublisher', () => {
                 mockMqttOptions
             );
         });
+
+        it('cancels an interpolated cover ramp when a real C-Gate event arrives', () => {
+            const coverRampTracker = { cancelRamp: jest.fn() };
+            const publisher = new EventPublisher({
+                settings: mockSettings,
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger,
+                coverRampTracker
+            });
+
+            publisher.publishEvent(new CBusEvent('lighting ramp 254/203/5 128'), '(Evt)');
+
+            expect(coverRampTracker.cancelRamp).toHaveBeenCalledWith('254/203/5');
+        });
     });
 
     describe('Type override cover publishing', () => {
@@ -891,6 +906,15 @@ describe('EventPublisher', () => {
         });
 
         it.each([
+            [true, 'ON'],
+            [false, 'OFF']
+        ])('should publish security_panel %s as state=%s', (active, state) => {
+            publish('panel/mains', { kind: 'security_panel', active }, '254', '208');
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expectCall('cbus/read/254/208/panel/mains/state', state);
+        });
+
+        it.each([
             // A panel can bypass a zone before the initial status report lands.
             // The isolation is still worth showing, but nothing is known about
             // the zone's state, so the state topic must stay untouched.
@@ -1131,6 +1155,29 @@ describe('EventPublisher', () => {
                 expect.anything(),
                 expect.anything()
             );
+        });
+    });
+
+    describe('shutdown', () => {
+        it('clears a pending coalesce flush so shutdown does not publish later', () => {
+            jest.useFakeTimers();
+            const publisher = new EventPublisher({
+                settings: { ...mockSettings, eventPublishCoalesce: true },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            publisher.publishEvent(new CBusEvent('lighting on 254/56/1'));
+            expect(publisher.getStats().coalesceBufferSize).toBeGreaterThan(0);
+            expect(publisher.getStats().coalesceEnabled).toBe(true);
+
+            publisher.shutdown();
+
+            expect(publisher.getStats().coalesceBufferSize).toBe(0);
+            jest.runOnlyPendingTimers();
+            expect(mockPublishFn).not.toHaveBeenCalled();
+            jest.useRealTimers();
         });
     });
 });
