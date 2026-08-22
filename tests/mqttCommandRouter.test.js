@@ -830,6 +830,21 @@ describe('MqttCommandRouter', () => {
 
                 expect(queueSpy).toHaveBeenCalledWith('TERMINATERAMP //TestProject/254/56/53\n', { priority: 'critical' });
             });
+
+            it('does not echo state when STOP is routed as a cover stop', () => {
+                const publish = jest.fn();
+                router.mqttClient = { publish };
+                router.routeMessage('cbus/write/254/56/53/switch', 'STOP');
+                expect(publish).not.toHaveBeenCalled();
+            });
+
+            it('echoes ON/OFF to read topics so HA updates before the C-Gate event (issue #52)', () => {
+                const publish = jest.fn();
+                router.mqttClient = { publish };
+                router.routeMessage('cbus/write/254/56/1/switch', 'ON');
+                expect(publish).toHaveBeenCalledWith('cbus/read/254/56/1/state', 'ON', { qos: 0 });
+                expect(publish).toHaveBeenCalledWith('cbus/read/254/56/1/level', '100', { qos: 0 });
+            });
         });
 
         describe('Ramp Commands', () => {
@@ -837,6 +852,14 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/56/1/ramp', '75');
                 
                 expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 191\n');
+            });
+
+            it('echoes dimmer level and ON to read topics before the C-Gate event (issue #52)', () => {
+                const publish = jest.fn();
+                router.mqttClient = { publish };
+                router.routeMessage('cbus/write/254/56/1/ramp', '75');
+                expect(publish).toHaveBeenCalledWith('cbus/read/254/56/1/state', 'ON', { qos: 0 });
+                expect(publish).toHaveBeenCalledWith('cbus/read/254/56/1/level', '75', { qos: 0 });
             });
 
             it('should handle ramp with time specification', () => {

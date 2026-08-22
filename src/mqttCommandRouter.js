@@ -10,6 +10,7 @@ const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_RETAINED_STATE_OPTIONS,
     MQTT_TOPIC_SUFFIX_LEVEL,
+    MQTT_TOPIC_SUFFIX_STATE,
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
@@ -671,6 +672,10 @@ class MqttCommandRouter extends EventEmitter {
         }
 
         this._queueCommand(cgateCommand);
+        this._publishOptimisticLightState(command.getNetwork(), command.getApplication(), command.getGroup(), {
+            state: action,
+            levelPercent: action === MQTT_STATE_ON ? 100 : 0
+        });
     }
 
     /**
@@ -699,9 +704,17 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_STATE_ON:
                 this._queueCommand(`${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`);
+                this._publishOptimisticLightState(command.getNetwork(), command.getApplication(), command.getGroup(), {
+                    state: MQTT_STATE_ON,
+                    levelPercent: 100
+                });
                 break;
             case MQTT_STATE_OFF:
                 this._queueCommand(`${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`);
+                this._publishOptimisticLightState(command.getNetwork(), command.getApplication(), command.getGroup(), {
+                    state: MQTT_STATE_OFF,
+                    levelPercent: 0
+                });
                 break;
             default:
                 this._handleAbsoluteLevel(command, cbusPath, payload);
@@ -719,12 +732,17 @@ class MqttCommandRouter extends EventEmitter {
         const level = command.getLevel();
         const rampTime = command.getRampTime();
         
-        if (level !== null) {
+        if (typeof level === 'number') {
             let cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${level}`;
             if (rampTime) {
                 cgateCommand += ` ${rampTime}`;
             }
             this._queueCommand(cgateCommand + NEWLINE);
+            const levelPercent = Math.round(level / CGATE_LEVEL_MAX * 100);
+            this._publishOptimisticLightState(command.getNetwork(), command.getApplication(), command.getGroup(), {
+                state: level > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF,
+                levelPercent
+            });
         } else {
             this.logger.warn(`Invalid payload for ramp command: ${payload}`);
         }
@@ -755,6 +773,11 @@ class MqttCommandRouter extends EventEmitter {
             const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
             this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
             this._queueCommand(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);
+            const [network, application, group] = levelAddress.split('/');
+            this._publishOptimisticLightState(network, application, group, {
+                state: newLevel > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF,
+                levelPercent: Math.round(newLevel / CGATE_LEVEL_MAX * 100)
+            });
         }, timeoutMs);
 
         // Query current level first; the response drives the callback above.
@@ -1180,6 +1203,32 @@ class MqttCommandRouter extends EventEmitter {
         // Keep the learned state coherent until the thermostat's echo broadcast.
         this.airconControlRegistry.noteSetpointWrite(network, unit, modeRaw, level);
         this.logger.info(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C (ward ${state.ward}, zones ${state.zones})`);
+    }
+
+    /**
+     * Publish expected lighting state/level immediately after a write so Home
+     * Assistant's light card updates without waiting for the C-Gate event port
+     * (issue #52: dim from HA succeeded on the bus while the entity stayed off).
+     * The real event confirms the same topics shortly after.
+     * @param {string} network
+     * @param {string} application
+     * @param {string} group
+     * @param {{ state?: string, levelPercent?: number }} [fields]
+     * @private
+     */
+    _publishOptimisticLightState(network, application, group, fields = {}) {
+        if (!this.mqttClient || typeof this.mqttClient.publish !== 'function') return;
+        if (!network || !application || !group) return;
+        const state = fields.state;
+        const levelPercent = fields.levelPercent;
+        const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
+        const opts = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
+        if (state !== undefined && state !== null) {
+            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_STATE}`, String(state), opts);
+        }
+        if (levelPercent !== undefined && levelPercent !== null) {
+            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_LEVEL}`, String(levelPercent), opts);
+        }
     }
 
     /**
