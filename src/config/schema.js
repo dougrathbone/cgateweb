@@ -591,9 +591,8 @@ const SETTINGS_SCHEMA = {
         default: null,
         nullable: true,
         unit: 'none',
-        exposure: 'standalone',
-        description: 'C-Bus application ID whose groups become relay-backed switch entities. null disables.',
-        reason: 'No add-on option exists, so relay application mapping is unavailable in the add-on UI.'
+        exposure: 'both',
+        description: 'C-Bus application ID whose groups become relay-backed switch entities. null disables.'
     },
     ha_discovery_pir_app_id: {
         key: 'ha_discovery_pir_app_id',
@@ -601,9 +600,16 @@ const SETTINGS_SCHEMA = {
         default: null,
         nullable: true,
         unit: 'none',
-        exposure: 'standalone',
-        description: 'C-Bus application ID whose groups become motion binary_sensor entities; also suppresses level tracking for that application. null disables.',
-        reason: 'No add-on option exists, so PIR application mapping is unavailable in the add-on UI.'
+        exposure: 'both',
+        description: 'C-Bus application ID whose groups become motion binary_sensor entities; also suppresses level tracking for that application. null disables.'
+    },
+    ha_discovery_unlisted_groups: {
+        key: 'ha_discovery_unlisted_groups',
+        type: 'boolean',
+        default: false,
+        unit: 'none',
+        exposure: 'both',
+        description: 'Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: scene addresses and unused groups also appear in the event stream, and retained discovery configs have to be cleaned off the broker by hand. (#63)'
     },
     ha_discovery_trigger_app_id: {
         key: 'ha_discovery_trigger_app_id',
@@ -796,9 +802,16 @@ const SETTINGS_SCHEMA = {
         type: 'boolean',
         default: false,
         unit: 'none',
-        exposure: 'standalone',
-        description: 'Decode C-Bus Clock and Timekeeping (app 223/$DF) broadcasts and publish the network date and time to cbus/read/{net}/223/clock/date and /time, plus two diagnostic sensors when discovery is on. Read-only: this never sets the network clock.',
-        reason: 'Opt-in and standalone-only because the event-port format is under-evidenced: it is derived from two captured lines (commit 833b60e) and no vendor document in this repo specifies it, so the decoder fails closed and the feature stays off until more installs confirm it. Off by default also keeps a chatty per-tick broadcast off MQTT for the installs that do not want it. No add-on option yet - promote it to one once the format is confirmed on a second site.'
+        exposure: 'both',
+        description: 'Decode C-Bus Clock and Timekeeping (app 223/$DF) broadcasts and publish the network date and time to cbus/read/{net}/223/clock/date and /time, plus two diagnostic sensors when discovery is on. On connect, also asks C-Gate for a clock refresh. Read-only: this never sets the network clock.'
+    },
+    cbus_scene_module_enabled: {
+        key: 'cbus_scene_module_enabled',
+        type: 'boolean',
+        default: false,
+        unit: 'none',
+        exposure: 'both',
+        description: 'Accept MQTT commands that play or record scenes on a C-Bus Scene Module (C-Gate SCENE PLAY|RECORD). Off by default: most installs use Trigger Control scenes instead, and a record write overwrites module memory.'
     },
     ha_hvac_temperature_unit: {
         key: 'ha_hvac_temperature_unit',

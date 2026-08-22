@@ -191,6 +191,23 @@ configuration:
     description: >-
       C-Bus App-ID für Schaltergruppen. Leer lassen, um Schaltererkennung zu
       überspringen.
+  ha_discovery_relay_app_id:
+    name: Relais-Anwendungs-ID
+    description: >-
+      C-Bus App-ID, deren Gruppen als relaisgestützte Schalter (Steckdose)
+      erscheinen. Leer lassen zum Überspringen.
+  ha_discovery_pir_app_id:
+    name: PIR-Anwendungs-ID
+    description: >-
+      C-Bus App-ID, deren Gruppen Bewegungs-Binärsensoren werden. Unterdrückt
+      Level-Abfragen für diese App. Leer lassen zum Überspringen.
+  ha_discovery_unlisted_groups:
+    name: Nicht gelistete Gruppen entdecken
+    description: >-
+      Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf
+      dem Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig
+      aus: ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
+      Discovery-Configs müssen manuell vom Broker gelöscht werden.
   ha_discovery_trigger_app_id:
     name: Trigger-Anwendungs-ID
     description: >-
@@ -291,6 +308,19 @@ configuration:
       cbus/write/{network}/228/{device}/{channel}/data (Payload
       "value,multiplier,units") — z. B. für skriptgesteuerte/virtuelle Sensoren.
       Standardmäßig deaktiviert.
+  cbus_clock_enabled:
+    name: C-Bus Netzwerk-Uhr
+    description: >-
+      Dekodiert Uhr-Broadcasts (App 223) als zwei Diagnosesensoren und fordert
+      beim Verbinden eine Uhr-Aktualisierung an. Nur lesen: die Netzwerkuhr wird
+      nie gesetzt. Standardmäßig aus, weil das Nachrichtenformat nur durch
+      wenige Live-Mitschnitte belegt ist.
+  cbus_scene_module_enabled:
+    name: Scene-Module-Befehle
+    description: >-
+      Akzeptiert MQTT-Befehle zum Abspielen oder Aufzeichnen von Szenen auf
+      einem C-Bus Scene Module. Standardmäßig aus: die meisten Anlagen nutzen
+      Trigger-Control-Szenen, und Record überschreibt den Modulspeicher.
   ha_bridge_diagnostics_enabled:
     name: Bridge-Diagnose aktivieren
     description: >-

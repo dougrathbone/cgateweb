@@ -174,6 +174,9 @@ schema:
   ha_discovery_cover_app_id: "int(1,255)?"
   ha_discovery_cover_tilt_app_id: "int(1,255)?"
   ha_discovery_switch_app_id: "int(1,255)?"
+  ha_discovery_relay_app_id: "int(1,255)?"
+  ha_discovery_pir_app_id: "int(1,255)?"
+  ha_discovery_unlisted_groups: "bool?"
   ha_discovery_trigger_app_id: "int(1,255)?"
   ha_discovery_scene_enabled: "bool?"
   ha_discovery_auto_type: "bool?"
@@ -194,6 +197,8 @@ schema:
   # "measurement data ..." events to MQTT and injecting readings via
   # cbus/write/.../data — see docs/Measurement Application.md.
   cbus_measurement_app_id: "int(1,255)?"
+  cbus_clock_enabled: "bool?"
+  cbus_scene_module_enabled: "bool?"
   ha_hvac_temperature_unit: "list(C|F)?"
 
   # ── Bridge Diagnostics ──

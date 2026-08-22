@@ -189,6 +189,23 @@ configuration:
     description: >-
       ID de app C-Bus para grupos de interruptores. Deixe vazio para ignorar a
       descoberta de interruptores.
+  ha_discovery_relay_app_id:
+    name: ID de aplicação de relés
+    description: >-
+      ID de app C-Bus cujos grupos viram interruptores de relé (classe tomada).
+      Deixe vazio para ignorar.
+  ha_discovery_pir_app_id:
+    name: ID de aplicação PIR
+    description: >-
+      ID de app C-Bus cujos grupos viram sensores binários de movimento. Também
+      desativa o rastreio de nível. Deixe vazio para ignorar.
+  ha_discovery_unlisted_groups:
+    name: Descobrir grupos não listados
+    description: >-
+      Cria uma entidade Home Assistant na primeira vez que um grupo de
+      iluminação aparece no barramento, mesmo ausente do projeto Toolkit.
+      Desligado por padrão: endereços de cena também aparecem, e configs retidas
+      no broker precisam ser apagadas à mão.
   ha_discovery_trigger_app_id:
     name: ID de Aplicação de Triggers
     description: >-
@@ -289,6 +306,19 @@ configuration:
       cbus/write/{network}/228/{device}/{channel}/data (payload
       "value,multiplier,units") — por exemplo, para sensores
       virtuais/programados. Desativado por predefinição.
+  cbus_clock_enabled:
+    name: Relógio de rede C-Bus
+    description: >-
+      Descodifica os broadcasts do relógio (app 223) em dois sensores de
+      diagnóstico e pede ao C-Gate um refresh ao ligar. Só leitura: nunca define
+      o relógio. Desligado por padrão porque o formato assenta em poucas
+      capturas reais.
+  cbus_scene_module_enabled:
+    name: Comandos do Scene Module
+    description: >-
+      Aceita comandos MQTT para reproduzir ou gravar cenas num Scene Module
+      C-Bus. Desligado por padrão: a maioria usa cenas de Trigger Control, e
+      gravar sobrescreve a memória do módulo.
   ha_bridge_diagnostics_enabled:
     name: Ativar Diagnósticos do Bridge
     description: >-

@@ -141,6 +141,17 @@ configuration:
   ha_discovery_switch_app_id:
     name: スイッチアプリケーション ID
     description: スイッチグループ用の C-Bus アプリ ID。スイッチ検出をスキップするには 空のままにしてください。
+  ha_discovery_relay_app_id:
+    name: リレーアプリケーション ID
+    description: グループがリレー駆動のスイッチ（コンセント）になる C-Bus アプリ ID。スキップするには空のまま。
+  ha_discovery_pir_app_id:
+    name: PIR アプリケーション ID
+    description: グループがモーション binary_sensor になる C-Bus アプリ ID。そのアプリのレベル追跡も停止します。スキップするには空のまま。
+  ha_discovery_unlisted_groups:
+    name: プロジェクト外グループを検出
+    description: >-
+      Toolkit プロジェクトに無くても、照明系グループがバスに現れた初回に Home Assistant
+      エンティティを作ります。既定はオフ。シーン用アドレスも流れるため、残った discovery 設定はブローカーから手で消す必要があります。
   ha_discovery_trigger_app_id:
     name: トリガーアプリケーション ID
     description: トリガーグループ（キーパッド、シーン）用の C-Bus アプリ ID。 一般的な値：202。トリガー検出をスキップするには空のままにして ください。
@@ -218,6 +229,16 @@ configuration:
       と /unit に発行し、cbus/write/{network}/228/{device}/{channel}/data（ペイロード
       "value,multiplier,units"）で注入された読み取り値を受け付けます —
       例えばスクリプト/仮想センサー向けです。デフォルトでオフです。
+  cbus_clock_enabled:
+    name: C-Bus ネットワーク時計
+    description: >-
+      時計ブロードキャスト（アプリ 223）を2つの診断センサーとしてデコードし、接続時に C-Gate
+      へ更新を要求します。読み取り専用で、ネットワーク時計は設定しません。実キャプチャが少ないため既定はオフです。
+  cbus_scene_module_enabled:
+    name: Scene Module コマンド
+    description: >-
+      C-Bus Scene Module のシーン再生・記録 MQTT コマンドを受け付けます。既定はオフ。多くは Trigger Control
+      シーンを使い、記録はモジュールメモリを上書きします。
   ha_bridge_diagnostics_enabled:
     name: Bridge 診断を有効化
     description: Bridge ヘルスエンティティ（準備状態、接続、キュー深度）を Home Assistant に公開します。デフォルト：有効。

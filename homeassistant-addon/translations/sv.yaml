@@ -180,6 +180,23 @@ configuration:
     description: >-
       C-Bus app-ID för strömbrytargrupper. Lämna tomt för att hoppa över
       strömbrytarupptäckt.
+  ha_discovery_relay_app_id:
+    name: Applikations-ID för reläer
+    description: >-
+      C-Bus app-ID vars grupper blir reläbaserade strömbrytare. Lämna tomt för
+      att hoppa över.
+  ha_discovery_pir_app_id:
+    name: Applikations-ID för PIR
+    description: >-
+      C-Bus app-ID vars grupper blir rörelsesensorer. Stoppar också nivåspårning
+      för den appen. Lämna tomt för att hoppa över.
+  ha_discovery_unlisted_groups:
+    name: Upptäck ogranskade grupper
+    description: >-
+      Skapar en Home Assistant-entitet första gången en belysningsgrupp syns på
+      bussen även om den saknas i Toolkit-projektet. Av som standard:
+      scenadresser syns också, och kvarvarande discovery-konfig måste tas bort
+      från brokern för hand.
   ha_discovery_trigger_app_id:
     name: Applikations-ID för utlösare
     description: >-
@@ -277,6 +294,19 @@ configuration:
       injicerade avläsningar på cbus/write/{network}/228/{device}/{channel}/data
       (payload "value,multiplier,units") — t.ex. för skriptade/virtuella
       sensorer. Avstängt som standard.
+  cbus_clock_enabled:
+    name: C-Bus nätverksklocka
+    description: >-
+      Avkodar klockutsändningar (app 223) som två diagnostiksensorer och ber
+      C-Gate om en uppdatering vid anslutning. Endast läsning: sätter aldrig
+      nätverksklockan. Av som standard eftersom formatet vilar på få
+      live-inspelningar.
+  cbus_scene_module_enabled:
+    name: Scene Module-kommandon
+    description: >-
+      Tar emot MQTT-kommandon som spelar upp eller spelar in scener på en C-Bus
+      Scene Module. Av som standard: de flesta använder Trigger Control, och
+      inspelning skriver över modulens minne.
   ha_bridge_diagnostics_enabled:
     name: Aktivera bridge-diagnostik
     description: >-

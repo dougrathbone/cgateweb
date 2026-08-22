@@ -22,6 +22,9 @@ const ADDON_OPTION_MAP = [
     { src: 'ha_discovery_cover_app_id', dst: 'ha_discovery_cover_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_cover_tilt_app_id', dst: 'ha_discovery_cover_tilt_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_switch_app_id', dst: 'ha_discovery_switch_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
+    { src: 'ha_discovery_relay_app_id', dst: 'ha_discovery_relay_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
+    { src: 'ha_discovery_pir_app_id', dst: 'ha_discovery_pir_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
+    { src: 'ha_discovery_unlisted_groups', dst: 'ha_discovery_unlisted_groups', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_trigger_app_id', dst: 'ha_discovery_trigger_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_hvac_app_id', dst: 'ha_discovery_hvac_app_id', kind: 'stringifyTruthy', when: 'haDiscovery' },
     // Not gated on 'haDiscovery' (same reason as cbus_security_app_id below):
@@ -50,6 +53,8 @@ const ADDON_OPTION_MAP = [
     // work over plain MQTT, so an MQTT-only install that opts in must not
     // lose Measurement support with discovery off.
     { src: 'cbus_measurement_app_id', dst: 'cbus_measurement_app_id', kind: 'stringifyTruthy' },
+    { src: 'cbus_clock_enabled', dst: 'cbus_clock_enabled', kind: 'boolDefined' },
+    { src: 'cbus_scene_module_enabled', dst: 'cbus_scene_module_enabled', kind: 'boolDefined' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },
