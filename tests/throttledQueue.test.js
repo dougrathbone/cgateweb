@@ -173,6 +173,47 @@ describe('ThrottledQueue', () => {
         consoleErrorSpy.mockRestore(); // Clean up spy
     });
 
+    it('should handle rejected promises from processFn and keep draining the queue', async () => {
+        const error = new Error('async processing failed');
+        const failingProcessFn = jest.fn((item) => {
+            if (item === 'fail') {
+                return Promise.reject(error);
+            }
+            return Promise.resolve();
+        });
+        const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        queue = new ThrottledQueue(failingProcessFn, intervalMs);
+
+        queue.add('ok1');
+        queue.add('fail');
+        queue.add('ok2');
+
+        // Flush the immediate async process of ok1
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(failingProcessFn).toHaveBeenCalledWith('ok1');
+        expect(queue.length).toBe(2);
+
+        jest.advanceTimersByTime(intervalMs);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(failingProcessFn).toHaveBeenCalledWith('fail');
+        expect(consoleErrorSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Error processing Queue item')
+        );
+        expect(queue.length).toBe(1);
+
+        jest.advanceTimersByTime(intervalMs);
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(failingProcessFn).toHaveBeenCalledWith('ok2');
+        expect(queue.length).toBe(0);
+        expect(failingProcessFn).toHaveBeenCalledTimes(3);
+
+        consoleErrorSpy.mockRestore();
+    });
+
     it('should allow clearing the queue', () => {
         queue.add('item1'); // Processed immediately
         queue.add('item2');

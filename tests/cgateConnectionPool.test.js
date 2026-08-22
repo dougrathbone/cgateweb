@@ -149,6 +149,42 @@ describe('CgateConnectionPool', () => {
             expect(first.poolIndex).toBe(0);
         });
 
+        it('_getHealthyConnectionsSorted prefers writable connections over non-writable', () => {
+            pool.isStarted = true;
+            const unwritable = { poolIndex: 0, connected: true, isWritable: false };
+            const writable = { poolIndex: 1, connected: true, isWritable: true };
+            pool._addHealthy(unwritable);
+            pool._addHealthy(writable);
+
+            expect(pool._getHealthyConnectionsSorted()).toEqual([writable, unwritable]);
+            expect(pool._getHealthyConnection()).toBe(writable);
+        });
+
+        it('_getHealthyConnectionsSorted prefers lower in-flight among equally writable connections', () => {
+            pool.isStarted = true;
+            const busy = { poolIndex: 0, connected: true, isWritable: true };
+            const idle = { poolIndex: 1, connected: true, isWritable: true };
+            pool._addHealthy(busy);
+            pool._addHealthy(idle);
+            pool.connectionInFlight.set(busy, 4);
+            pool.connectionInFlight.set(idle, 1);
+
+            expect(pool._getHealthyConnectionsSorted()).toEqual([idle, busy]);
+            expect(pool._getHealthyConnection()).toBe(idle);
+        });
+
+        it('_getHealthyConnectionsSorted breaks ties with lower poolIndex', () => {
+            pool.isStarted = true;
+            const later = { poolIndex: 2, connected: true, isWritable: true };
+            const earlier = { poolIndex: 0, connected: true, isWritable: true };
+            pool._addHealthy(later);
+            pool._addHealthy(earlier);
+            pool.connectionInFlight.set(later, 0);
+            pool.connectionInFlight.set(earlier, 0);
+
+            expect(pool._getHealthyConnectionsSorted()).toEqual([earlier, later]);
+        });
+
         it('should invalidate cache when a connection is added', () => {
             const conn0 = { poolIndex: 0 };
             pool._addHealthy(conn0);
@@ -468,6 +504,34 @@ describe('CgateConnectionPool', () => {
             jest.advanceTimersByTime(pool.connectionTimeout + 100);
             await startPromise;
             expect(unhealthySpy).not.toHaveBeenCalled();
+        });
+
+        it('rejects connection establishment when connect never completes before timeout', async () => {
+            // connect() deliberately never emits 'connect' or 'error', so the
+            // establishment timer is the only path that settles the promise.
+            CgateConnection.mockImplementation(() => {
+                const conn = makeMockConnection();
+                conn.connect = jest.fn();
+                return conn;
+            });
+            const smallPool = new CgateConnectionPool('command', '192.168.1.100', 20023, {
+                ...mockSettings,
+                connectionPoolSize: 1,
+                connectionTimeout: 2000
+            });
+            const startPromise = smallPool.start();
+            jest.advanceTimersByTime(1999);
+            let settled = false;
+            startPromise.then(() => { settled = true; });
+            await Promise.resolve();
+            expect(settled).toBe(false);
+
+            jest.advanceTimersByTime(1);
+            await startPromise;
+            expect(smallPool.isStarted).toBe(true);
+            expect(smallPool.healthyConnections.size).toBe(0);
+
+            await smallPool.stop();
         });
     });
 

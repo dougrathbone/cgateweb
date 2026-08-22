@@ -97,6 +97,14 @@ describe('CBusEvent', () => {
         expect(event.isValid()).toBe(false);
         expect(mockConsoleWarn).toHaveBeenCalled();
     });
+
+    it('should NOT parse a 300- prefixed lighting line as a valid event-port CBusEvent', () => {
+        // Command-port responses use a "300-" prefix; CBusEvent targets the
+        // event port format. (Moved from the retired cbusParser.test.js.)
+        const event = new CBusEvent('300-lighting on 254/56/9');
+        expect(event.isValid()).toBe(false);
+        expect(mockConsoleWarn).toHaveBeenCalled();
+    });
     
     it('should be invalid if address part is incomplete', () => {
         const data = Buffer.from("lighting on 254/56");
