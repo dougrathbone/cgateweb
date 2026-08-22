@@ -417,43 +417,28 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _publishLightingGroupEntity(networkId, appId, groupId, group, labelKey, spec) {
-        const { labelMap, entityIds, areas } = this._labelSnapshot;
+        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+            networkId, appId, groupId, labelKey,
+            component: spec.component,
+            fallbackLabel: spec.fallbackLabel,
+            groupLabel: group.Label,
+            labels: this._labelSnapshot
+        });
 
-        const customLabel = labelMap.get(labelKey);
-        const groupLabel = group.Label;
-        const finalLabel = customLabel || groupLabel || spec.fallbackLabel;
-        if (customLabel) this.labelStats.custom++;
-        else if (groupLabel) this.labelStats.treexml++;
-        else this.labelStats.fallback++;
-
-        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}`;
-        const entityId = entityIds.get(labelKey);
-        const area = areas && areas.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${spec.component}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(spec.component, entityId)),
-            ...spec.fields({
+        // command topics must NOT be retained: a retained command replays to
+        // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
+        this._finishTreeEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: spec.component,
+            fields: spec.fields({
                 read: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}`,
                 write: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}`
             }),
-            qos: 0,
-            // command topics must NOT be retained: a retained command replays to
-            // cgateweb on every reconnect and re-toggles the light (see _createDiscovery).
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: HA_MODEL_LIGHTING,
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
-        this.discoveryCount++;
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: HA_MODEL_LIGHTING,
+            area
+        });
     }
 
     /**
@@ -912,9 +897,62 @@ class _HaDiscoveryPublishers {
     }
 
     /**
-     * Finish an event-driven discovery entity: wrap component-specific fields
-     * with the shared name / unique_id / entity-id hint / qos / device / origin
-     * shell and publish via {@link _publishEventDrivenConfig}.
+     * Assemble the shared discovery shell (name / unique_id / entity-id hint /
+     * qos / device / origin) around component-specific fields and publish.
+     * Does not track topics — callers choose tree ({@link _finishTreeEntity})
+     * or event-driven ({@link _finishEventDrivenEntity}) registration.
+     *
+     * @param {Object} spec
+     * @param {string} spec.discoveryTopic
+     * @param {string} spec.uniqueId
+     * @param {string} [spec.entityId]
+     * @param {string} spec.component
+     * @param {string|null} [spec.name=null]
+     * @param {Object} spec.fields
+     * @param {string[]} spec.deviceIdentifiers
+     * @param {string} spec.deviceName
+     * @param {string} spec.model
+     * @param {string} [spec.area]
+     * @private
+     */
+    _publishDiscoveryPayload({
+        discoveryTopic, uniqueId, entityId, component, name = null, fields,
+        deviceIdentifiers, deviceName, model, area
+    }) {
+        this._publish(discoveryTopic, JSON.stringify({
+            name,
+            unique_id: uniqueId,
+            ...(entityId && entityIdFields(component, entityId)),
+            ...fields,
+            qos: 0,
+            device: buildDeviceBlock({
+                identifiers: deviceIdentifiers,
+                name: deviceName,
+                model,
+                area
+            }),
+            origin: buildOriginBlock()
+        }), MQTT_RETAINED_STATE_OPTIONS);
+    }
+
+    /**
+     * Finish a tree-run discovery entity: publish via
+     * {@link _publishDiscoveryPayload}, record the topic on the current run
+     * (stale cleanup), and bump the entity counter.
+     *
+     * @param {Object} spec - Same shape as {@link _publishDiscoveryPayload}.
+     * @private
+     */
+    _finishTreeEntity(spec) {
+        this._publishDiscoveryPayload(spec);
+        if (this._currentRunTopics) this._currentRunTopics.add(spec.discoveryTopic);
+        this.discoveryCount++;
+    }
+
+    /**
+     * Finish an event-driven discovery entity: publish via
+     * {@link _publishDiscoveryPayload}, then register on the session-wide and
+     * event-driven topic sets (so tree runs don't retract it).
      *
      * @param {Object} spec
      * @param {string} spec.discoveryTopic
@@ -934,20 +972,13 @@ class _HaDiscoveryPublishers {
         discoveryTopic, uniqueId, entityId, component, name = null, fields,
         deviceIdentifiers, deviceName, model, area, logInfo
     }) {
-        this._publishEventDrivenConfig(discoveryTopic, {
-            name,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(component, entityId)),
-            ...fields,
-            qos: 0,
-            device: buildDeviceBlock({
-                identifiers: deviceIdentifiers,
-                name: deviceName,
-                model,
-                area
-            }),
-            origin: buildOriginBlock()
+        this._publishDiscoveryPayload({
+            discoveryTopic, uniqueId, entityId, component, name, fields,
+            deviceIdentifiers, deviceName, model, area
         });
+        this._publishedTopics.add(discoveryTopic);
+        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        this.discoveryCount++;
         if (logInfo) this.logger.info(logInfo);
     }
 
@@ -1368,23 +1399,6 @@ class _HaDiscoveryPublishers {
     }
 
     /**
-     * Publish one event-driven discovery config and register it: session-wide
-     * published-topics set (stale cleanup), event-driven set (so tree runs
-     * don't retract it) and the entity counter. Inverse of
-     * {@link _retractEventDrivenConfig}.
-     *
-     * @param {string} topic
-     * @param {Object} payload - Discovery config payload (JSON-stringified here).
-     * @private
-     */
-    _publishEventDrivenConfig(topic, payload) {
-        this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this._publishedTopics.add(topic);
-        this._eventDrivenDiscoveryTopics.add(topic);
-        this.discoveryCount++;
-    }
-
-    /**
      * Retract one event-driven discovery config: clear the retained message and
      * forget it, so a later tree run's stale cleanup doesn't try to clear it
      * again and the replay cache doesn't resurrect it on a broker reconnect.
@@ -1629,48 +1643,39 @@ class _HaDiscoveryPublishers {
 
         const { readBase, writeBase } = this._topicBases(networkId, appId, groupId);
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_CLIMATE, entityId)),
+        // command topics must NOT be retained (see _createDiscovery note)
+        this._finishTreeEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: HA_COMPONENT_CLIMATE,
+            fields: {
+                // Current temperature: reported by C-Gate as a status level on this group.
+                // EventPublisher decodes the level to °C before it reaches this topic, using the
+                // inverse of the setpoint encoding above:
+                //   temperature = level / 2   (0.5°C resolution; see TODO above)
+                current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
 
-            // Current temperature: reported by C-Gate as a status level on this group.
-            // EventPublisher decodes the level to °C before it reaches this topic, using the
-            // inverse of the setpoint encoding above:
-            //   temperature = level / 2   (0.5°C resolution; see TODO above)
-            current_temperature_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP}`,
+                // Target temperature setpoint — command and state topics
+                temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
+                temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
 
-            // Target temperature setpoint — command and state topics
-            temperature_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_SETPOINT}`,
-            temperature_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`,
+                // Mode control topics
+                mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
+                mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
 
-            // Mode control topics
-            mode_command_topic: `${writeBase}/${MQTT_CMD_TYPE_HVAC_MODE}`,
-            mode_state_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`,
+                // Deliberately off/auto only — do not add heat/cool/fan_only back here.
+                // This path has exactly one group level to work with: the router can only
+                // translate a mode into C-Gate ON or OFF, and the event side can only infer
+                // the same two states from what C-Bus reports. Advertising more modes gives
+                // Home Assistant buttons that send a bare ON and then snap back to auto.
+                modes: ['off', 'auto'],
 
-            // Deliberately off/auto only — do not add heat/cool/fan_only back here.
-            // This path has exactly one group level to work with: the router can only
-            // translate a mode into C-Gate ON or OFF, and the event side can only infer
-            // the same two states from what C-Bus reports. Advertising more modes gives
-            // Home Assistant buttons that send a bare ON and then snap back to auto.
-            modes: ['off', 'auto'],
-
-            ...this._climateRangeFields(),
-
-            qos: 0,
-            // command topics must NOT be retained (see _createDiscovery note)
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: 'HVAC Zone (Air Conditioning)',
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
-        this.discoveryCount++;
+                ...this._climateRangeFields()
+            },
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: 'HVAC Zone (Air Conditioning)',
+            area
+        });
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config) {
@@ -1697,47 +1702,40 @@ class _HaDiscoveryPublishers {
             ? `${readBase}/${MQTT_TOPIC_SUFFIX_EVENT}`
             : `${readBase}/${MQTT_TOPIC_SUFFIX_STATE}`;
 
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(config.component, entityId)),
-            state_topic: stateTopic,
-            ...(!config.omitCommandTopic && { command_topic: `${writeBase}/${MQTT_CMD_TYPE_SWITCH}` }),
-            ...config.payloads,
-            ...(config.positionSupport && {
-                position_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
-                set_position_topic: `${writeBase}/${MQTT_CMD_TYPE_POSITION}`,
-                stop_topic: `${writeBase}/${MQTT_CMD_TYPE_STOP}`,
-                payload_stop: MQTT_COMMAND_STOP,
-                position_open: 100,
-                position_closed: 0,
-                optimistic: false
-            }),
-            ...(config.positionSupport && this.settings.ha_discovery_cover_tilt_app_id && {
-                tilt_status_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_TOPIC_SUFFIX_TILT}`,
-                tilt_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_CMD_TYPE_TILT}`,
-                tilt_min: 0,
-                tilt_max: 100,
-                tilt_optimistic: false
-            }),
-            qos: 0,
-            // NOTE: command topics must NOT be retained. A retained command sits on the
-            // broker and is redelivered to cgateweb on every (re)connect, replaying stale
-            // ON/OFF/RAMP commands that toggle devices unexpectedly. State retention is
-            // handled separately by the read/state publish options, not here.
-            ...(config.deviceClass && { device_class: config.deviceClass }),
-            device: buildDeviceBlock({
-                identifiers: [uniqueId],
-                name: finalLabel,
-                model: config.model,
-                area
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        if (this._currentRunTopics) this._currentRunTopics.add(discoveryTopic);
-        this.discoveryCount++;
+        // NOTE: command topics must NOT be retained. A retained command sits on the
+        // broker and is redelivered to cgateweb on every (re)connect, replaying stale
+        // ON/OFF/RAMP commands that toggle devices unexpectedly. State retention is
+        // handled separately by the read/state publish options, not here.
+        this._finishTreeEntity({
+            discoveryTopic, uniqueId, entityId,
+            component: config.component,
+            fields: {
+                state_topic: stateTopic,
+                ...(!config.omitCommandTopic && { command_topic: `${writeBase}/${MQTT_CMD_TYPE_SWITCH}` }),
+                ...config.payloads,
+                ...(config.positionSupport && {
+                    position_topic: `${readBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
+                    set_position_topic: `${writeBase}/${MQTT_CMD_TYPE_POSITION}`,
+                    stop_topic: `${writeBase}/${MQTT_CMD_TYPE_STOP}`,
+                    payload_stop: MQTT_COMMAND_STOP,
+                    position_open: 100,
+                    position_closed: 0,
+                    optimistic: false
+                }),
+                ...(config.positionSupport && this.settings.ha_discovery_cover_tilt_app_id && {
+                    tilt_status_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_TOPIC_SUFFIX_TILT}`,
+                    tilt_command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${this.settings.ha_discovery_cover_tilt_app_id}/${groupId}/${MQTT_CMD_TYPE_TILT}`,
+                    tilt_min: 0,
+                    tilt_max: 100,
+                    tilt_optimistic: false
+                }),
+                ...(config.deviceClass && { device_class: config.deviceClass })
+            },
+            deviceIdentifiers: [uniqueId],
+            deviceName: finalLabel,
+            model: config.model,
+            area
+        });
 
         // For trigger groups, also publish companion entities:
         // - a button entity so HA automations can fire the C-Bus trigger via the trigger topic
