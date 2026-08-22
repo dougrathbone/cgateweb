@@ -2204,6 +2204,35 @@ describe('HaDiscovery', () => {
             expect(haDiscovery._publishedTopics.has('testhomeassistant/light/cgateweb_254_56_10/config')).toBe(false);
         });
 
+        it('clears trigger button and scene companions when the group is excluded on a second run', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+            mockSettings.ha_discovery_scene_enabled = true;
+            publishTree(haDiscovery);
+
+            const btnTopic = 'testhomeassistant/button/cgateweb_254_203_15_btn/config';
+            const sceneTopic = 'testhomeassistant/scene/cgateweb_254_203_15_scene/config';
+            const eventTopic = 'testhomeassistant/event/cgateweb_254_203_15/config';
+            expect(haDiscovery._publishedTopics.has(btnTopic)).toBe(true);
+            expect(haDiscovery._publishedTopics.has(sceneTopic)).toBe(true);
+            expect(haDiscovery._publishedTopics.has(eventTopic)).toBe(true);
+
+            haDiscovery.updateLabels({
+                labels: new Map(),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set(['254/203/15'])
+            });
+            mockPublishFn.mockClear();
+            publishTree(haDiscovery);
+
+            for (const topic of [btnTopic, sceneTopic, eventTopic]) {
+                const cleanup = mockPublishFn.mock.calls.find(c => c[0] === topic && c[1] === '');
+                expect(cleanup).toBeDefined();
+                expect(haDiscovery._publishedTopics.has(topic)).toBe(false);
+            }
+        });
+
         it('should clear the old light topic when a device changes type from light to cover across runs', () => {
             // First run: device 254/56/10 published as a light
             publishTree(haDiscovery);

@@ -1753,26 +1753,20 @@ class _HaDiscoveryPublishers {
         const labelKey = `${networkId}/${appId}/${groupId}`;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}_btn`;
         const entityId = entityIds.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_BUTTON, `${entityId}_btn`)),
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
-            payload_press: MQTT_STATE_ON,
-            qos: 0,
-            retain: false,
-            device: buildDeviceBlock({
-                identifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
-                name: label,
-                model: HA_MODEL_TRIGGER
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this.discoveryCount++;
+        this._finishTreeEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_BUTTON}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId,
+            entityId: entityId ? `${entityId}_btn` : undefined,
+            component: HA_COMPONENT_BUTTON,
+            fields: {
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
+                payload_press: MQTT_STATE_ON,
+                retain: false
+            },
+            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
+            deviceName: label,
+            model: HA_MODEL_TRIGGER
+        });
     }
 
     _publishTriggerScene(networkId, appId, groupId, label) {
@@ -1780,26 +1774,20 @@ class _HaDiscoveryPublishers {
         const labelKey = `${networkId}/${appId}/${groupId}`;
         const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}_scene`;
         const entityId = entityIds.get(labelKey);
-        const discoveryTopic = `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SCENE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`;
-
-        const payload = {
-            name: null,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(HA_COMPONENT_SCENE, `${entityId}_scene`)),
-            command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
-            payload_on: MQTT_STATE_ON,
-            qos: 0,
-            retain: false,
-            device: buildDeviceBlock({
-                identifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
-                name: label,
-                model: HA_MODEL_TRIGGER
-            }),
-            origin: buildOriginBlock()
-        };
-
-        this._publish(discoveryTopic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
-        this.discoveryCount++;
+        this._finishTreeEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SCENE}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId,
+            entityId: entityId ? `${entityId}_scene` : undefined,
+            component: HA_COMPONENT_SCENE,
+            fields: {
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+                payload_on: MQTT_STATE_ON,
+                retain: false
+            },
+            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
+            deviceName: label,
+            model: HA_MODEL_TRIGGER
+        });
     }
 }
 
