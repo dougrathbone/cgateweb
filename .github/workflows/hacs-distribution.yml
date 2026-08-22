@@ -140,33 +140,43 @@ jobs:
           "ghcr.io/dougrathbone/cgateweb:${VERSION}-armhf" \
           "ghcr.io/dougrathbone/cgateweb:${VERSION}-i386"
 
-    # GHCR packages default to private on first publish. Supervisor pulls
-    # anonymously, so a private package would make the advertised version
-    # uninstallable. This is a no-op once the package is already public.
-    - name: Make the package public
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        if ! gh api --method POST \
-          "/user/packages/container/cgateweb/visibility" \
-          -f visibility=public; then
-          echo "::error::Could not make ghcr.io/dougrathbone/cgateweb public. Open Package settings and set visibility to Public, then re-run this workflow."
-          exit 1
-        fi
-
+    # Supervisor pulls without credentials, so a package that is not publicly
+    # readable makes the advertised version uninstallable. A package published
+    # from this workflow inherits the visibility of this public repository, so
+    # this verifies that rather than trying to change it -- GITHUB_TOKEN cannot
+    # set package visibility, and a step that tried returned 404 and failed the
+    # v1.28.0 release after the images had already published successfully.
+    #
+    # Queried over the registry API with no credentials at all: `docker
+    # buildx imagetools inspect` can pass on a private package by reusing the
+    # login above from a credential helper.
     - name: Verify users can pull the image anonymously
       env:
         VERSION: ${{ github.ref_name }}
+        EXPECTED_ARCH_COUNT: 5
       run: |
         VERSION=${VERSION#v}
-        docker logout ghcr.io
-        for i in 1 2 3 4 5; do
-          if docker buildx imagetools inspect "ghcr.io/dougrathbone/cgateweb:${VERSION}"; then
+        for attempt in 1 2 3 4 5; do
+          token=$(curl -fsSL \
+            "https://ghcr.io/token?scope=repository:dougrathbone/cgateweb:pull&service=ghcr.io" \
+            | jq -r '.token') || token=""
+          if [[ -n "$token" ]] && curl -fsSL \
+            -H "Authorization: Bearer ${token}" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json' \
+            -o manifest.json \
+            "https://ghcr.io/v2/dougrathbone/cgateweb/manifests/${VERSION}"; then
+            count=$(jq '.manifests | length' manifest.json)
+            if [[ "$count" != "${EXPECTED_ARCH_COUNT}" ]]; then
+              echo "::error::ghcr.io/dougrathbone/cgateweb:${VERSION} lists ${count} architectures, expected ${EXPECTED_ARCH_COUNT}."
+              jq '[.manifests[].platform]' manifest.json
+              exit 1
+            fi
+            echo "Anonymous pull OK: ${VERSION} serves ${count} architectures."
             exit 0
           fi
-          sleep $((i * 5))
+          sleep $((attempt * 5))
         done
-        echo "::error::Anonymous inspect of ghcr.io/dougrathbone/cgateweb:${VERSION} failed. The package must be public."
+        echo "::error::Could not read ghcr.io/dougrathbone/cgateweb:${VERSION} anonymously. Check the package is Public in Package settings."
         exit 1
 
   build-and-deploy:
