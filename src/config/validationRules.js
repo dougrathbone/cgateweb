@@ -64,9 +64,24 @@ function isValidCgatePassword(pass) {
     return typeof pass === 'string' && CGATE_PASSWORD_PATTERN.test(pass);
 }
 
+/**
+ * Trim a configured secret. Blank after trim is unset (null), matching
+ * web_api_key handling: HA password fields often submit "" or spaces.
+ *
+ * @param {unknown} raw
+ * @returns {string|null|*} null when blank string; unchanged when not a string
+ */
+function normalizeOptionalSecret(raw) {
+    if (raw === null || raw === undefined) return raw;
+    if (typeof raw !== 'string') return raw;
+    const trimmed = raw.trim();
+    return trimmed === '' ? null : trimmed;
+}
+
 module.exports = {
     isPortInRange,
     isValidCgateProjectName,
     isValidCgateUsername,
-    isValidCgatePassword
+    isValidCgatePassword,
+    normalizeOptionalSecret
 };

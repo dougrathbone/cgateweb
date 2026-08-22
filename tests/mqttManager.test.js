@@ -60,6 +60,30 @@ describe('MqttManager', () => {
             expect(mqttManager.client).toBe(mockClient);
         });
 
+        it('trims MQTT credentials and treats whitespace-only passwords as unset', () => {
+            const padded = new MqttManager({
+                mqtt: 'localhost:1883',
+                mqttusername: '  testuser  ',
+                mqttpassword: '  testpass  '
+            });
+            padded.connect();
+            expect(mqtt.connect).toHaveBeenCalledWith('mqtt://localhost:1883', expect.objectContaining({
+                username: 'testuser',
+                password: 'testpass'
+            }));
+
+            mqtt.connect.mockClear();
+            const blank = new MqttManager({
+                mqtt: 'localhost:1883',
+                mqttusername: 'testuser',
+                mqttpassword: '   '
+            });
+            blank.connect();
+            const opts = mqtt.connect.mock.calls[0][1];
+            expect(opts.username).toBe('testuser');
+            expect(opts.password).toBeUndefined();
+        });
+
         it('should handle settings without authentication', () => {
             const noAuthSettings = { mqtt: 'localhost:1883' };
             const noAuthManager = new MqttManager(noAuthSettings);
