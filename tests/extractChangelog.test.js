@@ -32,4 +32,9 @@ describe('extractChangelogSection', () => {
     it('throws when the version is missing', () => {
         expect(() => extractChangelogSection(md, '9.9.9')).toThrow(/no CHANGELOG section/);
     });
+
+    it('rejects a non-semver argument rather than interpolating it', () => {
+        expect(() => extractChangelogSection(md, '1.27.0-rc.1')).toThrow(/invalid version/);
+        expect(() => extractChangelogSection(md, '.*')).toThrow(/invalid version/);
+    });
 });
