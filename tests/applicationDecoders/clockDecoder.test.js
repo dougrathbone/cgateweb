@@ -10,6 +10,10 @@ const { isClockLine, decodeLine, decodeValue } = decoder;
 const REAL_DATE_LINE = 'clock date //CLIPSAL/254/223 2026-03-02 0 #sourceunit=8 OID=';
 const REAL_TIME_LINE = 'clock time //CLIPSAL/254/223 21:13:21 0 #sourceunit=8 OID=';
 
+// Second-site captures: alarm panel NTP-broadcasting onto C-Bus (#66).
+const PANEL_TIME_LINE = '#s# clock time //MIDSTRM/254/223 08:44:00 255 #sourceunit=18 OID=';
+const PANEL_DATE_LINE = '#s# clock date //MIDSTRM/254/223 2026-08-22 5 #sourceunit=18 OID=';
+
 describe('clockDecoder — appId', () => {
     it('declares the Clock and Timekeeping app id', () => {
         expect(decoder.appId).toBe('223');
@@ -33,6 +37,13 @@ describe('clockDecoder — isClockLine', () => {
     it('recognises a comment-prefixed clock line', () => {
         expect(isClockLine(`# ${REAL_DATE_LINE}`)).toBe(true);
         expect(isClockLine(`#${REAL_DATE_LINE}`)).toBe(true);
+    });
+
+    it('recognises C-Gate EVENT channel prefixes from a second live site (#66)', () => {
+        expect(isClockLine(PANEL_DATE_LINE)).toBe(true);
+        expect(isClockLine(PANEL_TIME_LINE)).toBe(true);
+        expect(isClockLine('#e# clock time //MIDSTRM/254/223 10:00:00 255 #sourceunit=18 OID=')).toBe(true);
+        expect(isClockLine('#c# clock date //MIDSTRM/254/223 2026-08-22 5 #sourceunit=18 OID=')).toBe(true);
     });
 
     it('does not claim other applications or a bare "clock" token', () => {
@@ -82,6 +93,27 @@ describe('clockDecoder — decodeLine', () => {
         expect(decodeLine(`#${REAL_TIME_LINE}`)).toEqual(decodeLine(REAL_TIME_LINE));
     });
 
+    it('decodes alarm-panel broadcasts that arrive with a #s# channel prefix (#66)', () => {
+        expect(decodeLine(PANEL_DATE_LINE)).toEqual({
+            kind: 'clock',
+            network: '254',
+            application: '223',
+            variant: 'date',
+            value: '2026-08-22'
+        });
+        expect(decodeLine(PANEL_TIME_LINE)).toEqual({
+            kind: 'clock',
+            network: '254',
+            application: '223',
+            variant: 'time',
+            value: '08:44:00'
+        });
+        expect(decodeLine('#s# clock time //MIDSTRM/254/223 10:00:00 255 #sourceunit=18 OID=').value)
+            .toBe('10:00:00');
+        expect(decodeLine('#s# clock time //MIDSTRM/254/223 10:05:00 255 #sourceunit=18 OID=').value)
+            .toBe('10:05:00');
+    });
+
     it('decodes an address without the project prefix', () => {
         expect(decodeLine('clock date 254/223 2026-03-02 0')).toEqual(decodeLine(REAL_DATE_LINE));
     });
@@ -93,10 +125,11 @@ describe('clockDecoder — decodeLine', () => {
     });
 
     it('ignores the undocumented trailing field instead of publishing it', () => {
-        // Both captures end in "0" and nothing in the repo says what it means,
-        // so a different value must not change the decoded reading.
+        // Captures have used 0, 5 and 255; nothing in the repo says what the
+        // field means, so a different value must not change the decoded reading.
         expect(decodeLine('clock date //CLIPSAL/254/223 2026-03-02 7'))
             .toEqual(decodeLine(REAL_DATE_LINE));
+        expect(decodeLine(PANEL_DATE_LINE).value).toBe('2026-08-22');
         const reading = decodeLine(REAL_DATE_LINE);
         expect(Object.keys(reading).sort())
             .toEqual(['application', 'kind', 'network', 'value', 'variant']);

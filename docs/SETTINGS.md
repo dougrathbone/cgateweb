@@ -283,7 +283,7 @@ Zone sensors are read-only and on by default. Every write path is separately opt
 
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
-| `cbus_clock_enabled` | `cbus_clock_enabled` | boolean | `false` | Decode the network clock (`223`/`$DF`) and publish the date and time it broadcasts as two diagnostic sensors on the C-Bus network device. On connect, also asks C-Gate for a clock refresh. Off by default because the message format rests on two captured lines rather than a published specification. Reading only — cgateweb never sets the C-Bus clock. |
+| `cbus_clock_enabled` | `cbus_clock_enabled` | boolean | `false` | Decode the network clock (`223`/`$DF`) and publish the date and time it broadcasts as two diagnostic sensors on the C-Bus network device. On connect, also asks C-Gate for a clock refresh. Off by default because the bus can tick every few minutes. Reading only — cgateweb never sets the C-Bus clock. |
 
 Clock traffic uses a two-segment address (network and application, no group) that the standard event parser cannot read, so these lines are kept away from it whether or not this setting is on; before this existed they were discarded entirely and could not even be captured with `cbusRawEventLogApps`.
 
