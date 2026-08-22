@@ -210,6 +210,20 @@ describe('CbusProjectParser', () => {
                 .rejects.toThrow('XML with DTD or entity declarations is not supported');
         });
 
+        it('rejects XML longer than maxDecompressedBytes before scanning DTDs', async () => {
+            const tiny = new CbusProjectParser({ maxDecompressedBytes: 50 });
+            const xml = '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY x "y">]>' + 'x'.repeat(100);
+            await expect(tiny.parseXML(xml))
+                .rejects.toThrow(/zip-bomb protection|exceeds .* bytes/i);
+        });
+
+        it('rejects XML with an excessive element-token count', async () => {
+            const tiny = new CbusProjectParser({ maxXmlElementTokens: 8 });
+            const xml = '<?xml version="1.0"?><r>' + '<i/>'.repeat(10) + '</r>';
+            await expect(tiny.parseXML(xml))
+                .rejects.toThrow(/too many elements/i);
+        });
+
         it('should handle Label attribute as alternative to TagName', async () => {
             const xml = `<?xml version="1.0"?>
                 <Network Address="254">
@@ -340,6 +354,27 @@ describe('CbusProjectParser', () => {
 
             await expect(tinyCapParser.parse(zipBuffer, 'bomb.cbz'))
                 .rejects.toThrow(/zip-bomb protection|decompressed size exceeds/i);
+        });
+
+        // Declared header.size is attacker-controlled. For STORED entries
+        // adm-zip returns the real payload length regardless of the lie, so a
+        // small declared size must not bypass the post-inflate cap.
+        it('rejects a CBZ whose actual inflated size exceeds the cap despite a small declared size', () => {
+            const tinyCapParser = new CbusProjectParser({ maxDecompressedBytes: 1000 });
+            const zip = new AdmZip();
+            const content = Buffer.concat([
+                Buffer.from('<?xml version="1.0"?><Network Address="254"/>'),
+                Buffer.alloc(5000, 0x41)
+            ]);
+            const entry = zip.addFile('project.xml', content);
+            // Force STORED so getData returns the full payload even when size is lied about.
+            entry.header.method = 0;
+            const rebuilt = new AdmZip(zip.toBuffer());
+            for (const e of rebuilt.getEntries()) {
+                if (!e.isDirectory) e.header.size = 100; // under the cap, but actual is ~5KB
+            }
+            expect(() => tinyCapParser._extractCBZ(rebuilt.toBuffer()))
+                .toThrow(/zip-bomb protection|decompressed size exceeds/i);
         });
 
         // AdmZip's addFile sanitises path-traversal on write, so we cannot

@@ -10,6 +10,13 @@ const { createLogger } = require('./logger');
 // otherwise exhaust process memory before xml2js parsing fails.
 const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024; // 100MB
 
+// Bound xml2js work independently of byte size: a tiny document can still
+// contain millions of empty elements. Count of '<' tokens is a cheap proxy
+// for element count. Toolkit's DLT-tagged Group shape is ~18 tokens per
+// group; 2e6 leaves ~10x headroom over an 11k-group site while still
+// rejecting a small `<i/>` bomb (~8MB at 4 bytes/token).
+const MAX_XML_ELEMENT_TOKENS = 2000000;
+
 // Defence-in-depth: reject ZIP entry names containing path-traversal or
 // absolute paths. The parser does not write extracted files to disk, but
 // guarding here means a future change can't accidentally introduce one.
@@ -38,6 +45,9 @@ class CbusProjectParser {
     constructor(options = {}) {
         this.logger = createLogger({ component: 'CbusProjectParser' });
         this.maxDecompressedBytes = options.maxDecompressedBytes || MAX_DECOMPRESSED_BYTES;
+        this.maxXmlElementTokens = Number.isFinite(options.maxXmlElementTokens) && options.maxXmlElementTokens > 0
+            ? options.maxXmlElementTokens
+            : MAX_XML_ELEMENT_TOKENS;
     }
 
     /**
@@ -159,9 +169,14 @@ class CbusProjectParser {
         if (!xmlEntry) {
             xmlEntry = fileEntries.find(e => {
                 try {
-                    const head = e.getData().slice(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart();
+                    // adm-zip fully inflates on getData(); check actual length
+                    // immediately, then sniff only the first 512 bytes of that
+                    // same buffer (no second inflate / second copy for the cap).
+                    const data = this._getEntryDataWithinCap(e);
+                    const head = data.slice(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart();
                     return head.startsWith('<?xml') || /<(Installation|Network|Project)\b/i.test(head);
-                } catch {
+                } catch (err) {
+                    if (this._isZipBombError(err)) throw err;
                     return false;
                 }
             });
@@ -171,15 +186,17 @@ class CbusProjectParser {
                 throw new Error(`CBZ archive entry name rejected: ${xmlEntry.entryName}`);
             }
             this.logger.info(`Extracting ${xmlEntry.entryName} from CBZ`);
-            return { kind: 'xml', data: xmlEntry.getData().toString('utf8') };
+            return { kind: 'xml', data: this._getEntryDataWithinCap(xmlEntry).toString('utf8') };
         }
 
         // No XML — newer Toolkit (1.17.x) packs a SQLite project database.
         const dbEntry = fileEntries.find(e => {
             if (e.entryName.toLowerCase().endsWith('.db')) return true;
             try {
-                return this._isSqlite(e.getData().slice(0, 16));
-            } catch {
+                const data = this._getEntryDataWithinCap(e);
+                return this._isSqlite(data.slice(0, 16));
+            } catch (err) {
+                if (this._isZipBombError(err)) throw err;
                 return false;
             }
         });
@@ -188,10 +205,31 @@ class CbusProjectParser {
                 throw new Error(`CBZ archive entry name rejected: ${dbEntry.entryName}`);
             }
             this.logger.info(`Extracting SQLite project database ${dbEntry.entryName} from CBZ`);
-            return { kind: 'sqlite', data: dbEntry.getData() };
+            return { kind: 'sqlite', data: this._getEntryDataWithinCap(dbEntry) };
         }
 
         throw new Error('CBZ archive contains neither an XML export nor a SQLite project database (.db)');
+    }
+
+    /**
+     * Inflate a ZIP entry and reject if the actual buffer exceeds the cap.
+     * Declared header.size is attacker-controlled (and can under-report for
+     * STORED entries); never trust it alone after getData().
+     * @param {{ getData: () => Buffer, entryName?: string }} entry
+     * @returns {Buffer}
+     */
+    _getEntryDataWithinCap(entry) {
+        const data = entry.getData();
+        if (data.length > this.maxDecompressedBytes) {
+            throw new Error(
+                `CBZ archive decompressed size exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
+            );
+        }
+        return data;
+    }
+
+    _isZipBombError(err) {
+        return Boolean(err && typeof err.message === 'string' && /zip-bomb protection/i.test(err.message));
     }
 
     _isSqlite(buffer) {
@@ -270,11 +308,33 @@ class CbusProjectParser {
     }
 
     _parseXML(xmlString) {
+        // Bound size before regex/token work: a huge document must not pay
+        // for DTD scans or a full '<' walk only to be rejected on length.
+        if (typeof xmlString === 'string' && xmlString.length > this.maxDecompressedBytes) {
+            return Promise.reject(new Error(
+                `XML document exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
+            ));
+        }
         // Reject DTDs / entity declarations before handing to the XML parser —
         // xml2js (and libxml-backed parsers) can expand external entities or
         // blow up on billion-laughs style entity expansion.
         if (/<!DOCTYPE/i.test(xmlString) || /<!ENTITY/i.test(xmlString)) {
             return Promise.reject(new Error('XML with DTD or entity declarations is not supported'));
+        }
+        // Cap element-ish tokens ('<') so a small but densely nested / empty-tag
+        // document cannot exhaust CPU/memory inside xml2js.
+        if (typeof xmlString === 'string') {
+            let tokenCount = 0;
+            for (let i = 0; i < xmlString.length; i++) {
+                if (xmlString.charCodeAt(i) === 60) { // '<'
+                    tokenCount++;
+                    if (tokenCount > this.maxXmlElementTokens) {
+                        return Promise.reject(new Error(
+                            `XML document has too many elements; rejecting (max ${this.maxXmlElementTokens})`
+                        ));
+                    }
+                }
+            }
         }
         return new Promise((resolve, reject) => {
             parseString(xmlString, { explicitArray: false, ignoreAttrs: false, mergeAttrs: true }, (err, result) => {
