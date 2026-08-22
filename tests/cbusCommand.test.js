@@ -572,8 +572,10 @@ describe('CBusCommand', () => {
             expect(command.isValid()).toBe(false);
         });
 
-        it('should accept the temperature command type', () => {
+        it('should accept temperature, play and record command types', () => {
             expect(new CBusCommand('cbus/write/254/25/3/temperature', '21.5').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254/203/1/play', '4').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254/203/1/record', '4').isValid()).toBe(true);
         });
     });
 

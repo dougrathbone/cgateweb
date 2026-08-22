@@ -24,6 +24,8 @@ const {
     MQTT_CMD_TYPE_HVAC_MODE,
     MQTT_CMD_TYPE_HVAC_FAN_MODE,
     MQTT_CMD_TYPE_TEMPERATURE,
+    MQTT_CMD_TYPE_PLAY,
+    MQTT_CMD_TYPE_RECORD,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
@@ -59,6 +61,7 @@ const {
 const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
 const { buildMeasurementDataCommand } = require('./measurementCommand');
 const { buildTemperatureBroadcastCommand, celsiusToTemperatureBroadcastByte } = require('./temperatureCommand');
+const { buildScenePlayCommand, buildSceneRecordCommand } = require('./sceneCommand');
 const RateLimiter = require('./web/rateLimiter');
 const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
@@ -329,6 +332,10 @@ class MqttCommandRouter extends EventEmitter {
                 break;
             case MQTT_CMD_TYPE_TEMPERATURE:
                 this._handleTemperatureBroadcast(command, payload, topic);
+                break;
+            case MQTT_CMD_TYPE_PLAY:
+            case MQTT_CMD_TYPE_RECORD:
+                this._handleSceneModule(command, payload, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -640,6 +647,30 @@ class MqttCommandRouter extends EventEmitter {
         });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Temperature broadcast: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} -> ${celsius} °C (raw ${rawByte})`);
+    }
+
+    /**
+     * Play or record a Scene Module scene. C-Gate: SCENE PLAY|RECORD <set> <scene>.
+     * Record overwrites module memory; gated on cbus_scene_module_enabled.
+     * @private
+     */
+    _handleSceneModule(command, payload, topic) {
+        if (!this.settings.cbus_scene_module_enabled) {
+            this.logger.warn(`Scene Module command ignored (cbus_scene_module_enabled is off): ${topic}`);
+            return;
+        }
+        const scene = parseInt(String(payload).trim(), 10);
+        if (!Number.isInteger(scene) || scene < 0 || scene > 255) {
+            this.logger.warn(`Invalid Scene Module scene "${payload}" on topic ${topic} (expected 0–255)`);
+            return;
+        }
+        const set = command.getGroup();
+        const builder = command.getCommandType() === MQTT_CMD_TYPE_RECORD
+            ? buildSceneRecordCommand
+            : buildScenePlayCommand;
+        const cmd = builder({ set, scene });
+        this._queueCommand(cmd + NEWLINE);
+        this.logger.info(`Scene Module ${command.getCommandType()}: set ${set} scene ${scene}`);
     }
 
     /**

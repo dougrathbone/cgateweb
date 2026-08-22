@@ -2,6 +2,7 @@
 
 const { buildClockRequestRefresh } = require('../src/clockCommand');
 const { buildTemperatureBroadcastCommand, celsiusToTemperatureBroadcastByte } = require('../src/temperatureCommand');
+const { buildScenePlayCommand, buildSceneRecordCommand } = require('../src/sceneCommand');
 
 describe('clockCommand', () => {
     it('builds CLOCK REQUEST_REFRESH for the network clock app', () => {

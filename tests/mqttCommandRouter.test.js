@@ -1367,4 +1367,20 @@ describe('MqttCommandRouter', () => {
             expect(mockQueue.add).not.toHaveBeenCalled();
         });
     });
+
+    describe('scene module play/record', () => {
+        it('ignores play when the feature is off', () => {
+            router.routeMessage('cbus/write/254/203/1/play', '4');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+
+        it('sends scene play and record when enabled', () => {
+            router.settings.cbus_scene_module_enabled = true;
+            router.routeMessage('cbus/write/254/203/1/play', '4');
+            expect(mockQueue.add).toHaveBeenCalledWith('scene play 1 4\n');
+            mockQueue.add.mockClear();
+            router.routeMessage('cbus/write/254/203/1/record', '4');
+            expect(mockQueue.add).toHaveBeenCalledWith('scene record 1 4\n');
+        });
+    });
 });
