@@ -8,6 +8,7 @@ const {
     NEWLINE,
     DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
+const { buildClockRequestRefresh } = require('./clockCommand');
 
 /**
  * Drives post-connection initialization (auto-discovery, initial/periodic
@@ -124,6 +125,7 @@ class BridgeInitializationService {
         // Security panels don't answer lighting-style getall (spec §5.9), so
         // the security app syncs zone state via dedicated status requests.
         this.sendSecurityStatusRequests();
+        this.sendClockRefreshRequests();
 
         // Monitor CNI/PCI connectivity per network (independent of getall).
         this._startNetworkInterfaceMonitoring();
@@ -194,6 +196,7 @@ class BridgeInitializationService {
         const types = [];
         if (s.ha_discovery_cover_app_id) types.push(`covers(app ${s.ha_discovery_cover_app_id})`);
         if (s.ha_discovery_switch_app_id) types.push(`switches(app ${s.ha_discovery_switch_app_id})`);
+        if (s.ha_discovery_relay_app_id) types.push(`relays(app ${s.ha_discovery_relay_app_id})`);
         if (s.ha_discovery_pir_app_id) types.push(`PIR(app ${s.ha_discovery_pir_app_id})`);
         if (s.ha_discovery_trigger_app_id) types.push(`triggers(app ${s.ha_discovery_trigger_app_id})`);
         if (s.ha_discovery_hvac_app_id) types.push(`HVAC(app ${s.ha_discovery_hvac_app_id})`);
@@ -527,6 +530,25 @@ class BridgeInitializationService {
         for (const network of networks) {
             handler.requestStatusSync(network, trigger);
         }
+    }
+
+    /**
+     * Ask the network clock to rebroadcast date and time after connect.
+     * Read-only: this never sets the C-Bus clock.
+     */
+    sendClockRefreshRequests() {
+        if (!this.settings.cbus_clock_enabled) return;
+        const networks = this._resolveMonitorNetworkIds();
+        if (networks.length === 0) return;
+        for (const network of networks) {
+            this.commandQueue.add(
+                buildClockRequestRefresh({
+                    cbusname: this.settings.cbusname,
+                    network
+                }) + NEWLINE
+            );
+        }
+        this.logger.info(`Requested C-Bus clock refresh for networks: ${networks.join(', ')}`);
     }
 
     /**

@@ -188,6 +188,30 @@ describe('BridgeInitializationService', () => {
         });
     });
 
+    describe('sendClockRefreshRequests', () => {
+        it('queues a clock request_refresh per resolved network when enabled', () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_networks: [254, 1]
+            });
+            const svc = makeService(bridge);
+            svc.sendClockRefreshRequests();
+            expect(commandQueueAdd).toHaveBeenCalledTimes(2);
+            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/254/223\n');
+            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/1/223\n');
+        });
+
+        it('does nothing when the clock feature is off', () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                cbus_clock_enabled: false,
+                ha_discovery_networks: [254]
+            });
+            const svc = makeService(bridge);
+            svc.sendClockRefreshRequests();
+            expect(commandQueueAdd).not.toHaveBeenCalled();
+        });
+    });
+
     describe('_resolveGetallNetworks', () => {
         it('returns only lighting app when no optional apps are configured', () => {
             const { bridge } = makeBridge({ getall_networks: [254, 1] });

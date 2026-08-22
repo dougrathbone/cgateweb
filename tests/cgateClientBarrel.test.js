@@ -137,6 +137,7 @@ describe('cgate-client public surface', () => {
         'DEFAULT_CBUS_APP_AIRCON',
         'DEFAULT_CBUS_APP_SECURITY',
         'DEFAULT_CBUS_APP_MEASUREMENT',
+        'DEFAULT_CBUS_APP_CLOCK',
         'CGATE_LEVEL_MIN',
         'CGATE_LEVEL_MAX',
         'RAMP_STEP',
