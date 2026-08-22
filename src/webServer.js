@@ -136,7 +136,6 @@ class WebServer {
         this.eventStream = options.eventStream || null;
         this.getStatus = options.getStatus || (() => ({}));
         this.deviceStateManager = options.deviceStateManager || null;
-        this.apiKey = options.apiKey || null;
         this.allowUnauthenticatedMutations = options.allowUnauthenticatedMutations === true;
         this.allowedOrigins = Array.isArray(options.allowedOrigins)
             ? options.allowedOrigins
@@ -172,10 +171,11 @@ class WebServer {
         }
 
         this._apiAuth = new ApiAuth({
-            apiKey: this.apiKey,
+            apiKey: options.apiKey,
             allowUnauthenticatedMutations: this.allowUnauthenticatedMutations,
             getBasePath: () => this.basePath
         });
+        this.apiKey = this._apiAuth.apiKey;
         this._rateLimiter = new RateLimiter({
             windowMs: this.rateLimitWindowMs,
             maxRequests: this.maxMutationRequestsPerWindow
@@ -213,7 +213,14 @@ class WebServer {
         });
         this._staticFiles = new StaticFileServer({ logger: this.logger });
 
-        if (!this.apiKey && this.allowUnauthenticatedMutations) {
+        if (typeof options.apiKey === 'string' && this.apiKey === null) {
+            // Constructor-once: add-on password fields often submit "" or spaces.
+            this.logger.warn(
+                'Web API key is empty after trimming; treating as unset. '
+                + 'Mutating routes require Home Assistant Ingress or loopback '
+                + '(with web_allow_unauthenticated_mutations).'
+            );
+        } else if (!this.apiKey && this.allowUnauthenticatedMutations) {
             this.logger.warn('Web API key not configured; mutating endpoints are unauthenticated due to explicit override.');
         } else if (!this.apiKey) {
             this.logger.info('Web API key not configured; mutating endpoints require explicit unsafe override.');

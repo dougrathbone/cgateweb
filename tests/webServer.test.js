@@ -630,6 +630,59 @@ describe('WebServer', () => {
             expect(s._apiAuth.isAuthorized(mkReq({}))).toBe(false);
         });
 
+        it('trims configured API keys so padded secrets still authenticate', () => {
+            const s = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({}),
+                apiKey: '  secret-key  '
+            });
+            expect(s.apiKey).toBe('secret-key');
+            expect(s._apiAuth.apiKey).toBe('secret-key');
+            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'secret-key' }))).toBe(true);
+            expect(s._apiAuth.isAuthorized(mkReq({ authorization: 'Bearer secret-key' }))).toBe(true);
+        });
+
+        it('treats whitespace-only API keys as unset (401 on mutation without ingress)', async () => {
+            protectedServer = new WebServer({
+                port: 0,
+                labelLoader,
+                apiKey: '   ',
+                getStatus: () => ({})
+            });
+            expect(protectedServer.apiKey).toBeNull();
+            await protectedServer.start();
+            protectedPort = protectedServer._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: protectedPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' }
+                }, (response) => {
+                    let data = '';
+                    response.on('data', (chunk) => { data += chunk; });
+                    response.on('end', () => resolve({ status: response.statusCode, body: JSON.parse(data) }));
+                });
+                req.on('error', reject);
+                req.write(JSON.stringify({ '254/56/10': 'Patched' }));
+                req.end();
+            });
+            expect(res.status).toBe(401);
+        });
+
+        it('warns once when a configured API key trims to empty', () => {
+            const warnSpy = jest.spyOn(console, 'warn');
+            const blank = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), apiKey: '   ' });
+            expect(blank.apiKey).toBeNull();
+            const blankWarnings = warnSpy.mock.calls.filter(
+                (args) => typeof args[0] === 'string' && args[0].includes('empty after trimming')
+            );
+            expect(blankWarnings).toHaveLength(1);
+        });
+
         it('should honor maxBodySizeBytes override for body-size enforcement', () => {
             const tiny = new WebServer({
                 port: 0,
