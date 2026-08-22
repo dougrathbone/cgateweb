@@ -68,7 +68,7 @@ class Logger {
             coloredLevel = `${colors[level.toUpperCase()] || ''}${levelStr}${reset}`;
         }
         
-        let logLine = `${timestamp} ${coloredLevel} ${componentStr} ${message}`;
+        let logLine = `${timestamp} ${coloredLevel} ${componentStr} ${this._toSingleLine(message)}`;
 
         // Enhanced metadata formatting for development
         if (Object.keys(meta).length > 0) {
@@ -92,6 +92,22 @@ class Logger {
     }
 
     /**
+     * Collapse a message onto one line.
+     *
+     * Plenty of what gets logged here started life outside the process: a
+     * C-Gate response line, an MQTT topic, the message of a socket error. A
+     * line break in any of those lets the remote end append what looks like a
+     * whole extra log entry (CWE-117), so breaks become a visible separator
+     * and the result is then stripped of anything that still parses as one.
+     * Structured metadata is exempt: JSON.stringify escapes breaks already,
+     * and verbose mode deliberately pretty-prints it across lines.
+     */
+    _toSingleLine(message) {
+        const text = typeof message === 'string' ? message : String(message);
+        return text.replace(/[\r\n]+/g, ' | ').replace(/\n/g, '');
+    }
+
+    /**
      * Return a copy of a metadata value with sensitive fields redacted. Recurses
      * into plain objects and arrays; non-plain objects (e.g. Error instances) are
      * left untouched so they stringify exactly as before.
@@ -107,7 +123,10 @@ class Logger {
         if (proto !== Object.prototype && proto !== null) {
             return value;
         }
-        const redacted = {};
+        // Null prototype: metadata is sometimes a parsed JSON body, and a
+        // `__proto__` key in one would otherwise set the copy's prototype
+        // instead of a property. Own keys are all kept either way.
+        const redacted = Object.create(null);
         for (const [key, val] of Object.entries(value)) {
             redacted[key] = Logger.SENSITIVE_KEY_PATTERN.test(key)
                 ? '[REDACTED]'

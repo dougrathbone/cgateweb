@@ -167,7 +167,7 @@ class EnvironmentDetector {
                 fs.readFileSync('/proc/1/cgroup', 'utf8').includes('docker')
             );
         } catch (error) {
-            this.logger.debug('Error checking Docker environment:', error.message);
+            this.logger.debug(`Error checking Docker environment: ${error.message}`);
             return false;
         }
     }

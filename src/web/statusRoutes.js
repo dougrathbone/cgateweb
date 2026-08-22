@@ -148,7 +148,7 @@ class StatusRoutes {
             if (e && e.message === 'Timeout') {
                 this.logger.warn('Area API request timeout');
             } else {
-                this.logger.warn('Area API request error:', e && e.message);
+                this.logger.warn(`Area API request error: ${e && e.message}`);
             }
             return null;
         });
