@@ -168,6 +168,7 @@ class CbusProjectParser {
         let xmlEntry = fileEntries.find(e => e.entryName.toLowerCase().endsWith('.xml'));
         if (!xmlEntry) {
             xmlEntry = fileEntries.find(e => {
+                if (!_isSafeZipEntryName(e.entryName)) return false;
                 try {
                     // adm-zip fully inflates on getData(); check actual length
                     // immediately, then sniff only the first 512 bytes of that
@@ -191,6 +192,7 @@ class CbusProjectParser {
 
         // No XML — newer Toolkit (1.17.x) packs a SQLite project database.
         const dbEntry = fileEntries.find(e => {
+            if (!_isSafeZipEntryName(e.entryName)) return false;
             if (e.entryName.toLowerCase().endsWith('.db')) return true;
             try {
                 const data = this._getEntryDataWithinCap(e);
