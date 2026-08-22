@@ -12,6 +12,18 @@ const { sendJSON, setSecurityHeaders, setCorsHeaders } = require('./web/httpHelp
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
+/**
+ * True when the web server is bound only to loopback, including IPv4-mapped IPv6.
+ * @param {string} host
+ * @returns {boolean}
+ */
+function isLoopbackBindHost(host) {
+    if (!host) return false;
+    const h = String(host).toLowerCase();
+    if (LOOPBACK_HOSTS.has(h)) return true;
+    return h === '::ffff:127.0.0.1' || h.startsWith('::ffff:127.');
+}
+
 // Exact "METHOD path" to handler. A table rather than a ladder of
 // `if (urlPath === x && req.method === y)`: the routes are all exact matches
 // with no ordering between them, so the ladder was thirty lines expressing a
@@ -39,6 +51,23 @@ const ROUTES = new Map([
     ['GET /readyz', (server, req, res) => server._statusRoutes.handleReady(req, res)],
     ['GET /api/events/stream', (server, req, res) => server._sseHandler.handle(req, res)],
 ]);
+
+/**
+ * Coerce a numeric option to a positive finite number, falling back to the
+ * default for anything else (absent, null, a string, NaN, zero, negative).
+ *
+ * These arrive from a user-edited settings file or the add-on options, so
+ * "0" or a typo has to land on the default rather than on a zero-length rate
+ * limit window or a zero-byte body cap.
+ *
+ * @param {*} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+function listenPort(value, fallback) {
+    if (value === 0) return 0; // ephemeral, used by tests and some standalone installs
+    return Number.isFinite(value) && value > 0 && value <= 65535 ? value : fallback;
+}
 
 /**
  * Coerce a numeric option to a positive finite number, falling back to the
@@ -99,7 +128,7 @@ class WebServer {
  * @param {number} [options._sseKeepaliveMs] - SSE keep-alive interval in ms (internal)
      */
     constructor(options = {}) {
-        this.port = (options.port !== null && options.port !== undefined) ? options.port : 8080;
+        this.port = listenPort(options.port, 8080);
         this.bindHost = options.bindHost || '127.0.0.1';
         this.basePath = (options.basePath || '').replace(/\/+$/, '');
         this.labelLoader = options.labelLoader;
@@ -134,7 +163,7 @@ class WebServer {
 
         // Unauthenticated mutations are only safe on loopback. Binding to a
         // public interface with the flag set would expose write APIs to the LAN.
-        if (this.allowUnauthenticatedMutations && !LOOPBACK_HOSTS.has(this.bindHost)) {
+        if (this.allowUnauthenticatedMutations && !isLoopbackBindHost(this.bindHost)) {
             this.logger.error(
                 'Refusing allowUnauthenticatedMutations when bindHost is not loopback '
                 + `(got "${this.bindHost}"). Set web_api_key, or bind to 127.0.0.1/::1/localhost.`

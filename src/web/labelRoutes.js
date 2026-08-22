@@ -1,7 +1,7 @@
 // @ts-check
 const CbusProjectParser = require('../cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('../constants');
-const { sendJSON, isUnsafeObjectKey } = require('./httpHelpers');
+const { sendJSON, sendJSONAndClose, isUnsafeObjectKey } = require('./httpHelpers');
 const { readRequestBody, parseMultipart, BODY_TOO_LARGE } = require('./bodyReader');
 
 const CBUS_APP_NAMES = {
@@ -123,7 +123,9 @@ class LabelRoutes {
      */
     async handlePutLabels(req, res) {
         const body = await readRequestBody(req, this.maxBodySizeBytes);
-        if (body === BODY_TOO_LARGE) return sendJSON(res, 413, { error: 'Payload too large' });
+        if (body === BODY_TOO_LARGE) {
+            return sendJSONAndClose(req, res, 413, { error: 'Payload too large' });
+        }
         if (typeof body !== 'string' || !body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let data;
@@ -169,7 +171,9 @@ class LabelRoutes {
      */
     async handlePatchLabels(req, res) {
         const body = await readRequestBody(req, this.maxBodySizeBytes);
-        if (body === BODY_TOO_LARGE) return sendJSON(res, 413, { error: 'Payload too large' });
+        if (body === BODY_TOO_LARGE) {
+            return sendJSONAndClose(req, res, 413, { error: 'Payload too large' });
+        }
         if (typeof body !== 'string' || !body) return sendJSON(res, 400, { error: 'Request body required' });
 
         let patch;
@@ -226,7 +230,7 @@ class LabelRoutes {
         if (contentType.includes('multipart/form-data')) {
             const result = await parseMultipart(req, contentType, this.maxBodySizeBytes);
             if (result === BODY_TOO_LARGE) {
-                return sendJSON(res, 413, { error: 'Payload too large' });
+                return sendJSONAndClose(req, res, 413, { error: 'Payload too large' });
             }
             if (!result || typeof result !== 'object') {
                 return sendJSON(res, 400, { error: 'No file found in upload' });
@@ -236,7 +240,7 @@ class LabelRoutes {
         } else {
             const body = await readRequestBody(req, this.maxBodySizeBytes, { raw: true });
             if (body === BODY_TOO_LARGE) {
-                return sendJSON(res, 413, { error: 'Payload too large' });
+                return sendJSONAndClose(req, res, 413, { error: 'Payload too large' });
             }
             if (!Buffer.isBuffer(body) || body.length === 0) {
                 return sendJSON(res, 400, { error: 'No file data received' });

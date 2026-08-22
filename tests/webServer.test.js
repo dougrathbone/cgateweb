@@ -1121,7 +1121,7 @@ describe('WebServer', () => {
             expect(s._apiAuth.allowUnauthenticatedMutations).toBe(false);
         });
 
-        it.each(['127.0.0.1', '::1', 'localhost'])('allows unauthenticated mutations on loopback bindHost=%s', (bindHost) => {
+        it.each(['127.0.0.1', '::1', 'localhost', '::ffff:127.0.0.1'])('allows unauthenticated mutations on loopback bindHost=%s', (bindHost) => {
             const s = new WebServer({
                 labelLoader,
                 bindHost,
@@ -1436,6 +1436,18 @@ describe('WebServer', () => {
     });
 
     describe('request body size limit', () => {
+        it('destroys the request socket after sending 413', () => {
+            const { sendJSONAndClose } = require('../src/web/httpHelpers');
+            const req = { destroy: jest.fn() };
+            const res = {
+                writeHead: jest.fn(),
+                end: jest.fn((body, cb) => { if (cb) cb(); })
+            };
+            sendJSONAndClose(req, res, 413, { error: 'Payload too large' });
+            expect(res.writeHead).toHaveBeenCalledWith(413, expect.any(Object));
+            expect(req.destroy).toHaveBeenCalled();
+        });
+
         it('resolves BODY_TOO_LARGE and pauses the request when body exceeds 10MB', async () => {
             const EventEmitter = require('events');
             const mockReq = new EventEmitter();
