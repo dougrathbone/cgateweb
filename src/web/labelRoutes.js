@@ -253,7 +253,8 @@ class LabelRoutes {
         try {
             result = await this._parser.parse(fileBuffer, filename);
         } catch (err) {
-            return sendJSON(res, 400, { error: err.message });
+            this.logger.error('Label import failed', { error: err.message });
+            return sendJSON(res, 400, { error: 'Invalid or unsupported project file' });
         }
 
         try {

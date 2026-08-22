@@ -1389,7 +1389,7 @@ describe('WebServer', () => {
                 req.end();
             });
             expect(res.status).toBe(400);
-            expect(res.body.error).toContain('bad file');
+            expect(res.body.error).toBe('Invalid or unsupported project file');
         });
 
         it('returns 400 when no body is sent', async () => {
