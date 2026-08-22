@@ -2,7 +2,9 @@
 
 ![C-Gate Web Bridge](cgateweb/logo.png)
 
-A Home Assistant add-on that bridges [Clipsal C-Bus](https://www.clipsal.com/products/c-bus) lighting and automation systems to Home Assistant via MQTT.
+A Home Assistant **add-on** (not a HACS integration) that bridges [Clipsal C-Bus](https://www.clipsal.com/products/c-bus) lighting and automation systems to Home Assistant via MQTT.
+
+Add this repository in **Settings → Add-ons → Add-on Store → ⋮ → Repositories**. HACS will not list it.
 
 [![GitHub Release](https://img.shields.io/github/v/release/dougrathbone/cgateweb-homeassistant?style=flat-square)](https://github.com/dougrathbone/cgateweb-homeassistant/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/dougrathbone/cgateweb?style=flat-square)](https://github.com/dougrathbone/cgateweb)
@@ -82,8 +84,8 @@ All development, issues, and contributions happen in the **source repository**:
 
 | | |
 |---|---|
-| **Bug reports** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new) |
-| **Feature requests** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new) |
+| **Bug reports** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new?template=bug.yml) |
+| **Feature requests** | [Open an issue](https://github.com/dougrathbone/cgateweb/issues/new?template=feature.yml) |
 | **Questions** | [Search existing issues](https://github.com/dougrathbone/cgateweb/issues) or open a new one |
 | **Pull requests** | [Submit to the source repo](https://github.com/dougrathbone/cgateweb/pulls) |
 | **Source code** | [dougrathbone/cgateweb](https://github.com/dougrathbone/cgateweb) |

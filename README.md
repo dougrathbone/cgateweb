@@ -1,6 +1,8 @@
 cgateweb
 ========
 
+<img src="homeassistant-addon/icon.png" alt="C-Gate Web Bridge" width="96" height="96">
+
 [![Node.js CI](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml/badge.svg)](https://github.com/dougrathbone/cgateweb/actions/workflows/ci.yml)
 [![Home Assistant Addon](https://img.shields.io/github/actions/workflow/status/dougrathbone/cgateweb/hacs-distribution.yml?label=Home%20Assistant%20Addon)](https://github.com/dougrathbone/cgateweb/actions/workflows/hacs-distribution.yml)
 [![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-dougrathbone-FFDD00?logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/dougrathbone)
@@ -9,19 +11,20 @@ An MQTT bridge for Clipsal C-Bus. It connects to C-Gate over TCP, publishes C-Bu
 
 Run it as a **Home Assistant add-on** (recommended) or as a **standalone Node.js service**.
 
-## Install
+This is a **Supervisor add-on**, not a HACS integration. You add a repository URL in the Add-on Store, not in HACS.
 
-### Home Assistant add-on
+## First 10 minutes (Home Assistant add-on)
 
-1. Settings → Add-ons → Add-on Store → ⋮ → **Repositories**
-2. Add `https://github.com/dougrathbone/cgateweb-homeassistant`
-3. Refresh the store, install **C-Gate Web Bridge**, set `cgate_host` and `cgate_project` in the Configuration tab, and start it.
+1. **Add the add-on repository.** Settings → Add-ons → Add-on Store → ⋮ → Repositories. Paste `https://github.com/dougrathbone/cgateweb-homeassistant` and add it.
+2. **Install C-Gate Web Bridge.** Refresh the store if it does not appear, then install. MQTT is detected automatically if you run the Mosquitto add-on.
+3. **Point it at C-Gate.** Configuration tab: set **C-Gate host** (the machine running C-Gate) and **C-Gate project** (often `HOME` or `CLIPSAL`). Leave everything else unless you know you need it.
+4. **Start it.** Info tab → Start. On the Log tab you should see a C-Gate connection and an MQTT connection. Lights and other groups then show up under Settings → Devices & services → MQTT.
 
-MQTT is detected automatically if you run the Mosquitto add-on. Everything else is optional.
+No C-Gate on the network yet? Use **managed mode** so the add-on downloads and runs C-Gate for you, including a USB PC Interface on the Home Assistant host. See [Managed mode](homeassistant-addon/DOCS.md#c-gate-managed-mode-settings).
 
 👉 **[Full configuration reference and walkthroughs →](homeassistant-addon/DOCS.md)**
 
-### Standalone
+## Standalone
 
 Needs Node.js 20+ and a C-Gate you can reach over the network.
 

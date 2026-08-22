@@ -47,7 +47,7 @@ Two consequences worth knowing before touching it:
 - **Check names are `quality / <job name>`** and several are required status checks on master. Renaming a job in `quality.yml` breaks branch protection until the required contexts are updated to match (`gh api -X PATCH repos/dougrathbone/cgateweb/branches/master/protection/required_status_checks`).
 - **Docs-only changes skip the image builds and integration legs.** `ci.yml`'s `changes` job decides, and passes `run-expensive` in. `addon-image` gates its *steps* rather than skipping the job, because a skipped job does not satisfy a required check — skipping it outright would make every docs PR unmergeable. The integration legs are not individually required, so those skip wholesale and the aggregator reports why.
 
-After tagging, backfill a GitHub Release on the source repo (`gh release create vX.Y.Z --notes "..."`) so the source-repo release page stays in lockstep with the distribution. The `hacs-distribution.yml` workflow only creates a Release on the **distribution** repo, not the source.
+After tagging, `hacs-distribution.yml` creates GitHub Releases on **both** the distribution repo and this source repo (notes from `homeassistant-addon/CHANGELOG.md`). You no longer need to backfill the source release by hand.
 
 ### Home Assistant Add-on config.yaml Rules
 
@@ -191,5 +191,5 @@ When the user approves a batch of improvements:
 4. After all items are committed locally, push them as a batch and watch CI. The version bump goes in a separate `chore: release vX.Y.Z` commit at the end, with the CHANGELOG entry summarizing the batch.
 
    **CHANGELOG entries must be very concise** — one sentence per bullet, a second only when the reader has to do something, no backticks, no root-cause narration, no "reported by a user". The full rules are in `AGENT.md` under "Changelog Format"; they are easy to drift from, because the commit message you just wrote is long and detailed and the changelog bullet is not. Match the density of the 1.22.0-and-later entries, not the older ones. The same brevity applies to replies on GitHub issues and PRs.
-5. Tag and push the tag - that triggers the HACS distribution workflow.
+5. Tag and push the tag - that triggers the add-on distribution workflow.
 6. Backfill the source-repo GitHub Release with the CHANGELOG section.

@@ -1,6 +1,6 @@
 # Home Assistant Add-on Distribution Setup Guide
 
-This guide explains how to set up the Home Assistant add-on distribution repository and GitHub Actions workflow.
+This guide explains how to set up the Home Assistant **add-on** distribution repository and GitHub Actions workflow. Users add that repository in the Supervisor Add-on Store. It is not a HACS listing. The GitHub secret `HACS_DEPLOY_TOKEN` is a leftover name for the PAT that pushes to the distribution repo.
 
 ## Prerequisites
 

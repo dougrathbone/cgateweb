@@ -1,7 +1,13 @@
-# Home Assistant HACS Addon Scope Document
+# Home Assistant add-on scope document (historical)
+
+> HACS does not distribute add-ons. This document was written when the
+> packaging was first planned and still says “HACS” in several checklists.
+> The live product is a Supervisor add-on repository:
+> `https://github.com/dougrathbone/cgateweb-homeassistant`.
+> Do not submit it to the HACS default store.
 
 ## Project Overview
-Create a Home Assistant Community Store (HACS) addon that packages the cgateweb service for seamless integration within Home Assistant environments.
+Package the cgateweb service as a Home Assistant add-on so it installs from the Add-on Store.
 
 ## Objectives
 - Package cgateweb as a native Home Assistant addon
