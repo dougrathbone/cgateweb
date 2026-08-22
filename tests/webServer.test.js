@@ -8,6 +8,7 @@ const CbusProjectParser = require('../src/cbusProjectParser');
 const RateLimiter = require('../src/web/rateLimiter');
 const StaticFileServer = require('../src/web/staticFiles');
 const { readRequestBody, BODY_TOO_LARGE } = require('../src/web/bodyReader');
+const { resolveSetting } = require('../src/config/schema');
 
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
@@ -698,7 +699,7 @@ describe('WebServer', () => {
                 labelLoader,
                 getStatus: () => ({})
             });
-            expect(defaultBody.maxBodySizeBytes).toBe(10 * 1024 * 1024);
+            expect(defaultBody.maxBodySizeBytes).toBe(resolveSetting({}, 'webMaxBodySizeBytes'));
         });
 
         it('honors web timeout/window overrides and falls back to documented defaults', () => {
@@ -715,9 +716,14 @@ describe('WebServer', () => {
             expect(custom.haApiTimeoutMs).toBe(1000);
 
             const defaults = new WebServer({ port: 0, labelLoader, getStatus: () => ({}) });
-            expect(defaults.activeDeviceWindowMs).toBe(86400000);
-            expect(defaults.haAreasCacheTtlMs).toBe(30000);
-            expect(defaults.haApiTimeoutMs).toBe(5000);
+            expect(defaults.activeDeviceWindowMs).toBe(resolveSetting({}, 'web_active_device_window_ms'));
+            expect(defaults.haAreasCacheTtlMs).toBe(resolveSetting({}, 'web_ha_areas_cache_ttl_ms'));
+            expect(defaults.haApiTimeoutMs).toBe(resolveSetting({}, 'web_ha_api_timeout_ms'));
+            expect(defaults.rateLimitWindowMs).toBe(resolveSetting({}, 'webRateLimitWindowMs'));
+            expect(defaults.maxMutationRequestsPerWindow).toBe(resolveSetting({}, 'web_mutation_rate_limit_per_minute'));
+            expect(defaults.maxReadRequestsPerWindow).toBe(resolveSetting({}, 'web_read_rate_limit_per_minute'));
+            expect(defaults.maxAuthFailuresPerWindow).toBe(resolveSetting({}, 'web_auth_failure_rate_limit_per_minute'));
+            expect(defaults.maxDashboardDevices).toBe(resolveSetting({}, 'webDashboardMaxDevices'));
         });
 
         it('should reject mutating routes by default when no API key is configured', async () => {

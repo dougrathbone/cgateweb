@@ -1,5 +1,7 @@
 // @ts-check
-const DEFAULT_MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+const { resolveSetting } = require('../config/schema');
+
+const DEFAULT_MAX_BODY_SIZE = resolveSetting({}, 'webMaxBodySizeBytes');
 
 /** Distinct from null (error/empty) so callers can return 413 vs 400. */
 const BODY_TOO_LARGE = Symbol('BODY_TOO_LARGE');

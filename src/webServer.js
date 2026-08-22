@@ -7,8 +7,8 @@ const LabelRoutes = require('./web/labelRoutes');
 const StatusRoutes = require('./web/statusRoutes');
 const SseHandler = require('./web/sseHandler');
 const StaticFileServer = require('./web/staticFiles');
-const { DEFAULT_MAX_BODY_SIZE } = require('./web/bodyReader');
 const { sendJSON, setSecurityHeaders, setCorsHeaders } = require('./web/httpHelpers');
+const { resolveSetting } = require('./config/schema');
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
@@ -124,12 +124,13 @@ class WebServer {
  * @param {number} [options.activeDeviceWindowMs] - Window in ms for considering a device active
  * @param {number} [options.haAreasCacheTtlMs] - Home Assistant areas cache TTL in ms
  * @param {number} [options.haApiTimeoutMs] - Home Assistant API request timeout in ms
+ * @param {number} [options.maxDashboardDevices] - Maximum device rows on GET /api/dashboard
  * @param {number} [options.maxSseConnections] - Maximum concurrent SSE connections
  * @param {number} [options._sseKeepaliveMs] - SSE keep-alive interval in ms (internal)
      */
     constructor(options = {}) {
-        this.port = listenPort(options.port, 8080);
-        this.bindHost = options.bindHost || '127.0.0.1';
+        this.port = listenPort(options.port, resolveSetting({}, 'web_port'));
+        this.bindHost = options.bindHost || resolveSetting({}, 'web_bind_host');
         this.basePath = (options.basePath || '').replace(/\/+$/, '');
         this.labelLoader = options.labelLoader;
         this.triggerAppId = options.triggerAppId || null;
@@ -147,16 +148,17 @@ class WebServer {
         const windowOpt = options.rateLimitWindowMs !== undefined
             ? options.rateLimitWindowMs
             : options.webRateLimitWindowMs;
-        this.rateLimitWindowMs = positiveNumber(windowOpt, 60000);
-        this.maxMutationRequestsPerWindow = atLeastOne(options.maxMutationRequestsPerWindow, 120);
-        this.maxReadRequestsPerWindow = atLeastOne(options.maxReadRequestsPerWindow, 300);
+        this.rateLimitWindowMs = positiveNumber(windowOpt, resolveSetting({}, 'webRateLimitWindowMs'));
+        this.maxMutationRequestsPerWindow = atLeastOne(options.maxMutationRequestsPerWindow, resolveSetting({}, 'web_mutation_rate_limit_per_minute'));
+        this.maxReadRequestsPerWindow = atLeastOne(options.maxReadRequestsPerWindow, resolveSetting({}, 'web_read_rate_limit_per_minute'));
         // Failed authentication attempts get a separate, stricter bucket so an
         // exposed web_api_key can't be brute-forced unthrottled.
-        this.maxAuthFailuresPerWindow = atLeastOne(options.maxAuthFailuresPerWindow, 20);
-        this.maxBodySizeBytes = positiveNumber(options.maxBodySizeBytes, DEFAULT_MAX_BODY_SIZE);
-        this.activeDeviceWindowMs = positiveNumber(options.activeDeviceWindowMs, 86400000);
-        this.haAreasCacheTtlMs = positiveNumber(options.haAreasCacheTtlMs, 30000);
-        this.haApiTimeoutMs = positiveNumber(options.haApiTimeoutMs, 5000);
+        this.maxAuthFailuresPerWindow = atLeastOne(options.maxAuthFailuresPerWindow, resolveSetting({}, 'web_auth_failure_rate_limit_per_minute'));
+        this.maxBodySizeBytes = positiveNumber(options.maxBodySizeBytes, resolveSetting({}, 'webMaxBodySizeBytes'));
+        this.activeDeviceWindowMs = positiveNumber(options.activeDeviceWindowMs, resolveSetting({}, 'web_active_device_window_ms'));
+        this.haAreasCacheTtlMs = positiveNumber(options.haAreasCacheTtlMs, resolveSetting({}, 'web_ha_areas_cache_ttl_ms'));
+        this.haApiTimeoutMs = positiveNumber(options.haApiTimeoutMs, resolveSetting({}, 'web_ha_api_timeout_ms'));
+        this.maxDashboardDevices = positiveNumber(options.maxDashboardDevices, resolveSetting({}, 'webDashboardMaxDevices'));
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
 
@@ -202,14 +204,15 @@ class WebServer {
             activeDeviceWindowMs: this.activeDeviceWindowMs,
             haAreasCacheTtlMs: this.haAreasCacheTtlMs,
             haApiTimeoutMs: this.haApiTimeoutMs,
+            maxDashboardDevices: this.maxDashboardDevices,
             logger: this.logger
         });
         this._sseHandler = new SseHandler({
             eventStream: this.eventStream,
-            keepaliveMs: options._sseKeepaliveMs || 15000,
+            keepaliveMs: positiveNumber(options._sseKeepaliveMs, resolveSetting({}, 'webSseKeepaliveMs')),
             maxConnections: Number.isFinite(options.maxSseConnections) && options.maxSseConnections > 0
                 ? options.maxSseConnections
-                : 32
+                : resolveSetting({}, 'web_max_sse_connections')
         });
         this._staticFiles = new StaticFileServer({ logger: this.logger });
 
