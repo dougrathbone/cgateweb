@@ -1024,132 +1024,55 @@ describe('EventPublisher', () => {
     });
 
     describe('publishReading', () => {
+        const publish = (group, reading, net = '254', app = '172') => {
+            eventPublisher.publishReading(net, app, group, reading);
+        };
+        const expectCall = (topic, payload) => {
+            expect(mockPublishFn).toHaveBeenCalledWith(topic, payload, mockMqttOptions);
+        };
+
         it('should publish to current_temperature topic for temperature reading', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'temperature',
-                celsius: 17.4
-            });
-
+            publish('201', { kind: 'temperature', celsius: 17.4 });
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/current_temperature',
-                '17.4',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/current_temperature', '17.4');
         });
 
-        it('should publish value + unit topics for a measurement reading', () => {
-            eventPublisher.publishReading('254', '228', '0/0', {
-                kind: 'measurement',
-                value: 5042,
-                unit: 'W'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/228/0/0/value',
-                '5042',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/228/0/0/unit',
-                'W',
-                mockMqttOptions
-            );
+        it.each([
+            ['0/0', 5042, 'W', 'W'],
+            ['1/0', 42, null, '']
+        ])('should publish measurement value + unit for group %s (unit → %j)', (group, value, unit, expectedUnit) => {
+            publish(group, { kind: 'measurement', value, unit }, '254', '228');
+            expectCall(`cbus/read/254/228/${group}/value`, String(value));
+            expectCall(`cbus/read/254/228/${group}/unit`, expectedUnit);
+            if (unit === 'W') {
+                expect(mockPublishFn).toHaveBeenCalledTimes(2);
+            }
         });
 
-        it('should publish an empty string for a unitless measurement reading', () => {
-            eventPublisher.publishReading('254', '228', '1/0', {
-                kind: 'measurement',
-                value: 42,
-                unit: null
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/228/1/0/unit',
-                '',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish the network date to the clock date topic', () => {
-            eventPublisher.publishReading('254', '223', 'clock', {
-                kind: 'clock',
-                network: '254',
-                application: '223',
-                variant: 'date',
-                value: '2026-03-02'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/223/clock/date',
-                '2026-03-02',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish the network time to the clock time topic', () => {
-            eventPublisher.publishReading('254', '223', 'clock', {
-                kind: 'clock',
-                network: '254',
-                application: '223',
-                variant: 'time',
-                value: '21:13:21'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/223/clock/time',
-                '21:13:21',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish the clock value verbatim, not as a derived timestamp', () => {
+        it.each([
+            ['date', '2026-03-02'],
+            ['time', '21:13:21'],
             // The bus reports local wall-clock with no timezone; converting it
             // would mean inventing one. See clockDecoder.js.
-            eventPublisher.publishReading('254', '223', 'clock', {
-                kind: 'clock', network: '254', application: '223', variant: 'time', value: '00:00:00'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/223/clock/time',
-                '00:00:00',
-                mockMqttOptions
-            );
+            ['time', '00:00:00']
+        ])('should publish clock %s=%s verbatim', (variant, value) => {
+            publish('clock', {
+                kind: 'clock', network: '254', application: '223', variant, value
+            }, '254', '223');
+            expect(mockPublishFn).toHaveBeenCalledTimes(1);
+            expectCall(`cbus/read/254/223/clock/${variant}`, value);
         });
 
-        it('should publish ON + attributes for an unsealed security zone', () => {
-            eventPublisher.publishReading('254', '208', '58', {
-                kind: 'security_zone',
-                zoneState: 'unsealed'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/state',
-                'ON',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/attributes',
-                '{"zone_state":"unsealed"}',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish OFF for a sealed security zone', () => {
-            eventPublisher.publishReading('254', '208', '58', {
-                kind: 'security_zone',
-                zoneState: 'sealed'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/state',
-                'OFF',
-                mockMqttOptions
-            );
+        it.each([
+            ['unsealed', 'ON', '{"zone_state":"unsealed"}', 2],
+            ['sealed', 'OFF', '{"zone_state":"sealed"}', 2],
+            ['open', 'ON', '{"zone_state":"open"}', 2],
+            ['short', 'ON', '{"zone_state":"short"}', 2]
+        ])('should publish security zone %s as state=%s', (zoneState, state, attrs, times) => {
+            publish('58', { kind: 'security_zone', zoneState }, '254', '208');
+            expect(mockPublishFn).toHaveBeenCalledTimes(times);
+            expectCall('cbus/read/254/208/58/state', state);
+            expectCall('cbus/read/254/208/58/attributes', attrs);
         });
 
         it('should keep the non-isolated attributes payload byte-identical for every zone state', () => {
@@ -1165,346 +1088,145 @@ describe('EventPublisher', () => {
             };
             for (const [zoneState, payload] of Object.entries(expected)) {
                 mockPublishFn.mockClear();
-                eventPublisher.publishReading('254', '208', '58', { kind: 'security_zone', zoneState });
-                expect(mockPublishFn).toHaveBeenCalledWith(
-                    'cbus/read/254/208/58/attributes',
-                    payload,
-                    mockMqttOptions
-                );
+                publish('58', { kind: 'security_zone', zoneState }, '254', '208');
+                expectCall('cbus/read/254/208/58/attributes', payload);
             }
         });
 
         it('should add isolated to the attributes while leaving the zone state alone', () => {
             // A bypassed zone that is unsealed is still unsealed: isolation is
             // extra context on the attributes topic, never a new on/off meaning.
-            eventPublisher.publishReading('254', '208', '58', {
-                kind: 'security_zone',
-                zoneState: 'unsealed',
-                isolated: true
-            });
-
+            publish('58', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }, '254', '208');
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/state',
-                'ON',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/attributes',
-                '{"zone_state":"unsealed","isolated":true}',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/208/58/state', 'ON');
+            expectCall('cbus/read/254/208/58/attributes', '{"zone_state":"unsealed","isolated":true}');
         });
 
-        it('should publish attributes only when a zone is isolated before its state is known', () => {
+        it.each([
             // A panel can bypass a zone before the initial status report lands.
             // The isolation is still worth showing, but nothing is known about
             // the zone's state, so the state topic must stay untouched.
-            eventPublisher.publishReading('254', '208', '58', {
-                kind: 'security_zone',
-                zoneState: null,
-                isolated: true
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/attributes',
-                '{"isolated":true}',
-                mockMqttOptions
-            );
-        });
-
-        it('should clear the attributes when isolation ends on a zone of unknown state', () => {
+            [true, '{"isolated":true}'],
             // The attributes topic is a whole-document replace and is retained,
             // so the only way to retire a stale "isolated" is to publish over it.
-            eventPublisher.publishReading('254', '208', '58', {
+            [false, '{}']
+        ])('should publish attributes-only when zoneState is unknown (isolated=%s)', (isolated, attrs) => {
+            publish('58', {
                 kind: 'security_zone',
-                zoneState: null
-            });
-
+                zoneState: null,
+                ...(isolated ? { isolated: true } : {})
+            }, '254', '208');
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/208/58/attributes',
-                '{}',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish ON for the loop-fault security zone states (open/short)', () => {
-            for (const zoneState of ['open', 'short']) {
-                mockPublishFn.mockClear();
-                eventPublisher.publishReading('254', '208', '58', { kind: 'security_zone', zoneState });
-                expect(mockPublishFn).toHaveBeenCalledWith(
-                    'cbus/read/254/208/58/state',
-                    'ON',
-                    mockMqttOptions
-                );
-            }
+            expectCall('cbus/read/254/208/58/attributes', attrs);
         });
 
         it('should publish sensor_status and sensor_problem alongside current_temperature when decoded', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'temperature',
-                celsius: 17.4,
-                sensorStatus: 0
-            });
-
+            publish('201', { kind: 'temperature', celsius: 17.4, sensorStatus: 0 });
             expect(mockPublishFn).toHaveBeenCalledTimes(3);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/current_temperature',
-                '17.4',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/sensor_status',
-                '0',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/sensor_problem',
-                'OFF',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/current_temperature', '17.4');
+            expectCall('cbus/read/254/172/201/sensor_status', '0');
+            expectCall('cbus/read/254/172/201/sensor_problem', 'OFF');
         });
 
         it('should publish sensor fault topics but not the meaningless temperature on sensor failure', () => {
             // Spec §25.8.6: at "Sensor total failure" the temperature is meaningless.
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'temperature',
-                celsius: null,
-                sensorStatus: 3
-            });
-
+            publish('201', { kind: 'temperature', celsius: null, sensorStatus: 3 });
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/sensor_status',
-                '3',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/sensor_problem',
-                'ON',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/sensor_status', '3');
+            expectCall('cbus/read/254/172/201/sensor_problem', 'ON');
         });
 
-        it('should publish problem state from a plant action reading', () => {
-            eventPublisher.publishReading('254', '172', '201', {
+        it.each([
+            ['ON', true, 4, 'Temperature sensor failure'],
+            ['OFF', false, 0, 'No error']
+        ])('should publish problem %s from plant action (error=%s code=%s)', (problem, error, errorCode, errorDescription) => {
+            publish('201', {
                 kind: 'action',
                 action: 'heating',
-                error: true,
-                errorCode: 4,
-                errorDescription: 'Temperature sensor failure'
+                error,
+                errorCode,
+                errorDescription
             });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/problem',
-                'ON',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/problem', problem);
         });
 
-        it('should publish problem OFF when the plant reports no error', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'action',
-                action: 'heating',
-                error: false,
-                errorCode: 0,
-                errorDescription: 'No error'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/problem',
-                'OFF',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish current_humidity for a humidity reading', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'humidity',
-                humidity: 50
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/current_humidity',
-                '50',
-                mockMqttOptions
-            );
-        });
-
-        it('should not publish current_humidity when the reading is null (sensor failure)', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'humidity',
-                humidity: null,
-                sensorStatus: 3
-            });
-
-            expect(mockPublishFn).not.toHaveBeenCalled();
+        it.each([
+            [50, '50'],
+            [null, null]
+        ])('should handle humidity reading humidity=%s', (humidity, expected) => {
+            publish('201', { kind: 'humidity', humidity, ...(humidity === null ? { sensorStatus: 3 } : {}) });
+            if (expected === null) {
+                expect(mockPublishFn).not.toHaveBeenCalled();
+            } else {
+                expectCall('cbus/read/254/172/201/current_humidity', expected);
+            }
         });
 
         it('should publish humidity mode and setpoint for a humidity_mode reading', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'humidity_mode',
-                mode: 'humidify',
-                humiditySetpoint: 45
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/humidity_mode',
-                'humidify',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/humidity_setpoint',
-                '45',
-                mockMqttOptions
-            );
+            publish('201', { kind: 'humidity_mode', mode: 'humidify', humiditySetpoint: 45 });
+            expectCall('cbus/read/254/172/201/humidity_mode', 'humidify');
+            expectCall('cbus/read/254/172/201/humidity_setpoint', '45');
         });
 
         it('should publish humidity_action for a humidity_action reading', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'humidity_action',
-                action: 'dehumidifying'
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/humidity_action',
-                'dehumidifying',
-                mockMqttOptions
-            );
+            publish('201', { kind: 'humidity_action', action: 'dehumidifying' });
+            expectCall('cbus/read/254/172/201/humidity_action', 'dehumidifying');
         });
 
-        it('should publish fan_speed_pct when a raw-level fan speed is decoded', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'mode',
-                mode: 'fan_only',
-                fanSpeedPercent: 99
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/fan_speed_pct',
-                '99',
-                mockMqttOptions
-            );
+        it.each([
+            [{ mode: 'fan_only', fanSpeedPercent: 99 }, 'fan_speed_pct', '99'],
+            [{ mode: 'cool', comfortLevel: 13 }, 'comfort_level', '13']
+        ])('should publish optional mode field %s', (fields, suffix, payload) => {
+            publish('201', { kind: 'mode', ...fields });
+            expectCall(`cbus/read/254/172/201/${suffix}`, payload);
         });
 
-        it('should publish comfort_level when an evaporative comfort level is decoded', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'mode',
-                mode: 'cool',
-                comfortLevel: 13
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/comfort_level',
-                '13',
-                mockMqttOptions
-            );
+        it.each([
+            [{ mode: 'heat', setpoint: 22 }, 2, [['mode', 'heat'], ['setpoint', '22']]],
+            [{ mode: 'off', setpoint: null }, 1, [['mode', 'off']]],
+            [{ mode: null, setpoint: 23 }, 1, [['setpoint', '23']]]
+        ])('should publish mode reading fields %#', (reading, times, expected) => {
+            publish('202', { kind: 'mode', ...reading });
+            expect(mockPublishFn).toHaveBeenCalledTimes(times);
+            for (const [suffix, payload] of expected) {
+                expectCall(`cbus/read/254/172/202/${suffix}`, payload);
+            }
         });
 
-        it('should publish mode and setpoint for a mode reading with heat + setpoint', () => {
-            eventPublisher.publishReading('254', '172', '202', {
-                kind: 'mode',
-                mode: 'heat',
-                setpoint: 22
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/202/mode',
-                'heat',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/202/setpoint',
-                '22',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish mode=off and no setpoint when mode is off and setpoint is null', () => {
-            eventPublisher.publishReading('254', '172', '202', {
-                kind: 'mode',
-                mode: 'off',
-                setpoint: null
-            });
-
+        it.each([
+            [true, 'ON'],
+            [false, 'OFF']
+        ])('should publish state reading on=%s as %s', (on, state) => {
+            publish('201', { kind: 'state', on });
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/202/mode',
-                'off',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish only setpoint when mode is null (unknown code) but setpoint is present', () => {
-            eventPublisher.publishReading('254', '172', '202', {
-                kind: 'mode',
-                mode: null,
-                setpoint: 23
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/202/setpoint',
-                '23',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish ON for a state reading with on=true', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'state',
-                on: true
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/state',
-                'ON',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/state', state);
         });
 
         it('should publish fan_mode and fan_speed for a mode reading with an aux level', () => {
-            eventPublisher.publishReading('254', '172', '201', {
+            publish('201', {
                 kind: 'mode',
                 mode: 'cool',
                 setpoint: 15,
                 fanSpeed: 3,
                 fanMode: 'automatic'
             });
-
             expect(mockPublishFn).toHaveBeenCalledTimes(4);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/fan_mode',
-                'automatic',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/fan_speed',
-                '3',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/fan_mode', 'automatic');
+            expectCall('cbus/read/254/172/201/fan_speed', '3');
         });
 
         it('should publish fan_speed 0 (default speed) but no fan topics when aux fields are null', () => {
-            eventPublisher.publishReading('254', '172', '201', {
+            publish('201', {
                 kind: 'mode',
                 mode: 'off',
                 setpoint: null,
                 fanSpeed: 0,
                 fanMode: 'automatic'
             });
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/fan_speed',
-                '0',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/fan_speed', '0');
 
             mockPublishFn.mockClear();
-            eventPublisher.publishReading('254', '172', '201', {
+            publish('201', {
                 kind: 'mode',
                 mode: 'cool',
                 setpoint: 15,
@@ -1516,69 +1238,32 @@ describe('EventPublisher', () => {
         });
 
         it('should publish action plus error, error_description and problem for an action reading with an error code', () => {
-            eventPublisher.publishReading('254', '172', '201', {
+            publish('201', {
                 kind: 'action',
                 action: 'heating',
                 errorCode: 4,
                 errorDescription: 'Temperature sensor failure'
             });
-
             expect(mockPublishFn).toHaveBeenCalledTimes(4);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/action',
-                'heating',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/error',
-                '4',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/error_description',
-                'Temperature sensor failure',
-                mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/problem',
-                'ON',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/action', 'heating');
+            expectCall('cbus/read/254/172/201/error', '4');
+            expectCall('cbus/read/254/172/201/error_description', 'Temperature sensor failure');
+            expectCall('cbus/read/254/172/201/problem', 'ON');
         });
 
         it('should publish only the action topic when errorCode is null', () => {
-            eventPublisher.publishReading('254', '172', '201', {
+            publish('201', {
                 kind: 'action',
                 action: 'idle',
                 errorCode: null,
                 errorDescription: null
             });
-
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/action',
-                'idle',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish OFF for a state reading with on=false', () => {
-            eventPublisher.publishReading('254', '172', '201', {
-                kind: 'state',
-                on: false
-            });
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/172/201/state',
-                'OFF',
-                mockMqttOptions
-            );
+            expectCall('cbus/read/254/172/201/action', 'idle');
         });
 
         it('should publish nothing when reading is null', () => {
-            eventPublisher.publishReading('254', '172', '1', null);
-
+            publish('1', null);
             expect(mockPublishFn).not.toHaveBeenCalled();
         });
     });
