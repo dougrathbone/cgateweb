@@ -470,6 +470,24 @@ describe('CommandResponseProcessor', () => {
                 expect(processorWithNullHaDiscovery._pendingTreeMessages).toHaveLength(0);
             });
 
+            it('warns once when the pending-tree buffer is full and then drops further fragments', () => {
+                const capped = new CommandResponseProcessor({
+                    eventPublisher: mockEventPublisher,
+                    haDiscovery: null,
+                    onObjectStatus: mockOnObjectStatus,
+                    logger: mockLogger,
+                    maxPendingTreeMessages: 2
+                });
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_START, 'start');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-1');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-2');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_END, 'end');
+
+                expect(capped._pendingTreeMessages).toHaveLength(2);
+                expect(mockLogger.warn).toHaveBeenCalledTimes(1);
+                expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('pending-tree buffer is full'));
+            });
+
             it('should still process object status when haDiscovery is null', () => {
                 const statusData = '//SHAC/254/56/1: level=255';
                 

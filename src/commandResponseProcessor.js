@@ -10,6 +10,7 @@ const {
     CGATE_RESPONSE_NETWORK_SYNC_OK
 } = require('./constants');
 const { redactCgateLine } = require('./utils');
+const { resolveSetting } = require('./config/schema');
 
 // Strips C-Gate's leading async-event timestamp ("20260504-193110.569 " or
 // "20260720-102130 " — milliseconds are optional, §4.3 event format).
@@ -40,13 +41,18 @@ class CommandResponseProcessor {
      * @param {Function} [options.onCommandError] - Callback for C-Gate command error responses
      * @param {Function} [options.onNetworkState] - Callback for network-level interface/state readings: (networkId, reading) => void
      * @param {Function} [options.onNetworkSyncComplete] - Callback for C-Gate 762 network-sync-complete events: (networkId) => void
+     * @param {number} [options.maxPendingTreeMessages] - Cap on TREEXML fragments buffered before HA Discovery is ready
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, maxPendingTreeMessages, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
-        this._maxPendingTreeMessages = 500;
+        const pendingCap = Number(maxPendingTreeMessages);
+        this._maxPendingTreeMessages = Number.isFinite(pendingCap) && pendingCap > 0
+            ? pendingCap
+            : resolveSetting({}, 'commandResponseMaxPendingTreeMessages');
+        this._pendingTreeOverflowLogged = false;
         this.onObjectStatus = onObjectStatus;
         this.onCommandError = onCommandError || null;
         // Called for network-level interface/state responses
@@ -85,6 +91,7 @@ class CommandResponseProcessor {
             }
             this._pendingTreeMessages = [];
         }
+        this._pendingTreeOverflowLogged = false;
     }
 
     /**
@@ -184,23 +191,22 @@ class CommandResponseProcessor {
             case CGATE_RESPONSE_TREE_START:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeStart(statusData);
-                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
-                    this.logger.debug(`Buffering tree start (HA Discovery not yet initialized)`);
-                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_START, data: statusData });
+                } else {
+                    this._bufferTreeMessage(CGATE_RESPONSE_TREE_START, statusData);
                 }
                 break;
             case CGATE_RESPONSE_TREE_DATA:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeData(statusData);
-                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
-                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_DATA, data: statusData });
+                } else {
+                    this._bufferTreeMessage(CGATE_RESPONSE_TREE_DATA, statusData);
                 }
                 break;
             case CGATE_RESPONSE_TREE_END:
                 if (this._haDiscovery) {
                     this._haDiscovery.handleTreeEnd(statusData);
-                } else if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
-                    this._pendingTreeMessages.push({ code: CGATE_RESPONSE_TREE_END, data: statusData });
+                } else {
+                    this._bufferTreeMessage(CGATE_RESPONSE_TREE_END, statusData);
                 }
                 break;
             case CGATE_RESPONSE_SYSTEM_EVENT:
@@ -358,6 +364,26 @@ class CommandResponseProcessor {
         if (this.onCommandError) {
             this.onCommandError(responseCode, statusData);
         }
+    }
+
+    /**
+     * Queue a TREEXML fragment until HA Discovery is constructed. Log once
+     * when the cap is hit so a truncated tree is visible in the logs.
+     * @private
+     */
+    _bufferTreeMessage(code, data) {
+        if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
+            if (code === CGATE_RESPONSE_TREE_START) {
+                this.logger.debug('Buffering tree start (HA Discovery not yet initialized)');
+            }
+            this._pendingTreeMessages.push({ code, data });
+            return;
+        }
+        if (this._pendingTreeOverflowLogged) return;
+        this._pendingTreeOverflowLogged = true;
+        this.logger.warn(
+            `Dropping TREEXML fragments: HA Discovery is not ready and the pending-tree buffer is full (${this._maxPendingTreeMessages} messages). Discovery may start with a truncated tree.`
+        );
     }
 
     /**

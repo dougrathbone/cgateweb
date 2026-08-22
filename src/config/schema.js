@@ -1327,6 +1327,15 @@ const SETTINGS_SCHEMA = {
         description: 'Cap on the per-connection C-Gate line assembler buffer. Truncates when a socket delivers data without a newline past this size.',
         reason: TUNING_ONLY_REASON
     },
+    commandResponseMaxPendingTreeMessages: {
+        key: 'commandResponseMaxPendingTreeMessages',
+        type: 'number',
+        default: 500,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'How many TREEXML fragments to buffer while HA Discovery is still starting. Further fragments are dropped (with one warning) until discovery is ready.',
+        reason: TUNING_ONLY_REASON
+    },
     webDashboardMaxDevices: {
         key: 'webDashboardMaxDevices',
         type: 'number',
