@@ -2,10 +2,11 @@
 const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
-const { listKnownConfigKeys, listSettingAliases, getSchemaEntry } = require('./schema');
+const { listKnownConfigKeys, listSettingAliases, getSchemaEntry, resolveSetting } = require('./schema');
 const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword, normalizeOptionalSecret } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
+const { supervisorJson } = require('../supervisorHttp');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -517,23 +518,11 @@ class ConfigLoader {
         }
 
         try {
-            const http = this._httpGet || require('http');
-            const data = await new Promise((resolve, reject) => {
-                const req = http.get('http://supervisor/services/mqtt', {
-                    headers: { 'Authorization': `Bearer ${supervisorToken}` }
-                }, (res) => {
-                    let body = '';
-                    res.on('data', chunk => { body += chunk; });
-                    res.on('end', () => {
-                        if (res.statusCode === 200) {
-                            resolve(JSON.parse(body));
-                        } else {
-                            reject(new Error(`Supervisor API returned ${res.statusCode}`));
-                        }
-                    });
-                });
-                req.on('error', reject);
-                req.setTimeout(5000, () => { req.destroy(); reject(new Error('Timeout')); });
+            const data = await supervisorJson({
+                url: 'http://supervisor/services/mqtt',
+                token: supervisorToken,
+                httpModule: this._httpGet || require('http'),
+                timeoutMs: resolveSetting({}, 'supervisorMqttDetectTimeoutMs')
             });
 
             if (data && data.data) {
