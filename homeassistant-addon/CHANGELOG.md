@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.28.0] - 2026-08-22
+
+### Added
+
+- **The add-on now has its own Home Assistant icon and a first-run guide** covering installation, MQTT setup and the first ten minutes.
+
+### Fixed
+
+- **Lights now confirm switch and dim commands immediately** instead of waiting for the next C-Bus event.
+- **Removed trigger scenes and buttons are now cleaned up** instead of remaining unavailable in Home Assistant.
+- **Blank or space-padded MQTT, C-Gate and web credentials are handled consistently.**
+- **Invalid settings reloads are rejected without replacing the working configuration.**
+
+### Changed
+
+- **Home Assistant now downloads a tested prebuilt image** instead of building the add-on on your device, making installs and upgrades faster and more reliable with fewer disk writes.
+
+### Security
+
+- **Sensitive C-Gate, MQTT and alarm-keypad values are redacted from more error paths.**
+- **Label imports now enforce their size limits before parsing** and return safe errors for malformed archives and XML.
+
 ## [1.27.0] - 2026-08-21
 
 ### Added
