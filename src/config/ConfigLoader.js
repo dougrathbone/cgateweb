@@ -61,7 +61,7 @@ class ConfigLoader {
         try {
             const optionsData = fs.readFileSync(optionsPath, 'utf8');
             addonOptions = JSON.parse(optionsData);
-            this.logger.debug('Loaded addon options from:', optionsPath);
+            this.logger.debug(`Loaded addon options from: ${optionsPath}`);
         } catch (error) {
             throw new Error(`Failed to parse addon options: ${error.message}`, { cause: error });
         }
@@ -94,7 +94,7 @@ class ConfigLoader {
             delete require.cache[require.resolve(settingsPath)];
             
             const settings = require(settingsPath);
-            this.logger.debug('Loaded settings from:', settingsPath);
+            this.logger.debug(`Loaded settings from: ${settingsPath}`);
             
             const config = this._convertSettingsToStandardFormat(settings);
             
@@ -620,7 +620,7 @@ class ConfigLoader {
         }
 
         if (errors.length > 0) {
-            this.logger.error('Configuration validation failed:', errors);
+            this.logger.error(`Configuration validation failed: ${errors.join(', ')}`);
             throw new Error(`Configuration validation failed: ${errors.join(', ')}`);
         }
 

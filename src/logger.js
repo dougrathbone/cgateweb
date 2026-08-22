@@ -92,6 +92,24 @@ class Logger {
     }
 
     /**
+     * Accept a string (or array) as the second argument without treating it
+     * as metadata. Callers historically wrote logger.warn('text:', err.message)
+     * and Object.keys on a string produced per-character keys plus a stray
+     * JSON blob. Fold those into the message so _toSingleLine sanitizes them.
+     * @private
+     */
+    _coerceLogArgs(message, meta) {
+        if (meta === undefined || meta === null) {
+            return [message, {}];
+        }
+        if (typeof meta === 'object' && !Array.isArray(meta)) {
+            return [message, meta];
+        }
+        const extra = typeof meta === 'string' ? meta : JSON.stringify(meta);
+        return [`${message} ${extra}`, {}];
+    }
+
+    /**
      * Collapse a message onto one line.
      *
      * Plenty of what gets logged here started life outside the process: a
@@ -140,7 +158,8 @@ class Logger {
             return;
         }
 
-        const formattedMessage = this._formatMessage(level, message, meta);
+        const [text, metadata] = this._coerceLogArgs(message, meta);
+        const formattedMessage = this._formatMessage(level, text, metadata);
         
         // Use appropriate console method based on level
         switch (level) {

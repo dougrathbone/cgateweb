@@ -185,7 +185,7 @@ class StatusRoutes {
                         this._haAreasCacheTime = now;
                     }
                 } catch (err) {
-                    this.logger.warn('Failed to fetch HA areas:', err.message || err);
+                    this.logger.warn(`Failed to fetch HA areas: ${err.message || err}`);
                 }
             }
         }
