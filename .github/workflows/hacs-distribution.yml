@@ -10,7 +10,10 @@ env:
   DISTRIBUTION_REPO: 'dougrathbone/cgateweb-homeassistant'
 
 # Restrict the default GITHUB_TOKEN to read-only. Cross-repo push and release
-# creation use the HACS_DEPLOY_TOKEN PAT, not GITHUB_TOKEN, so read is enough.
+# creation use the HACS_DEPLOY_TOKEN PAT (legacy name: this is the add-on
+# distribution deploy token, not a HACS listing), not GITHUB_TOKEN, so read is
+# enough at the workflow level. The publish job grants contents:write so it can
+# also create the source-repo GitHub Release.
 permissions:
   contents: read
 
@@ -39,6 +42,8 @@ jobs:
 
   build-and-deploy:
     timeout-minutes: 20
+    permissions:
+      contents: write
     # Only publish to the distribution repo from semver tags. workflow_dispatch
     # still runs the quality gate above for manual verification, but must not
     # push timestamp versions onto distribution main.
@@ -233,8 +238,21 @@ jobs:
           exit 1
         fi
 
-    - name: Create GitHub Release
-      if: startsWith(github.ref, 'refs/tags/')
+    - name: Write source-repo release notes from the changelog
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: node tools/extract-changelog.js "$VERSION" > source-release-notes.md
+
+    - name: Create source-repo GitHub Release
+      uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: v${{ steps.version.outputs.version }}
+        body_path: source-release-notes.md
+        draft: false
+        prerelease: false
+
+    - name: Create distribution-repo GitHub Release
       uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228  # v3.0.2
       with:
         repository: ${{ env.DISTRIBUTION_REPO }}
@@ -244,17 +262,18 @@ jobs:
         body: |
           ## C-Gate Web Bridge v${{ steps.version.outputs.version }}
 
-          Home Assistant add-on release.
+          Home Assistant add-on release. Add this repository in the Supervisor
+          Add-on Store, not in HACS.
 
           ### Installation
 
           1. Add repository: `https://github.com/dougrathbone/cgateweb-homeassistant`
           2. Install "C-Gate Web Bridge" from the add-on store
-          3. Configure C-Gate and MQTT settings
+          3. Set C-Gate host and project, then start
 
           ### Changes
 
-          See [main repository releases](https://github.com/dougrathbone/cgateweb/releases).
+          See [source repository release notes](https://github.com/dougrathbone/cgateweb/releases/tag/v${{ steps.version.outputs.version }}).
 
           ---
           Source: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
