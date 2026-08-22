@@ -16,18 +16,18 @@ const path = require('path');
  * @returns {string}
  */
 function extractChangelogSection(markdown, version) {
-    if (!version || !/^\d+\.\d+\.\d+/.test(version)) {
+    if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
         throw new Error(`extract-changelog: invalid version "${version}"`);
     }
-    const header = new RegExp(`^## \\[${version.replace(/\./g, '\\.')}\\]`);
+    const prefix = `## [${version}]`;
     const lines = markdown.split(/\n/);
-    const start = lines.findIndex((line) => header.test(line));
+    const start = lines.findIndex((line) => line.startsWith(prefix));
     if (start === -1) {
         throw new Error(`extract-changelog: no CHANGELOG section for ${version}`);
     }
     let end = lines.length;
     for (let i = start + 1; i < lines.length; i++) {
-        if (/^## \[/.test(lines[i])) {
+        if (lines[i].startsWith('## [')) {
             end = i;
             break;
         }
