@@ -11,14 +11,14 @@ describe('defaultSettings — frozen baseline', () => {
         expect(defaultSettings).toStrictEqual(defaultSettingsSnapshot);
     });
 
-    it('exports the same 117 keys as the baseline', () => {
+    it('exports the same 127 keys as the baseline', () => {
         expect(Object.keys(defaultSettings).sort())
             .toEqual(Object.keys(defaultSettingsSnapshot).sort());
-        // 116 historic keys plus cbus_clock_enabled. Bumping this count is only
-        // ever legitimate alongside a genuinely NEW setting added to the
-        // fixture; a changed value for an existing key is the thing this
-        // baseline exists to catch, and must never be "fixed" in the fixture.
-        expect(Object.keys(defaultSettings)).toHaveLength(117);
+        // Bumping this count is only ever legitimate alongside a genuinely NEW
+        // setting added to the fixture; a changed value for an existing key is
+        // the thing this baseline exists to catch, and must never be "fixed"
+        // in the fixture.
+        expect(Object.keys(defaultSettings)).toHaveLength(127);
     });
 
     it('returns a fresh object so consumers cannot mutate the schema defaults', () => {

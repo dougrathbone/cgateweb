@@ -1,6 +1,7 @@
 // @ts-check
 const HaDiscovery = require('./haDiscovery');
 const { createLogger } = require('./logger');
+const { resolveSetting } = require('./config/schema');
 const {
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
@@ -79,7 +80,7 @@ class BridgeInitializationService {
      */
     async handleAllConnected() {
         const now = Date.now();
-        const initDebounceMs = Math.max(0, Number(this.settings.initDebounceMs) || 10000);
+        const initDebounceMs = Math.max(0, resolveSetting(this.settings, 'initDebounceMs'));
         if (now - this._lastInitTime < initDebounceMs) {
             this._log(`ALL CONNECTED (duplicate within ${Math.round(initDebounceMs / 1000)}s, skipping re-initialization)`);
             return null;
@@ -116,7 +117,7 @@ class BridgeInitializationService {
             this.sendGetallLevels(getallNetworks);
         }
 
-        if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
+        if (getallNetworks.length > 0 && (resolveSetting(this.settings, 'getallperiod') || resolveSetting(this.settings, 'getall_app_periods'))) {
             this._scheduleAllGetalls(getallNetworks);
         }
 
@@ -207,7 +208,7 @@ class BridgeInitializationService {
         }
 
         // Web
-        lines.push(`  Web UI: http://${s.web_bind_host || '127.0.0.1'}:${s.web_port || 8080}/`);
+        lines.push(`  Web UI: http://${resolveSetting(s, 'web_bind_host')}:${resolveSetting(s, 'web_port')}/`);
 
         lines.push('--- Ready ---');
         for (const line of lines) {
@@ -221,12 +222,14 @@ class BridgeInitializationService {
      * Returns 0 if the app should not be polled.
      */
     _getIntervalForApp(appId) {
-        const appPeriods = this.settings.getall_app_periods;
+        const appPeriods = resolveSetting(this.settings, 'getall_app_periods');
         const key = String(appId);
         if (appPeriods && Object.prototype.hasOwnProperty.call(appPeriods, key)) {
             return appPeriods[key] * 1000;
         }
-        return (this.settings.getallperiod || 0) * 1000;
+        // null (default) means disabled; 0 is also disabled and must be preserved.
+        const periodSec = resolveSetting(this.settings, 'getallperiod');
+        return (periodSec === null ? 0 : periodSec) * 1000;
     }
 
     /**
@@ -296,7 +299,7 @@ class BridgeInitializationService {
 
         return /** @type {Promise<void>} */ (new Promise((resolve) => {
             const collectedLines = [];
-            const TIMEOUT_MS = 5000;
+            const TIMEOUT_MS = resolveSetting(this.settings, 'networkDiscoveryTimeoutMs');
 
             // Register a handler on the command response processor to intercept responses
             const processor = this._getCommandResponseProcessor();

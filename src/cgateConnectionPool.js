@@ -4,6 +4,7 @@ const CgateConnection = require('./cgateConnection');
 const { createLogger } = require('./logger');
 const { NEWLINE } = require('./constants');
 const { backoffDelay } = require('./backoff');
+const { resolveClampedSetting, resolveSetting } = require('./config/schema');
 
 /**
  * Connection pool for C-Gate command connections.
@@ -53,15 +54,20 @@ class CgateConnectionPool extends EventEmitter {
         this.port = port;
         this.settings = settings;
         
-        // Pool configuration
-        this.poolSize = Math.max(1, settings.connectionPoolSize !== undefined ? settings.connectionPoolSize : 3);
-        this.healthCheckInterval = Math.max(5000, settings.healthCheckInterval !== undefined ? settings.healthCheckInterval : 30000);
-        this.keepAliveInterval = Math.max(10000, settings.keepAliveInterval !== undefined ? settings.keepAliveInterval : 60000);
-        this.connectionTimeout = Math.max(1000, settings.connectionTimeout !== undefined ? settings.connectionTimeout : 5000);
-        this.maxRetries = Math.max(1, settings.maxRetries !== undefined ? settings.maxRetries : 3);
+        // Pool configuration (schema defaults, then connection floors)
+        this.poolSize = resolveClampedSetting(settings, 'connectionPoolSize', { min: 1 });
+        this.healthCheckInterval = resolveClampedSetting(settings, 'healthCheckInterval', { min: 5000 });
+        this.keepAliveInterval = resolveClampedSetting(settings, 'keepAliveInterval', { min: 10000 });
+        this.connectionTimeout = resolveClampedSetting(settings, 'connectionTimeout', { min: 1000 });
+        this.maxRetries = resolveClampedSetting(settings, 'maxRetries', { min: 1 });
         // Reuse the same reconnect backoff knobs as the standalone event connection.
-        this.reconnectInitialDelay = Math.max(100, settings.reconnectinitialdelay !== undefined ? settings.reconnectinitialdelay : 1000);
-        this.reconnectMaxDelay = Math.max(this.reconnectInitialDelay, settings.reconnectmaxdelay !== undefined ? settings.reconnectmaxdelay : 60000);
+        this.reconnectInitialDelay = resolveClampedSetting(settings, 'reconnectinitialdelay', { min: 100 });
+        this.reconnectMaxDelay = Math.max(
+            this.reconnectInitialDelay,
+            resolveSetting(settings, 'reconnectmaxdelay')
+        );
+        this.shutdownForceCloseMs = resolveSetting(settings, 'connectionPoolShutdownForceCloseMs');
+        this.unhealthyRecheckMs = resolveSetting(settings, 'connectionPoolUnhealthyRecheckMs');
         
         // Pool state
         this.connections = [];
@@ -169,7 +175,7 @@ class CgateConnectionPool extends EventEmitter {
                     conn.once('close', resolve);
                     conn.disconnect();
                     // Force close after timeout
-                    setTimeout(() => resolve(undefined), 1000);
+                    setTimeout(() => resolve(undefined), this.shutdownForceCloseMs);
                 });
             }
             return Promise.resolve();
@@ -477,7 +483,7 @@ class CgateConnectionPool extends EventEmitter {
         // Don't immediately remove, but schedule a health check
         setTimeout(() => {
             this._checkConnectionHealth(connection);
-        }, 1000);
+        }, this.unhealthyRecheckMs);
     }
     
     /**

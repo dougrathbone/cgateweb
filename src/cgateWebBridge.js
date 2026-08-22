@@ -27,11 +27,12 @@ const CniNotificationManager = require('./cniNotificationManager');
 const SerialDeviceRecovery = require('./serialDeviceRecovery');
 const BridgeReadiness = require('./bridgeReadiness');
 const { discoverIngressEntry } = require('./ingressDiscovery');
-const { createLogger } = require('./logger');
+const { createLogger, resolveLogLevelFromSettings } = require('./logger');
 const { LineProcessor } = require('./lineProcessor');
 const { MQTT_RETAINED_STATE_OPTIONS, CGATE_EVENT_NETWORK_SYNC_REGEX } = require('./constants');
-const { clampSetting, redactCgateLine } = require('./utils');
+const { redactCgateLine } = require('./utils');
 const { parseRawCaptureTarget } = require('./rawEventCapture');
+const { resolveSetting } = require('./config/schema');
 
 // Publish options for the raw event capture topic: never retained, prebuilt
 // once (mqtt.js does not mutate the options object) instead of per line.
@@ -78,7 +79,7 @@ class CgateWebBridge {
         this.settings = { ...defaultSettings, ...settings };
         this.logger = createLogger({ 
             component: 'bridge', 
-            level: this.settings.log_level || (this.settings.logging ? 'info' : 'warn'),
+            level: resolveLogLevelFromSettings(this.settings),
             enabled: true 
         });
 
@@ -210,7 +211,7 @@ class CgateWebBridge {
         this._mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
 
         // Label loader for custom device names (before EventPublisher so it can use type overrides)
-        this.labelLoader = new LabelLoader(this.settings.cbus_label_file || null);
+        this.labelLoader = new LabelLoader(resolveSetting(this.settings, 'cbus_label_file'), this.settings);
         this.labelLoader.load();
 
         // In-memory ring buffer and fan-out for live event log streaming (SSE)
@@ -321,27 +322,29 @@ class CgateWebBridge {
         // Supervisor API after startup (see _discoverIngressBasePath);
         // INGRESS_ENTRY remains an explicit override when set.
         const ingressBasePath = process.env.INGRESS_ENTRY || '';
-        this.webServer = new WebServer({
-            port: this.settings.web_port || 8080,
-            bindHost: this.settings.web_bind_host || '127.0.0.1',
+        this.webServer = new WebServer(/** @type {any} */ ({
+            port: resolveSetting(this.settings, 'web_port'),
+            bindHost: resolveSetting(this.settings, 'web_bind_host'),
             basePath: ingressBasePath,
             labelLoader: this.labelLoader,
-            apiKey: this.settings.web_api_key || null,
-            allowUnauthenticatedMutations: this.settings.web_allow_unauthenticated_mutations === true,
-            allowedOrigins: this.settings.web_allowed_origins || null,
-            maxMutationRequestsPerWindow: this.settings.web_mutation_rate_limit_per_minute || 120,
-            maxAuthFailuresPerWindow: this.settings.web_auth_failure_rate_limit_per_minute || 20,
-            maxBodySizeBytes: this.settings.webMaxBodySizeBytes,
-            activeDeviceWindowMs: this.settings.web_active_device_window_ms,
-            haAreasCacheTtlMs: this.settings.web_ha_areas_cache_ttl_ms,
-            haApiTimeoutMs: this.settings.web_ha_api_timeout_ms,
-            maxSseConnections: this.settings.web_max_sse_connections,
-            _sseKeepaliveMs: this.settings.webSseKeepaliveMs,
-            triggerAppId: this.settings.ha_discovery_trigger_app_id || null,
+            apiKey: resolveSetting(this.settings, 'web_api_key'),
+            allowUnauthenticatedMutations: resolveSetting(this.settings, 'web_allow_unauthenticated_mutations') === true,
+            allowedOrigins: resolveSetting(this.settings, 'web_allowed_origins'),
+            maxMutationRequestsPerWindow: resolveSetting(this.settings, 'web_mutation_rate_limit_per_minute'),
+            maxReadRequestsPerWindow: resolveSetting(this.settings, 'web_read_rate_limit_per_minute'),
+            maxAuthFailuresPerWindow: resolveSetting(this.settings, 'web_auth_failure_rate_limit_per_minute'),
+            rateLimitWindowMs: resolveSetting(this.settings, 'webRateLimitWindowMs'),
+            maxBodySizeBytes: resolveSetting(this.settings, 'webMaxBodySizeBytes'),
+            activeDeviceWindowMs: resolveSetting(this.settings, 'web_active_device_window_ms'),
+            haAreasCacheTtlMs: resolveSetting(this.settings, 'web_ha_areas_cache_ttl_ms'),
+            haApiTimeoutMs: resolveSetting(this.settings, 'web_ha_api_timeout_ms'),
+            maxSseConnections: resolveSetting(this.settings, 'web_max_sse_connections'),
+            _sseKeepaliveMs: resolveSetting(this.settings, 'webSseKeepaliveMs'),
+            triggerAppId: resolveSetting(this.settings, 'ha_discovery_trigger_app_id'),
             getStatus: () => this._getBridgeStatus(),
             deviceStateManager: this.deviceStateManager,
             eventStream: this.eventStream
-        });
+        }));
         this.haBridgeDiagnostics = new HaBridgeDiagnostics(
             this.settings,
             (topic, payload, options) => this.mqttManager.publish(topic, payload, options),
@@ -366,7 +369,7 @@ class CgateWebBridge {
     _buildQueues() {
         // C-Gate command queue with throttling to avoid overwhelming serial protocol
         const queueOptions = {
-            maxSize: this.settings.maxQueueSize || 1000,
+            maxSize: resolveSetting(this.settings, 'maxQueueSize'),
             getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
             canProcessFn: () => this._canProcessCommandQueue(),
             onDrop: (droppedCount, priority, maxSize) => {
@@ -379,7 +382,7 @@ class CgateWebBridge {
         };
         this.cgateCommandQueue = new ThrottledQueue(
             (command) => this._sendCgateCommand(command),
-            this.settings.messageinterval,
+            resolveSetting(this.settings, 'messageinterval'),
             'C-Gate Command Queue',
             queueOptions
         );
@@ -392,7 +395,7 @@ class CgateWebBridge {
      * @private
      */
     _buildEventLogBuffer() {
-        const eventLogMax = Math.max(10, Number(this.settings.eventLogMaxEntries) || 200);
+        const eventLogMax = Math.max(10, resolveSetting(this.settings, 'eventLogMaxEntries'));
         // Circular buffer with a head index: once full, overwriting the oldest
         // slot is O(1) where Array.shift() was O(n) per event. The array is
         // only materialized (in order) by getRecent.
@@ -541,7 +544,10 @@ class CgateWebBridge {
         const supervisorToken = process.env.SUPERVISOR_TOKEN;
         if (!supervisorToken) return null;
 
-        return discoverIngressEntry({ token: supervisorToken })
+        return discoverIngressEntry({
+            token: supervisorToken,
+            maxRetryDelayMs: resolveSetting(this.settings, 'ingressDiscoveryMaxBackoffMs')
+        })
             .then((ingressEntry) => {
                 if (ingressEntry) {
                     this.webServer.setBasePath(ingressEntry);
@@ -904,8 +910,8 @@ class CgateWebBridge {
     }
 
     _getAdaptiveQueueIntervalMs() {
-        const baseInterval = clampSetting(this.settings.messageinterval, 10, 200);
-        const minInterval = clampSetting(this.settings.commandMinIntervalMs, 5, 10);
+        const baseInterval = Math.max(10, resolveSetting(this.settings, 'messageinterval'));
+        const minInterval = Math.max(5, resolveSetting(this.settings, 'commandMinIntervalMs'));
         const stats = this.commandConnectionPool?.getStats?.();
         if (!stats || stats.healthyConnections <= 0) {
             return baseInterval;
@@ -1025,7 +1031,7 @@ class CgateWebBridge {
         }
 
         const getallNetworks = this.initializationService._resolveGetallNetworks();
-        if (getallNetworks.length > 0 && (this.settings.getallperiod || this.settings.getall_app_periods)) {
+        if (getallNetworks.length > 0 && (resolveSetting(this.settings, 'getallperiod') || resolveSetting(this.settings, 'getall_app_periods'))) {
             this.initializationService._scheduleAllGetalls(getallNetworks);
         }
 

@@ -78,7 +78,7 @@ describe('cgate-client barrels are import-pure', () => {
         const loaded = JSON.parse(stdout).map((p) => path.relative(REPO_ROOT, p));
         const forbidden = loaded.filter((p) =>
             /(^|\/)settings\.js$/.test(p) ||
-            /^src\/config\//.test(p) && !/validationRules\.js$/.test(p) ||
+            /^src\/config\//.test(p) && !/(validationRules|schema)\.js$/.test(p) ||
             /^src\/(mqttManager|mqttCommandRouter|cgateWebBridge|haDiscovery|webServer|labelLoader)\.js$/.test(p) ||
             /^node_modules\/(mqtt|sql\.js|adm-zip|xml2js)\//.test(p)
         );

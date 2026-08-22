@@ -3,9 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
+const { resolveSetting } = require('./config/schema');
 
 const LABEL_FILE_VERSION = 1;
-const DEBOUNCE_MS = 500;
 
 /**
  * Hydrate one of the label file's optional "address -> value" sections into a
@@ -23,10 +23,15 @@ function sectionToMap(value) {
 class LabelLoader extends EventEmitter {
     /**
      * @param {string|null} filePath - Path to the JSON label file (null = disabled)
+     * @param {Object} [settings={}] - Runtime settings (debounce / grace / retry tunables)
      */
-    constructor(filePath) {
+    constructor(filePath, settings = {}) {
         super();
         this.filePath = filePath ? path.resolve(filePath) : null;
+        this.settings = settings;
+        this._debounceMs = resolveSetting(settings, 'labelWatchDebounceMs');
+        this._selfWriteGraceMs = resolveSetting(settings, 'labelWatchSelfWriteGraceMs');
+        this._reloadRetryMs = resolveSetting(settings, 'labelReloadRetryMs');
         this.logger = createLogger({ component: 'LabelLoader' });
         this._labels = new Map();
         this._typeOverrides = new Map();
@@ -165,7 +170,7 @@ class LabelLoader extends EventEmitter {
 
         // Notify in-process listeners (HA Discovery re-trigger, the Web UI
         // SSE event stream) directly. The file-watcher path will see the
-        // same write but suppress it via SELF_WRITE_GRACE_MS - that grace
+        // same write but suppress it via labelWatchSelfWriteGraceMs - that grace
         // period prevents a double-fire here, it doesn't replace this emit.
         this.emit('labels-changed', this.getLabelData());
     }
@@ -185,17 +190,16 @@ class LabelLoader extends EventEmitter {
             return;
         }
 
-        const SELF_WRITE_GRACE_MS = 1000;
         try {
             this._watcher = fs.watch(dir, (eventType, filename) => {
                 if (filename !== basename) return;
                 // Ignore events caused by our own save() within the grace period
-                if (Date.now() - this._lastSaveTime < SELF_WRITE_GRACE_MS) return;
+                if (Date.now() - this._lastSaveTime < this._selfWriteGraceMs) return;
 
                 if (this._debounceTimer) clearTimeout(this._debounceTimer);
                 this._debounceTimer = setTimeout(() => {
                     this._onFileChanged();
-                }, DEBOUNCE_MS).unref();
+                }, this._debounceMs).unref();
             });
 
             this._watcher.on('error', (err) => {
@@ -325,7 +329,7 @@ class LabelLoader extends EventEmitter {
                 this._reloadRetryTimer = setTimeout(() => {
                     this._reloadRetryTimer = null;
                     this._onFileChanged();
-                }, 2000);
+                }, this._reloadRetryMs);
                 if (typeof this._reloadRetryTimer.unref === 'function') this._reloadRetryTimer.unref();
             } else {
                 this.logger.info(`Label file still unavailable after retry (${this._lastLoadError}); keeping current labels`);

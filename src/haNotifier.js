@@ -1,5 +1,6 @@
 // @ts-check
 const httpDefault = require('http');
+const { resolveSetting } = require('./config/schema');
 
 /**
  * Thin helper for creating/dismissing Home Assistant persistent notifications
@@ -18,7 +19,10 @@ const httpDefault = require('http');
  * @param {number} [options.timeoutMs=5000] - request timeout
  * @private
  */
-function _postService(domainService, body, { token, httpModule = httpDefault, timeoutMs = 5000 } = {}) {
+function _postService(domainService, body, { token, httpModule = httpDefault, timeoutMs } = {}) {
+    const effectiveTimeoutMs = timeoutMs !== undefined
+        ? timeoutMs
+        : resolveSetting({}, 'haNotifierTimeoutMs');
     return new Promise((resolve, reject) => {
         const data = JSON.stringify(body);
         const req = httpModule.request(
@@ -30,7 +34,7 @@ function _postService(domainService, body, { token, httpModule = httpDefault, ti
                     'Content-Type': 'application/json',
                     'Content-Length': Buffer.byteLength(data)
                 },
-                timeout: timeoutMs
+                timeout: effectiveTimeoutMs
             },
             (res) => {
                 let bodyText = '';
