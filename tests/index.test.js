@@ -335,6 +335,66 @@ describe('index.js', () => {
         expect(errorSpy).toHaveBeenCalledWith('[ERROR] Failed to reload configuration: bad config');
     });
 
+    it('SIGUSR1 validates the newly read settings before applying them', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance, bridgeInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+        mockConfigLoaderInstance.validate.mockClear();
+        mockConfigLoaderInstance.load.mockReturnValue({ log_level: 'debug', cbusip: '10.0.0.10', mqtt: 'broker:1883' });
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+
+        expect(mockConfigLoaderInstance.validate).toHaveBeenCalledWith(
+            expect.objectContaining({ log_level: 'debug' })
+        );
+        expect(bridgeInstance.reloadSettings).toHaveBeenCalled();
+        expect(logSpy).toHaveBeenCalledWith('[INFO] Configuration reloaded successfully');
+    });
+
+    it('SIGUSR1 does not apply or announce success when validation fails', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance, bridgeInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+        mockConfigLoaderInstance.validate.mockImplementation(() => {
+            throw new Error('Configuration validation failed: C-Gate IP address (cbusip) is required');
+        });
+        mockConfigLoaderInstance.load.mockReturnValue({ log_level: 'debug' });
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+
+        expect(bridgeInstance.reloadSettings).not.toHaveBeenCalled();
+        expect(logSpy).not.toHaveBeenCalledWith('[INFO] Configuration reloaded successfully');
+        expect(errorSpy).toHaveBeenCalledWith(
+            '[ERROR] Failed to reload configuration: Configuration validation failed: C-Gate IP address (cbusip) is required'
+        );
+    });
+
+    it('SIGUSR1 restores the previous config cache when validation fails after load', async () => {
+        const processOnSpy = jest.spyOn(process, 'on');
+        const { indexModule, mockConfigLoaderInstance } = loadIndexWithMocks();
+
+        await indexModule.main();
+        const previous = { cbusip: '10.0.0.10', mqtt: 'broker:1883' };
+        mockConfigLoaderInstance._cachedConfig = previous;
+        mockConfigLoaderInstance.load.mockImplementation(() => {
+            const next = { cbusip: 'your-cgate-ip' };
+            mockConfigLoaderInstance._cachedConfig = next;
+            return next;
+        });
+        mockConfigLoaderInstance.validate.mockImplementation(() => {
+            throw new Error('Configuration validation failed: C-Gate IP address (cbusip) is required');
+        });
+
+        const sigusr1Handler = processOnSpy.mock.calls.find(c => c[0] === 'SIGUSR1')[1];
+        sigusr1Handler();
+
+        expect(mockConfigLoaderInstance._cachedConfig).toBe(previous);
+    });
+
     it('uncaughtException handler stops bridge and exits', async () => {
         const processOnSpy = jest.spyOn(process, 'on');
         const { indexModule, bridgeInstance } = loadIndexWithMocks();

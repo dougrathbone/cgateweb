@@ -55,11 +55,15 @@ const envOverrides = {
     CGATE_PROJECT: 'cbusname',
 };
 
-for (const [envKey, settingKey] of Object.entries(envOverrides)) {
-    if (process.env[envKey] !== undefined) {
-        settings[settingKey] = process.env[envKey];
+function applyEnvOverrides(target) {
+    for (const [envKey, settingKey] of Object.entries(envOverrides)) {
+        if (process.env[envKey] !== undefined) {
+            target[settingKey] = process.env[envKey];
+        }
     }
 }
+
+applyEnvOverrides(settings);
 
 
 // Application startup
@@ -93,6 +97,10 @@ async function main() {
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGUSR1', () => {
         console.log('[INFO] Received SIGUSR1, reloading configuration...');
+        // load(true) overwrites ConfigLoader's cache before we know the file is
+        // valid. Keep the startup snapshot so a failed reload cannot leave a
+        // broken config as "current" for the next getConfig() caller.
+        const previousCache = configLoader._cachedConfig;
         try {
             // forceReload, or this reloads nothing: ConfigLoader.load() returns
             // its cached config from startup unless told otherwise, so SIGUSR1
@@ -101,9 +109,14 @@ async function main() {
             // one `systemctl reload` away from anyone editing settings.js.
             const reloaded = configLoader.load(true);
             const newSettings = { ...defaultSettings, ...reloaded };
+            applyEnvOverrides(newSettings);
+            // Same gate as boot: a settings.js that would abort startup must
+            // not be applied mid-run (and must not log success).
+            configLoader.validate(newSettings);
             bridge.reloadSettings(newSettings);
             console.log('[INFO] Configuration reloaded successfully');
         } catch (error) {
+            configLoader._cachedConfig = previousCache;
             console.error(`[ERROR] Failed to reload configuration: ${error.message}`);
         }
     });
