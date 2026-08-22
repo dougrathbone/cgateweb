@@ -868,6 +868,53 @@ describe('MqttManager', () => {
         });
     });
 
+    describe('TLS certificate files', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        let tmpDir;
+
+        beforeEach(() => {
+            tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-mqtt-tls-'));
+        });
+
+        afterEach(() => {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+        });
+
+        it('loads CA, client cert and key files into connect options', () => {
+            const caPath = path.join(tmpDir, 'ca.pem');
+            const certPath = path.join(tmpDir, 'cert.pem');
+            const keyPath = path.join(tmpDir, 'key.pem');
+            fs.writeFileSync(caPath, 'CA-BYTES');
+            fs.writeFileSync(certPath, 'CERT-BYTES');
+            fs.writeFileSync(keyPath, 'KEY-BYTES');
+
+            const mgr = new MqttManager({
+                mqtt: 'broker.example.com:8883',
+                mqttUseTls: true,
+                mqttCaFile: caPath,
+                mqttCertFile: certPath,
+                mqttKeyFile: keyPath
+            });
+            mgr.connect();
+
+            const options = mqtt.connect.mock.calls[0][1];
+            expect(options.ca.toString()).toBe('CA-BYTES');
+            expect(options.cert.toString()).toBe('CERT-BYTES');
+            expect(options.key.toString()).toBe('KEY-BYTES');
+        });
+
+        it('throws a labelled error when a cert file is missing', () => {
+            const mgr = new MqttManager({
+                mqtt: 'broker.example.com:8883',
+                mqttUseTls: true,
+                mqttCaFile: path.join(tmpDir, 'missing-ca.pem')
+            });
+            expect(() => mgr.connect()).toThrow(/Failed to read MQTT TLS CA certificate file/);
+        });
+    });
+
     describe('Will message configuration', () => {
         it('should set up Last Will and Testament message', () => {
             mqttManager.connect();
