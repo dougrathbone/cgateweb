@@ -1773,12 +1773,12 @@ describe('CgateWebBridge', () => {
                 );
             });
 
-            it('publishes the decoded time under the clock group', () => {
+            it('publishes a #s# channel-prefixed clock line from an alarm-panel broadcast', () => {
                 const b = makeBridge({ cbus_clock_enabled: true });
-                b._processEventLine(TIME_LINE);
+                b._processEventLine('#s# clock time //MIDSTRM/254/223 08:44:00 255 #sourceunit=18 OID=');
                 expect(b.eventPublisher.publishReading).toHaveBeenCalledWith(
                     '254', '223', 'clock',
-                    { kind: 'clock', network: '254', application: '223', variant: 'time', value: '21:13:21' }
+                    { kind: 'clock', network: '254', application: '223', variant: 'time', value: '08:44:00' }
                 );
             });
 

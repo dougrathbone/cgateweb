@@ -56,7 +56,7 @@ describe('measurement app id default', () => {
 });
 
 describe('clock default', () => {
-    it('defaults cbus_clock_enabled to false (opt-in; the app-223 line format is under-evidenced)', () => {
+    it('defaults cbus_clock_enabled to false (opt-in; the bus can tick every few minutes)', () => {
         expect(defaultSettings.cbus_clock_enabled).toBe(false);
     });
 });

@@ -8,18 +8,22 @@ const { normalizeAppEventLine, isAppEventLine } = require('./appEventLine');
  *
  * WHAT IS PROVEN, AND WHAT IS NOT
  * -------------------------------
- * The only ground truth in this repository for app-223 event-port traffic is
- * two lines captured off a live C-Gate and committed in 833b60e ("filter out
- * C-Gate clock/timekeeping events"):
+ * Ground truth for app-223 event-port traffic in this repository:
  *
  *   clock date //CLIPSAL/254/223 2026-03-02 0 #sourceunit=8 OID=
  *   clock time //CLIPSAL/254/223 21:13:21 0 #sourceunit=8 OID=
  *
- * They are near-certainly genuine: that commit is dated 2026-03-02 21:17:32
- * +1100, so the captured date equals the commit date and the captured time is
- * four minutes before it.
+ * (833b60e; the captured date equals that commit date and the captured time
+ * is four minutes before it.) And a second site, an alarm panel NTP-syncing
+ * onto the bus (github.com/dougrathbone/cgateweb/issues/66):
  *
- * From those two lines the following is established:
+ *   #s# clock time //MIDSTRM/254/223 08:44:00 255 #sourceunit=18 OID=
+ *   #s# clock date //MIDSTRM/254/223 2026-08-22 5 #sourceunit=18 OID=
+ *
+ * The `#s#` prefix is C-Gate's status-channel marker (EVENT s1, §4.5.83),
+ * not part of the clock grammar.
+ *
+ * Established from both captures:
  *   - the verb is `clock`, with a sub-verb of `date` or `time`;
  *   - the address is TWO segments (`//PROJECT/<net>/<app>`) — network and
  *     application, no group. This is why clock lines can never be parsed by
@@ -27,13 +31,15 @@ const { normalizeAppEventLine, isAppEventLine } = require('./appEventLine');
  *     src/measurementEventHandler.js for the same problem in app 228);
  *   - `date` carries ISO `YYYY-MM-DD`, `time` carries `HH:MM:SS`, both in the
  *     network's own local time with NO timezone or UTC offset;
- *   - a trailing field follows the value, `0` in both captures.
+ *   - a trailing field follows the value. It has been `0`, `5`, and `255`
+ *     across the two sites; its meaning is still undocumented, so it is
+ *     parsed off and discarded, never published.
  *
  * The following is NOT established, and this decoder therefore refuses to
  * guess at it:
- *   - the meaning of the trailing `0`. It is parsed off and discarded, never
- *     published. docs/cgate-manual.md documents only the command names
- *     (`CLOCK DATE|TIME|REQUEST_REFRESH`), never an event-port grammar.
+ *   - the meaning of that trailing field (docs/cgate-manual.md documents only
+ *     the command names `CLOCK DATE|TIME|REQUEST_REFRESH`, never an
+ *     event-port grammar).
  *   - any sub-verb other than `date` and `time`. C-Gate has a
  *     `REQUEST_REFRESH` command, so a corresponding broadcast may well exist,
  *     but no capture of one exists here — it decodes to null rather than to an
@@ -142,8 +148,8 @@ function decodeLine(line) {
     if (!normalized) return null;
 
     const parts = normalized.text.split(/\s+/).filter(Boolean);
-    // [clock, <variant>, <address>, <value>, ...] — the trailing field seen in
-    // both captures is deliberately not read (its meaning is undocumented).
+    // [clock, <variant>, <address>, <value>, ...] — the trailing field (0, 5,
+    // 255 in captures) is deliberately not read (its meaning is undocumented).
     if (parts.length < 4) return null;
 
     const variant = parts[1];
