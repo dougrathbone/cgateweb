@@ -96,122 +96,48 @@ describe('EventPublisher', () => {
             );
         });
 
-        it('should publish lighting device ON event with state and level', () => {
-            const eventData = 'lighting on 254/56/16';
-            const event = new CBusEvent(eventData);
-            
+        it.each([
+            ['lighting on 254/56/16', 'ON', '100', 'ON (100%)'],
+            ['lighting off 254/56/16', 'OFF', '0', 'OFF (0%)'],
+            ['lighting ramp 254/56/16 128', 'ON', '50', null], // 128/255 → 50%
+        ])('should publish %s with state and level', (line, state, level, debugSuffix) => {
+            const event = new CBusEvent(line);
+
             eventPublisher.publishEvent(event, '(Test)');
 
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            
-            // Check state message
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/state',
-                'ON',
-                mockMqttOptions
+                'cbus/read/254/56/16/state', state, mockMqttOptions
             );
-            
-            // Check level message (ON events assume 100%)
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/level',
-                '100',
-                mockMqttOptions
+                'cbus/read/254/56/16/level', level, mockMqttOptions
             );
-
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('C-Bus Status (Test): 254/56/16 ON (100%)')
-            );
+            if (debugSuffix) {
+                expect(mockLogger.debug).toHaveBeenCalledWith(
+                    expect.stringContaining(`C-Bus Status (Test): 254/56/16 ${debugSuffix}`)
+                );
+            }
         });
 
-        it('should publish lighting device OFF event with state and level', () => {
-            const eventData = 'lighting off 254/56/16';
-            const event = new CBusEvent(eventData);
-            
-            eventPublisher.publishEvent(event, '(Test)');
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            
-            // Check state message
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/state',
-                'OFF',
-                mockMqttOptions
-            );
-            
-            // Check level message (OFF events assume 0%)
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/level',
-                '0',
-                mockMqttOptions
-            );
-
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('C-Bus Status (Test): 254/56/16 OFF (0%)')
-            );
-        });
-
-        it('should publish lighting device ramp event with correct level percentage', () => {
-            const eventData = 'lighting ramp 254/56/16 128'; // 128/255 = 50%
-            const event = new CBusEvent(eventData);
-            
-            eventPublisher.publishEvent(event, '(Test)');
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            
-            // Check state message (ON because level > 0)
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/state',
-                'ON',
-                mockMqttOptions
-            );
-            
-            // Check level message (50% of 255)
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/16/level',
-                '50',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish PIR sensor event with state only (no level)', () => {
-            // Create PIR sensor event - app 202 (PIR app ID)
-            const eventData = 'security on 254/202/16'; // PIR motion detected
-            const event = new CBusEvent(eventData);
-            
+        it.each([
+            ['on', 'ON'],
+            ['off', 'OFF'],
+        ])('should publish PIR %s with state only (no level)', (action, state) => {
+            const event = new CBusEvent(`security ${action} 254/202/16`);
             eventPublisher.publishEvent(event, '(Test)');
 
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            
-            // Check state message only
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/202/16/state',
-                'ON',
-                mockMqttOptions
+                'cbus/read/254/202/16/state', state, mockMqttOptions
             );
-
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.stringContaining('C-Bus Status (Test): 254/202/16 ON')
-            );
-            expect(mockLogger.debug).toHaveBeenCalledWith(
-                expect.not.stringContaining('(%)')
-            );
-        });
-
-        it('should publish PIR sensor OFF event correctly', () => {
-            // Create PIR sensor OFF event
-            const eventData = 'security off 254/202/16'; // PIR motion cleared
-            const event = new CBusEvent(eventData);
-            
-            eventPublisher.publishEvent(event, '(Test)');
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            
-            // Check state message only
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/202/16/state',
-                'OFF',
-                mockMqttOptions
-            );
+            if (action === 'on') {
+                expect(mockLogger.debug).toHaveBeenCalledWith(
+                    expect.stringContaining('C-Bus Status (Test): 254/202/16 ON')
+                );
+                expect(mockLogger.debug).toHaveBeenCalledWith(
+                    expect.not.stringContaining('(%)')
+                );
+            }
         });
 
         it('should handle events without source parameter', () => {
@@ -266,37 +192,30 @@ describe('EventPublisher', () => {
             );
         });
 
-        it('should round level percentages correctly', () => {
-            // Test various level values to ensure proper rounding
-            const testCases = [
-                { level: 1, expectedPercent: '0' },    // 1/255 = 0.39% -> 0%
-                { level: 2, expectedPercent: '1' },    // 2/255 = 0.78% -> 1%
-                { level: 127, expectedPercent: '50' }, // 127/255 = 49.8% -> 50%
-                { level: 128, expectedPercent: '50' }, // 128/255 = 50.2% -> 50%
-                { level: 254, expectedPercent: '100' }, // 254/255 = 99.6% -> 100%
-                { level: 255, expectedPercent: '100' }  // 255/255 = 100% -> 100%
-            ];
+        it.each([
+            [1, '0'],    // 1/255 = 0.39% → 0%
+            [2, '1'],    // 2/255 = 0.78% → 1%
+            [127, '50'], // 127/255 = 49.8% → 50%
+            [128, '50'], // 128/255 = 50.2% → 50%
+            [254, '100'],
+            [255, '100'],
+        ])('should round level %i to %s%%', (level, expectedPercent) => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '56',
+                getGroup: () => '16',
+                getLevel: () => level,
+                getAction: () => 'ramp'
+            };
 
-            testCases.forEach(({ level, expectedPercent }) => {
-                mockPublishFn.mockClear();
-                
-                const mockEvent = {
-                    isValid: () => true,
-                    getNetwork: () => '254',
-                    getApplication: () => '56',
-                    getGroup: () => '16',
-                    getLevel: () => level,
-                    getAction: () => 'ramp'
-                };
-                
-                eventPublisher.publishEvent(mockEvent);
-                
-                expect(mockPublishFn).toHaveBeenCalledWith(
-                    'cbus/read/254/56/16/level',
-                    expectedPercent,
-                    mockMqttOptions
-                );
-            });
+            eventPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/56/16/level',
+                expectedPercent,
+                mockMqttOptions
+            );
         });
 
         it('should publish directly without throttle delay', () => {
@@ -310,103 +229,39 @@ describe('EventPublisher', () => {
     });
 
     describe('Cover position publishing', () => {
-        it('should publish cover event with state, level, and position', () => {
+        it.each([
+            [128, 'ON', '50', 3],
+            [0, 'OFF', '0', 3],
+            [255, 'ON', '100', 3],
+        ])('cover level=%i → state=%s position=%s (%i publishes)', (rawLevel, state, position, times) => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
-                getApplication: () => '203', // Cover app ID
+                getApplication: () => '203',
                 getGroup: () => '1',
-                getLevel: () => 128, // 50%
+                getLevel: () => rawLevel,
                 getAction: () => 'ramp'
             };
-            
+
             eventPublisher.publishEvent(mockEvent, '(Test)');
 
-            // Should publish 3 messages: state, level, and position
-            expect(mockPublishFn).toHaveBeenCalledTimes(3);
-            
-            // Check state message
+            expect(mockPublishFn).toHaveBeenCalledTimes(times);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/state',
-                'ON',
-                mockMqttOptions
+                'cbus/read/254/203/1/state', state, mockMqttOptions
             );
-            
-            // Check level message
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/level',
-                '50',
-                mockMqttOptions
+                'cbus/read/254/203/1/level', position, mockMqttOptions
             );
-            
-            // Check position message
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/position',
-                '50',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish cover closed state correctly', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '203',
-                getGroup: () => '1',
-                getLevel: () => 0, // 0% - closed
-                getAction: () => 'ramp'
-            };
-            
-            eventPublisher.publishEvent(mockEvent);
-
-            // Check state message - should be OFF (closed)
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/state',
-                'OFF',
-                mockMqttOptions
-            );
-            
-            // Check position message
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/position',
-                '0',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish cover fully open state correctly', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '203',
-                getGroup: () => '1',
-                getLevel: () => 255, // 100% - fully open
-                getAction: () => 'ramp'
-            };
-            
-            eventPublisher.publishEvent(mockEvent);
-
-            // Check state message - should be ON (open)
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/state',
-                'ON',
-                mockMqttOptions
-            );
-            
-            // Check position message
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/203/1/position',
-                '100',
-                mockMqttOptions
+                'cbus/read/254/203/1/position', position, mockMqttOptions
             );
         });
 
         it('should not publish position for non-cover devices', () => {
-            // Regular lighting device (not a cover)
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
-                getApplication: () => '56', // Lighting app, not cover
+                getApplication: () => '56',
                 getGroup: () => '1',
                 getLevel: () => 128,
                 getAction: () => 'ramp'
@@ -414,14 +269,8 @@ describe('EventPublisher', () => {
 
             eventPublisher.publishEvent(mockEvent);
 
-            // Should only publish state and level (2 messages), not position
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-
-            // Verify no position topic was published
-            const positionCall = mockPublishFn.mock.calls.find(
-                call => call[0].endsWith('/position')
-            );
-            expect(positionCall).toBeUndefined();
+            expect(mockPublishFn.mock.calls.find(call => call[0].endsWith('/position'))).toBeUndefined();
         });
     });
 
@@ -484,7 +333,10 @@ describe('EventPublisher', () => {
             };
         });
 
-        it('should publish position for a lighting group type-overridden to cover', () => {
+        it.each([
+            ['0', 128, 'ON', '50'],
+            ['21', 0, 'OFF', '0'],
+        ])('should publish position for lighting group %s type-overridden to cover', (group, level, state, percent) => {
             const publisher = new EventPublisher({
                 settings: mockSettings,
                 publishFn: mockPublishFn,
@@ -493,30 +345,30 @@ describe('EventPublisher', () => {
                 logger: mockLogger
             });
 
-            const mockEvent = {
+            publisher.publishEvent({
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '56',
-                getGroup: () => '0',
-                getLevel: () => 128,
+                getGroup: () => group,
+                getLevel: () => level,
                 getAction: () => 'ramp'
-            };
+            });
 
-            publisher.publishEvent(mockEvent);
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(3);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/0/state', 'ON', mockMqttOptions
+                `cbus/read/254/56/${group}/state`, state, mockMqttOptions
             );
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/0/level', '50', mockMqttOptions
+                `cbus/read/254/56/${group}/level`, percent, mockMqttOptions
             );
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/0/position', '50', mockMqttOptions
+                `cbus/read/254/56/${group}/position`, percent, mockMqttOptions
             );
         });
 
-        it('should use cover state logic for type-overridden covers', () => {
+        it.each([
+            ['16', 'cover-unrelated lighting group'],
+            ['6', 'switch type override'],
+        ])('should not publish position for group %s (%s)', (group) => {
             const publisher = new EventPublisher({
                 settings: mockSettings,
                 publishFn: mockPublishFn,
@@ -525,77 +377,17 @@ describe('EventPublisher', () => {
                 logger: mockLogger
             });
 
-            const mockEvent = {
+            publisher.publishEvent({
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '56',
-                getGroup: () => '21',
-                getLevel: () => 0,
-                getAction: () => 'ramp'
-            };
-
-            publisher.publishEvent(mockEvent);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/21/state', 'OFF', mockMqttOptions
-            );
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/56/21/position', '0', mockMqttOptions
-            );
-        });
-
-        it('should not publish position for a lighting group not overridden to cover', () => {
-            const publisher = new EventPublisher({
-                settings: mockSettings,
-                publishFn: mockPublishFn,
-                mqttOptions: mockMqttOptions,
-                labelLoader: mockLabelLoader,
-                logger: mockLogger
+                getGroup: () => group,
+                getLevel: () => group === '6' ? 255 : 128,
+                getAction: () => group === '6' ? 'on' : 'ramp'
             });
-
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '56',
-                getGroup: () => '16',
-                getLevel: () => 128,
-                getAction: () => 'ramp'
-            };
-
-            publisher.publishEvent(mockEvent);
 
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            const positionCall = mockPublishFn.mock.calls.find(
-                call => call[0].endsWith('/position')
-            );
-            expect(positionCall).toBeUndefined();
-        });
-
-        it('should not publish position for a switch type override', () => {
-            const publisher = new EventPublisher({
-                settings: mockSettings,
-                publishFn: mockPublishFn,
-                mqttOptions: mockMqttOptions,
-                labelLoader: mockLabelLoader,
-                logger: mockLogger
-            });
-
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '56',
-                getGroup: () => '6',
-                getLevel: () => 255,
-                getAction: () => 'on'
-            };
-
-            publisher.publishEvent(mockEvent);
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            const positionCall = mockPublishFn.mock.calls.find(
-                call => call[0].endsWith('/position')
-            );
-            expect(positionCall).toBeUndefined();
+            expect(mockPublishFn.mock.calls.find(c => c[0].endsWith('/position'))).toBeUndefined();
         });
 
         it('should fall back to app-ID-only check when labelLoader is null', () => {
@@ -606,23 +398,17 @@ describe('EventPublisher', () => {
                 logger: mockLogger
             });
 
-            const mockEvent = {
+            publisher.publishEvent({
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '56',
                 getGroup: () => '0',
                 getLevel: () => 128,
                 getAction: () => 'ramp'
-            };
+            });
 
-            publisher.publishEvent(mockEvent);
-
-            // Without labelLoader, group 0 on app 56 is a regular light (2 messages)
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
-            const positionCall = mockPublishFn.mock.calls.find(
-                call => call[0].endsWith('/position')
-            );
-            expect(positionCall).toBeUndefined();
+            expect(mockPublishFn.mock.calls.find(c => c[0].endsWith('/position'))).toBeUndefined();
         });
 
         it('should still detect covers by app ID even with labelLoader present', () => {
@@ -634,16 +420,14 @@ describe('EventPublisher', () => {
                 logger: mockLogger
             });
 
-            const mockEvent = {
+            publisher.publishEvent({
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '203',
                 getGroup: () => '5',
                 getLevel: () => 128,
                 getAction: () => 'ramp'
-            };
-
-            publisher.publishEvent(mockEvent);
+            });
 
             expect(mockPublishFn).toHaveBeenCalledTimes(3);
             expect(mockPublishFn).toHaveBeenCalledWith(
@@ -966,13 +750,16 @@ describe('EventPublisher', () => {
             });
         });
 
-        it('should publish trigger event with JSON event payload to event topic', () => {
+        it.each([
+            [255, JSON.stringify({ event_type: 'trigger', level: 255 }), '1'],
+            [null, JSON.stringify({ event_type: 'trigger' }), '2'],
+        ])('should publish trigger event (level=%s) to event topic', (level, payload, group) => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '205',
-                getGroup: () => '1',
-                getLevel: () => 255,
+                getGroup: () => group,
+                getLevel: () => level,
                 getAction: () => 'on'
             };
 
@@ -980,28 +767,8 @@ describe('EventPublisher', () => {
 
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
             expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/205/1/event',
-                JSON.stringify({ event_type: 'trigger', level: 255 }),
-                { ...mockMqttOptions, retain: false }
-            );
-        });
-
-        it('should publish trigger event without level when level is null', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '205',
-                getGroup: () => '2',
-                getLevel: () => null,
-                getAction: () => 'on'
-            };
-
-            triggerPublisher.publishEvent(mockEvent, '(Test)');
-
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/205/2/event',
-                JSON.stringify({ event_type: 'trigger' }),
+                `cbus/read/254/205/${group}/event`,
+                payload,
                 { ...mockMqttOptions, retain: false }
             );
         });
@@ -1018,20 +785,16 @@ describe('EventPublisher', () => {
 
             triggerPublisher.publishEvent(mockEvent);
 
-            // Only the event topic - no state, level, or position
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
             const topic = mockPublishFn.mock.calls[0][0];
             expect(topic).toBe('cbus/read/254/205/3/event');
-            expect(topic).not.toContain('/state');
-            expect(topic).not.toContain('/level');
-            expect(topic).not.toContain('/position');
         });
 
         it('should not treat non-trigger app events as trigger events', () => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
-                getApplication: () => '56', // lighting app
+                getApplication: () => '56',
                 getGroup: () => '1',
                 getLevel: () => 255,
                 getAction: () => 'on'
@@ -1039,7 +802,6 @@ describe('EventPublisher', () => {
 
             triggerPublisher.publishEvent(mockEvent);
 
-            // Should publish state and level (not event topic)
             expect(mockPublishFn).toHaveBeenCalledTimes(2);
             expect(mockPublishFn).not.toHaveBeenCalledWith(
                 expect.stringContaining('/event'),
@@ -1309,61 +1071,26 @@ describe('EventPublisher', () => {
             });
         });
 
-        it('should publish tilt event to the tilt topic with correct 0-100 value', () => {
+        it.each([
+            [128, 'ramp', '50'],
+            [255, 'on', '100'],
+            [0, 'off', '0'],
+            [null, 'on', '100'], // no level + action on → 100%
+        ])('level=%j action=%s → tilt=%s', (rawLevel, action, tilt) => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '204',
                 getGroup: () => '5',
-                getLevel: () => 128,
-                getAction: () => 'ramp'
-            };
-
-            tiltPublisher.publishEvent(mockEvent);
-
-            // 128 / 255 * 100 = ~50%
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/204/5/tilt',
-                '50',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish tilt=100 for full-level event', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '204',
-                getGroup: () => '5',
-                getLevel: () => 255,
-                getAction: () => 'on'
+                getLevel: () => rawLevel,
+                getAction: () => action
             };
 
             tiltPublisher.publishEvent(mockEvent);
 
             expect(mockPublishFn).toHaveBeenCalledWith(
                 'cbus/read/254/204/5/tilt',
-                '100',
-                mockMqttOptions
-            );
-        });
-
-        it('should publish tilt=0 for off event', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '204',
-                getGroup: () => '5',
-                getLevel: () => 0,
-                getAction: () => 'off'
-            };
-
-            tiltPublisher.publishEvent(mockEvent);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/204/5/tilt',
-                '0',
+                tilt,
                 mockMqttOptions
             );
         });
@@ -1391,7 +1118,7 @@ describe('EventPublisher', () => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
-                getApplication: () => '203', // cover app, not tilt app
+                getApplication: () => '203',
                 getGroup: () => '5',
                 getLevel: () => 128,
                 getAction: () => 'ramp'
@@ -1399,30 +1126,10 @@ describe('EventPublisher', () => {
 
             tiltPublisher.publishEvent(mockEvent);
 
-            // Cover app event — should publish state, level, position (not tilt)
             expect(mockPublishFn).not.toHaveBeenCalledWith(
                 expect.stringContaining('/tilt'),
                 expect.anything(),
                 expect.anything()
-            );
-        });
-
-        it('should infer 100% tilt when no level and action is on', () => {
-            const mockEvent = {
-                isValid: () => true,
-                getNetwork: () => '254',
-                getApplication: () => '204',
-                getGroup: () => '5',
-                getLevel: () => null,
-                getAction: () => 'on'
-            };
-
-            tiltPublisher.publishEvent(mockEvent);
-
-            expect(mockPublishFn).toHaveBeenCalledWith(
-                'cbus/read/254/204/5/tilt',
-                '100',
-                mockMqttOptions
             );
         });
     });
