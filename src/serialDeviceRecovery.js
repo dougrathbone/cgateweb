@@ -5,8 +5,7 @@ const nodeFs = require('fs');
 const nodePath = require('path');
 const { execFileSync } = require('child_process');
 const { backoffDelay } = require('./backoff');
-const { clampSetting } = require('./utils');
-const { defaultSettings } = require('./defaultSettings');
+const { resolveSetting, resolveClampedSetting } = require('./config/schema');
 
 const DEFAULT_DEVICE_FILE = '/run/cgateweb/serial-device';
 const DEFAULT_RECOVER_SCRIPT = '/usr/bin/cgateweb-recover-serial';
@@ -68,32 +67,21 @@ class SerialDeviceRecovery {
 
     /**
      * @param {string} key
-     * @returns {any} The configured value, or the shipped default.
+     * @returns {any} The configured value, or the schema default.
      */
     _setting(key) {
-        const value = this.settings[key];
-        return value === undefined || value === null ? defaultSettings[key] : value;
+        return resolveSetting(this.settings, key);
     }
 
     /**
-     * A numeric setting, clamped the way the rest of src/ clamps them.
-     *
-     * Every number this class reads gates a C-Gate restart, and a bare Number()
-     * of a mistyped option yields NaN, which fails both guards *open*:
-     * `attempts >= NaN` is false, so the cap never trips, and
-     * `now < lastAttemptAt + NaN` is false, so the backoff never waits. A single
-     * typo in one option was therefore enough to reproduce a restart-every-poll
-     * loop. clampSetting falls back to the shipped default for NaN (and for 0,
-     * which is never a sensible value for any of these) and then applies a
-     * floor, so no configuration can produce a value that disables the bound it
-     * is meant to express.
+     * A numeric setting with a hard floor (schema default if the value is not finite).
      *
      * @param {string} key
      * @param {number} floor
      * @returns {number}
      */
     _clampedSetting(key, floor) {
-        return clampSetting(this.settings[key], floor, defaultSettings[key]);
+        return resolveClampedSetting(this.settings, key, { min: floor });
     }
 
     /** @returns {boolean} True only when a local serial PCI is in play at all. */

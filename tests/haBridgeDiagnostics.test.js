@@ -119,6 +119,25 @@ describe('HaBridgeDiagnostics', () => {
         expect(publishFn).toHaveBeenCalled();
     });
 
+    test('clamps a zero diagnostics interval to the 10s floor', () => {
+        jest.useFakeTimers();
+        diagnostics = new HaBridgeDiagnostics(
+            { ...settings, ha_bridge_diagnostics_interval_sec: 0 },
+            publishFn,
+            getStatusFn
+        );
+        diagnostics.start();
+        publishFn.mockClear();
+
+        jest.advanceTimersByTime(9999);
+        expect(publishFn).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1);
+        expect(publishFn).toHaveBeenCalled();
+
+        diagnostics.stop();
+        jest.useRealTimers();
+    });
+
     test('consolidated stats topic contains correct JSON structure', () => {
         diagnostics.publishNow('test');
 

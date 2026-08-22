@@ -1470,10 +1470,12 @@ function resolveSetting(settings, key) {
 }
 
 /**
- * resolveSetting, then optionally clamp with Math.max(min, value).
+ * resolveSetting, then Number() with a schema-default fallback for non-finite
+ * values, then optionally Math.max(min, n).
  *
- * Used for connection-pool and socket floors that already applied Math.max
- * after reading a setting.
+ * A typo like "sixty" becomes NaN; Math.max(min, NaN) is NaN, which would
+ * disable setInterval floors and unbounded caches. Fall back to the schema
+ * default so those call sites stay bounded.
  *
  * @param {Object|null|undefined} settings
  * @param {string} key
@@ -1481,11 +1483,12 @@ function resolveSetting(settings, key) {
  * @returns {number}
  */
 function resolveClampedSetting(settings, key, options = {}) {
-    const value = /** @type {number} */ (resolveSetting(settings, key));
+    const n = Number(resolveSetting(settings, key));
+    const resolved = Number.isFinite(n) ? n : Number(resolveSetting({}, key));
     if (options.min !== undefined) {
-        return Math.max(options.min, value);
+        return Math.max(options.min, resolved);
     }
-    return value;
+    return resolved;
 }
 
 /**

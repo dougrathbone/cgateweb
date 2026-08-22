@@ -321,5 +321,19 @@ describe('StaleDeviceDetector', () => {
 
             detector.stop();
         });
+
+        it('clamps a zero check interval to the 60s floor', () => {
+            deviceStateManager.getAllLastSeen.mockReturnValue(new Map());
+            const detector = makeDetector({ stale_device_check_interval_sec: 0 });
+            detector.start();
+            publishFn.mockClear();
+
+            jest.advanceTimersByTime(59999);
+            expect(publishFn).not.toHaveBeenCalled();
+            jest.advanceTimersByTime(1);
+            expect(publishFn).toHaveBeenCalled();
+
+            detector.stop();
+        });
     });
 });
