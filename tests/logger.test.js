@@ -108,6 +108,21 @@ describe('Logger', () => {
             const call = consoleLogSpy.mock.calls[0][0];
             expect(call).not.toContain('{}');
         });
+
+        it('should keep a message with embedded line breaks on one line', () => {
+            testLogger.info('object\nSTATUS forged INFO line\r\nmore');
+
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).not.toContain('\n');
+            expect(call).not.toContain('\r');
+            expect(call).toContain('object | STATUS forged INFO line | more');
+        });
+
+        it('should stringify a non-string message', () => {
+            testLogger.info(42);
+
+            expect(consoleLogSpy.mock.calls[0][0]).toContain('42');
+        });
     });
 
     describe('Sensitive metadata redaction', () => {
@@ -147,6 +162,16 @@ describe('Logger', () => {
             expect(call).toContain('254/56/4');
             expect(call).toContain('255');
             expect(call).not.toContain('[REDACTED]');
+        });
+
+        it('should log a __proto__ key as data rather than applying it', () => {
+            const meta = JSON.parse('{"__proto__": {"polluted": true}, "keep": "yes"}');
+
+            testLogger.info('parsed body', meta);
+
+            const call = consoleLogSpy.mock.calls[0][0];
+            expect(call).toContain('keep');
+            expect({}.polluted).toBeUndefined();
         });
     });
 

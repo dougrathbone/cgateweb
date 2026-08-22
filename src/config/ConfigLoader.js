@@ -106,7 +106,7 @@ class ConfigLoader {
 
             return config;
         } catch (error) {
-            this.logger.error('Failed to load settings.js:', error.message);
+            this.logger.error(`Failed to load settings.js: ${error.message}`);
             const allowFallback = String(process.env.ALLOW_DEFAULT_FALLBACK || '').toLowerCase() === 'true';
             if (!allowFallback) {
                 throw new Error(
@@ -537,7 +537,7 @@ class ConfigLoader {
                 };
             }
         } catch (error) {
-            this.logger.debug('MQTT auto-detection unavailable:', error.message);
+            this.logger.debug(`MQTT auto-detection unavailable: ${error.message}`);
         }
 
         return null;
