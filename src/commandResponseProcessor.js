@@ -302,6 +302,9 @@ class CommandResponseProcessor {
         const event = new CBusEvent(statusData, { statusDataOnly: true });
         if (event.isValid()) {
             this.eventPublisher.publishEvent(event, '(Cmd)');
+            if (this._haDiscovery) {
+                this._haDiscovery.ensureUnlistedGroupDiscovery?.(event.getNetwork(), event.getApplication(), event.getGroup());
+            }
             if (this.onObjectStatus) {
                 this.onObjectStatus(event);
             }
