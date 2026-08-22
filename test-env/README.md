@@ -74,23 +74,30 @@ bug, #23). It has three parts:
   *openly-downloadable* version. Only V3.3.0-V3.3.2 are reachable without a
   Schneider login, so the matrix currently runs 3.3.1 and 3.3.2. Each leg just
   overrides `cgate_download_url` in the options before running the test.
-- **Upload leg** (`integration-upload`): exercises a version that is **not**
-  openly downloadable (3.3.3, 3.7.x). It is skipped unless the
-  `CGATE_UPLOAD_TEST_URL` repository variable is set. To enable it, host the
-  C-Gate zip where CI can fetch it (e.g. attach it as an asset on a GitHub
-  release of this repo, since the package cannot be redistributed in-tree) and
-  set the variable to that asset URL:
+- **Upload leg** (`integration-upload`): exercises the add-on installer in
+  **upload** mode. On pull requests it is skipped unless the
+  `CGATE_UPLOAD_TEST_URL` repository variable is set. On tagged releases it
+  always runs: if that variable is empty it fetches the already-hosted 3.3.1
+  zip from this repo's `ci-assets` release (the same pin as the download
+  matrix), so the installer path is covered without redistributing a
+  non-public Schneider build. To test 3.3.3 / 3.7.x instead, host that zip
+  as a release asset (the package cannot live in-tree) and point the
+  variable at it:
   ```bash
   gh release create cgate-test-artifacts --notes "C-Gate zips for CI" \
     && gh release upload cgate-test-artifacts cgate-3.7.1_2287.zip
   gh variable set CGATE_UPLOAD_TEST_URL \
     --body "https://github.com/dougrathbone/cgateweb/releases/download/cgate-test-artifacts/cgate-3.7.1_2287.zip"
+  gh variable set CGATE_UPLOAD_TEST_SHA256 --body "<sha256 of that zip>"
   ```
+  Optional `CGATE_UPLOAD_TEST_SHA256` is checked when the custom URL is set.
+  The fallback 3.3.1 zip always has its pin verified.
 - **Aggregator** (`integration`): the single required status check. Green only
   if every download leg passed and the upload leg passed or was skipped (on
-  PRs). On tagged releases the upload leg is required — a skip fails the gate
-  so releases cannot ship without `CGATE_UPLOAD_TEST_URL`. Its name is fixed,
-  so adding/removing matrix versions never touches branch protection.
+  PRs). On tagged releases the upload leg is required; a skip fails the gate.
+  Releases no longer need `CGATE_UPLOAD_TEST_URL` to be set — they use the
+  hosted 3.3.1 zip unless that variable points at a newer build. Its name is
+  fixed, so adding/removing matrix versions never touches branch protection.
 
 To run a specific version locally, edit `cgate_download_url` in
 `active-options.json` (download mode) or drop the zip in `volumes/share/cgate/`
