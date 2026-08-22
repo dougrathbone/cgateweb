@@ -70,6 +70,7 @@
     "perf:compare": "node tools/perf-compare.js perf/raw.json perf/dedup.json",
     "perf:run": "npm run perf:raw && npm run perf:dedup && npm run perf:compare",
     "validate:addon-config": "node tools/validate-addon-config.js",
+    "generate:translations": "node tools/generate-translations.js",
     "validate:translations": "node tools/validate-translations.js",
     "validate:schema-i18n": "node tools/validate-schema-i18n.js",
     "typecheck": "tsc --noEmit",

@@ -1,48 +1,43 @@
 configuration:
-  # ── Campos obligatorios (siempre visibles) ──
   cgate_mode:
     name: Modo de C-Gate
     description: >-
-      Cómo se proporciona C-Gate. "remote" se conecta a un servidor C-Gate
-      en otro lugar de su red (lo más común). "managed" descarga y ejecuta
-      C-Gate localmente dentro de este add-on.
+      Cómo se proporciona C-Gate. "remote" se conecta a un servidor C-Gate en
+      otro lugar de su red (lo más común). "managed" descarga y ejecuta C-Gate
+      localmente dentro de este add-on.
   cgate_host:
     name: Host de C-Gate (obligatorio)
     description: >-
       Dirección IP o nombre de host de su servidor C-Gate. En modo remoto,
-      ingrese la dirección de la máquina que ejecuta C-Gate. En modo
-      gestionado, use 127.0.0.1.
+      ingrese la dirección de la máquina que ejecuta C-Gate. En modo gestionado,
+      use 127.0.0.1.
   cgate_project:
     name: Nombre del proyecto C-Gate (obligatorio)
     description: >-
       El nombre de su proyecto C-Bus como está configurado en C-Gate (por
-      ejemplo, HOME, MYHOUSE). Encuéntrelo en C-Gate Toolkit bajo el árbol
-      de su proyecto.
+      ejemplo, HOME, MYHOUSE). Encuéntrelo en C-Gate Toolkit bajo el árbol de su
+      proyecto.
   ha_discovery_enabled:
     name: Habilitar Home Assistant Discovery
     description: >-
-      Registrar automáticamente dispositivos C-Bus en Home Assistant usando
-      MQTT Discovery. La mayoría de los usuarios deben dejarlo habilitado.
-      Los dispositivos aparecen como entidades sin configuración YAML manual.
+      Registrar automáticamente dispositivos C-Bus en Home Assistant usando MQTT
+      Discovery. La mayoría de los usuarios deben dejarlo habilitado. Los
+      dispositivos aparecen como entidades sin configuración YAML manual.
   log_level:
     name: Nivel de registro
     description: >-
-      Nivel de detalle del registro. Use "info" para operación normal,
-      "debug" para solucionar problemas de conexión o descubrimiento.
-
-  # ── Conexión C-Gate (opcional, tiene valores predeterminados) ──
+      Nivel de detalle del registro. Use "info" para operación normal, "debug"
+      para solucionar problemas de conexión o descubrimiento.
   cgate_port:
     name: Puerto de comandos de C-Gate
     description: >-
-      Puerto TCP para conexiones de comandos de C-Gate. Solo cambie esto si
-      su C-Gate usa un puerto no estándar. Predeterminado: 20023.
+      Puerto TCP para conexiones de comandos de C-Gate. Solo cambie esto si su
+      C-Gate usa un puerto no estándar. Predeterminado: 20023.
   cgate_event_port:
     name: Puerto de eventos de C-Gate
     description: >-
-      Puerto TCP para conexiones de eventos de C-Gate. Solo cambie esto si
-      su C-Gate usa un puerto no estándar. Predeterminado: 20025.
-
-  # ── Modo gestionado de C-Gate ──
+      Puerto TCP para conexiones de eventos de C-Gate. Solo cambie esto si su
+      C-Gate usa un puerto no estándar. Predeterminado: 20025.
   cgate_install_source:
     name: Fuente de instalación de C-Gate
     description: >-
@@ -52,82 +47,93 @@ configuration:
   cgate_download_url:
     name: URL de descarga de C-Gate
     description: >-
-      Solo se usa en modo gestionado con fuente de descarga. Cambie si la
-      URL oficial de descarga de Clipsal cambia. Dejar vacío para la URL
+      Solo se usa en modo gestionado con fuente de descarga. Cambie si la URL
+      oficial de descarga de Clipsal cambia. Dejar vacío para la URL
       predeterminada.
   cgate_download_sha256:
     name: SHA256 de descarga de C-Gate
     description: >-
-      Suma de verificación SHA256 opcional para verificar la descarga de
-      C-Gate. Recomendado cuando se usa una URL de descarga personalizada.
+      Suma de verificación SHA256 opcional para verificar la descarga de C-Gate.
+      Recomendado cuando se usa una URL de descarga personalizada.
   cgate_force_reinstall:
     name: Forzar reinstalación de C-Gate
     description: >-
-      Solo se usa en modo gestionado. Una vez instalado, C-Gate normalmente se mantiene tal cual. Actívelo para reinstalar/actualizar C-Gate desde la fuente de instalación en el próximo inicio (sus bases de datos de proyecto y la configuración se conservan); en modo de carga puede colocar un zip más reciente en /share/cgate. Desactívelo después de la actualización.
-
+      Solo se usa en modo gestionado. Una vez instalado, C-Gate normalmente se
+      mantiene tal cual. Actívelo para reinstalar/actualizar C-Gate desde la
+      fuente de instalación en el próximo inicio (sus bases de datos de proyecto
+      y la configuración se conservan); en modo de carga puede colocar un zip
+      más reciente en /share/cgate. Desactívelo después de la actualización.
   cgate_serial_device:
     name: Dispositivo PCI serie (beta)
     description: >-
-      BETA: soporte para interfaces PC USB-serie (5500PC/5500PCU) — probado con ambas interfaces. Seleccione un dispositivo serie detectado en la lista desplegable; prefiera las rutas /dev/serial/by-id/. Para introducir una ruta personalizada, cambie el editor de configuración al modo YAML. Requiere el modo gestionado y un proyecto de C-Bus Toolkit configurado para una interfaz PC serie. Informe los problemas en GitHub (issue #28).
+      BETA: soporte para interfaces PC USB-serie (5500PC/5500PCU) — probado con
+      ambas interfaces. Seleccione un dispositivo serie detectado en la lista
+      desplegable; prefiera las rutas /dev/serial/by-id/. Para introducir una
+      ruta personalizada, cambie el editor de configuración al modo YAML.
+      Requiere el modo gestionado y un proyecto de C-Bus Toolkit configurado
+      para una interfaz PC serie. Informe los problemas en GitHub (issue #28).
   cgate_external_clients:
     name: Clientes externos de C-Gate
     description: >-
-      Direcciones autorizadas a conectarse al C-Gate gestionado, para herramientas como C-Bus Toolkit. Déjelo vacío para permitir solo este add-on. C-Gate no tiene autenticación, y el nivel program permite reprogramar unidades C-Bus, así que indique direcciones específicas en lugar de una subred completa. Un octeto con el valor 255 coincide con cualquier valor, por lo que 192.168.1.255 significa toda la red 192.168.1.x. También debe publicar los puertos de C-Gate en el panel de red.
-  # ── MQTT (generalmente se detecta automáticamente) ──
+      Direcciones autorizadas a conectarse al C-Gate gestionado, para
+      herramientas como C-Bus Toolkit. Déjelo vacío para permitir solo este
+      add-on. C-Gate no tiene autenticación, y el nivel program permite
+      reprogramar unidades C-Bus, así que indique direcciones específicas en
+      lugar de una subred completa. Un octeto con el valor 255 coincide con
+      cualquier valor, por lo que 192.168.1.255 significa toda la red
+      192.168.1.x. También debe publicar los puertos de C-Gate en el panel de
+      red.
   mqtt_host:
     name: Host del broker MQTT
     description: >-
-      Detectado automáticamente desde el add-on Mosquitto — la mayoría de
-      los usuarios deben dejarlo vacío. Solo configúrelo si usa un broker
-      MQTT externo.
+      Detectado automáticamente desde el add-on Mosquitto — la mayoría de los
+      usuarios deben dejarlo vacío. Solo configúrelo si usa un broker MQTT
+      externo.
   mqtt_port:
     name: Puerto del broker MQTT
     description: >-
-      Detectado automáticamente desde el add-on Mosquitto. Solo configure
-      para brokers externos. Predeterminado: 1883.
+      Detectado automáticamente desde el add-on Mosquitto. Solo configure para
+      brokers externos. Predeterminado: 1883.
   mqtt_username:
     name: Nombre de usuario MQTT
     description: >-
-      Detectado automáticamente desde el add-on Mosquitto. Solo configure
-      para brokers externos o para anular credenciales.
+      Detectado automáticamente desde el add-on Mosquitto. Solo configure para
+      brokers externos o para anular credenciales.
   mqtt_password:
     name: Contraseña MQTT
     description: >-
-      Detectado automáticamente desde el add-on Mosquitto. Solo configure
-      para brokers externos o para anular credenciales.
+      Detectado automáticamente desde el add-on Mosquitto. Solo configure para
+      brokers externos o para anular credenciales.
   mqtt_use_tls:
     name: Habilitar MQTT TLS
     description: >-
       Conectar a MQTT usando TLS (mqtts://). Habilitar para brokers que
-      requieren conexiones cifradas (típicamente puerto 8883). No necesario
-      para el add-on estándar de Mosquitto.
+      requieren conexiones cifradas (típicamente puerto 8883). No necesario para
+      el add-on estándar de Mosquitto.
   mqtt_ca_file:
     name: Archivo de certificado CA de MQTT
     description: >-
       Ruta al certificado CA para verificar el certificado TLS del broker.
-      Normalmente almacenado en /ssl/ (por ejemplo, /ssl/ca.crt). Solo
-      necesario para certificados autofirmados.
+      Normalmente almacenado en /ssl/ (por ejemplo, /ssl/ca.crt). Solo necesario
+      para certificados autofirmados.
   mqtt_reject_unauthorized:
     name: Verificar certificado TLS de MQTT
     description: >-
       Rechazar conexiones si el certificado TLS del broker no puede ser
       verificado. Mantener habilitado por seguridad. Solo deshabilitar para
       certificados autofirmados sin archivo CA.
-
-  # ── Monitorización de C-Bus ──
   auto_discover_networks:
     name: Auto-descubrir redes C-Bus
     description: >-
-      Descubrir automáticamente los IDs de red desde C-Gate al conectar.
-      Las redes descubiertas se usan para sondeo y HA Discovery. Deshabilitar
-      solo si el auto-descubrimiento causa problemas. Predeterminado:
-      habilitado.
+      Descubrir automáticamente los IDs de red desde C-Gate al conectar. Las
+      redes descubiertas se usan para sondeo y HA Discovery. Deshabilitar solo
+      si el auto-descubrimiento causa problemas. Predeterminado: habilitado.
   getall_networks:
     name: Redes C-Bus a monitorizar
     description: >-
-      IDs de red C-Bus para sondear estados de dispositivos. Predeterminado:
-      254 (red C-Bus estándar para la mayoría de instalaciones). Encuentre
-      sus IDs de red en C-Gate Toolkit bajo el árbol de su proyecto.
+      IDs de red C-Bus para sondear estados de dispositivos. Predeterminado: 254
+      (red C-Bus estándar para la mayoría de instalaciones). Encuentre sus IDs
+      de red en C-Gate Toolkit bajo el árbol de su proyecto.
   getall_on_start:
     name: Sondear todos los dispositivos al iniciar
     description: >-
@@ -137,77 +143,71 @@ configuration:
   getall_period:
     name: Intervalo de sondeo (segundos)
     description: >-
-      Con qué frecuencia re-sondear todos los estados de dispositivos.
-      Valores más bajos = estados más frescos pero más tráfico C-Gate.
-      Predeterminado: 3600 (1 hora).
+      Con qué frecuencia re-sondear todos los estados de dispositivos. Valores
+      más bajos = estados más frescos pero más tráfico C-Gate. Predeterminado:
+      3600 (1 hora).
   getall_app_periods:
     name: Intervalos de sondeo por aplicación
     description: >-
-      Anular el intervalo de sondeo para aplicaciones C-Bus específicas.
-      Cada entrada tiene un app_id (por ejemplo, "56" para Iluminación) y
-      period_sec (0 para deshabilitar).
-
-  # ── Publicación MQTT ──
+      Anular el intervalo de sondeo para aplicaciones C-Bus específicas. Cada
+      entrada tiene un app_id (por ejemplo, "56" para Iluminación) y period_sec
+      (0 para deshabilitar).
   retain_reads:
     name: Retener mensajes de estado MQTT
     description: >-
       Establecer la bandera MQTT retain en mensajes de estado para que los
-      nuevos suscriptores reciban inmediatamente los últimos estados
-      conocidos. Predeterminado: deshabilitado.
+      nuevos suscriptores reciban inmediatamente los últimos estados conocidos.
+      Predeterminado: deshabilitado.
   message_interval:
     name: Intervalo de comandos (ms)
     description: >-
-      Retraso mínimo entre comandos enviados a C-Gate. Evita sobrecargar
-      C-Gate con comandos rápidos. Predeterminado: 200ms.
-
-  # ── Home Assistant Discovery ──
+      Retraso mínimo entre comandos enviados a C-Gate. Evita sobrecargar C-Gate
+      con comandos rápidos. Predeterminado: 200ms.
   ha_discovery_prefix:
     name: Prefijo del tema Discovery
     description: >-
-      Prefijo del tema MQTT para mensajes de HA Discovery. Debe coincidir
-      con el prefijo de MQTT Discovery de su Home Assistant. Predeterminado:
+      Prefijo del tema MQTT para mensajes de HA Discovery. Debe coincidir con el
+      prefijo de MQTT Discovery de su Home Assistant. Predeterminado:
       homeassistant.
   ha_discovery_networks:
     name: Redes de Discovery
     description: >-
-      IDs de red C-Bus para escanear en busca de dispositivos. Si está
-      vacío, usa las redes de "Redes C-Bus a monitorizar". Predeterminado:
-      254.
+      IDs de red C-Bus para escanear en busca de dispositivos. Si está vacío,
+      usa las redes de "Redes C-Bus a monitorizar". Predeterminado: 254.
   ha_discovery_cover_app_id:
     name: ID de aplicación para cubiertas
     description: >-
       ID de app C-Bus para cubiertas (persianas, contraventanas, puertas de
-      garaje). Valor común: 203 (Enable Control). Dejar vacío para omitir
-      el descubrimiento de cubiertas.
+      garaje). Valor común: 203 (Enable Control). Dejar vacío para omitir el
+      descubrimiento de cubiertas.
   ha_discovery_cover_tilt_app_id:
     name: ID de aplicación para inclinación de cubiertas
     description: >-
-      ID de app C-Bus para control de inclinación de persianas venecianas.
-      Se empareja por número de grupo con las cubiertas. Dejar vacío para
-      omitir la inclinación.
+      ID de app C-Bus para control de inclinación de persianas venecianas. Se
+      empareja por número de grupo con las cubiertas. Dejar vacío para omitir la
+      inclinación.
   ha_discovery_switch_app_id:
     name: ID de aplicación para interruptores
     description: >-
-      ID de app C-Bus para grupos de interruptores. Dejar vacío para omitir
-      el descubrimiento de interruptores.
+      ID de app C-Bus para grupos de interruptores. Dejar vacío para omitir el
+      descubrimiento de interruptores.
   ha_discovery_trigger_app_id:
     name: ID de aplicación para triggers
     description: >-
-      ID de app C-Bus para grupos de triggers (teclados, escenas). Valor
-      común: 202. Dejar vacío para omitir el descubrimiento de triggers.
+      ID de app C-Bus para grupos de triggers (teclados, escenas). Valor común:
+      202. Dejar vacío para omitir el descubrimiento de triggers.
   ha_discovery_scene_enabled:
     name: Habilitar entidades de escena
     description: >-
-      Crear una entidad de escena de Home Assistant para cada grupo de
-      trigger, además de las entidades de evento y botón. Predeterminado:
-      habilitado.
+      Crear una entidad de escena de Home Assistant para cada grupo de trigger,
+      además de las entidades de evento y botón. Predeterminado: habilitado.
   ha_discovery_auto_type:
     name: Auto-detect Device Types
     description: >-
       Automatically classify Lighting (56) groups whose label looks like a
       motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence.
-      Default: enabled.
+      instead of lights. Manual type overrides always take precedence. Default:
+      enabled.
   ha_discovery_auto_type_name_heuristics:
     name: Auto-detect Using Label Keywords
     description: >-
@@ -231,85 +231,102 @@ configuration:
   ha_hvac_temperature_unit:
     name: Unidad de temperatura HVAC
     description: >-
-      Unidad de temperatura para entidades de clima HVAC. C para Celsius,
-      F para Fahrenheit. Predeterminado: C.
-
+      Unidad de temperatura para entidades de clima HVAC. C para Celsius, F para
+      Fahrenheit. Predeterminado: C.
   cbus_aircon_app_id:
     name: ID de aplicación de aire acondicionado
     description: >-
-      ID de la aplicación de aire acondicionado de C-Bus (p. ej. 172) para temperatura ambiente nativa de solo lectura. Decodifica los mensajes zone_temperature y publica current_temperature en cbus/read/{network}/172/{zone}/current_temperature. Desactivado por defecto.
-
+      ID de la aplicación de aire acondicionado de C-Bus (p. ej. 172) para
+      temperatura ambiente nativa de solo lectura. Decodifica los mensajes
+      zone_temperature y publica current_temperature en
+      cbus/read/{network}/172/{zone}/current_temperature. Desactivado por
+      defecto.
   cbus_aircon_control_enabled:
     name: Control de aire acondicionado
     description: >-
-      Permitir que Home Assistant controle los termostatos C-Bus nativos (modo y temperatura). Desactivado por defecto: escribe en la calefacción/refrigeración activa. Requiere configurar el ID de aplicación de aire acondicionado.
+      Permitir que Home Assistant controle los termostatos C-Bus nativos (modo y
+      temperatura). Desactivado por defecto: escribe en la
+      calefacción/refrigeración activa. Requiere configurar el ID de aplicación
+      de aire acondicionado.
   cbus_security_app_id:
     name: ID de aplicación de seguridad
     description: >-
-      ID de la aplicación Security de C-Bus (208 por defecto) para sensores de zonas de alarma. Publica un sensor binario por zona — sealed es off; unsealed, open o short es on — y sincroniza el estado de las zonas al conectar. Establezca 0 para desactivar.
-
+      ID de la aplicación Security de C-Bus (208 por defecto) para sensores de
+      zonas de alarma. Publica un sensor binario por zona — sealed es off;
+      unsealed, open o short es on — y sincroniza el estado de las zonas al
+      conectar. Establezca 0 para desactivar.
   cbus_security_control_enabled:
     name: Control de la alarma
     description: >-
-      Permitir que Home Assistant arme la central de alarma (away, night, home, vacation). Solo armado: C-Bus no tiene ningún comando de desarmado, por lo que el botón Disarm de Home Assistant no hace nada. Desactivado por defecto: el comando de armado no lleva ningún PIN en el bus C-Bus, por lo que cualquier cosa que pueda publicar en el topic de comandos puede armar su central. Requiere configurar el ID de aplicación de seguridad.
+      Permitir que Home Assistant arme la central de alarma (away, night, home,
+      vacation). Solo armado: C-Bus no tiene ningún comando de desarmado, por lo
+      que el botón Disarm de Home Assistant no hace nada. Desactivado por
+      defecto: el comando de armado no lleva ningún PIN en el bus C-Bus, por lo
+      que cualquier cosa que pueda publicar en el topic de comandos puede armar
+      su central. Requiere configurar el ID de aplicación de seguridad.
   cbus_security_disarm_enabled:
     name: Desarmado de la alarma
     description: >-
-      Permitir también que Home Assistant desarme la central de alarma. Requiere Control de la alarma. Desactivado por defecto. C-Bus no tiene comando de desarmado, por lo que el PIN se teclea en la central mediante emulación de teclado: Home Assistant muestra su propio teclado y envía lo que escribe por MQTT. El PIN no se almacena en ningún sitio, pero atraviesa su broker MQTT en cada desarmado, así que actívelo solo en un broker de confianza, preferiblemente con TLS.
+      Permitir también que Home Assistant desarme la central de alarma. Requiere
+      Control de la alarma. Desactivado por defecto. C-Bus no tiene comando de
+      desarmado, por lo que el PIN se teclea en la central mediante emulación de
+      teclado: Home Assistant muestra su propio teclado y envía lo que escribe
+      por MQTT. El PIN no se almacena en ningún sitio, pero atraviesa su broker
+      MQTT en cada desarmado, así que actívelo solo en un broker de confianza,
+      preferiblemente con TLS.
   cbus_security_bypass_enabled:
     name: Forzar armado con zonas abiertas
     description: >-
-      Permitir que Home Assistant fuerce el armado con una zona abierta, usando la tecla # de la central. Requiere Control de la alarma. Desactivado por defecto. Está separado del armado a propósito: una alarma armada con una puerta abierta parece armada pero no cubre esa puerta, así que debe ser una decisión consciente. Nunca es automático.
-
+      Permitir que Home Assistant fuerce el armado con una zona abierta, usando
+      la tecla # de la central. Requiere Control de la alarma. Desactivado por
+      defecto. Está separado del armado a propósito: una alarma armada con una
+      puerta abierta parece armada pero no cubre esa puerta, así que debe ser
+      una decisión consciente. Nunca es automático.
   cbus_measurement_app_id:
     name: ID de aplicación de medición
     description: >-
-      ID de la aplicación de medición C-Bus (por defecto 228) para lecturas analógicas/numéricas de sensores (temperatura, potencia, nivel de luz, etc). Publica cbus/read/{network}/228/{device}/{channel}/value y /unit, y acepta lecturas inyectadas en cbus/write/{network}/228/{device}/{channel}/data (payload "value,multiplier,units") — por ejemplo, para sensores virtuales/con script. Desactivado por defecto.
-
-
-  # ── Diagnósticos del bridge ──
+      ID de la aplicación de medición C-Bus (por defecto 228) para lecturas
+      analógicas/numéricas de sensores (temperatura, potencia, nivel de luz,
+      etc). Publica cbus/read/{network}/228/{device}/{channel}/value y /unit, y
+      acepta lecturas inyectadas en
+      cbus/write/{network}/228/{device}/{channel}/data (payload
+      "value,multiplier,units") — por ejemplo, para sensores virtuales/con
+      script. Desactivado por defecto.
   ha_bridge_diagnostics_enabled:
     name: Habilitar diagnósticos del bridge
     description: >-
-      Publicar entidades de salud del bridge (estado de preparación,
-      conexiones, profundidad de cola) en Home Assistant. Predeterminado:
-      habilitado.
+      Publicar entidades de salud del bridge (estado de preparación, conexiones,
+      profundidad de cola) en Home Assistant. Predeterminado: habilitado.
   ha_bridge_diagnostics_interval_sec:
     name: Intervalo de diagnósticos (segundos)
     description: >-
-      Con qué frecuencia se actualizan los estados de diagnóstico del
-      bridge. Predeterminado: 60.
-
-  # ── C-Bus Network (CNI) Monitoring ──
+      Con qué frecuencia se actualizan los estados de diagnóstico del bridge.
+      Predeterminado: 60.
   cni_offline_notification:
     name: Notificación de CNI desconectado
     description: >-
-      Mostrar una notificación de Home Assistant si el enlace CNI/PCI de una red C-Bus se desconecta, y descartarla al reconectarse. Requiere el entorno del complemento de Home Assistant. Desactivado por defecto.
-
-  # ── Detección de dispositivos inactivos ──
+      Mostrar una notificación de Home Assistant si el enlace CNI/PCI de una red
+      C-Bus se desconecta, y descartarla al reconectarse. Requiere el entorno
+      del complemento de Home Assistant. Desactivado por defecto.
   stale_device_detection_enabled:
     name: Habilitar detección de dispositivos inactivos
     description: >-
-      Detectar dispositivos C-Bus que dejan de reportar y publicar un
-      sensor de advertencia. Predeterminado: habilitado.
+      Detectar dispositivos C-Bus que dejan de reportar y publicar un sensor de
+      advertencia. Predeterminado: habilitado.
   stale_device_threshold_hours:
     name: Umbral de dispositivo inactivo (horas)
     description: >-
-      Horas sin actualización de estado antes de que un dispositivo se
-      considere inactivo. Predeterminado: 24.
+      Horas sin actualización de estado antes de que un dispositivo se considere
+      inactivo. Predeterminado: 24.
   stale_device_check_interval_sec:
     name: Intervalo de verificación de inactividad (segundos)
-    description: >-
-      Con qué frecuencia buscar dispositivos inactivos. Predeterminado:
-      3600 (1 hora).
-
-  # ── Avanzado: Pool de conexiones ──
+    description: "Con qué frecuencia buscar dispositivos inactivos. Predeterminado: 3600 (1
+      hora)."
   connection_pool_size:
     name: Tamaño del pool de conexiones
     description: >-
-      Número de conexiones TCP paralelas a C-Gate. Aumentar para
-      instalaciones de alto rendimiento, reducir a 1 para C-Gate antiguo.
-      Predeterminado: 3.
+      Número de conexiones TCP paralelas a C-Gate. Aumentar para instalaciones
+      de alto rendimiento, reducir a 1 para C-Gate antiguo. Predeterminado: 3.
   connection_health_check_interval_sec:
     name: Intervalo de verificación de salud (segundos)
     description: >-
@@ -323,17 +340,15 @@ configuration:
   cover_ramp_duration_sec:
     name: Duración de rampa de cubiertas (segundos)
     description: >-
-      Tiempo esperado para que una cubierta se abra/cierre completamente.
-      El bridge publica posiciones estimadas durante esta ventana.
-      Predeterminado: 5.
-
-  # ── Avanzado: Archivo de etiquetas y Web API ──
+      Tiempo esperado para que una cubierta se abra/cierre completamente. El
+      bridge publica posiciones estimadas durante esta ventana. Predeterminado:
+      5.
   cbus_label_file:
     name: Archivo de etiquetas personalizado
     description: >-
-      Ruta a un archivo JSON con nombres de dispositivos personalizados.
-      Se detecta automáticamente de rutas comunes si no se establece. El
-      archivo se vigila para cambios.
+      Ruta a un archivo JSON con nombres de dispositivos personalizados. Se
+      detecta automáticamente de rutas comunes si no se establece. El archivo se
+      vigila para cambios.
   web_api_key:
     name: Clave de Web API
     description: >-
@@ -342,26 +357,36 @@ configuration:
   web_allow_unauthenticated_mutations:
     name: Permitir escrituras web no autenticadas (inseguro)
     description: >-
-      Permitir endpoints de escritura sin clave API. Mantener deshabilitado
-      a menos que confíe plenamente en el acceso de red a este add-on.
+      Permitir endpoints de escritura sin clave API. Mantener deshabilitado a
+      menos que confíe plenamente en el acceso de red a este add-on.
   web_allowed_origins:
     name: Orígenes web permitidos (CORS)
     description: >-
-      Lista de permitidos CORS para acceso desde navegador. Ingrese
-      orígenes completos como https://ha.example.com. Dejar vacío para
-      deshabilitar el acceso cross-origin.
+      Lista de permitidos CORS para acceso desde navegador. Ingrese orígenes
+      completos como https://ha.example.com. Dejar vacío para deshabilitar el
+      acceso cross-origin.
   web_mutation_rate_limit_per_minute:
     name: Límite de escrituras web
-    description: >-
-      Máximo de solicitudes API mutantes por minuto por cliente.
-      Predeterminado: 120.
+    description: "Máximo de solicitudes API mutantes por minuto por cliente.
+      Predeterminado: 120."
   ha_discovery_type_from_label_prefix:
     name: Tipo por prefijo de etiqueta
     description: >-
-      Tratar una etiqueta de grupo que empiece con un prefijo de dominio de entidad como ese tipo de dispositivo (p. ej. cover.persiana_dormitorio se convierte en cubierta, switch.luz_porche en interruptor). Prefijos soportados: light., cover., switch., relay., pir. Una entrada manual en type_overrides siempre tiene prioridad. Desactivado por defecto.
-
+      Tratar una etiqueta de grupo que empiece con un prefijo de dominio de
+      entidad como ese tipo de dispositivo (p. ej. cover.persiana_dormitorio se
+      convierte en cubierta, switch.luz_porche en interruptor). Prefijos
+      soportados: light., cover., switch., relay., pir. Una entrada manual en
+      type_overrides siempre tiene prioridad. Desactivado por defecto.
   ha_discovery_type_from_unit:
     name: Tipo por tipo de unidad C-Bus
     description: >-
-      Determinar el tipo de cada entidad a partir de la unidad C-Bus que controla el grupo, para los grupos cuyo nombre no identifique ya una persiana. Los canales de dimmer se convierten en luces regulables, los canales de relé en luces de encendido/apagado, y los grupos controlados solo por una unidad de entrada como un bus coupler en sensores binarios. Las entradas manuales en type_overrides y un nombre que identifique una persiana (p. ej. blind, shutter) siguen teniendo prioridad, ya que un relé puede controlar igualmente una luz, una persiana o una válvula. Los grupos con tipos de unidad no reconocidos quedan sin cambios. Activarlo puede cambiar el tipo de entidades que ya tienes.
-
+      Determinar el tipo de cada entidad a partir de la unidad C-Bus que
+      controla el grupo, para los grupos cuyo nombre no identifique ya una
+      persiana. Los canales de dimmer se convierten en luces regulables, los
+      canales de relé en luces de encendido/apagado, y los grupos controlados
+      solo por una unidad de entrada como un bus coupler en sensores binarios.
+      Las entradas manuales en type_overrides y un nombre que identifique una
+      persiana (p. ej. blind, shutter) siguen teniendo prioridad, ya que un relé
+      puede controlar igualmente una luz, una persiana o una válvula. Los grupos
+      con tipos de unidad no reconocidos quedan sin cambios. Activarlo puede
+      cambiar el tipo de entidades que ya tienes.
