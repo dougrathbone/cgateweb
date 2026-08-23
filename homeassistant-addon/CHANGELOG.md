@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.30.0] - 2026-08-23
+
+### Fixed
+
+- **Managed C-Gate logs are now rotated and pruned** so they cannot fill the host disk. (#81) Restart the add-on once if an install already filled the disk.
+
+### Changed
+
+- **The add-on icon and logo are restored** to the earlier blue house-bridge artwork.
+- Internal: sql.js updated to 1.14.2.
+
 ## [1.29.0] - 2026-08-22
 
 ### Added
