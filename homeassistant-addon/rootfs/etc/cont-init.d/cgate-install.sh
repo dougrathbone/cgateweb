@@ -24,6 +24,14 @@ CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_
 # the supported answer for users, and this constant is the fix for everyone else.
 CGATEWEB_DEFAULT_DOWNLOAD_SHA256="1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
 
+# Managed C-Gate log retention (#81). C-Gate writes unbounded files under
+# /data/cgate/logs/ and rotated event-file segments; without a cap a busy
+# network can fill the host SD card. Pruned on every boot before C-Gate starts.
+CGATEWEB_LOG_MAX_BYTES="${CGATEWEB_LOG_MAX_BYTES:-524288000}"   # 500 MiB
+CGATEWEB_LOG_MAX_AGE_DAYS="${CGATEWEB_LOG_MAX_AGE_DAYS:-7}"
+CGATEWEB_EVENT_FILE_SPLIT_SIZE="${CGATEWEB_EVENT_FILE_SPLIT_SIZE:-5000000}"  # 5 MiB (C-Gate default)
+CGATEWEB_EVENT_FILE_SPLIT_COUNT="${CGATEWEB_EVENT_FILE_SPLIT_COUNT:-50}"   # ~250 MiB of event segments
+
 # The identity-aware serial resolver (issue #28) and the file it publishes its
 # answer to. Both are overridable so the unit tests can run the repo copy of
 # the resolver and keep its bookkeeping out of /run.
@@ -241,6 +249,105 @@ _cgateweb_apply_cgate_config() {
     _cgateweb_set_config_key "${config_file}" "project.default" "${project}"
     _cgateweb_set_config_key "${config_file}" "project.start" "${project}"
     _cgateweb_set_config_key "${config_file}" "command-port" "${command_port}"
+
+    # Cap C-Gate's on-disk event log when use-event-file is enabled. C-Gate
+    # rotates at split-size and keeps split-count segments; without this a
+    # single event.log can grow without bound (#81).
+    _cgateweb_set_config_key "${config_file}" "event-file.split" "yes"
+    _cgateweb_set_config_key "${config_file}" "event-file.split-size" "${CGATEWEB_EVENT_FILE_SPLIT_SIZE}"
+    _cgateweb_set_config_key "${config_file}" "event-file.split-count" "${CGATEWEB_EVENT_FILE_SPLIT_COUNT}"
+}
+
+# Return 0 when a file under the managed C-Gate install may be pruned.
+# Only log directories and rotated event-file segments are eligible — never
+# Projects/, config/, or the live event.log C-Gate is writing.
+_cgateweb_prune_cgate_logs_is_prunable() {
+    local cgate_dir="$1" file="$2"
+    case "${file}" in
+        "${cgate_dir}/logs"/*|"${cgate_dir}/log"/*) return 0 ;;
+        "${cgate_dir}/event."*.log)
+            # event.log is the active segment; event.N.log are rotated.
+            [[ "${file}" == "${cgate_dir}/event.log" ]] && return 1
+            return 0
+            ;;
+        "${cgate_dir}/event-"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Prune C-Gate log files under the managed install directory. Runs on every
+# boot before C-Gate starts so a reinstall is not the only way to reclaim
+# space (#81). Echoes a one-line summary when anything was removed.
+_cgateweb_prune_cgate_logs() {
+    local cgate_dir="$1"
+    local max_bytes="${2:-${CGATEWEB_LOG_MAX_BYTES}}"
+    local max_age_days="${3:-${CGATEWEB_LOG_MAX_AGE_DAYS}}"
+    local -a candidates=()
+    local file age_bytes deleted_age=0 deleted_size=0 reclaimed=0
+
+    [[ -d "${cgate_dir}" ]] || return 0
+
+    while IFS= read -r -d '' file; do
+        _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
+        candidates+=("${file}")
+    done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
+        -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
+
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    for file in "${candidates[@]}"; do
+        [[ -f "${file}" ]] || continue
+        if find "${file}" -mtime +"${max_age_days}" -print -quit 2>/dev/null | grep -q .; then
+            age_bytes=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+            rm -f "${file}" && deleted_age=$((deleted_age + 1)) && reclaimed=$((reclaimed + age_bytes))
+        fi
+    done
+
+    # Rebuild the candidate list after age pruning.
+    candidates=()
+    while IFS= read -r -d '' file; do
+        _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
+        candidates+=("${file}")
+    done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
+        -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
+
+    local total=0 size
+    for file in "${candidates[@]}"; do
+        [[ -f "${file}" ]] || continue
+        size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+        total=$((total + size))
+    done
+
+    while [[ ${total} -gt ${max_bytes} && ${#candidates[@]} -gt 0 ]]; do
+        local oldest="" oldest_mtime=9999999999 oldest_size=0 idx=-1 i mtime
+        for i in "${!candidates[@]}"; do
+            file="${candidates[$i]}"
+            [[ -f "${file}" ]] || continue
+            mtime=$(stat -c '%Y' "${file}" 2>/dev/null || echo 0)
+            if [[ ${mtime} -lt ${oldest_mtime} ]]; then
+                oldest_mtime=${mtime}
+                oldest="${file}"
+                oldest_size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+                idx=${i}
+            fi
+        done
+        [[ -n "${oldest}" && ${idx} -ge 0 ]] || break
+        rm -f "${oldest}" && deleted_size=$((deleted_size + 1)) && reclaimed=$((reclaimed + oldest_size)) \
+            && total=$((total - oldest_size))
+        unset "candidates[${idx}]"
+        # Compact sparse array after unset.
+        local compact=()
+        for file in "${candidates[@]}"; do
+            [[ -n "${file}" ]] && compact+=("${file}")
+        done
+        candidates=("${compact[@]}")
+    done
+
+    if [[ $((deleted_age + deleted_size)) -gt 0 ]]; then
+        bashio::log.info "Pruned C-Gate log files: ${deleted_age} older than ${max_age_days} day(s), ${deleted_size} over the ${max_bytes}-byte cap (~$((reclaimed / 1048576)) MiB reclaimed)"
+    fi
 }
 
 # Whether the user explicitly asked to reinstall/upgrade C-Gate via the
@@ -1138,5 +1245,7 @@ _cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}
 bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
 bashio::log.info "Set command port to: ${CGATE_PORT}"
 bashio::log.info "Left event-port at C-Gate default (status stream stays on 20025 for cgateweb)"
+bashio::log.info "Capped C-Gate event-file logs at ${CGATEWEB_EVENT_FILE_SPLIT_COUNT} x ${CGATEWEB_EVENT_FILE_SPLIT_SIZE} bytes"
+_cgateweb_prune_cgate_logs "${CGATE_DIR}"
 
 bashio::log.info "C-Gate installation complete"

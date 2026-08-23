@@ -83,6 +83,30 @@ to a different C-Gate version:
 Both paths preserve your project databases (`Projects/`) and C-Gate config
 across the reinstall.
 
+#### Managed C-Gate disk usage
+
+C-Gate stores its program, project databases, configuration, and log files on
+the add-on's persistent `/data/cgate` volume. On a busy network C-Gate can
+write large amounts to `logs/` and to rotated `event.*.log` segments, which was
+the cause of multi-gigabyte growth reported in [issue #81](https://github.com/dougrathbone/cgateweb/issues/81).
+
+On every start the add-on:
+
+- enables C-Gate's built-in event-file rotation (`event-file.split=yes`, 5 MiB
+  per segment, 50 segments retained)
+- prunes files under `logs/` (and legacy `log/`) older than 7 days
+- if log files still exceed 500 MiB total, deletes the oldest segments until
+  under that cap
+
+Your project databases and `config/` are never touched. The active `event.log`
+is kept; only older rotated segments are eligible for pruning.
+
+**If you already have tens of gigabytes of old logs**, restart the add-on once
+to let startup pruning reclaim space, or delete the contents of `/data/cgate/logs/`
+manually via the Samba/SSH/File Editor add-ons. A `cgate_force_reinstall` also
+wipes log directories (while preserving `Projects/` and `config/`), but a normal
+restart is enough now that pruning runs each boot.
+
 #### Loading your C-Gate project in managed mode
 
 Installing C-Gate (above) gives you a running C-Gate process but does **not**

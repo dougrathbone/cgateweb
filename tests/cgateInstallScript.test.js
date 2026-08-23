@@ -483,6 +483,129 @@ describeBash('cgate-install.sh helpers', () => {
             expect(twice.match(/^project\.start=/gm)).toHaveLength(1);
             expect(twice.match(/^project\.default=/gm)).toHaveLength(1);
         });
+
+        test('enables rotated C-Gate event-file logging with bounded retention (#81)', () => {
+            const out = applyCgateConfig({
+                initialConfig: BASE_CONFIG, project: 'HOME', commandPort: 20023, eventPort: 20025
+            });
+            expect(out).toMatch(/^event-file\.split=yes$/m);
+            expect(out).toMatch(/^event-file\.split-size=5000000$/m);
+            expect(out).toMatch(/^event-file\.split-count=50$/m);
+        });
+    });
+
+    describe('_cgateweb_prune_cgate_logs', () => {
+        function runPruneLogs({ files, maxBytes = 1000, maxAgeDays = 7, now = Date.now() }) {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-prune-'));
+            const cgateDir = path.join(dir, 'cgate');
+            fs.mkdirSync(path.join(cgateDir, 'logs'), { recursive: true });
+            for (const spec of files) {
+                const rel = spec.path || spec;
+                const full = path.join(cgateDir, rel);
+                fs.mkdirSync(path.dirname(full), { recursive: true });
+                const content = 'x'.repeat(spec.size || 1);
+                fs.writeFileSync(full, content);
+                const ageDays = spec.ageDays ?? 0;
+                const mtime = new Date(now - ageDays * 24 * 60 * 60 * 1000);
+                fs.utimesSync(full, mtime, mtime);
+            }
+            const env = {
+                ...process.env,
+                CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+                CGW_INSTALL_SCRIPT: SCRIPT,
+                CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+                CGW_ARG_0: cgateDir,
+                CGW_ARG_1: String(maxBytes),
+                CGW_ARG_2: String(maxAgeDays)
+            };
+            const script = `
+                set -u
+                ${BASHIO_STUB_WITH_LOGS}
+                source "$CGW_INSTALL_SCRIPT"
+                _cgateweb_prune_cgate_logs "$CGW_ARG_0" "$CGW_ARG_1" "$CGW_ARG_2"
+            `;
+            const output = execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+            const remaining = [];
+            const walk = (base) => {
+                if (!fs.existsSync(base)) return;
+                for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+                    const full = path.join(base, entry.name);
+                    if (entry.isDirectory()) walk(full);
+                    else remaining.push(path.relative(cgateDir, full));
+                }
+            };
+            walk(cgateDir);
+            fs.rmSync(dir, { recursive: true, force: true });
+            return { output, remaining };
+        }
+
+        test('removes log files older than the age limit', () => {
+            const r = runPruneLogs({
+                files: [
+                    { path: 'logs/old.log', ageDays: 10, size: 100 },
+                    { path: 'logs/recent.log', ageDays: 1, size: 100 }
+                ],
+                maxBytes: 100000,
+                maxAgeDays: 7
+            });
+            expect(r.remaining).toEqual(['logs/recent.log']);
+            expect(r.output).toMatch(/Pruned C-Gate log files/);
+        });
+
+        test('removes oldest files when total size exceeds the cap', () => {
+            const r = runPruneLogs({
+                files: [
+                    { path: 'logs/a.log', ageDays: 3, size: 300 },
+                    { path: 'logs/b.log', ageDays: 2, size: 300 },
+                    { path: 'logs/c.log', ageDays: 1, size: 300 }
+                ],
+                maxBytes: 700,
+                maxAgeDays: 30
+            });
+            expect(r.remaining.sort()).toEqual(['logs/b.log', 'logs/c.log']);
+        });
+
+        test('prunes rotated event-file segments but keeps the active event.log', () => {
+            const r = runPruneLogs({
+                files: [
+                    { path: 'event.log', ageDays: 30, size: 400 },
+                    { path: 'event.11.log', ageDays: 30, size: 400 }
+                ],
+                maxBytes: 100,
+                maxAgeDays: 30
+            });
+            expect(r.remaining).toEqual(['event.log']);
+        });
+
+        test('does not touch project databases or config', () => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-prune-safe-'));
+            const cgateDir = path.join(dir, 'cgate');
+            fs.mkdirSync(path.join(cgateDir, 'Projects', 'HOME'), { recursive: true });
+            fs.mkdirSync(path.join(cgateDir, 'config'), { recursive: true });
+            fs.writeFileSync(path.join(cgateDir, 'Projects', 'HOME', 'HOME.db'), 'db');
+            fs.writeFileSync(path.join(cgateDir, 'config', 'C-GateConfig.txt'), 'x');
+            fs.mkdirSync(path.join(cgateDir, 'logs'), { recursive: true });
+            fs.writeFileSync(path.join(cgateDir, 'logs', 'big.log'), 'x'.repeat(5000));
+            const env = {
+                ...process.env,
+                CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+                CGW_INSTALL_SCRIPT: SCRIPT,
+                CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+                CGW_ARG_0: cgateDir,
+                CGW_ARG_1: '100',
+                CGW_ARG_2: '7'
+            };
+            const script = `
+                set -u
+                ${BASHIO_STUB_WITH_LOGS}
+                source "$CGW_INSTALL_SCRIPT"
+                _cgateweb_prune_cgate_logs "$CGW_ARG_0" "$CGW_ARG_1" "$CGW_ARG_2"
+            `;
+            execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+            expect(fs.existsSync(path.join(cgateDir, 'Projects', 'HOME', 'HOME.db'))).toBe(true);
+            expect(fs.existsSync(path.join(cgateDir, 'config', 'C-GateConfig.txt'))).toBe(true);
+            fs.rmSync(dir, { recursive: true, force: true });
+        });
     });
 
     describe('_cgateweb_check_serial_device (USB-serial PCI, #28)', () => {
