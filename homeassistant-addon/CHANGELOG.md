@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.30.1] - 2026-08-24
+
+### Fixed
+
+- **Clock date and time sensors now refresh when Home Assistant restarts**, the same way lighting and security already do. (#66)
+- **A clock refresh echo from C-Gate is no longer logged as an unparsed event.** (#66)
+
 ## [1.30.0] - 2026-08-23
 
 ### Fixed

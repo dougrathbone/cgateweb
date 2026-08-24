@@ -40,16 +40,15 @@ const { normalizeAppEventLine, isAppEventLine } = require('./appEventLine');
  *   - the meaning of that trailing field (docs/cgate-manual.md documents only
  *     the command names `CLOCK DATE|TIME|REQUEST_REFRESH`, never an
  *     event-port grammar).
- *   - any sub-verb other than `date` and `time`. C-Gate has a
- *     `REQUEST_REFRESH` command, so a corresponding broadcast may well exist,
- *     but no capture of one exists here — it decodes to null rather than to an
- *     invented shape.
+ *   - any sub-verb other than `date` and `time` as a published reading. A
+ *     `clock request_refresh` echo is now captured (#66) and recognised so
+ *     callers can consume it without logging it as unparsed; it is not a
+ *     date or time broadcast, so decodeLine still returns null.
  *
  * Everything not proven above returns null (fail closed). A wrong guess in a
  * decoder is worse than a missing feature: it publishes confident nonsense.
  * Unrecognised clock traffic still reaches raw event capture
- * (`cbusRawEventLogApps`), which is how a real `request_refresh` or
- * variant-format capture can be obtained to extend this decoder later.
+ * (`cbusRawEventLogApps`).
  */
 
 // C-Bus Clock and Timekeeping is fixed at $DF / 223 by the application spec —
@@ -80,6 +79,26 @@ const TIME_REGEX = /^(\d{2}):(\d{2}):(\d{2})$/;
 function isClockLine(line) {
     if (typeof line !== 'string' || line.length === 0) return false;
     return isAppEventLine(line, PREFIX);
+}
+
+/**
+ * Whether a clock line is a REQUEST_REFRESH command echo, not a date/time
+ * broadcast. Captured on a live site (#66):
+ *
+ *   clock request_refresh //MIDSTRM/254/223  #sourceunit=0 OID=
+ *
+ * sourceunit=0 is the bridge's own command coming back on the event port.
+ * Callers consume these silently; they are not readings.
+ *
+ * @param {string} line - Raw line from the C-Gate event stream.
+ * @returns {boolean}
+ */
+function isClockRequestRefreshLine(line) {
+    if (typeof line !== 'string') return false;
+    const normalized = normalizeAppEventLine(line, PREFIX);
+    if (!normalized) return false;
+    const parts = normalized.text.split(/\s+/).filter(Boolean);
+    return parts.length >= 2 && parts[1] === 'request_refresh';
 }
 
 /**
@@ -181,4 +200,4 @@ function decodeValue() {
     return null;
 }
 
-module.exports = { appId, isClockLine, decodeLine, decodeValue };
+module.exports = { appId, isClockLine, isClockRequestRefreshLine, decodeLine, decodeValue };

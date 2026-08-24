@@ -536,7 +536,7 @@ class BridgeInitializationService {
      * Ask the network clock to rebroadcast date and time after connect.
      * Read-only: this never sets the C-Bus clock.
      */
-    sendClockRefreshRequests() {
+    sendClockRefreshRequests(options = {}) {
         if (!this.settings.cbus_clock_enabled) return;
         const networks = this._resolveMonitorNetworkIds();
         if (networks.length === 0) return;
@@ -545,7 +545,8 @@ class BridgeInitializationService {
                 buildClockRequestRefresh({
                     cbusname: this.settings.cbusname,
                     network
-                }) + NEWLINE
+                }) + NEWLINE,
+                options
             );
         }
         this.logger.info(`Requested C-Bus clock refresh for networks: ${networks.join(', ')}`);

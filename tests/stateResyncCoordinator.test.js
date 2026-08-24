@@ -27,7 +27,8 @@ describe('StateResyncCoordinator', () => {
                 for (const netapp of pairs) commandQueue.add(`GET //TEST/${netapp}/* level\n`, options);
                 return pairs;
             }),
-            sendSecurityStatusRequests: jest.fn()
+            sendSecurityStatusRequests: jest.fn(),
+            sendClockRefreshRequests: jest.fn()
         };
         logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn() };
         coordinator = new StateResyncCoordinator({
@@ -125,6 +126,21 @@ describe('StateResyncCoordinator', () => {
             coordinator.requestResync('ha-birth');
             jest.advanceTimersByTime(5000);
             expect(initializationService.sendSecurityStatusRequests).toHaveBeenCalledWith('resync');
+        });
+    });
+
+    describe('clock sensors', () => {
+        it('asks the network clock to rebroadcast on the same resync as lighting and security', () => {
+            coordinator.requestResync('ha-birth');
+            jest.advanceTimersByTime(5000);
+            expect(initializationService.sendClockRefreshRequests).toHaveBeenCalledWith({ priority: 'bulk' });
+        });
+
+        it('still refreshes the clock when no getall networks are configured', () => {
+            initializationService.sendGetallLevels = jest.fn().mockReturnValue([]);
+            coordinator.requestResync('ha-birth');
+            jest.advanceTimersByTime(5000);
+            expect(initializationService.sendClockRefreshRequests).toHaveBeenCalledWith({ priority: 'bulk' });
         });
     });
 
