@@ -197,8 +197,8 @@ describe('BridgeInitializationService', () => {
             const svc = makeService(bridge);
             svc.sendClockRefreshRequests();
             expect(commandQueueAdd).toHaveBeenCalledTimes(2);
-            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/254/223\n');
-            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/1/223\n');
+            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/254/223\n', {});
+            expect(commandQueueAdd).toHaveBeenCalledWith('clock request_refresh //HOME/1/223\n', {});
         });
 
         it('does nothing when the clock feature is off', () => {
@@ -209,6 +209,19 @@ describe('BridgeInitializationService', () => {
             const svc = makeService(bridge);
             svc.sendClockRefreshRequests();
             expect(commandQueueAdd).not.toHaveBeenCalled();
+        });
+
+        it('forwards command-queue options so a resync can use bulk priority', () => {
+            const { bridge, commandQueueAdd } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_networks: [254]
+            });
+            const svc = makeService(bridge);
+            svc.sendClockRefreshRequests({ priority: 'bulk' });
+            expect(commandQueueAdd).toHaveBeenCalledWith(
+                'clock request_refresh //HOME/254/223\n',
+                { priority: 'bulk' }
+            );
         });
     });
 

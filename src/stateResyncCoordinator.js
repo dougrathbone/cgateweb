@@ -36,7 +36,7 @@ class StateResyncCoordinator {
      * @param {Object} deps.settings
      * @param {ReturnType<typeof import('./logger').createLogger>} deps.logger
      * @param {() => (Object|null)} deps.getHaDiscovery - late-bound: haDiscovery is built after the bridge constructor
-     * @param {() => ({ sendGetallLevels: Function, sendSecurityStatusRequests: Function }|null)} deps.getInitializationService
+     * @param {() => ({ sendGetallLevels: Function, sendSecurityStatusRequests: Function, sendClockRefreshRequests: Function }|null)} deps.getInitializationService
      *   late-bound: the coordinator is built in _buildSubsystems, which runs
      *   before the bridge assigns its initializationService. Taking the service
      *   by value there captured undefined and threw on every resync (issue #44).
@@ -137,6 +137,11 @@ class StateResyncCoordinator {
         // security app is deliberately absent from those, so an install with
         // ha_discovery_networks set but no getall_networks still resyncs zones.
         initializationService.sendSecurityStatusRequests('resync');
+
+        // Clock sensors are not covered by lighting getall. Without a refresh,
+        // they go unknown on a Home Assistant restart until the next bus tick
+        // (often hours). Same path as lighting and security (#66).
+        initializationService.sendClockRefreshRequests({ priority: 'bulk' });
 
         if (netapps.length === 0) {
             this.logger.debug(

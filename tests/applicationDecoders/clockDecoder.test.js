@@ -1,5 +1,5 @@
 const decoder = require('../../src/applicationDecoders/clockDecoder');
-const { isClockLine, decodeLine, decodeValue } = decoder;
+const { isClockLine, isClockRequestRefreshLine, decodeLine, decodeValue } = decoder;
 
 // Ground-truth fixtures: the only captured app-223 event-port lines that exist
 // anywhere in this repo, committed in 833b60e ("filter out C-Gate
@@ -32,6 +32,18 @@ describe('clockDecoder — isClockLine', () => {
         // decoder refuses to interpret it.
         expect(isClockLine('clock request_refresh //CLIPSAL/254/223 0')).toBe(true);
         expect(decodeLine('clock request_refresh //CLIPSAL/254/223 0')).toBeNull();
+    });
+
+    it('recognises a request_refresh echo as a known non-reading (#66)', () => {
+        const liveEcho = 'clock request_refresh //MIDSTRM/254/223  #sourceunit=0 OID= sessionId=cmd5 commandId={none}';
+        expect(isClockRequestRefreshLine(liveEcho)).toBe(true);
+        expect(isClockRequestRefreshLine('clock request_refresh //CLIPSAL/254/223 0')).toBe(true);
+        expect(isClockRequestRefreshLine('#s# clock request_refresh //MIDSTRM/254/223')).toBe(true);
+        expect(decodeLine(liveEcho)).toBeNull();
+        expect(isClockRequestRefreshLine(REAL_DATE_LINE)).toBe(false);
+        expect(isClockRequestRefreshLine('lighting on 254/56/4')).toBe(false);
+        expect(isClockRequestRefreshLine('')).toBe(false);
+        expect(isClockRequestRefreshLine(null)).toBe(false);
     });
 
     it('recognises a comment-prefixed clock line', () => {

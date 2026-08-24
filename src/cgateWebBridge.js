@@ -725,6 +725,10 @@ class CgateWebBridge {
     _handleClockLine(line) {
         if (!clockDecoder.isClockLine(line)) return false;
 
+        // Own CLOCK REQUEST_REFRESH echo (sourceunit=0). Not a reading; consume
+        // it so it does not log as an unparsed clock line (#66).
+        if (clockDecoder.isClockRequestRefreshLine(line)) return true;
+
         if (!this.settings.cbus_clock_enabled) return LINE_UNPARSED;
 
         const reading = clockDecoder.decodeLine(line);
@@ -804,8 +808,8 @@ class CgateWebBridge {
         // Reached when the feature is off, or on but the line was a shape the
         // decoder refuses to guess at. Either way it has now passed through
         // _publishRawEventCapture above, so `cbusRawEventLogApps` can capture
-        // real app-223 traffic — which is how the format gets confirmed, or a
-        // `request_refresh` broadcast obtained, without decoding it blind.
+        // real app-223 traffic without decoding it blind. Known
+        // `request_refresh` echoes are consumed in _handleClockLine instead.
         if (clockState === LINE_UNPARSED) {
             this.logger.debug(`Unparsed clock line (captured, not a standard event): ${redactCgateLine(line)}`);
             return;

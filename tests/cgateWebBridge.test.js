@@ -1663,12 +1663,15 @@ describe('CgateWebBridge', () => {
             const getall = jest.spyOn(bridge.initializationService, 'sendGetallLevels').mockReturnValue([]);
             const security = jest.spyOn(bridge.initializationService, 'sendSecurityStatusRequests')
                 .mockImplementation(() => {});
+            const clock = jest.spyOn(bridge.initializationService, 'sendClockRefreshRequests')
+                .mockImplementation(() => {});
 
             bridge.stateResyncCoordinator.requestResync('network-sync');
             expect(() => jest.runOnlyPendingTimers()).not.toThrow();
 
             expect(getall).toHaveBeenCalledWith(null, { priority: 'bulk' });
             expect(security).toHaveBeenCalledWith('resync');
+            expect(clock).toHaveBeenCalledWith({ priority: 'bulk' });
         });
     });
 
@@ -1818,10 +1821,20 @@ describe('CgateWebBridge', () => {
             it('publishes nothing for clock traffic the decoder will not guess at', () => {
                 const b = makeBridge({ cbus_clock_enabled: true });
                 mockConsoleWarn.mockClear();
-                b._processEventLine('clock request_refresh //CLIPSAL/254/223 0 #sourceunit=8 OID=');
+                b._processEventLine('clock sync //CLIPSAL/254/223 2026-03-02 0');
                 expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
                 expect(b.eventPublisher.publishEvent).not.toHaveBeenCalled();
                 expect(mockConsoleWarn).not.toHaveBeenCalled();
+            });
+
+            it('consumes a request_refresh echo without logging it as unparsed (#66)', () => {
+                const b = makeBridge({ cbus_clock_enabled: true });
+                const debug = jest.spyOn(b.logger, 'debug').mockImplementation(() => {});
+                b._processEventLine('clock request_refresh //MIDSTRM/254/223  #sourceunit=0 OID= sessionId=cmd5 commandId={none}');
+                expect(b.eventPublisher.publishReading).not.toHaveBeenCalled();
+                expect(b.eventPublisher.publishEvent).not.toHaveBeenCalled();
+                expect(debug.mock.calls.map(c => String(c[0])).join('\n')).not.toMatch(/Unparsed clock line/);
+                debug.mockRestore();
             });
 
             it('publishes nothing for a malformed clock line rather than throwing', () => {
