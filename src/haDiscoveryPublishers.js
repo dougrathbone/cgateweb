@@ -1324,6 +1324,9 @@ class _HaDiscoveryPublishers {
                 this._retractEventDrivenConfig(
                     `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_password_entry/${HA_DISCOVERY_SUFFIX}`
                 );
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_bypassed_zones/${HA_DISCOVERY_SUFFIX}`
+                );
             },
             create: () => this._createSecurityPanelDiscovery(String(network), String(appId))
         });
@@ -1410,6 +1413,22 @@ class _HaDiscoveryPublishers {
             fields: {
                 state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/${MQTT_TOPIC_SUFFIX_PASSWORD_ENTRY}`,
                 entity_category: 'diagnostic'
+            },
+            deviceIdentifiers,
+            deviceName,
+            model: 'C-Bus Security Panel'
+        });
+
+        this._finishEventDrivenEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${networkId}_${appId}_bypassed_zones/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId: `cgateweb_${networkId}_${appId}_bypassed_zones`,
+            component: HA_COMPONENT_SENSOR,
+            name: 'Bypassed zones',
+            fields: {
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/bypassed_zones/${MQTT_TOPIC_SUFFIX_STATE}`,
+                json_attributes_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel/bypassed_zones/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+                entity_category: 'diagnostic',
+                icon: 'mdi:shield-off-outline'
             },
             deviceIdentifiers,
             deviceName,

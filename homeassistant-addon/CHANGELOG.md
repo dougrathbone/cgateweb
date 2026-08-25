@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.31.0] - 2026-08-25
+
+### Added
+
+- **Bypassed alarm zones are listed on the security panel** as a diagnostic sensor you can put on a dashboard next to the alarm card. (#62)
+
+### Fixed
+
+- **Alarm panel diagnostics no longer sit unknown after a Home Assistant restart.** Mains, battery and the other panel sensors are resent with lighting and the clock. (#62)
+
 ## [1.30.1] - 2026-08-24
 
 ### Fixed

@@ -731,7 +731,7 @@ Control is **opt-in** via `cbus_aircon_control_enabled` (off by default — it w
 With `cbus_security_app_id` set (default `208`), cgateweb exposes every alarm panel zone as a Home Assistant `binary_sensor` (read-only), plus one `alarm_control_panel` entity per network (see "Alarm panel" below).
 
 - `cbus/read/{network}/208/{zone}/state` — `ON` when the zone is unsealed, open or short; `OFF` when sealed
-- `cbus/read/{network}/208/{zone}/attributes` — JSON with the raw zone state (`sealed`, `unsealed`, `open`, `short`) so automations can distinguish loop faults
+- `cbus/read/{network}/208/{zone}/attributes` — JSON with the raw zone state (`sealed`, `unsealed`, `open`, `short`) so automations can distinguish loop faults. While the panel has bypassed the zone for this armed period, the payload also includes `isolated: true`.
 
 Zone names come from the zone labels under **application 1** in your Toolkit project — import the project via C-Bus Labels and each sensor is named accordingly (zones are announced at startup from these labels; unlabelled zones appear on their first event with a fallback name). A device class is inferred from the name: `pir`/`motion` → motion, `garage` → garage door, `door` → door, `window` → window, `smoke` → smoke.
 
@@ -764,6 +764,8 @@ With both enabled there are two ways to send the `#` keypress from Home Assistan
 - **A separate "Bypass open zones" button** on the panel device, which is easier to call from a script or put on its own dashboard.
 
 Both send exactly the same `SECURITY EMULATE_KEYPAD` command; use whichever suits your setup. Neither appears at all while `cbus_security_bypass_enabled` is off, so you never get a control that silently does nothing.
+
+The panel device also has a **Bypassed zones** diagnostic sensor. Its state is a comma-separated list of zone names (or `none`), with `zones` and `names` attributes for an Activity card or template. Isolation is cleared on disarm.
 
 > This is deliberately never automatic. Bypassing an open zone is a security decision, and only the person who can see the open window should make it — the add-on will not force an arm on your behalf just because a zone is unsealed.
 

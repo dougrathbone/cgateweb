@@ -241,6 +241,19 @@ class SecurityPanelState {
     }
 
     /**
+     * Isolated (bypassed) zone ids for a network, sorted numerically so a
+     * dashboard list is stable across republishes.
+     *
+     * @param {string|number} network
+     * @returns {string[]}
+     */
+    isolatedZoneIds(network) {
+        const entry = this._zonesByNetwork.get(String(network));
+        if (!entry || entry.isolated.size === 0) return [];
+        return [...entry.isolated].sort((a, b) => Number(a) - Number(b));
+    }
+
+    /**
      * Record that the panel isolated (bypassed) a zone for this armed period.
      *
      * Returns false for a repeat so callers publish transitions only — a panel

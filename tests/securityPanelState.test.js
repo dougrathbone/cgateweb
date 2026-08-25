@@ -201,6 +201,14 @@ describe('SecurityPanelState — zone isolation', () => {
         expect(state.setZoneIsolated('254', '44')).toBe(false);
     });
 
+    it('lists isolated zone ids in numeric order', () => {
+        expect(state.isolatedZoneIds('254')).toEqual([]);
+        state.setZoneIsolated('254', '44');
+        state.setZoneIsolated('254', '7');
+        expect(state.isolatedZoneIds('254')).toEqual(['7', '44']);
+        expect(state.isolatedZoneIds('200')).toEqual([]);
+    });
+
     it('keeps isolation per network and per zone', () => {
         state.setZoneIsolated('254', '44');
         expect(state.isZoneIsolated('254', '45')).toBe(false);

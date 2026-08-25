@@ -518,6 +518,34 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(call[1]).toBe(''); // empty retained payload removes the entity
         });
     });
+
+    describe('bypassed zones sensor (#62)', () => {
+        const TOPIC = 'homeassistant/sensor/cgateweb_254_208_bypassed_zones/config';
+
+        function payload() {
+            const call = publishFn.mock.calls.find(c => c[0] === TOPIC);
+            return call && JSON.parse(call[1]);
+        }
+
+        it('publishes a diagnostic sensor on the panel device', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            const p = payload();
+            expect(p).toBeDefined();
+            expect(p.name).toBe('Bypassed zones');
+            expect(p.entity_category).toBe('diagnostic');
+            expect(p.state_topic).toBe('cbus/read/254/208/panel/bypassed_zones/state');
+            expect(p.json_attributes_topic).toBe('cbus/read/254/208/panel/bypassed_zones/attributes');
+            expect(p.device.identifiers).toEqual(['cgateweb_254_208_panel']);
+        });
+
+        it('retracts the sensor when the panel is excluded', () => {
+            d.exclude.add('254/208/panel');
+            d.ensureSecurityPanelDiscovery('254', '208');
+            const call = publishFn.mock.calls.find(c => c[0] === TOPIC);
+            expect(call).toBeDefined();
+            expect(call[1]).toBe('');
+        });
+    });
 });
 
 describe('securityZoneLabels — label-key convention', () => {
