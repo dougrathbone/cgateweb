@@ -572,10 +572,13 @@ describe('CBusCommand', () => {
             expect(command.isValid()).toBe(false);
         });
 
-        it('should accept temperature, play and record command types', () => {
+        it('should accept temperature, play, record, set, label and remove command types', () => {
             expect(new CBusCommand('cbus/write/254/25/3/temperature', '21.5').isValid()).toBe(true);
             expect(new CBusCommand('cbus/write/254/203/1/play', '4').isValid()).toBe(true);
             expect(new CBusCommand('cbus/write/254/203/1/record', '4').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254/203/7/set', '128').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254/203/7/label', 'Kitchen').isValid()).toBe(true);
+            expect(new CBusCommand('cbus/write/254/203/7/remove', 'ON').isValid()).toBe(true);
         });
     });
 

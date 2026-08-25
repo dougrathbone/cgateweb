@@ -4445,6 +4445,104 @@ configuration:
         Типово вимкнено: більшість використовує сцени Trigger Control, а запис
         перезаписує пам'ять модуля."
 
+  cbus_enable_control_app_id:
+    name:
+      en: Enable Control Application ID
+      de: Enable-Control-Anwendungs-ID
+      es: ID de aplicación Enable Control
+      fr: ID d'application Enable Control
+      it: ID applicazione Enable Control
+      nl: Enable Control-toepassings-ID
+      pt: ID da aplicação Enable Control
+      ru: ID приложения Enable Control
+      zh: Enable Control 应用 ID
+      ja: Enable Control アプリケーションID
+      ko: Enable Control 애플리케이션 ID
+      pl: ID aplikacji Enable Control
+      sv: Enable Control-applikations-ID
+      no: Enable Control-applikasjons-ID
+      da: Enable Control-applikations-id
+      cs: ID aplikace Enable Control
+      uk: ID застосунку Enable Control
+    description:
+      en: >-
+        C-Bus Enable Control application id (typically 203) for MQTT set, label
+        and remove writes. Leave empty to disable. Remove deletes the C-Gate
+        group object — publish ON on the remove topic. Labels are hex-encoded.
+        No Home Assistant entities are created.
+      de: >-
+        C-Bus Enable-Control-Anwendungs-ID (typisch 203) für MQTT-Schreibvorgänge
+        set, label und remove. Leer lassen zum Deaktivieren. Remove löscht das
+        C-Gate-Gruppenobjekt — ON auf das Remove-Topic veröffentlichen. Labels
+        werden hex-kodiert. Es werden keine Home-Assistant-Entitäten erstellt.
+      es: >-
+        ID de aplicación Enable Control de C-Bus (típicamente 203) para escrituras
+        MQTT set, label y remove. Vacío para desactivar. Remove elimina el objeto
+        de grupo de C-Gate: publique ON en el topic remove. Las etiquetas se
+        codifican en hex. No se crean entidades de Home Assistant.
+      fr: >-
+        ID d'application Enable Control C-Bus (typiquement 203) pour les écritures
+        MQTT set, label et remove. Laisser vide pour désactiver. Remove supprime
+        l'objet groupe C-Gate — publiez ON sur le topic remove. Les libellés sont
+        encodés en hex. Aucune entité Home Assistant n'est créée.
+      it: >-
+        ID applicazione Enable Control C-Bus (in genere 203) per scritture MQTT
+        set, label e remove. Lasciare vuoto per disattivare. Remove elimina
+        l'oggetto gruppo C-Gate: pubblicare ON sul topic remove. Le etichette
+        sono in hex. Non vengono create entità Home Assistant.
+      nl: >-
+        C-Bus Enable Control-toepassings-ID (meestal 203) voor MQTT-writes set,
+        label en remove. Leeg laten om uit te schakelen. Remove verwijdert het
+        C-Gate-groepsobject — publiceer ON op het remove-topic. Labels zijn
+        hex-gecodeerd. Er worden geen Home Assistant-entiteiten aangemaakt.
+      pt: >-
+        ID da aplicação Enable Control C-Bus (tipicamente 203) para escritas MQTT
+        set, label e remove. Deixe vazio para desativar. Remove apaga o objeto de
+        grupo do C-Gate — publique ON no tópico remove. Etiquetas em hex. Não
+        cria entidades do Home Assistant.
+      ru: >-
+        ID приложения Enable Control C-Bus (обычно 203) для MQTT-записей set,
+        label и remove. Пусто — выкл. Remove удаляет объект группы C-Gate —
+        публикуйте ON в топик remove. Метки в hex. Сущности Home Assistant не
+        создаются.
+      zh: C-Bus Enable Control 应用 ID（通常为 203），用于 MQTT 的 set、label 和 remove 写入。留空即关闭。remove 会删除 C-Gate
+        组对象——请在 remove 主题发布 ON。标签以十六进制编码。不会创建 Home Assistant 实体。
+      ja: C-Bus Enable Control アプリケーションID（通常 203）。MQTT の set / label / remove 書き込み用。空で無効。remove は
+        C-Gate グループオブジェクトを削除します。remove トピックに ON を発行してください。ラベルは hex 符号化。Home
+        Assistant エンティティは作成しません。
+      ko: "C-Bus Enable Control 애플리케이션 ID(보통 203). MQTT set, label, remove 쓰기용. 비우면
+        꺼짐. remove는 C-Gate 그룹 객체를 삭제하므로 remove 토픽에 ON을 게시하세요. 라벨은 hex 인코딩.
+        Home Assistant 엔티티는 만들지 않습니다."
+      pl: >-
+        ID aplikacji Enable Control C-Bus (zazwyczaj 203) dla zapisów MQTT set,
+        label i remove. Puste wyłącza. Remove usuwa obiekt grupy C-Gate —
+        publikuj ON na temacie remove. Etykiety w hex. Nie tworzy encji Home
+        Assistant.
+      sv: >-
+        C-Bus Enable Control-applikations-ID (vanligen 203) för MQTT-skrivningar
+        set, label och remove. Tomt inaktiverar. Remove tar bort C-Gate-gruppobjektet
+        — publicera ON på remove-ämnet. Etiketter hex-kodas. Inga Home
+        Assistant-entiteter skapas.
+      no: >-
+        C-Bus Enable Control-applikasjons-ID (vanligvis 203) for MQTT-skriving
+        set, label og remove. Tomt slår av. Remove sletter C-Gate-gruppeobjektet
+        — publiser ON på remove-emnet. Etiketter hex-kodes. Ingen Home
+        Assistant-entiteter opprettes.
+      da: >-
+        C-Bus Enable Control-applikations-id (typisk 203) til MQTT-skrivninger
+        set, label og remove. Tomt slår fra. Remove sletter C-Gate-gruppeobjektet
+        — publicér ON på remove-emnet. Etiketter hex-kodes. Der oprettes ingen
+        Home Assistant-entiteter.
+      cs: >-
+        ID aplikace Enable Control C-Bus (typicky 203) pro MQTT zápisy set, label
+        a remove. Prázdné vypne. Remove smaže objekt skupiny C-Gate — publikujte
+        ON na téma remove. Štítky v hex. Nevytváří entity Home Assistant.
+      uk: >-
+        ID застосунку Enable Control C-Bus (зазвичай 203) для MQTT-записів set,
+        label і remove. Порожнє вимикає. Remove видаляє об'єкт групи C-Gate —
+        публікуйте ON у топік remove. Мітки в hex. Сутності Home Assistant не
+        створюються.
+
   ha_bridge_diagnostics_enabled:
     name:
       en: Enable Bridge Diagnostics

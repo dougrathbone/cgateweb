@@ -1401,4 +1401,41 @@ describe('MqttCommandRouter', () => {
             warnSpy.mockRestore();
         });
     });
+
+    describe('enable control set/label/remove', () => {
+        it('ignores set when the app id is unset', () => {
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/203/7/set', '128');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus_enable_control_app_id is unset'));
+            warnSpy.mockRestore();
+        });
+
+        it('sends ENABLE SET, LABEL and REMOVE when the app id matches', () => {
+            router.settings.cbus_enable_control_app_id = '203';
+            router.routeMessage('cbus/write/254/203/7/set', '128');
+            expect(mockQueue.add).toHaveBeenCalledWith('enable set //TestProject/254/203/7 128\n');
+            mockQueue.add.mockClear();
+            router.routeMessage('cbus/write/254/203/7/label', 'Hello');
+            expect(mockQueue.add).toHaveBeenCalledWith('enable label //TestProject/254/203 1 7 hex 48 65 6C 6C 6F\n');
+            mockQueue.add.mockClear();
+            router.routeMessage('cbus/write/254/203/7/remove', 'ON');
+            expect(mockQueue.add).toHaveBeenCalledWith('enable remove //TestProject/254/203/7\n');
+        });
+
+        it('rejects remove without payload ON so a retained empty message cannot delete groups', () => {
+            router.settings.cbus_enable_control_app_id = '203';
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/203/7/remove', '');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('remove requires payload ON'));
+            warnSpy.mockRestore();
+        });
+
+        it('ignores enable verbs on a different application', () => {
+            router.settings.cbus_enable_control_app_id = '203';
+            router.routeMessage('cbus/write/254/56/7/set', '128');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+        });
+    });
 });

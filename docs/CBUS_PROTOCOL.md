@@ -77,6 +77,9 @@ Controls motorized devices like blinds, curtains, and garage doors.
 - `OFF <group>` - Start closing/lowering (fully closed)
 - `RAMP <group> <level>` - Set position level (0-255, where 0=closed, 255=open)
 - `TERMINATERAMP <group>` - Stop movement at current position
+- `ENABLE SET //{project}/{net}/{app}/{group} <0-255>` - Set the native Enable Control byte (MQTT `.../set`; opt-in via `cbus_enable_control_app_id`)
+- `ENABLE LABEL //{project}/{net}/{app} <language> <group> hex <bytes>` - Set the group label (MQTT `.../label`; UTF-8 hex, language 1)
+- `ENABLE REMOVE //{project}/{net}/{app}/{group}` - Delete the C-Gate group object (MQTT `.../remove` with payload `ON`)
 
 **Events:**
 - `enable on <network>/<app>/<group>` - Cover fully opened

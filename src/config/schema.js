@@ -813,6 +813,15 @@ const SETTINGS_SCHEMA = {
         exposure: 'both',
         description: 'Accept MQTT commands that play or record scenes on a C-Bus Scene Module (C-Gate SCENE PLAY|RECORD). Off by default: most installs use Trigger Control scenes instead, and a record write overwrites module memory.'
     },
+    cbus_enable_control_app_id: {
+        key: 'cbus_enable_control_app_id',
+        type: 'string',
+        default: null,
+        nullable: true,
+        unit: 'none',
+        exposure: 'both',
+        description: 'C-Bus Enable Control app ID (typically 203/$CB); null disables. Gates MQTT writes for C-Gate ENABLE SET|LABEL|REMOVE (cbus/write/{net}/{app}/{group}/set|label|remove). No Home Assistant entities. SET is a native 0–255 byte (ON/OFF accepted as 255/0). LABEL is UTF-8 hex, clipped to 32 characters. REMOVE deletes the C-Gate group object and requires payload ON.'
+    },
     ha_hvac_temperature_unit: {
         key: 'ha_hvac_temperature_unit',
         type: 'enum',

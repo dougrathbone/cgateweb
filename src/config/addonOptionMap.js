@@ -55,6 +55,10 @@ const ADDON_OPTION_MAP = [
     { src: 'cbus_measurement_app_id', dst: 'cbus_measurement_app_id', kind: 'stringifyTruthy' },
     { src: 'cbus_clock_enabled', dst: 'cbus_clock_enabled', kind: 'boolDefined' },
     { src: 'cbus_scene_module_enabled', dst: 'cbus_scene_module_enabled', kind: 'boolDefined' },
+    // Deliberately NOT gated on 'haDiscovery': ENABLE SET|LABEL|REMOVE are
+    // plain MQTT writes, so an MQTT-only install that opts in must not lose
+    // them with discovery off.
+    { src: 'cbus_enable_control_app_id', dst: 'cbus_enable_control_app_id', kind: 'stringifyTruthy' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },

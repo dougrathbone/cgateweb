@@ -303,6 +303,13 @@ configuration:
       Godtar MQTT-kommandoer som spiller av eller tar opp scener på en C-Bus
       Scene Module. Av som standard: de fleste bruker Trigger Control, og opptak
       overskriver modulminnet.
+  cbus_enable_control_app_id:
+    name: Enable Control-applikasjons-ID
+    description: >-
+      C-Bus Enable Control-applikasjons-ID (vanligvis 203) for MQTT-skriving
+      set, label og remove. Tomt slår av. Remove sletter C-Gate-gruppeobjektet —
+      publiser ON på remove-emnet. Etiketter hex-kodes. Ingen Home
+      Assistant-entiteter opprettes.
   ha_bridge_diagnostics_enabled:
     name: Aktiver bridge-diagnostikk
     description: >-

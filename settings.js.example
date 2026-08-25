@@ -191,6 +191,11 @@ exports.web_bind_host = '127.0.0.1';
 // 'sensor' entities. Also allows injecting readings onto the bus.
 // exports.cbus_measurement_app_id = '228';
 
+// --- Enable Control extra verbs (typically application 203) ---
+// MQTT-only SET/LABEL/REMOVE (ON/OFF/RAMP already work without this).
+// REMOVE deletes the C-Gate group object; the MQTT payload must be ON.
+// exports.cbus_enable_control_app_id = '203';
+
 // =============================================================================
 // Reference
 // =============================================================================

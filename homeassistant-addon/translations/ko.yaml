@@ -235,6 +235,12 @@ configuration:
     description: >-
       C-Bus Scene Module에서 장면을 재생하거나 녹음하는 MQTT 명령을 받습니다. 기본 꺼짐: 대부분 Trigger
       Control 장면을 쓰며, 녹음은 모듈 메모리를 덮어씁니다.
+  cbus_enable_control_app_id:
+    name: Enable Control 애플리케이션 ID
+    description: >-
+      C-Bus Enable Control 애플리케이션 ID(보통 203). MQTT set, label, remove 쓰기용. 비우면
+      꺼짐. remove는 C-Gate 그룹 객체를 삭제하므로 remove 토픽에 ON을 게시하세요. 라벨은 hex 인코딩. Home
+      Assistant 엔티티는 만들지 않습니다.
   ha_bridge_diagnostics_enabled:
     name: Bridge 진단 활성화
     description: "Bridge 상태 엔티티 (준비 상태, 연결, 큐 깊이)를 Home Assistant에 게시합니다. 기본값: 활성화."

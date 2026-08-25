@@ -200,6 +200,12 @@ configuration:
     description: >-
       接受在 C-Bus Scene Module 上播放或录制场景的 MQTT 命令。默认关闭：多数安装使用 Trigger Control
       场景，录制会覆盖模块存储器。
+  cbus_enable_control_app_id:
+    name: Enable Control 应用 ID
+    description: >-
+      C-Bus Enable Control 应用 ID（通常为 203），用于 MQTT 的 set、label 和 remove
+      写入。留空即关闭。remove 会删除 C-Gate 组对象——请在 remove 主题发布 ON。标签以十六进制编码。不会创建 Home
+      Assistant 实体。
   ha_bridge_diagnostics_enabled:
     name: 启用 Bridge 诊断
     description: 向 Home Assistant 发布 Bridge 健康实体（就绪状态、连接、队列深度）。 默认：启用。

@@ -5,6 +5,7 @@
   "cbus_aircon_app_id": null,
   "cbus_aircon_control_enabled": false,
   "cbus_clock_enabled": false,
+  "cbus_enable_control_app_id": null,
   "cbus_label_file": null,
   "cbus_measurement_app_id": null,
   "cbus_scene_module_enabled": false,

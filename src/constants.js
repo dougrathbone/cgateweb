@@ -8,6 +8,7 @@ const DEFAULT_CBUS_APP_AIRCON = '172';       // C-Bus Air Conditioning applicati
 const DEFAULT_CBUS_APP_SECURITY = '208';     // C-Bus Security application ($D0)
 const DEFAULT_CBUS_APP_MEASUREMENT = '228';  // C-Bus Measurement application ($E4)
 const DEFAULT_CBUS_APP_CLOCK = '223';        // C-Bus Clock and Timekeeping application ($DF)
+const DEFAULT_CBUS_APP_ENABLE = '203';       // C-Bus Enable Control application ($CB)
 const CGATE_LEVEL_MIN = 0;               // C-Bus minimum brightness level (off)
 const CGATE_LEVEL_MAX = 255;             // C-Bus maximum brightness level (full brightness)
 const RAMP_STEP = 26; // 10% of 255, made explicit instead of calculation
@@ -132,6 +133,9 @@ const MQTT_CMD_TYPE_HVAC_FAN_MODE = 'fanmode';   // Set HVAC fan mode (automatic
 const MQTT_CMD_TYPE_TEMPERATURE = 'temperature';  // Inject Temperature Broadcast (°C)
 const MQTT_CMD_TYPE_PLAY = 'play';                // Scene Module PLAY
 const MQTT_CMD_TYPE_RECORD = 'record';            // Scene Module RECORD
+const MQTT_CMD_TYPE_SET = 'set';                  // Enable Control SET (native 0–255)
+const MQTT_CMD_TYPE_LABEL = 'label';              // Enable Control LABEL
+const MQTT_CMD_TYPE_REMOVE = 'remove';            // Enable Control REMOVE (deletes the C-Gate group)
 
 // === Home Assistant Discovery ===
 const HA_COMPONENT_LIGHT = 'light';
@@ -231,6 +235,7 @@ module.exports = {
     DEFAULT_CBUS_APP_SECURITY,
     DEFAULT_CBUS_APP_MEASUREMENT,
     DEFAULT_CBUS_APP_CLOCK,
+    DEFAULT_CBUS_APP_ENABLE,
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX,
     RAMP_STEP,
@@ -320,6 +325,9 @@ module.exports = {
     MQTT_CMD_TYPE_TEMPERATURE,
     MQTT_CMD_TYPE_PLAY,
     MQTT_CMD_TYPE_RECORD,
+    MQTT_CMD_TYPE_SET,
+    MQTT_CMD_TYPE_LABEL,
+    MQTT_CMD_TYPE_REMOVE,
     
     // Home Assistant Discovery
     HA_COMPONENT_LIGHT,

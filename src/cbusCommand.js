@@ -16,6 +16,9 @@ const {
     MQTT_CMD_TYPE_TEMPERATURE,
     MQTT_CMD_TYPE_PLAY,
     MQTT_CMD_TYPE_RECORD,
+    MQTT_CMD_TYPE_SET,
+    MQTT_CMD_TYPE_LABEL,
+    MQTT_CMD_TYPE_REMOVE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
@@ -45,7 +48,10 @@ const VALID_COMMAND_TYPES = new Set([
     MQTT_CMD_TYPE_HVAC_FAN_MODE,  // HVAC fan mode
     MQTT_CMD_TYPE_TEMPERATURE,    // Temperature Broadcast inject
     MQTT_CMD_TYPE_PLAY,           // Scene Module play
-    MQTT_CMD_TYPE_RECORD          // Scene Module record
+    MQTT_CMD_TYPE_RECORD,         // Scene Module record
+    MQTT_CMD_TYPE_SET,            // Enable Control SET
+    MQTT_CMD_TYPE_LABEL,          // Enable Control LABEL
+    MQTT_CMD_TYPE_REMOVE          // Enable Control REMOVE
 ]);
 
 /**
@@ -189,6 +195,9 @@ class CBusCommand {
             case MQTT_CMD_TYPE_TEMPERATURE:
             case MQTT_CMD_TYPE_PLAY:
             case MQTT_CMD_TYPE_RECORD:
+            case MQTT_CMD_TYPE_SET:
+            case MQTT_CMD_TYPE_LABEL:
+            case MQTT_CMD_TYPE_REMOVE:
                 // Payload is used as-is by the command router
                 break;
             case MQTT_CMD_TYPE_GETALL:
