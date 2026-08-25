@@ -329,6 +329,13 @@ configuration:
       Scene Module C-Bus. Désactivé par défaut : la plupart des installs
       utilisent Trigger Control, et un enregistrement écrase la mémoire du
       module.
+  cbus_enable_control_app_id:
+    name: ID d'application Enable Control
+    description: >-
+      ID d'application Enable Control C-Bus (typiquement 203) pour les écritures
+      MQTT set, label et remove. Laisser vide pour désactiver. Remove supprime
+      l'objet groupe C-Gate — publiez ON sur le topic remove. Les libellés sont
+      encodés en hex. Aucune entité Home Assistant n'est créée.
   ha_bridge_diagnostics_enabled:
     name: Activer les diagnostics du bridge
     description: >-

@@ -319,6 +319,13 @@ configuration:
       Aceita comandos MQTT para reproduzir ou gravar cenas num Scene Module
       C-Bus. Desligado por padrão: a maioria usa cenas de Trigger Control, e
       gravar sobrescreve a memória do módulo.
+  cbus_enable_control_app_id:
+    name: ID da aplicação Enable Control
+    description: >-
+      ID da aplicação Enable Control C-Bus (tipicamente 203) para escritas MQTT
+      set, label e remove. Deixe vazio para desativar. Remove apaga o objeto de
+      grupo do C-Gate — publique ON no tópico remove. Etiquetas em hex. Não cria
+      entidades do Home Assistant.
   ha_bridge_diagnostics_enabled:
     name: Ativar Diagnósticos do Bridge
     description: >-

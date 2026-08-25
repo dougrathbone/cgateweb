@@ -11,14 +11,14 @@ describe('defaultSettings — frozen baseline', () => {
         expect(defaultSettings).toStrictEqual(defaultSettingsSnapshot);
     });
 
-    it('exports the same 138 keys as the baseline', () => {
+    it('exports the same 139 keys as the baseline', () => {
         expect(Object.keys(defaultSettings).sort())
             .toEqual(Object.keys(defaultSettingsSnapshot).sort());
         // Bumping this count is only ever legitimate alongside a genuinely NEW
         // setting added to the fixture; a changed value for an existing key is
         // the thing this baseline exists to catch, and must never be "fixed"
         // in the fixture.
-        expect(Object.keys(defaultSettings)).toHaveLength(138);
+        expect(Object.keys(defaultSettings)).toHaveLength(139);
     });
 
     it('returns a fresh object so consumers cannot mutate the schema defaults', () => {
@@ -64,6 +64,12 @@ describe('clock default', () => {
 describe('scene module default', () => {
     it('defaults cbus_scene_module_enabled to false (record overwrites module memory)', () => {
         expect(defaultSettings.cbus_scene_module_enabled).toBe(false);
+    });
+});
+
+describe('enable control app id default', () => {
+    it('defaults cbus_enable_control_app_id to null (disabled)', () => {
+        expect(defaultSettings.cbus_enable_control_app_id).toBeNull();
     });
 });
 

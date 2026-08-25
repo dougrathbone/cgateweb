@@ -305,6 +305,12 @@ configuration:
       Přijímá MQTT příkazy pro přehrání nebo nahrání scén na C-Bus Scene Module.
       Ve výchozím stavu vypnuto: většina používá scény Trigger Control a nahrání
       přepíše paměť modulu.
+  cbus_enable_control_app_id:
+    name: ID aplikace Enable Control
+    description: >-
+      ID aplikace Enable Control C-Bus (typicky 203) pro MQTT zápisy set, label
+      a remove. Prázdné vypne. Remove smaže objekt skupiny C-Gate — publikujte
+      ON na téma remove. Štítky v hex. Nevytváří entity Home Assistant.
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge
     description: >-

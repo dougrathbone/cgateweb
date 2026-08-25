@@ -26,6 +26,9 @@ const {
     MQTT_CMD_TYPE_TEMPERATURE,
     MQTT_CMD_TYPE_PLAY,
     MQTT_CMD_TYPE_RECORD,
+    MQTT_CMD_TYPE_SET,
+    MQTT_CMD_TYPE_LABEL,
+    MQTT_CMD_TYPE_REMOVE,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
     MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
@@ -62,6 +65,7 @@ const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('
 const { buildMeasurementDataCommand } = require('./measurementCommand');
 const { buildTemperatureBroadcastCommand, celsiusToTemperatureBroadcastByte } = require('./temperatureCommand');
 const { buildScenePlayCommand, buildSceneRecordCommand } = require('./sceneCommand');
+const { buildEnableSetCommand, buildEnableLabelCommand, buildEnableRemoveCommand } = require('./enableCommand');
 const RateLimiter = require('./web/rateLimiter');
 const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
@@ -336,6 +340,11 @@ class MqttCommandRouter extends EventEmitter {
             case MQTT_CMD_TYPE_PLAY:
             case MQTT_CMD_TYPE_RECORD:
                 this._handleSceneModule(command, payload, topic);
+                break;
+            case MQTT_CMD_TYPE_SET:
+            case MQTT_CMD_TYPE_LABEL:
+            case MQTT_CMD_TYPE_REMOVE:
+                this._handleEnableControl(command, payload, topic);
                 break;
             default:
                 this.logger.warn(`Unrecognized command type: ${commandType}`);
@@ -671,6 +680,47 @@ class MqttCommandRouter extends EventEmitter {
         const cmd = builder({ set, scene });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Scene Module ${command.getCommandType()}: set ${set} scene ${scene}`);
+    }
+
+    /**
+     * Extra Enable Control verbs (C-Gate ENABLE SET|LABEL|REMOVE).
+     * Gated on cbus_enable_control_app_id (typically 203). ON/OFF/RAMP on the
+     * same application still use the generic handlers. REMOVE deletes the
+     * C-Gate group object and requires payload ON.
+     * @private
+     */
+    _handleEnableControl(command, payload, topic) {
+        const appId = this.settings.cbus_enable_control_app_id;
+        if (appId === undefined || appId === null || String(appId).trim() === '' || String(appId) === '0') {
+            this.logger.warn(`Enable Control command ignored (cbus_enable_control_app_id is unset): ${topic}`);
+            return;
+        }
+        if (String(command.getApplication()) !== String(appId)) {
+            this.logger.warn(`Enable Control command for non-enable application ${command.getApplication()} on topic ${topic}`);
+            return;
+        }
+        const args = {
+            cbusname: this.cbusname,
+            network: command.getNetwork(),
+            application: command.getApplication(),
+            group: command.getGroup(),
+            payload
+        };
+        const commandType = command.getCommandType();
+        let result;
+        if (commandType === MQTT_CMD_TYPE_SET) {
+            result = buildEnableSetCommand(args);
+        } else if (commandType === MQTT_CMD_TYPE_LABEL) {
+            result = buildEnableLabelCommand(args);
+        } else {
+            result = buildEnableRemoveCommand(args);
+        }
+        if (result.ok === false) {
+            this.logger.warn(`Enable Control command ignored: ${result.error} on topic ${topic}`);
+            return;
+        }
+        this._queueCommand(result.command + NEWLINE);
+        this.logger.info(`Enable Control ${commandType}: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()}`);
     }
 
     /**

@@ -321,6 +321,13 @@ configuration:
       Приймає MQTT-команди відтворення й запису сцен на C-Bus Scene Module.
       Типово вимкнено: більшість використовує сцени Trigger Control, а запис
       перезаписує пам'ять модуля.
+  cbus_enable_control_app_id:
+    name: ID застосунку Enable Control
+    description: >-
+      ID застосунку Enable Control C-Bus (зазвичай 203) для MQTT-записів set,
+      label і remove. Порожнє вимикає. Remove видаляє об'єкт групи C-Gate —
+      публікуйте ON у топік remove. Мітки в hex. Сутності Home Assistant не
+      створюються.
   ha_bridge_diagnostics_enabled:
     name: Увімкнути діагностику bridge
     description: >-

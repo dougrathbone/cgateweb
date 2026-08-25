@@ -301,6 +301,13 @@ configuration:
       Accept MQTT commands that play or record scenes on a C-Bus Scene Module.
       Off by default: most installs use Trigger Control scenes instead, and a
       record write overwrites module memory.
+  cbus_enable_control_app_id:
+    name: Enable Control Application ID
+    description: >-
+      C-Bus Enable Control application id (typically 203) for MQTT set, label
+      and remove writes. Leave empty to disable. Remove deletes the C-Gate group
+      object — publish ON on the remove topic. Labels are hex-encoded. No Home
+      Assistant entities are created.
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: >-

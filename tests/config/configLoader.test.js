@@ -571,6 +571,16 @@ describe('ConfigLoader', () => {
 
             expect(config.cbus_measurement_app_id).toBe('228');
         });
+
+        test('should map cbus_enable_control_app_id to config as a string even when HA discovery is disabled', () => {
+            const options = { ...mockAddonOptions, ha_discovery_enabled: false, cbus_enable_control_app_id: 203 };
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(options));
+
+            const config = configLoader.load();
+
+            expect(config.cbus_enable_control_app_id).toBe('203');
+        });
     });
 
     describe('load() - Standalone Configuration', () => {

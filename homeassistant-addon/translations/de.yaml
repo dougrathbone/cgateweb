@@ -321,6 +321,13 @@ configuration:
       Akzeptiert MQTT-Befehle zum Abspielen oder Aufzeichnen von Szenen auf
       einem C-Bus Scene Module. Standardmäßig aus: die meisten Anlagen nutzen
       Trigger-Control-Szenen, und Record überschreibt den Modulspeicher.
+  cbus_enable_control_app_id:
+    name: Enable-Control-Anwendungs-ID
+    description: >-
+      C-Bus Enable-Control-Anwendungs-ID (typisch 203) für MQTT-Schreibvorgänge
+      set, label und remove. Leer lassen zum Deaktivieren. Remove löscht das
+      C-Gate-Gruppenobjekt — ON auf das Remove-Topic veröffentlichen. Labels
+      werden hex-kodiert. Es werden keine Home-Assistant-Entitäten erstellt.
   ha_bridge_diagnostics_enabled:
     name: Bridge-Diagnose aktivieren
     description: >-

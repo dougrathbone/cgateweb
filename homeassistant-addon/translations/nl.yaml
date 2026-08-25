@@ -316,6 +316,13 @@ configuration:
       Accepteert MQTT-commando's om scènes op een C-Bus Scene Module af te
       spelen of op te nemen. Standaard uit: de meeste installs gebruiken Trigger
       Control, en opnemen overschrijft het modulegeheugen.
+  cbus_enable_control_app_id:
+    name: Enable Control-toepassings-ID
+    description: >-
+      C-Bus Enable Control-toepassings-ID (meestal 203) voor MQTT-writes set,
+      label en remove. Leeg laten om uit te schakelen. Remove verwijdert het
+      C-Gate-groepsobject — publiceer ON op het remove-topic. Labels zijn
+      hex-gecodeerd. Er worden geen Home Assistant-entiteiten aangemaakt.
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen
     description: >-

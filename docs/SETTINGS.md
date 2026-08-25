@@ -199,7 +199,7 @@ The poll expands to `network/application` pairs covering lighting (56) plus whic
 | `ha_discovery_networks` | `ha_discovery_networks` | number[] | `[]` | Networks to scan for discovery. In the add-on this falls back to `getall_networks` when left empty. Also drives the security zone status sync. |
 | `ha_discovery_scene_enabled` | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity per trigger group alongside the `event` and `button` entities. Set `false` to suppress scenes. |
 
-> **Add-on gating:** most `ha_discovery_*` options are only applied when `ha_discovery_enabled` is on. The deliberate exceptions are `cbus_aircon_app_id`, `cbus_security_app_id`, the three `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled` and `cbus_scene_module_enabled` — those publish over plain MQTT and would otherwise silently stop working for MQTT-only installs.
+> **Add-on gating:** most `ha_discovery_*` options are only applied when `ha_discovery_enabled` is on. The deliberate exceptions are `cbus_aircon_app_id`, `cbus_security_app_id`, the three `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled`, `cbus_scene_module_enabled` and `cbus_enable_control_app_id` — those publish over plain MQTT and would otherwise silently stop working for MQTT-only installs.
 
 ---
 
@@ -296,6 +296,14 @@ The sensors carry no `device_class`. Home Assistant's `timestamp` class wants IS
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
 | `cbus_scene_module_enabled` | `cbus_scene_module_enabled` | boolean | `false` | Accept MQTT `cbus/write/{net}/{app}/{set}/play` and `/record` payloads (scene number 0–255) that become C-Gate `SCENE PLAY` / `SCENE RECORD`. Off by default: most installs use Trigger Control scenes instead, and a record write overwrites module memory. |
+
+## Enable Control extra verbs
+
+ON/OFF/RAMP on Enable Control already work through the generic lighting-style topics. These extra C-Gate verbs are MQTT-only (no Home Assistant entities).
+
+| Setting | Add-on option | Type | Default | Notes |
+|---|---|---|---|---|
+| `cbus_enable_control_app_id` | `cbus_enable_control_app_id` | string \| null | `null` | Typically `203` (`$CB`). Gates `cbus/write/{net}/{app}/{group}/set` (native byte 0–255, or ON/OFF), `/label` (UTF-8 text, hex-encoded, clipped to 32 characters, English language code 1), and `/remove` (payload must be ON; this **deletes the C-Gate group object**). Leave unset to ignore those topics. |
 
 Temperature Broadcast (app 25) reads are always decoded. Writes use `cbus/write/{net}/25/{group}/temperature` with a Celsius payload (0.0–63.75); cgateweb sends `TEMPERATURE BROADCAST` with `rawByte = round(°C × 4)`.
 
@@ -508,4 +516,4 @@ The one setting that is read but has no effect is `logging` — see [Logging](#l
 7. **`web_port` is standalone-only, by design.** The add-on hardcodes `ingress_port: 8080` and its watchdog to the same port, so exposing it would let a user break ingress and the Supervisor watchdog at once.
 8. **`mqttCertFile` and `mqttKeyFile` are standalone-only.** The add-on exposes `mqtt_ca_file` but no client certificate or key option, so mutual TLS is not configurable there.
 9. **`trace` is standalone-only.** The add-on's `log_level` schema is `list(debug|info|warn|error)`; anything else falls back to `info`.
-10. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled` and `cbus_scene_module_enabled` — are deliberate, so MQTT-only installs keep working.
+10. **Most `ha_discovery_*` add-on options are ignored when `ha_discovery_enabled` is off.** The exceptions — `cbus_aircon_app_id`, `cbus_security_app_id`, the `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled`, `cbus_scene_module_enabled` and `cbus_enable_control_app_id` — are deliberate, so MQTT-only installs keep working.

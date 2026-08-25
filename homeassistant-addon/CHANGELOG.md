@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.32.0] - 2026-08-25
+
+### Added
+
+- **Enable Control groups can be set, labelled, and removed over MQTT.** Opt in with the Enable Control application ID (typically 203); remove deletes the C-Gate group and needs ON on the remove topic.
+
 ## [1.31.0] - 2026-08-25
 
 ### Added

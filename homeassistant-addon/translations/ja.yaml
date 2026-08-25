@@ -239,6 +239,12 @@ configuration:
     description: >-
       C-Bus Scene Module のシーン再生・記録 MQTT コマンドを受け付けます。既定はオフ。多くは Trigger Control
       シーンを使い、記録はモジュールメモリを上書きします。
+  cbus_enable_control_app_id:
+    name: Enable Control アプリケーションID
+    description: >-
+      C-Bus Enable Control アプリケーションID（通常 203）。MQTT の set / label / remove
+      書き込み用。空で無効。remove は C-Gate グループオブジェクトを削除します。remove トピックに ON を発行してください。ラベルは
+      hex 符号化。Home Assistant エンティティは作成しません。
   ha_bridge_diagnostics_enabled:
     name: Bridge 診断を有効化
     description: Bridge ヘルスエンティティ（準備状態、接続、キュー深度）を Home Assistant に公開します。デフォルト：有効。
