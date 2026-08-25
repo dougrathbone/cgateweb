@@ -351,6 +351,59 @@ describe('SecurityEventHandler', () => {
             ]);
         });
 
+        it('publishes a dashboard list of bypassed zone names', () => {
+            const deps = makeDeps({
+                getHaDiscovery: () => ({
+                    labelMap: new Map([['254/1/44', 'Front Door'], ['254/1/7', 'Kitchen Window']]),
+                    ensureSecurityZoneDiscovery: jest.fn(),
+                    ensureSecurityPanelDiscovery: jest.fn()
+                })
+            });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/7  #sourceunit=18 OID=');
+
+            const lists = deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_bypassed_zones')
+                .map(c => c[3]);
+            expect(lists.at(-1)).toEqual({
+                kind: 'security_bypassed_zones',
+                state: 'Kitchen Window, Front Door',
+                zones: ['7', '44'],
+                names: ['Kitchen Window', 'Front Door']
+            });
+        });
+
+        it('falls back to Zone N when a bypassed zone has no Toolkit label', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/bypassed_zones', {
+                    kind: 'security_bypassed_zones',
+                    state: 'Zone 44',
+                    zones: ['44'],
+                    names: ['Zone 44']
+                }
+            );
+        });
+
+        it('clears the bypassed-zones list on disarm', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+            handler.handleLine(DISARM_LINE);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/bypassed_zones', {
+                    kind: 'security_bypassed_zones',
+                    state: 'none',
+                    zones: [],
+                    names: []
+                }
+            );
+        });
+
         it('leaves isolation alone for a status report that does not say disarmed', () => {
             const deps = makeDeps();
             const handler = new SecurityEventHandler(deps);
@@ -758,6 +811,44 @@ describe('SecurityEventHandler', () => {
             handler.requestStatusSync('254', 'resync');
             handler.handleLine(STATUS_REPORT_1_LINE);
             expect(alarmPublishes()).toHaveLength(2);
+        });
+
+        it('republishes panel diagnostics on resync so they are not unknown after an HA restart', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.requestStatusSync('254', 'resync');
+
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/mains', { kind: 'security_panel', active: true }
+            );
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/battery', { kind: 'security_panel', active: false }
+            );
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/bypassed_zones', {
+                    kind: 'security_bypassed_zones',
+                    state: 'Zone 44',
+                    zones: ['44'],
+                    names: ['Zone 44']
+                }
+            );
+        });
+
+        it('does not republish panel diagnostics for routine traffic', () => {
+            const deps = makeDeps({ cbusname: 'MIDSTRM', sendCommand: jest.fn() });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security mains_failure //MIDSTRM/254/208  #sourceunit=18 OID=');
+            const panelPublishes = () => deps.eventPublisher.publishReading.mock.calls
+                .filter(c => c[3] && c[3].kind === 'security_panel');
+            const before = panelPublishes().length;
+
+            handler.handleLine(ZONE_UNSEALED_LINE);
+
+            expect(panelPublishes()).toHaveLength(before);
         });
 
         it('does not republish alarm state for routine panel traffic', () => {

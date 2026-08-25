@@ -882,6 +882,20 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should publish the bypassed-zones list state and attributes', () => {
+            publish('panel/bypassed_zones', {
+                kind: 'security_bypassed_zones',
+                state: 'Front Door, Kitchen Window',
+                zones: ['7', '44'],
+                names: ['Kitchen Window', 'Front Door']
+            }, '254', '208');
+            expectCall('cbus/read/254/208/panel/bypassed_zones/state', 'Front Door, Kitchen Window');
+            expectCall(
+                'cbus/read/254/208/panel/bypassed_zones/attributes',
+                '{"zones":["7","44"],"names":["Kitchen Window","Front Door"]}'
+            );
+        });
+
         it('should keep the non-isolated attributes payload byte-identical for every zone state', () => {
             // The overwhelmingly common publish. Asserted as exact strings, not
             // parsed objects, so any regression in the pre-rendered payloads —

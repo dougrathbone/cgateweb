@@ -30,6 +30,24 @@ const SYNC_EXEMPT_KINDS = new Set([
     'zone_name_request_echo', 'zone_name', 'password_entry'
 ]);
 
+/** MQTT / Home Assistant sensor state is capped at 255 characters. */
+const BYPASSED_ZONES_STATE_MAX = 255;
+const BYPASSED_ZONES_NONE = 'none';
+
+/**
+ * Comma-separated zone names for the bypassed-zones sensor, or "none".
+ * Truncates to the MQTT state limit; the full lists ride attributes.
+ *
+ * @param {string[]} names
+ * @returns {string}
+ */
+function formatBypassedZoneState(names) {
+    if (!names || names.length === 0) return BYPASSED_ZONES_NONE;
+    const joined = names.join(', ');
+    if (joined.length <= BYPASSED_ZONES_STATE_MAX) return joined;
+    return `${joined.slice(0, BYPASSED_ZONES_STATE_MAX - 3)}...`;
+}
+
 /**
  * Dispatch table for decoded security readings. Unknown kinds fall through to
  * the system-state path (alarm panel + Live Events).
@@ -149,7 +167,8 @@ const LINE_KIND_HANDLERS = {
  * Zone events and status reports publish zone state; panel_trouble readings
  * and system_arm update the panel condition sensors (see securityPanelState);
  * zone_isolated adds an `isolated` attribute to the zone it names (cleared for
- * the whole network on the next disarm); the remaining system-state verbs
+ * the whole network on the next disarm) and updates the panel's bypassed-zones
+ * list sensor; the remaining system-state verbs
  * (arm_ready, exit_delay_started, …) are decoded, logged and surfaced to the
  * Live Events stream only. Arm/disarm writes are not implemented.
  *
@@ -284,6 +303,10 @@ class SecurityEventHandler {
         // routine panel activity, not a request to resend.
         if (trigger !== 'traffic') {
             this.panelState.forgetAlarmState(network);
+            // Panel trouble sensors and the bypassed-zones list are unqueryable
+            // (not in status_report), so a Home Assistant restart would leave
+            // them Unknown unless we republish the last known values (#62).
+            this._republishPersistedDiagnostics(String(network), String(appId));
         }
 
         for (const report of [1, 2]) {
@@ -429,6 +452,7 @@ class SecurityEventHandler {
         if (zone === null || zone === undefined) return;
         if (!this.panelState.setZoneIsolated(network, zone)) return;
         this._publishZoneReading(network, application, zone, this.panelState.lastZoneState(network, zone));
+        this._publishBypassedZones(network, application);
         this._persistPanelState();
     }
 
@@ -456,6 +480,7 @@ class SecurityEventHandler {
             if (zonesPublishedSeparately && zonesPublishedSeparately.has(zone)) continue;
             this._publishZoneReading(network, application, zone, zoneState);
         }
+        this._publishBypassedZones(network, application);
         this.logger.info(`C-Bus Security: zone isolation cleared for ${cleared.length} zone(s) (${network}/${application})`);
         this._persistPanelState();
     }
@@ -508,6 +533,9 @@ class SecurityEventHandler {
         const haDiscovery = this.getHaDiscovery();
         if (haDiscovery && typeof haDiscovery.applySecurityZoneName === 'function') {
             haDiscovery.applySecurityZoneName(reading.network, reading.zone, reading.name);
+        }
+        if (this.panelState.isZoneIsolated(reading.network, reading.zone)) {
+            this._publishBypassedZones(reading.network, reading.application);
         }
     }
 
@@ -571,6 +599,7 @@ class SecurityEventHandler {
         for (const { condition, active } of toPublish) {
             this._publishPanelCondition(network, application, condition, active);
         }
+        if (justAnnounced) this._publishBypassedZones(network, application);
         // Every panel-state change funnels through here (trouble verbs, disarm
         // clears, status-report seeds), so this is the one persist point.
         this._persistPanelState();
@@ -587,6 +616,63 @@ class SecurityEventHandler {
         this.eventPublisher.publishReading(network, application, `panel/${condition}`, {
             kind: 'security_panel', active
         });
+    }
+
+    /**
+     * Re-seed panel diagnostics Home Assistant cannot recover from a status
+     * report: trouble binary_sensors (mains, battery, ...) and the bypassed
+     * zones list. Called on connect/sync/resync, not on routine traffic.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @private
+     */
+    _republishPersistedDiagnostics(network, application) {
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
+            haDiscovery.ensureSecurityPanelDiscovery(network, application);
+        }
+        for (const { condition, active } of this.panelState.initialStates(network)) {
+            this._publishPanelCondition(network, application, condition, active);
+        }
+        this._publishBypassedZones(network, application);
+    }
+
+    /**
+     * Publish the panel's bypassed-zones list for dashboards (#62).
+     *
+     * @param {string} network
+     * @param {string} application
+     * @private
+     */
+    _publishBypassedZones(network, application) {
+        const zones = this.panelState.isolatedZoneIds(network);
+        const names = zones.map((zone) => this._zoneDisplayName(network, zone));
+        this.eventPublisher.publishReading(network, application, 'panel/bypassed_zones', {
+            kind: 'security_bypassed_zones',
+            state: formatBypassedZoneState(names),
+            zones,
+            names
+        });
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
+            haDiscovery.ensureSecurityPanelDiscovery(network, application);
+        }
+    }
+
+    /**
+     * Toolkit application-1 label for a zone, or "Zone N" when unnamed.
+     *
+     * @param {string} network
+     * @param {string} zone
+     * @returns {string}
+     * @private
+     */
+    _zoneDisplayName(network, zone) {
+        const haDiscovery = this.getHaDiscovery();
+        const labelMap = haDiscovery && haDiscovery.labelMap;
+        const labelled = labelMap && labelMap.get(securityZoneLabelKey(network, zone));
+        return labelled || `Zone ${zone}`;
     }
 
     /**

@@ -367,6 +367,22 @@ const READING_KIND_HANDLERS = {
         );
     },
 
+    security_bypassed_zones(ep, base, reading) {
+        // Dashboard list of zones the panel bypassed for this armed period
+        // (#62). State is a comma-separated name list (or "none"); zone ids
+        // and names also ride the attributes topic for templates.
+        ep._publishIfNeeded(
+            `${base}/${MQTT_TOPIC_SUFFIX_STATE}`,
+            reading.state,
+            ep.mqttOptions
+        );
+        ep._publishIfNeeded(
+            `${base}/${MQTT_TOPIC_SUFFIX_ATTRIBUTES}`,
+            JSON.stringify({ zones: reading.zones, names: reading.names }),
+            ep.mqttOptions
+        );
+    },
+
     measurement(ep, base, reading) {
         // Measurement application (app 228): `group` is "{device}/{channel}",
         // so `base` already addresses cbus/read/{net}/{app}/{device}/{channel}.
@@ -654,6 +670,8 @@ class EventPublisher {
      *   security_zone  → cbus/read/{net}/{app}/{zone}/state (ON for unsealed/open/short)
      *                  → cbus/read/{net}/{app}/{zone}/attributes (raw 2-bit state
      *                    name, plus `isolated` while the panel has the zone bypassed)
+     *   security_bypassed_zones → cbus/read/{net}/{app}/panel/bypassed_zones/state
+     *                  → .../attributes (`zones` ids and `names` for dashboards)
      *   measurement    → cbus/read/{net}/{app}/{device}/{channel}/value (decoded number)
      *                  → cbus/read/{net}/{app}/{device}/{channel}/unit (unit string, '' if none)
      *   clock          → cbus/read/{net}/{app}/clock/date ('YYYY-MM-DD') or
