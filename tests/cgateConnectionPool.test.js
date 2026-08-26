@@ -116,6 +116,14 @@ describe('CgateConnectionPool', () => {
             expect(poolBad.connectionTimeout).toBe(1000); // Math.max(1000, 500) = 1000  
             expect(poolBad.maxRetries).toBe(1); // Math.max(1, 0) = 1
         });
+
+        it('should honour keepAliveIntervalMinMs when clamping pool keep-alive', () => {
+            const poolCustom = new CgateConnectionPool('command', '192.168.1.100', 20023, {
+                keepAliveInterval: 5000,
+                keepAliveIntervalMinMs: 2000
+            });
+            expect(poolCustom.keepAliveInterval).toBe(5000);
+        });
     });
 
     describe('getStats()', () => {

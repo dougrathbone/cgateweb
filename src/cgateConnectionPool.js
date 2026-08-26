@@ -57,7 +57,9 @@ class CgateConnectionPool extends EventEmitter {
         // Pool configuration (schema defaults, then connection floors)
         this.poolSize = resolveClampedSetting(settings, 'connectionPoolSize', { min: 1 });
         this.healthCheckInterval = resolveClampedSetting(settings, 'healthCheckInterval', { min: 5000 });
-        this.keepAliveInterval = resolveClampedSetting(settings, 'keepAliveInterval', { min: 10000 });
+        this.keepAliveInterval = resolveClampedSetting(settings, 'keepAliveInterval', {
+            min: resolveSetting(settings, 'keepAliveIntervalMinMs')
+        });
         this.connectionTimeout = resolveClampedSetting(settings, 'connectionTimeout', { min: 1000 });
         this.maxRetries = resolveClampedSetting(settings, 'maxRetries', { min: 1 });
         // Reuse the same reconnect backoff knobs as the standalone event connection.
