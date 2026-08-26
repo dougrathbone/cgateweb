@@ -49,3 +49,54 @@ describe('backoffDelay', () => {
         });
     });
 });
+
+describe('scheduleReconnect', () => {
+    const { scheduleReconnect } = require('../src/backoff');
+
+    beforeEach(() => {
+        jest.useFakeTimers();
+        jest.spyOn(Math, 'random').mockReturnValue(0.5);
+    });
+
+    afterEach(() => {
+        jest.useRealTimers();
+        jest.restoreAllMocks();
+    });
+
+    it('logs info until maxInitialAttempts then warns, and fires onFire after the delay', () => {
+        const logger = { info: jest.fn(), warn: jest.fn() };
+        const onFire = jest.fn();
+        scheduleReconnect({
+            logger,
+            retryNumber: 0,
+            attempt: 1,
+            maxInitialAttempts: 2,
+            initialMs: 1000,
+            maxMs: 60000,
+            infoLine: (delay) => `info ${delay}`,
+            warnLine: (delay) => `warn ${delay}`,
+            onFire
+        });
+        expect(logger.info).toHaveBeenCalledWith('info 1000');
+        expect(logger.warn).not.toHaveBeenCalled();
+        jest.advanceTimersByTime(1000);
+        expect(onFire).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns once the initial retry budget is exceeded', () => {
+        const logger = { info: jest.fn(), warn: jest.fn() };
+        scheduleReconnect({
+            logger,
+            retryNumber: 5,
+            attempt: 6,
+            maxInitialAttempts: 3,
+            initialMs: 1000,
+            maxMs: 60000,
+            infoLine: () => 'info',
+            warnLine: (delay) => `warn ${delay}`,
+            onFire: () => {}
+        });
+        expect(logger.warn).toHaveBeenCalledWith('warn 32000');
+        expect(logger.info).not.toHaveBeenCalled();
+    });
+});
