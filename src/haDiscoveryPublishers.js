@@ -332,7 +332,14 @@ class _HaDiscoveryPublishers {
     _currentRunTopics;
 
     /**
-     * Per-run label data snapshot installed by _publishDiscoveryFromTree for
+     * Installed on HaDiscovery; nested unlisted-group publish reuses the tree
+     * run's snapshot and topic set instead of rolling its own.
+     * @type {(fn: (ctx: { outermost: boolean, ownTopics: boolean }) => any) => any}
+     */
+    _withDiscoveryRun;
+
+    /**
+     * Per-run label data snapshot installed by _withDiscoveryRun for
      * the duration of a synchronous discovery run (null outside a run).
      * @type {{ labelMap: Map<string, string>, typeOverrides: Map<string, string>, entityIds: Map<string, string>, exclude: Set<string>, areas: Map<string, string> } | null}
      */
@@ -914,51 +921,40 @@ class _HaDiscoveryPublishers {
         if (!isLighting && !typed) return false;
         if (typed === 'trigger') return false;
 
-        const restoreSnapshot = !this._labelSnapshot;
-        if (restoreSnapshot) {
-            this._labelSnapshot = {
-                exclude: this.exclude,
-                labelMap: this.labelMap,
-                typeOverrides: this.typeOverrides,
-                entityIds: this.entityIds,
-                areas: this.areas
-            };
-        }
         // Tree processors finish via _finishTreeEntity, which records topics on
-        // _currentRunTopics rather than _publishedTopics. Own a run set when
-        // this is not already inside a TREEXML pass, then promote those topics
-        // onto the event-driven sets so a later tree scan does not retract them.
-        const ownRunTopics = !this._currentRunTopics;
-        if (ownRunTopics) this._currentRunTopics = new Set();
-        const topicsBefore = this._currentRunTopics.size;
-        this._recordingTreeGroups = false;
-        try {
-            if (isLighting) {
-                this._processOneLightingGroup(network, appId, { GroupAddress: group });
-            } else {
-                this._processEnableControlGroups(network, appId, [{ GroupAddress: group }]);
-            }
-            this._unlistedGroupSeen.add(key);
+        // _currentRunTopics rather than _publishedTopics. _withDiscoveryRun owns
+        // the topic set when this is not already inside a TREEXML pass, then
+        // those topics are promoted onto the event-driven sets so a later tree
+        // scan does not retract them.
+        return this._withDiscoveryRun(({ ownTopics }) => {
+            const topicsBefore = this._currentRunTopics.size;
+            this._recordingTreeGroups = false;
+            try {
+                if (isLighting) {
+                    this._processOneLightingGroup(network, appId, { GroupAddress: group });
+                } else {
+                    this._processEnableControlGroups(network, appId, [{ GroupAddress: group }]);
+                }
+                this._unlistedGroupSeen.add(key);
 
-            let published = false;
-            if (ownRunTopics) {
-                for (const topic of this._currentRunTopics) {
-                    this._publishedTopics.add(topic);
-                    this._eventDrivenDiscoveryTopics.add(topic);
+                let published = false;
+                if (ownTopics) {
+                    for (const topic of this._currentRunTopics) {
+                        this._publishedTopics.add(topic);
+                        this._eventDrivenDiscoveryTopics.add(topic);
+                        published = true;
+                    }
+                } else if (this._currentRunTopics.size > topicsBefore) {
+                    for (const topic of this._currentRunTopics) {
+                        this._eventDrivenDiscoveryTopics.add(topic);
+                    }
                     published = true;
                 }
-            } else if (this._currentRunTopics.size > topicsBefore) {
-                for (const topic of this._currentRunTopics) {
-                    this._eventDrivenDiscoveryTopics.add(topic);
-                }
-                published = true;
+                return published;
+            } finally {
+                this._recordingTreeGroups = true;
             }
-            return published;
-        } finally {
-            this._recordingTreeGroups = true;
-            if (ownRunTopics) this._currentRunTopics = null;
-            if (restoreSnapshot) this._labelSnapshot = null;
-        }
+        });
     }
 
     /**

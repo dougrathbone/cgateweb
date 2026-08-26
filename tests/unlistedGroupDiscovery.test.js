@@ -55,4 +55,32 @@ describe('HaDiscovery — unlisted live groups (#63)', () => {
         );
         expect(call).toBeDefined();
     });
+
+    it('clears the label snapshot after a standalone unlisted publish', () => {
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+        expect(d._labelSnapshot).toBeNull();
+        expect(d._currentRunTopics).toBeNull();
+    });
+
+    it('does not wipe an in-progress tree run snapshot or topic set', () => {
+        const snapshot = {
+            labelMap: d.labelMap,
+            typeOverrides: d.typeOverrides,
+            entityIds: d.entityIds,
+            exclude: d.exclude,
+            areas: d.areas
+        };
+        d._labelSnapshot = snapshot;
+        d._unitTypeIndex = new Map();
+        d._treeIncomplete = true;
+        d._currentRunTopics = new Set(['keep-me']);
+
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+
+        expect(d._labelSnapshot).toBe(snapshot);
+        expect(d._unitTypeIndex).toBeInstanceOf(Map);
+        expect(d._treeIncomplete).toBe(true);
+        expect(d._currentRunTopics.has('keep-me')).toBe(true);
+        expect(d._currentRunTopics.size).toBeGreaterThan(1);
+    });
 });
