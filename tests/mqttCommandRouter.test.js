@@ -1434,8 +1434,38 @@ describe('MqttCommandRouter', () => {
 
         it('ignores enable verbs on a different application', () => {
             router.settings.cbus_enable_control_app_id = '203';
+            const warnSpy = jest.spyOn(router.logger, 'warn');
             router.routeMessage('cbus/write/254/56/7/set', '128');
             expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('non-enable application'));
+            warnSpy.mockRestore();
+        });
+
+        it('treats app id 0 as unset', () => {
+            router.settings.cbus_enable_control_app_id = '0';
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/203/7/set', '128');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('cbus_enable_control_app_id is unset'));
+            warnSpy.mockRestore();
+        });
+
+        it('rejects a SET value outside 0–255', () => {
+            router.settings.cbus_enable_control_app_id = '203';
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/203/7/set', '256');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('expected integer 0–255'));
+            warnSpy.mockRestore();
+        });
+
+        it('rejects an empty LABEL', () => {
+            router.settings.cbus_enable_control_app_id = '203';
+            const warnSpy = jest.spyOn(router.logger, 'warn');
+            router.routeMessage('cbus/write/254/203/7/label', '   ');
+            expect(mockQueue.add).not.toHaveBeenCalled();
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('label must be non-empty'));
+            warnSpy.mockRestore();
         });
     });
 });
