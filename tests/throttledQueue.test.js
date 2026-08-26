@@ -360,6 +360,29 @@ describe('ThrottledQueue', () => {
             queue.clear();
         });
 
+        it('caps the derived blocked retry using retryWhenBlockedCapMs', () => {
+            const processed = [];
+            let allow = false;
+            const queue = new ThrottledQueue(
+                (item) => { processed.push(item); },
+                100,
+                'Capped',
+                {
+                    canProcessFn: () => allow,
+                    retryWhenBlockedCapMs: 30
+                }
+            );
+
+            queue.add('a');
+            expect(processed).toEqual([]);
+            allow = true;
+            jest.advanceTimersByTime(29);
+            expect(processed).toEqual([]);
+            jest.advanceTimersByTime(1);
+            expect(processed).toEqual(['a']);
+            queue.clear();
+        });
+
         it('should invoke onDrop when maxSize is exceeded', () => {
             const drops = [];
             const queue = new ThrottledQueue(

@@ -425,6 +425,56 @@ class HaDiscovery {
         );
     }
 
+    /**
+     * Snapshot the current label maps so a concurrent updateLabels() cannot
+     * swap them mid-run. Helpers read this._labelSnapshot rather than taking
+     * it as a parameter on every call.
+     * @returns {{ labelMap: Map<string, string>, typeOverrides: Map<string, string>, entityIds: Map<string, string>, exclude: Set<string>, areas: Map<string, string> }}
+     * @private
+     */
+    _captureLabelSnapshot() {
+        return {
+            labelMap: this.labelMap,
+            typeOverrides: this.typeOverrides,
+            entityIds: this.entityIds,
+            exclude: this.exclude,
+            areas: this.areas
+        };
+    }
+
+    /**
+     * Run fn with per-run discovery state (label snapshot and topic set).
+     * Nested calls reuse the outer snapshot and topic set; only the outermost
+     * call installs and clears them. That way an event-driven unlisted-group
+     * publish mid-TREEXML cannot wipe the tree run's snapshot or unit index.
+     *
+     * @template T
+     * @param {(ctx: { outermost: boolean, ownTopics: boolean }) => T} fn
+     * @returns {T}
+     */
+    _withDiscoveryRun(fn) {
+        const outermost = this._labelSnapshot === null || this._labelSnapshot === undefined;
+        if (outermost) {
+            this._labelSnapshot = this._captureLabelSnapshot();
+        }
+        const ownTopics = this._currentRunTopics === null || this._currentRunTopics === undefined;
+        if (ownTopics) {
+            this._currentRunTopics = new Set();
+        }
+        try {
+            return fn({ outermost, ownTopics });
+        } finally {
+            if (ownTopics) {
+                this._currentRunTopics = null;
+            }
+            if (outermost) {
+                this._labelSnapshot = null;
+                this._unitTypeIndex = null;
+                this._treeIncomplete = false;
+            }
+        }
+    }
+
     /** @this {HaDiscovery & HaDiscoveryMixinMethods} */
     _publishDiscoveryFromTree(networkId, treeData) {
         this.logger.info(`Generating HA Discovery messages for network ${networkId}...`);
@@ -436,30 +486,9 @@ class HaDiscovery {
              return;
         }
 
-        // Snapshot label data references so a concurrent updateLabels() call
-        // cannot swap them out mid-operation, preventing inconsistent reads.
-        // Lives on the instance for the duration of this synchronous discovery
-        // run; helper methods read this._labelSnapshot rather than receiving
-        // it as a parameter on every call. Cleared at the end of the run.
-        this._labelSnapshot = {
-            labelMap: this.labelMap,
-            typeOverrides: this.typeOverrides,
-            entityIds: this.entityIds,
-            exclude: this.exclude,
-            areas: this.areas
-        };
-
-        // Wrap the synchronous discovery run so per-run state (label snapshot,
-        // current-run topic set) is always cleared even if a helper throws
-        // mid-run. Otherwise stale references could be read by later code.
-        try {
+        this._withDiscoveryRun(() => {
             this._runDiscoveryFromTree(networkId, networkData, startTime);
-        } finally {
-            this._labelSnapshot = null;
-            this._currentRunTopics = null;
-            this._unitTypeIndex = null;
-            this._treeIncomplete = false;
-        }
+        });
     }
 
     /** @this {HaDiscovery & HaDiscoveryMixinMethods} */
@@ -481,9 +510,8 @@ class HaDiscovery {
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
 
-        // Track which discovery config topics are published in this run so that
-        // stale topics (from excluded or type-changed devices) can be cleared.
-        this._currentRunTopics = new Set();
+        // Topic set is installed by _withDiscoveryRun so nested event-driven
+        // publishers (unlisted groups) can reuse it instead of rolling their own.
 
         // C-Gate TREEXML returns two formats depending on version/path:
         //   Structured: unit.Application = [{ ApplicationAddress, Group: [{GroupAddress, Label}] }]
@@ -498,7 +526,7 @@ class HaDiscovery {
 
         // Which unit types drive each group, so a group can be classified by its
         // hardware instead of by its name (issues #38, #37). Run-scoped instance
-        // state, cleared in _publishDiscoveryFromTree's finally like
+        // Run-scoped instance state, cleared in _withDiscoveryRun's finally like
         // _labelSnapshot. Only built when the feature is on — it is pure cost
         // otherwise, and with it off the classifier ignores the index anyway.
         if (this.settings.ha_discovery_type_from_unit) {

@@ -374,6 +374,8 @@ class CgateWebBridge {
             maxSize: resolveSetting(this.settings, 'maxQueueSize'),
             getIntervalMs: () => this._getAdaptiveQueueIntervalMs(),
             canProcessFn: () => this._canProcessCommandQueue(),
+            retryWhenBlockedMinMs: resolveSetting(this.settings, 'queueRetryWhenBlockedMinMs'),
+            retryWhenBlockedCapMs: resolveSetting(this.settings, 'queueRetryWhenBlockedCapMs'),
             onDrop: (droppedCount, priority, maxSize) => {
                 this.mqttManager.publish(
                     'hello/cgateweb/warnings',

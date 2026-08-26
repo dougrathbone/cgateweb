@@ -184,6 +184,8 @@ C-Bus does not announce the state of every group at startup, so cgateweb asks fo
 | `getall_networks` | `getall_networks` | number[] | `[]` | List of C-Bus network IDs to poll, e.g. `[254]`. Empty means use whatever was auto-discovered. |
 | `messageinterval` | `message_interval` | integer (ms) | `200` | Minimum gap between outbound C-Gate commands. Throttles bursts so C-Gate is not flooded. Clamped to a 10 ms floor; validation warns outside 10-10000. |
 | `commandMinIntervalMs` | *standalone only* | integer (ms) | `10` | Floor on the adaptive command interval. Clamped to 5 ms minimum; validation warns outside 1-1000. |
+| `queueRetryWhenBlockedMinMs` | *standalone only* | integer (ms) | `10` | Floor on how soon the command queue retries when C-Gate is not ready. |
+| `queueRetryWhenBlockedCapMs` | *standalone only* | integer (ms) | `200` | Cap on the derived blocked-queue retry delay (`min(messageinterval, this)`). Raise on a slow box if the queue spins too hard while C-Gate is busy. |
 | `maxQueueSize` | *standalone only* | integer | `1000` | Cap on the outbound command queue. Commands beyond this are dropped rather than growing memory without bound. |
 
 The poll expands to `network/application` pairs covering lighting (56) plus whichever of `ha_discovery_cover_app_id`, `ha_discovery_hvac_app_id`, `ha_discovery_switch_app_id` and `ha_discovery_relay_app_id` are set. Trigger applications are deliberately excluded — they do not answer level reads and would return a 402 per group.
@@ -399,7 +401,8 @@ Mostly standalone-only knobs. Defaults are chosen for a typical install; change 
 | `connectionPoolSize` | `connection_pool_size` | integer | `3` | Number of persistent command connections. Round-robin load balanced. Floor of 1. |
 | `healthCheckInterval` | `connection_health_check_interval_sec` | integer (**ms**) | `30000` | Pool health-check frequency. **Unit conversion:** the add-on option is in *seconds* and is multiplied by 1000. Floor of 5000 ms. |
 | `keepAliveInterval` | `connection_keep_alive_interval_sec` | integer (**ms**) | `60000` | Keep-alive ping interval for pooled command connections. **Unit conversion:** seconds to ms. The add-on option sets **both** this and `eventConnectionKeepAliveInterval`. |
-| `eventConnectionKeepAliveInterval` | `connection_keep_alive_interval_sec` | integer (ms) | `60000` | Keep-alive for the single event connection. Takes precedence over `keepAliveInterval` for that connection. Floor of 10000 ms. |
+| `eventConnectionKeepAliveInterval` | `connection_keep_alive_interval_sec` | integer (ms) | `60000` | Keep-alive for the single event connection. Takes precedence over `keepAliveInterval` for that connection. Floor of `keepAliveIntervalMinMs`. |
+| `keepAliveIntervalMinMs` | *standalone only* | integer (ms) | `10000` | Floor applied to both pooled-command and event-connection keep-alive pings. |
 | `connectionTimeout` | *standalone only* | integer (ms) | `5000` | Socket timeout for establishing a C-Gate connection, and the idle socket timeout thereafter. Floor of 1000 ms. |
 | `maxRetries` | *standalone only* | integer | `3` | Reconnect attempts per pooled connection before the pool gives up on it. Floor of 1. |
 | `connectionPoolShutdownForceCloseMs` | *standalone only* | integer (ms) | `1000` | How long `stop()` waits for each pooled connection to close before forcing the shutdown promise to resolve. |

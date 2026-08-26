@@ -570,6 +570,14 @@ describe('CgateConnection', () => {
             expect(conn.keepAliveInterval).toBe(10000);
         });
 
+        it('should honour keepAliveIntervalMinMs when clamping the event keep-alive', () => {
+            const conn = new CgateConnection('event', 'localhost', 20025, {
+                eventConnectionKeepAliveInterval: 1000,
+                keepAliveIntervalMinMs: 5000
+            });
+            expect(conn.keepAliveInterval).toBe(5000);
+        });
+
         it('should not set keepAliveInterval for command connections', () => {
             const cmdConn = new CgateConnection('command', 'localhost', 20023, {
                 eventConnectionKeepAliveInterval: 30000

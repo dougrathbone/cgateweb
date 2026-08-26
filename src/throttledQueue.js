@@ -1,6 +1,7 @@
 // @ts-check
 const { createLogger } = require('./logger');
 const { clampSetting, redactCgateLine } = require('./utils');
+const { resolveSetting } = require('./config/schema');
 
 class ThrottledQueue {
     /**
@@ -12,6 +13,8 @@ class ThrottledQueue {
      * @param {Function} [options.getIntervalMs] - Dynamic interval override; returns the delay before processing the next item
      * @param {Function} [options.canProcessFn] - Gate checked before each item; processing retries when it returns false
      * @param {number} [options.retryWhenBlockedMs] - Delay before retrying when canProcessFn blocks processing
+     * @param {number} [options.retryWhenBlockedMinMs] - Floor on that delay (default: schema queueRetryWhenBlockedMinMs)
+     * @param {number} [options.retryWhenBlockedCapMs] - Cap when deriving the delay from intervalMs (default: schema queueRetryWhenBlockedCapMs)
      * @param {Function} [options.onDrop] - Callback invoked with an item when it is dropped to enforce maxSize
      */
     constructor(processFn, intervalMs, name = 'Queue', options = {}) {
@@ -47,7 +50,16 @@ class ThrottledQueue {
         this._maxSize = options.maxSize !== undefined ? options.maxSize : 1000;
         this._getIntervalMs = typeof options.getIntervalMs === 'function' ? options.getIntervalMs : null;
         this._canProcessFn = typeof options.canProcessFn === 'function' ? options.canProcessFn : null;
-        this._retryWhenBlockedMs = Math.max(10, options.retryWhenBlockedMs || Math.min(this._intervalMs, 200));
+        const retryMinMs = options.retryWhenBlockedMinMs !== undefined
+            ? Number(options.retryWhenBlockedMinMs)
+            : resolveSetting({}, 'queueRetryWhenBlockedMinMs');
+        const retryCapMs = options.retryWhenBlockedCapMs !== undefined
+            ? Number(options.retryWhenBlockedCapMs)
+            : resolveSetting({}, 'queueRetryWhenBlockedCapMs');
+        this._retryWhenBlockedMs = Math.max(
+            retryMinMs,
+            options.retryWhenBlockedMs || Math.min(this._intervalMs, retryCapMs)
+        );
         this._droppedCount = 0;
         this._onDrop = typeof options.onDrop === 'function' ? options.onDrop : null;
         this._logger = createLogger({ component: 'ThrottledQueue' });

@@ -211,6 +211,24 @@ const SETTINGS_SCHEMA = {
         description: 'Floor on the adaptive command interval.',
         reason: TUNING_ONLY_REASON
     },
+    queueRetryWhenBlockedMinMs: {
+        key: 'queueRetryWhenBlockedMinMs',
+        type: 'number',
+        default: 10,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Floor on how soon the command queue retries when C-Gate is not ready to accept another command.',
+        reason: TUNING_ONLY_REASON
+    },
+    queueRetryWhenBlockedCapMs: {
+        key: 'queueRetryWhenBlockedCapMs',
+        type: 'number',
+        default: 200,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Cap on the derived blocked-queue retry delay (min of the command interval and this value) when no explicit retry is set.',
+        reason: TUNING_ONLY_REASON
+    },
     maxQueueSize: {
         key: 'maxQueueSize',
         type: 'number',
@@ -409,6 +427,15 @@ const SETTINGS_SCHEMA = {
         exposure: 'both',
         description: 'Keep-alive interval for the single event connection; takes precedence over keepAliveInterval for that connection.',
         reason: 'Not offered separately in the add-on: connection_keep_alive_interval_sec sets it alongside keepAliveInterval.'
+    },
+    keepAliveIntervalMinMs: {
+        key: 'keepAliveIntervalMinMs',
+        type: 'number',
+        default: 10000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Floor applied to both pooled-command and event-connection keep-alive ping intervals.',
+        reason: TUNING_ONLY_REASON
     },
     connectionTimeout: {
         key: 'connectionTimeout',

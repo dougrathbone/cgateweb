@@ -65,7 +65,7 @@ class CgateConnection extends EventEmitter {
             keepAliveMs = resolveSetting(settings, 'eventConnectionKeepAliveInterval');
         }
         this.keepAliveInterval = type === 'event'
-            ? Math.max(10000, keepAliveMs)
+            ? Math.max(resolveSetting(settings, 'keepAliveIntervalMinMs'), keepAliveMs)
             : null;
     }
 
