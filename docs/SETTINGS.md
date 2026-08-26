@@ -182,8 +182,10 @@ C-Bus does not announce the state of every group at startup, so cgateweb asks fo
 | `getallnetapp` | *derived* | string \| null | `null` | Single `network/application` pair, e.g. `'254/56'`. Legacy fallback used only when no network list is available. The add-on derives it as `<getall_networks[0]>/56`. |
 | `autoDiscoverNetworks` | `auto_discover_networks` | boolean | `true` | Ask C-Gate which networks exist instead of hardcoding them. Skipped when `getall_networks` or `ha_discovery_networks` is already configured. Standalone accepts either `autoDiscoverNetworks` or the snake_case `auto_discover_networks`. |
 | `getall_networks` | `getall_networks` | number[] | `[]` | List of C-Bus network IDs to poll, e.g. `[254]`. Empty means use whatever was auto-discovered. |
-| `messageinterval` | `message_interval` | integer (ms) | `200` | Minimum gap between outbound C-Gate commands. Throttles bursts so C-Gate is not flooded. Clamped to a 10 ms floor; validation warns outside 10-10000. |
-| `commandMinIntervalMs` | *standalone only* | integer (ms) | `10` | Floor on the adaptive command interval. Clamped to 5 ms minimum; validation warns outside 1-1000. |
+| `messageinterval` | `message_interval` | integer (ms) | `200` | Minimum gap between outbound C-Gate commands. Throttles bursts so C-Gate is not flooded. Clamped to `messageIntervalMinMs`; validation warns outside 10-10000. |
+| `messageIntervalMinMs` | *standalone only* | integer (ms) | `10` | Hard floor applied to messageinterval in the adaptive queue. |
+| `commandMinIntervalMs` | *standalone only* | integer (ms) | `10` | Floor on the adaptive command interval. Validation warns outside 1-1000. |
+| `commandMinIntervalFloorMs` | *standalone only* | integer (ms) | `5` | Hard floor applied to commandMinIntervalMs in the adaptive queue. |
 | `queueRetryWhenBlockedMinMs` | *standalone only* | integer (ms) | `10` | Floor on how soon the command queue retries when C-Gate is not ready. |
 | `queueRetryWhenBlockedCapMs` | *standalone only* | integer (ms) | `200` | Cap on the derived blocked-queue retry delay (`min(messageinterval, this)`). Raise on a slow box if the queue spins too hard while C-Gate is busy. |
 | `maxQueueSize` | *standalone only* | integer | `1000` | Cap on the outbound command queue. Commands beyond this are dropped rather than growing memory without bound. |

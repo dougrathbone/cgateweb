@@ -1565,6 +1565,21 @@ describe('CgateWebBridge', () => {
                 expect(bridge._getAdaptiveQueueIntervalMs()).toBe(50); // 200 / 4
             });
 
+            it('_getAdaptiveQueueIntervalMs honours messageIntervalMinMs and commandMinIntervalFloorMs', () => {
+                bridge.settings.messageinterval = 1;
+                bridge.settings.messageIntervalMinMs = 40;
+                bridge.settings.commandMinIntervalMs = 1;
+                bridge.settings.commandMinIntervalFloorMs = 20;
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 1,
+                    writableConnections: 1
+                }));
+                Object.defineProperty(bridge.cgateCommandQueue, 'length', { get: () => 0, configurable: true });
+                expect(bridge._getAdaptiveQueueIntervalMs()).toBe(40);
+            });
+
             it('publishes a warning when the command queue drops items', () => {
                 const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
                 // Rebuild queues with a tiny max so onDrop fires immediately.

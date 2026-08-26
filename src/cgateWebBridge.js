@@ -928,8 +928,14 @@ class CgateWebBridge {
     }
 
     _getAdaptiveQueueIntervalMs() {
-        const baseInterval = Math.max(10, resolveSetting(this.settings, 'messageinterval'));
-        const minInterval = Math.max(5, resolveSetting(this.settings, 'commandMinIntervalMs'));
+        const baseInterval = Math.max(
+            resolveSetting(this.settings, 'messageIntervalMinMs'),
+            resolveSetting(this.settings, 'messageinterval')
+        );
+        const minInterval = Math.max(
+            resolveSetting(this.settings, 'commandMinIntervalFloorMs'),
+            resolveSetting(this.settings, 'commandMinIntervalMs')
+        );
         const stats = this.commandConnectionPool?.getStats?.();
         if (!stats || stats.healthyConnections <= 0) {
             return baseInterval;

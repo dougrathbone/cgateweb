@@ -211,6 +211,24 @@ const SETTINGS_SCHEMA = {
         description: 'Floor on the adaptive command interval.',
         reason: TUNING_ONLY_REASON
     },
+    commandMinIntervalFloorMs: {
+        key: 'commandMinIntervalFloorMs',
+        type: 'number',
+        default: 5,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Hard floor applied to commandMinIntervalMs in the adaptive queue (cannot go below this even if commandMinIntervalMs is set lower).',
+        reason: TUNING_ONLY_REASON
+    },
+    messageIntervalMinMs: {
+        key: 'messageIntervalMinMs',
+        type: 'number',
+        default: 10,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Hard floor applied to messageinterval in the adaptive queue.',
+        reason: TUNING_ONLY_REASON
+    },
     queueRetryWhenBlockedMinMs: {
         key: 'queueRetryWhenBlockedMinMs',
         type: 'number',
