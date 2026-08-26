@@ -23,4 +23,41 @@ function backoffDelay(retryNumber, options = {}) {
     return Math.round(baseDelay * jitterMultiplier);
 }
 
-module.exports = { backoffDelay };
+/**
+ * Schedule a C-Gate reconnect after exponential backoff. Shared by the event
+ * connection and the command pool so delay math, "never give up" logging, and
+ * the unref'd timer stay in one place.
+ *
+ * `retryNumber` is 0 for the first retry (same as backoffDelay). `attempt` is
+ * the 1-based count shown in logs. Callers increment their own counters.
+ *
+ * @param {object} options
+ * @param {{ info: Function, warn: Function }} options.logger
+ * @param {number} options.retryNumber
+ * @param {number} options.attempt
+ * @param {number} options.maxInitialAttempts
+ * @param {number} options.initialMs
+ * @param {number} options.maxMs
+ * @param {() => void} options.onFire
+ * @param {(delay: number) => string} options.infoLine
+ * @param {(delay: number) => string} options.warnLine
+ * @returns {ReturnType<typeof setTimeout>}
+ */
+function scheduleReconnect(options) {
+    const delay = backoffDelay(options.retryNumber, {
+        initialMs: options.initialMs,
+        maxMs: options.maxMs
+    });
+    if (options.attempt <= options.maxInitialAttempts) {
+        options.logger.info(options.infoLine(delay));
+    } else {
+        options.logger.warn(options.warnLine(delay));
+    }
+    const handle = setTimeout(options.onFire, delay);
+    if (handle && typeof handle.unref === 'function') {
+        handle.unref();
+    }
+    return handle;
+}
+
+module.exports = { backoffDelay, scheduleReconnect };

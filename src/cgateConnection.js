@@ -2,7 +2,7 @@
 const net = require('net');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
-const { backoffDelay } = require('./backoff');
+const { scheduleReconnect } = require('./backoff');
 const { resolveSetting, resolveClampedSetting } = require('./config/schema');
 const { 
     CGATE_CMD_EVENT_MODE_L6, 
@@ -356,24 +356,22 @@ class CgateConnection extends EventEmitter {
             return; // Already scheduled
         }
 
-        // Exponential backoff, capped at reconnectMaxDelay -- never permanently give up
-        const delay = backoffDelay(this.reconnectAttempts, {
-            initialMs: this.reconnectInitialDelay,
-            maxMs: this.reconnectMaxDelay
-        });
-
+        const retryNumber = this.reconnectAttempts;
         this.reconnectAttempts++;
-        
-        if (this.reconnectAttempts <= this.maxReconnectAttempts) {
-            this.logger.info(`Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
-        } else {
-            this.logger.warn(`${this.type} connection exceeded initial retries, continuing with ${delay}ms backoff (attempt ${this.reconnectAttempts})`);
-        }
-
-        this.reconnectTimeout = setTimeout(() => {
-            this.reconnectTimeout = null;
-            this.connect();
-        }, delay).unref();
+        this.reconnectTimeout = scheduleReconnect({
+            logger: this.logger,
+            retryNumber,
+            attempt: this.reconnectAttempts,
+            maxInitialAttempts: this.maxReconnectAttempts,
+            initialMs: this.reconnectInitialDelay,
+            maxMs: this.reconnectMaxDelay,
+            infoLine: (delay) => `Scheduling ${this.type} reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`,
+            warnLine: (delay) => `${this.type} connection exceeded initial retries, continuing with ${delay}ms backoff (attempt ${this.reconnectAttempts})`,
+            onFire: () => {
+                this.reconnectTimeout = null;
+                this.connect();
+            }
+        });
     }
 
     _startKeepAlive() {

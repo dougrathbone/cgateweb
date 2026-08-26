@@ -3,7 +3,7 @@ const { EventEmitter } = require('events');
 const CgateConnection = require('./cgateConnection');
 const { createLogger } = require('./logger');
 const { NEWLINE } = require('./constants');
-const { backoffDelay } = require('./backoff');
+const { scheduleReconnect } = require('./backoff');
 const { resolveClampedSetting, resolveSetting } = require('./config/schema');
 
 /**
@@ -373,45 +373,43 @@ class CgateConnectionPool extends EventEmitter {
         
         this.retryCounts[index] = (this.retryCounts[index] || 0) + 1;
 
-        // Exponential backoff -- never permanently give up
         const retryCount = this.retryCounts[index];
-        const delay = backoffDelay(retryCount - 1, {
+        const handle = scheduleReconnect({
+            logger: this.logger,
+            retryNumber: retryCount - 1,
+            attempt: retryCount,
+            maxInitialAttempts: this.maxRetries,
             initialMs: this.reconnectInitialDelay,
-            maxMs: this.reconnectMaxDelay
-        });
-        
-        if (retryCount <= this.maxRetries) {
-            this.logger.info(`Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`);
-        } else {
-            this.logger.warn(`Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${retryCount})`);
-        }
-        
-        const handle = setTimeout(async () => {
-            this._reconnectTimers.delete(index);
-            this.pendingReconnects.delete(index);
-            // Re-check liveness: stop() may have run (and reset isShuttingDown)
-            // while this timer was queued.
-            if (!this.isStarted || this.isShuttingDown) return;
+            maxMs: this.reconnectMaxDelay,
+            infoLine: (delay) => `Scheduling pool connection ${index} reconnection in ${delay}ms (attempt ${retryCount}/${this.maxRetries})`,
+            warnLine: (delay) => `Pool connection ${index} exceeded initial retries, continuing with ${delay}ms backoff (attempt ${retryCount})`,
+            onFire: async () => {
+                this._reconnectTimers.delete(index);
+                this.pendingReconnects.delete(index);
+                // Re-check liveness: stop() may have run (and reset isShuttingDown)
+                // while this timer was queued.
+                if (!this.isStarted || this.isShuttingDown) return;
 
-            // Clean up old connection before creating replacement
-            const oldConn = this.connections[index];
-            if (oldConn) {
-                oldConn.removeAllListeners?.();
-                if (oldConn.socket && !oldConn.socket.destroyed) {
-                    try { oldConn.socket.destroy(); } catch { /* ignore */ }
+                // Clean up old connection before creating replacement
+                const oldConn = this.connections[index];
+                if (oldConn) {
+                    oldConn.removeAllListeners?.();
+                    if (oldConn.socket && !oldConn.socket.destroyed) {
+                        try { oldConn.socket.destroy(); } catch { /* ignore */ }
+                    }
+                }
+
+                try {
+                    await this._createConnection(index);
+                    this.retryCounts[index] = 0;
+                    this.logger.info(`Pool connection ${index} successfully reconnected`);
+                } catch (error) {
+                    this.logger.error(`Pool connection ${index} reconnection failed:`, { error: error.message });
+                    // The close event from the failed connection will trigger the
+                    // next reconnection attempt via the close handler.
                 }
             }
-
-            try {
-                await this._createConnection(index);
-                this.retryCounts[index] = 0;
-                this.logger.info(`Pool connection ${index} successfully reconnected`);
-            } catch (error) {
-                this.logger.error(`Pool connection ${index} reconnection failed:`, { error: error.message });
-                // The close event from the failed connection will trigger the
-                // next reconnection attempt via the close handler.
-            }
-        }, delay);
+        });
         this._reconnectTimers.set(index, handle);
     }
     
