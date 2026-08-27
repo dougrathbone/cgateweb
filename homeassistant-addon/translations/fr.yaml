@@ -336,6 +336,12 @@ configuration:
       MQTT set, label et remove. Laisser vide pour désactiver. Remove supprime
       l'objet groupe C-Gate — publiez ON sur le topic remove. Les libellés sont
       encodés en hex. Aucune entité Home Assistant n'est créée.
+  cbus_raw_event_log_apps:
+    name: Apps de capture d'événements bruts
+    description: >-
+      ID d'application C-Bus dont les lignes d'événements C-Gate brutes sont
+      journalisées et republiees sur le topic MQTT raw. Vide désactive. Bruyant
+      ; laisser vide en usage normal.
   ha_bridge_diagnostics_enabled:
     name: Activer les diagnostics du bridge
     description: >-

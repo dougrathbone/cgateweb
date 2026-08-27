@@ -233,7 +233,7 @@ Each of these maps one C-Bus application ID onto a Home Assistant entity type. A
 | `ha_discovery_switch_app_id` | `ha_discovery_switch_app_id` | string \| null | `null` | Groups become on/off `switch` entities. |
 | `ha_discovery_relay_app_id` | `ha_discovery_relay_app_id` | string \| null | `null` | Groups become relay-backed switch entities (outlet device class). |
 | `ha_discovery_pir_app_id` | `ha_discovery_pir_app_id` | string \| null | `null` | Groups become motion `binary_sensor` entities; also suppresses level tracking for that application. |
-| `ha_discovery_unlisted_groups` | `ha_discovery_unlisted_groups` | boolean | `false` | Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: unused and scene addresses also appear in the event stream, and leftover discovery configs have to be cleaned off the broker by hand. (#63) |
+| `ha_discovery_unlisted_groups` | `ha_discovery_unlisted_groups` | boolean | `false` | Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: unused and scene addresses also appear in the event stream. Turning this off retracts leftover discovery configs from the broker. (#63) |
 | `ha_discovery_trigger_app_id` | `ha_discovery_trigger_app_id` | string \| null | `null` | Keypad/scene trigger groups. Typically `202`. Publishes an `event` entity, a companion `button`, and a `scene` when `ha_discovery_scene_enabled`. Also gates the web UI's trigger label editing. |
 | `ha_discovery_hvac_app_id` | `ha_discovery_hvac_app_id` | string \| null | `null` | Lighting-style HVAC application (level encodes temperature at 0.5 °C resolution). Distinct from the native Air Conditioning application below. |
 | `ha_hvac_temperature_unit` | `ha_hvac_temperature_unit` | `'C'` \| `'F'` | `'C'` | Unit advertised on climate entities. Anything other than `F` is treated as `C`. |
@@ -388,7 +388,7 @@ The add-on does this for you: its service script exports `LOG_LEVEL` from the `l
 
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
-| `cbusRawEventLogApps` | *standalone only* | string[] | `[]` | Applications whose raw C-Gate event lines are logged verbatim and republished to `cbus/read/{net}/{app}/{group}/raw`. For capturing ground-truth protocol samples before writing a decoder (e.g. `['172']`). Empty disables. Leave empty in normal operation — it is noisy. |
+| `cbusRawEventLogApps` | `cbus_raw_event_log_apps` | number[] | `[]` | Applications whose raw C-Gate event lines are logged verbatim and republished to `cbus/read/{net}/{app}/{group}/raw`. For capturing ground-truth protocol samples before writing a decoder (e.g. `[172]`). Empty disables. Leave empty in normal operation — it is noisy. |
 
 ---
 

@@ -654,7 +654,7 @@ const SETTINGS_SCHEMA = {
         default: false,
         unit: 'none',
         exposure: 'both',
-        description: 'Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: scene addresses and unused groups also appear in the event stream, and retained discovery configs have to be cleaned off the broker by hand. (#63)'
+        description: 'Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: scene addresses and unused groups also appear in the event stream. Turning this off retracts those leftover discovery configs from the broker. (#63)'
     },
     ha_discovery_trigger_app_id: {
         key: 'ha_discovery_trigger_app_id',
@@ -1426,9 +1426,9 @@ const SETTINGS_SCHEMA = {
         type: 'array',
         default: [],
         unit: 'none',
-        exposure: 'standalone',
-        description: 'Apps whose raw C-Gate event lines should be logged verbatim (and published to cbus/read/{net}/{app}/{group}/raw) for protocol capture. Empty = off.',
-        reason: 'Used to capture ground-truth samples for specialised applications (e.g. 25 Temperature, 228 Measurement, 172 Air Conditioning) before writing decoders. See docs/superpowers/specs/2026-06-02-native-cbus-hvac-support-design.md'
+        exposure: 'both',
+        description: 'Apps whose raw C-Gate event lines should be logged verbatim (and published to cbus/read/{net}/{app}/{group}/raw) for protocol capture. Empty = off. Noisy; leave empty in normal operation.',
+        aliases: ['cbus_raw_event_log_apps']
     }
 };
 

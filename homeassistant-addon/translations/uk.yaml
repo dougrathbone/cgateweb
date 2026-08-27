@@ -328,6 +328,12 @@ configuration:
       label і remove. Порожнє вимикає. Remove видаляє об'єкт групи C-Gate —
       публікуйте ON у топік remove. Мітки в hex. Сутності Home Assistant не
       створюються.
+  cbus_raw_event_log_apps:
+    name: Застосунки для сирого захоплення подій
+    description: >-
+      ID застосунків C-Bus, чиї сирі рядки подій C-Gate журналюються й
+      публікуються в MQTT-топік raw. Порожнє вимикає. Шумно; у звичайній роботі
+      залишайте порожнім.
   ha_bridge_diagnostics_enabled:
     name: Увімкнути діагностику bridge
     description: >-

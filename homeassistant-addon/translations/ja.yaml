@@ -245,6 +245,9 @@ configuration:
       C-Bus Enable Control アプリケーションID（通常 203）。MQTT の set / label / remove
       書き込み用。空で無効。remove は C-Gate グループオブジェクトを削除します。remove トピックに ON を発行してください。ラベルは
       hex 符号化。Home Assistant エンティティは作成しません。
+  cbus_raw_event_log_apps:
+    name: 生イベントキャプチャ対象アプリ
+    description: 生の C-Gate イベント行をログし raw MQTT トピックへ再公開する C-Bus アプリ ID。空で無効。うるさいので通常は空のまま。
   ha_bridge_diagnostics_enabled:
     name: Bridge 診断を有効化
     description: Bridge ヘルスエンティティ（準備状態、接続、キュー深度）を Home Assistant に公開します。デフォルト：有効。

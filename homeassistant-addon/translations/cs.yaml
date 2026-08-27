@@ -311,6 +311,12 @@ configuration:
       ID aplikace Enable Control C-Bus (typicky 203) pro MQTT zápisy set, label
       a remove. Prázdné vypne. Remove smaže objekt skupiny C-Gate — publikujte
       ON na téma remove. Štítky v hex. Nevytváří entity Home Assistant.
+  cbus_raw_event_log_apps:
+    name: Aplikace pro zachytávání surových událostí
+    description: >-
+      ID aplikací C-Bus, jejichž surové řádky událostí C-Gate se logují a
+      publikují do MQTT tématu raw. Prázdné vypne. Hlučné; při běžném použití
+      nechte prázdné.
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge
     description: >-

@@ -2778,8 +2778,8 @@ configuration:
     description:
       en: "Create a Home Assistant entity the first time a lighting-style group
         appears on the bus even if it is missing from the Toolkit project. Off by
-        default: unused and scene addresses also appear in the event stream, and
-        leftover discovery configs must be removed from the broker by hand."
+        default: unused and scene addresses also appear in the event stream.
+        Turning this off retracts those leftover entities."
       de: "Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf dem
         Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig aus:
         ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
@@ -4542,6 +4542,86 @@ configuration:
         label і remove. Порожнє вимикає. Remove видаляє об'єкт групи C-Gate —
         публікуйте ON у топік remove. Мітки в hex. Сутності Home Assistant не
         створюються.
+
+  cbus_raw_event_log_apps:
+    name:
+      en: Raw event capture apps
+      de: Apps für Rohereignis-Aufzeichnung
+      es: Apps de captura de eventos en bruto
+      fr: Apps de capture d'événements bruts
+      it: App cattura eventi grezzi
+      nl: Apps voor ruwe-eventopname
+      pt: Apps de captura de eventos em bruto
+      ru: Приложения для сырого захвата событий
+      zh: 原始事件捕获应用
+      ja: 生イベントキャプチャ対象アプリ
+      ko: 원시 이벤트 캡처 앱
+      pl: Aplikacje przechwytywania surowych zdarzeń
+      sv: Appar för rå händelseinspelning
+      no: Appar for rå hendelsesfangst
+      da: Apps til rå hændelsesfangst
+      cs: Aplikace pro zachytávání surových událostí
+      uk: Застосунки для сирого захоплення подій
+    description:
+      en: >-
+        C-Bus application IDs whose raw C-Gate event lines are logged and
+        republished to the raw MQTT topic for protocol capture. Empty disables.
+        Noisy; leave empty in normal use.
+      de: >-
+        C-Bus-Anwendungs-IDs, deren rohe C-Gate-Ereigniszeilen protokolliert und
+        auf das raw-MQTT-Topic veröffentlicht werden. Leer deaktiviert. Laut;
+        im Normalbetrieb leer lassen.
+      es: >-
+        IDs de aplicación C-Bus cuyas líneas de eventos C-Gate en bruto se
+        registran y republican en el topic MQTT raw. Vacío desactiva. Es ruidoso;
+        déjelo vacío en uso normal.
+      fr: >-
+        ID d'application C-Bus dont les lignes d'événements C-Gate brutes sont
+        journalisées et republiees sur le topic MQTT raw. Vide désactive. Bruyant ;
+        laisser vide en usage normal.
+      it: >-
+        ID applicazione C-Bus le cui righe evento C-Gate grezze vengono registrate
+        e ripubblicate sul topic MQTT raw. Vuoto disattiva. Rumoroso; lasciare
+        vuoto nell'uso normale.
+      nl: >-
+        C-Bus-app-ID's waarvan ruwe C-Gate-eventregels worden gelogd en opnieuw
+        gepubliceerd op het raw-MQTT-topic. Leeg schakelt uit. Luidruchtig; laat
+        leeg bij normaal gebruik.
+      pt: >-
+        IDs de aplicação C-Bus cujas linhas de evento C-Gate em bruto são
+        registadas e republicadas no tópico MQTT raw. Vazio desativa. Ruidoso;
+        deixe vazio no uso normal.
+      ru: >-
+        ID приложений C-Bus, чьи сырые строки событий C-Gate пишутся в журнал и
+        публикуются в MQTT-топик raw. Пусто выключает. Шумно; в обычной работе
+        оставляйте пустым.
+      zh: C-Bus 应用 ID，将其原始 C-Gate 事件行记录并发布到 raw MQTT 主题以供协议捕获。留空即关闭。较吵，日常使用请保持为空。
+      ja: 生の C-Gate イベント行をログし raw MQTT トピックへ再公開する C-Bus アプリ ID。空で無効。うるさいので通常は空のまま。
+      ko: 원시 C-Gate 이벤트 줄을 기록하고 raw MQTT 토픽으로 다시 게시할 C-Bus 앱 ID. 비우면 꺼짐. 로그가 많으니 평소에는 비워 두세요.
+      pl: >-
+        ID aplikacji C-Bus, których surowe linie zdarzeń C-Gate są logowane i
+        publikowane na temat MQTT raw. Puste wyłącza. Głośne; w normalnym użyciu
+        zostaw puste.
+      sv: >-
+        C-Bus-applikations-ID vars råa C-Gate-händelserader loggas och publiceras
+        till MQTT-ämnet raw. Tomt inaktiverar. Bullrigt; lämna tomt vid vanlig
+        användning.
+      no: >-
+        C-Bus-applikasjons-ID-er hvis rå C-Gate-hendelseslinjer logges og
+        publiseres til MQTT-emnet raw. Tomt slår av. Støyete; la stå tomt i
+        vanlig bruk.
+      da: >-
+        C-Bus-applikations-id'er hvis rå C-Gate-hændelseslinjer logges og
+        publiceres til MQTT-emnet raw. Tomt slår fra. Støjende; lad stå tomt ved
+        normal brug.
+      cs: >-
+        ID aplikací C-Bus, jejichž surové řádky událostí C-Gate se logují a
+        publikují do MQTT tématu raw. Prázdné vypne. Hlučné; při běžném použití
+        nechte prázdné.
+      uk: >-
+        ID застосунків C-Bus, чиї сирі рядки подій C-Gate журналюються й
+        публікуються в MQTT-топік raw. Порожнє вимикає. Шумно; у звичайній роботі
+        залишайте порожнім.
 
   ha_bridge_diagnostics_enabled:
     name:

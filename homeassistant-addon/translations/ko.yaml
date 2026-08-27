@@ -241,6 +241,11 @@ configuration:
       C-Bus Enable Control 애플리케이션 ID(보통 203). MQTT set, label, remove 쓰기용. 비우면
       꺼짐. remove는 C-Gate 그룹 객체를 삭제하므로 remove 토픽에 ON을 게시하세요. 라벨은 hex 인코딩. Home
       Assistant 엔티티는 만들지 않습니다.
+  cbus_raw_event_log_apps:
+    name: 원시 이벤트 캡처 앱
+    description: >-
+      원시 C-Gate 이벤트 줄을 기록하고 raw MQTT 토픽으로 다시 게시할 C-Bus 앱 ID. 비우면 꺼짐. 로그가 많으니
+      평소에는 비워 두세요.
   ha_bridge_diagnostics_enabled:
     name: Bridge 진단 활성화
     description: "Bridge 상태 엔티티 (준비 상태, 연결, 큐 깊이)를 Home Assistant에 게시합니다. 기본값: 활성화."

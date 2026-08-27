@@ -189,8 +189,8 @@ configuration:
     description: >-
       Create a Home Assistant entity the first time a lighting-style group
       appears on the bus even if it is missing from the Toolkit project. Off by
-      default: unused and scene addresses also appear in the event stream, and
-      leftover discovery configs must be removed from the broker by hand.
+      default: unused and scene addresses also appear in the event stream.
+      Turning this off retracts those leftover entities.
   ha_discovery_trigger_app_id:
     name: Trigger Application ID
     description: >-
@@ -308,6 +308,12 @@ configuration:
       and remove writes. Leave empty to disable. Remove deletes the C-Gate group
       object — publish ON on the remove topic. Labels are hex-encoded. No Home
       Assistant entities are created.
+  cbus_raw_event_log_apps:
+    name: Raw event capture apps
+    description: >-
+      C-Bus application IDs whose raw C-Gate event lines are logged and
+      republished to the raw MQTT topic for protocol capture. Empty disables.
+      Noisy; leave empty in normal use.
   ha_bridge_diagnostics_enabled:
     name: Enable Bridge Diagnostics
     description: >-

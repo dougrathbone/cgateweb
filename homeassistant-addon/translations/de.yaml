@@ -328,6 +328,12 @@ configuration:
       set, label und remove. Leer lassen zum Deaktivieren. Remove löscht das
       C-Gate-Gruppenobjekt — ON auf das Remove-Topic veröffentlichen. Labels
       werden hex-kodiert. Es werden keine Home-Assistant-Entitäten erstellt.
+  cbus_raw_event_log_apps:
+    name: Apps für Rohereignis-Aufzeichnung
+    description: >-
+      C-Bus-Anwendungs-IDs, deren rohe C-Gate-Ereigniszeilen protokolliert und
+      auf das raw-MQTT-Topic veröffentlicht werden. Leer deaktiviert. Laut; im
+      Normalbetrieb leer lassen.
   ha_bridge_diagnostics_enabled:
     name: Bridge-Diagnose aktivieren
     description: >-

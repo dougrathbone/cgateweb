@@ -310,6 +310,12 @@ configuration:
       set, label og remove. Tomt slår av. Remove sletter C-Gate-gruppeobjektet —
       publiser ON på remove-emnet. Etiketter hex-kodes. Ingen Home
       Assistant-entiteter opprettes.
+  cbus_raw_event_log_apps:
+    name: Appar for rå hendelsesfangst
+    description: >-
+      C-Bus-applikasjons-ID-er hvis rå C-Gate-hendelseslinjer logges og
+      publiseres til MQTT-emnet raw. Tomt slår av. Støyete; la stå tomt i vanlig
+      bruk.
   ha_bridge_diagnostics_enabled:
     name: Aktiver bridge-diagnostikk
     description: >-
