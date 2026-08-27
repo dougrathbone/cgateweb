@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.33.0] - 2026-08-27
+
+### Added
+
+- **Raw C-Gate event capture can now be turned on from the add-on.** Leave the application list empty to skip.
+
+### Fixed
+
+- **Turning off unlisted-group discovery now retracts leftover Home Assistant entities.** (#63)
+- **HVAC lighting setpoints now stay within 10 to 32 C**, matching the climate entity.
+- **Air-con climate no longer advertises a humidity target Home Assistant would reject.** The setpoint is a diagnostic sensor instead.
+
 ## [1.32.0] - 2026-08-25
 
 ### Added
