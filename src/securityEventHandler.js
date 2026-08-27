@@ -170,7 +170,8 @@ const LINE_KIND_HANDLERS = {
  * the whole network on the next disarm) and updates the panel's bypassed-zones
  * list sensor; the remaining system-state verbs
  * (arm_ready, exit_delay_started, …) are decoded, logged and surfaced to the
- * Live Events stream only. Arm/disarm writes are not implemented.
+ * Live Events stream only. Arm and disarm writes live on the MQTT command
+ * router (security arm, emulate_keypad), not in this handler.
  *
  * This handler also owns the status_request sync dedupe for the whole bridge:
  * every trigger (connect, first traffic, 762 sync-ok) routes through
