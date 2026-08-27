@@ -476,7 +476,8 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.fan_mode_state_topic).toBe('cbus/read/254/172/201/fan_mode');
         expect(payload.fan_modes).toEqual(['automatic', 'continuous']);
         expect(payload.current_humidity_topic).toBe('cbus/read/254/172/201/current_humidity');
-        expect(payload.target_humidity_state_topic).toBe('cbus/read/254/172/201/humidity_setpoint');
+        expect(payload.target_humidity_state_topic).toBeUndefined();
+        expect(payload.target_humidity_command_topic).toBeUndefined();
         expect(payload.modes).toEqual(['off', 'heat', 'cool', 'auto', 'fan_only']);
         expect(payload.temperature_unit).toBe('C');
     });
@@ -537,7 +538,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         const retracted = [
             ...['problem', 'sensor_problem', 'damper', 'busy']
                 .map(s => `homeassistant/binary_sensor/cgateweb_254_172_250_${s}/config`),
-            ...['plant_type', 'error', 'sensor_status', 'fan_speed', 'fan_speed_pct', 'comfort_level', 'humidity_mode', 'humidity_action']
+            ...['plant_type', 'error', 'sensor_status', 'fan_speed', 'fan_speed_pct', 'comfort_level', 'humidity_mode', 'humidity_setpoint', 'humidity_action']
                 .map(s => `homeassistant/sensor/cgateweb_254_172_250_${s}/config`)
         ];
         for (const topic of retracted) {
@@ -637,6 +638,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         ['fan_speed_pct', 'fan_speed_pct', 'Fan output'],
         ['comfort_level', 'comfort_level', 'Comfort level'],
         ['humidity_mode', 'humidity_mode', 'Humidity mode'],
+        ['humidity_setpoint', 'humidity_setpoint', 'Humidity setpoint'],
         ['humidity_action', 'humidity_action', 'Humidity action']
     ])('publishes a diagnostic sensor "%s" reading cbus/read/254/172/201/%s', (suffix, topicSuffix, name) => {
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
@@ -660,6 +662,13 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.device_class).toBeUndefined();
     });
 
+    test('gives the humidity setpoint a percent unit', () => {
+        haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
+        const payload = companionPayload(mockPublishFn.mock.calls, 'sensor', 'humidity_setpoint');
+        expect(payload.unit_of_measurement).toBe('%');
+        expect(payload.state_class).toBe('measurement');
+    });
+
     test('leaves the plant-dependent sensors unitless rather than inventing one', () => {
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         for (const suffix of ['plant_type', 'error', 'sensor_status', 'fan_speed', 'comfort_level', 'humidity_mode', 'humidity_action']) {
@@ -679,7 +688,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
             .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_202_/.test(c[0]))
             .map(c => JSON.parse(c[1]));
 
-        expect(companions).toHaveLength(12); // 4 binary_sensors + 8 sensors
+        expect(companions).toHaveLength(13); // 4 binary_sensors + 9 sensors
         for (const payload of companions) {
             expect(payload.device.identifiers).toEqual(climate.device.identifiers);
             expect(payload.device.name).toBe('Master Bedroom AC');
@@ -693,7 +702,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         const companions = mockPublishFn.mock.calls
             .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_201_/.test(c[0]));
-        expect(companions).toHaveLength(12);
+        expect(companions).toHaveLength(13);
     });
 
     test('does not change the climate entity while adding companions', () => {
@@ -711,7 +720,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.fan_modes).toEqual(['automatic', 'continuous']);
         expect(payload.modes).toEqual(['off', 'heat', 'cool', 'auto', 'fan_only']);
         expect(payload.current_humidity_topic).toBe('cbus/read/254/172/201/current_humidity');
-        expect(payload.target_humidity_state_topic).toBe('cbus/read/254/172/201/humidity_setpoint');
+        expect(payload.target_humidity_state_topic).toBeUndefined();
         expect(payload.min_temp).toBe(10);
         expect(payload.max_temp).toBe(32);
         expect(payload.temp_step).toBe(0.5);
@@ -776,8 +785,8 @@ describe('MqttCommandRouter — HVAC commands', () => {
         });
 
         test.each([
-            ['25', ' 50'], ['20', ' 40'], ['0', ' 0'], ['50', ' 100'],
-            ['99', ' 100'], ['-5', ' 0'],
+            ['25', ' 50'], ['20', ' 40'], ['10', ' 20'], ['32', ' 64'],
+            ['0', ' 20'], ['50', ' 64'], ['99', ' 64'], ['-5', ' 20'],
         ])('maps %s°C to correct C-Bus level', (temp, expectedLevel) => {
             router.routeMessage('cbus/write/254/201/1/setpoint', temp);
             expect(mockQueue.add.mock.calls[0][0]).toContain(expectedLevel);

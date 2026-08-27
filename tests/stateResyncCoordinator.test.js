@@ -17,7 +17,10 @@ describe('StateResyncCoordinator', () => {
             stateResyncDebounceMs: 5000
         };
         commandQueue = { add: jest.fn() };
-        haDiscovery = { republishDiscoveryConfigs: jest.fn().mockReturnValue(3) };
+        haDiscovery = {
+            republishDiscoveryConfigs: jest.fn().mockReturnValue(3),
+            syncUnlistedGroupDiscovery: jest.fn()
+        };
         // Stand-in for BridgeInitializationService, which owns both the getall
         // command syntax and the "which networks does security sync" rule.
         initializationService = {
@@ -88,6 +91,7 @@ describe('StateResyncCoordinator', () => {
             coordinator.requestResync('ha-birth');
             jest.advanceTimersByTime(5000);
             expect(haDiscovery.republishDiscoveryConfigs).not.toHaveBeenCalled();
+            expect(haDiscovery.syncUnlistedGroupDiscovery).toHaveBeenCalledTimes(1);
         });
 
         it('runs for a broker reconnect, which may have dropped them', () => {
