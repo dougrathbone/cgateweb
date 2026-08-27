@@ -1,3 +1,6 @@
+// Invoked by `npm run perf:raw` / `perf:dedup`, not by `npm test`.
+// Default Jest ignores this directory: the workload is a microbenchmark and
+// flakes under coverage on shared CI runners.
 const fs = require('fs');
 const path = require('path');
 const { performance } = require('perf_hooks');
