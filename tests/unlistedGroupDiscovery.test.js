@@ -83,4 +83,83 @@ describe('HaDiscovery — unlisted live groups (#63)', () => {
         expect(d._currentRunTopics.has('keep-me')).toBe(true);
         expect(d._currentRunTopics.size).toBeGreaterThan(1);
     });
+
+    it('retracts leftover configs when the option is turned off', () => {
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+        d.settings.ha_discovery_unlisted_groups = false;
+        expect(d.syncUnlistedGroupDiscovery()).toBe(1);
+        const retract = publishFn.mock.calls.find(
+            (c) => c[0] === 'homeassistant/light/cgateweb_254_56_251/config' && c[1] === ''
+        );
+        expect(retract).toBeDefined();
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(false);
+    });
+
+    it('retracts an unlisted group that is later excluded', () => {
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+        d.exclude.add('254/56/251');
+        d.updateLabels({
+            labels: d.labelMap,
+            typeOverrides: d.typeOverrides,
+            entityIds: d.entityIds,
+            exclude: d.exclude,
+            areas: d.areas
+        });
+        const retract = publishFn.mock.calls.find(
+            (c) => c[0] === 'homeassistant/light/cgateweb_254_56_251/config' && c[1] === ''
+        );
+        expect(retract).toBeDefined();
+    });
+
+    it('does not retract a group that later appears in the Toolkit tree', () => {
+        expect(d.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+        d._withDiscoveryRun(() => {
+            d._recordingTreeGroups = true;
+            d._processOneLightingGroup('254', '56', { GroupAddress: '251' });
+        });
+        d.settings.ha_discovery_unlisted_groups = false;
+        expect(d.syncUnlistedGroupDiscovery()).toBe(0);
+        const retracts = publishFn.mock.calls.filter(
+            (c) => c[0] === 'homeassistant/light/cgateweb_254_56_251/config' && c[1] === ''
+        );
+        expect(retracts).toHaveLength(0);
+    });
+
+    it('retracts persisted leftovers after a restart with the option off', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-unlisted-'));
+        const labelFile = path.join(dir, 'labels.json');
+        fs.writeFileSync(labelFile, '{}');
+
+        const first = new HaDiscovery(
+            {
+                ha_discovery_enabled: true,
+                ha_discovery_prefix: 'homeassistant',
+                ha_discovery_unlisted_groups: true,
+                cbus_label_file: labelFile
+            },
+            publishFn,
+            jest.fn()
+        );
+        expect(first.ensureUnlistedGroupDiscovery('254', '56', '251')).toBe(true);
+
+        const restarted = new HaDiscovery(
+            {
+                ha_discovery_enabled: true,
+                ha_discovery_prefix: 'homeassistant',
+                ha_discovery_unlisted_groups: false,
+                cbus_label_file: labelFile
+            },
+            publishFn,
+            jest.fn()
+        );
+        expect(restarted.syncUnlistedGroupDiscovery()).toBe(1);
+        const retract = publishFn.mock.calls.find(
+            (c) => c[0] === 'homeassistant/light/cgateweb_254_56_251/config' && c[1] === ''
+        );
+        expect(retract).toBeDefined();
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
 });

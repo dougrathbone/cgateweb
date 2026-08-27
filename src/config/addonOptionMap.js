@@ -59,6 +59,7 @@ const ADDON_OPTION_MAP = [
     // plain MQTT writes, so an MQTT-only install that opts in must not lose
     // them with discovery off.
     { src: 'cbus_enable_control_app_id', dst: 'cbus_enable_control_app_id', kind: 'stringifyTruthy' },
+    { src: 'cbus_raw_event_log_apps', dst: 'cbusRawEventLogApps', kind: 'copyDefined' },
     { src: 'ha_hvac_temperature_unit', dst: 'ha_hvac_temperature_unit', kind: 'copyTruthy', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type', dst: 'ha_discovery_auto_type', kind: 'boolDefined', when: 'haDiscovery' },
     { src: 'ha_discovery_auto_type_name_heuristics', dst: 'ha_discovery_auto_type_name_heuristics', kind: 'boolDefined', when: 'haDiscovery' },

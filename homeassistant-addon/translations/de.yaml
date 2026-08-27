@@ -206,8 +206,8 @@ configuration:
     description: >-
       Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf
       dem Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig
-      aus: ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
-      Discovery-Configs müssen manuell vom Broker gelöscht werden.
+      aus: ungenutzte und Szenenadressen erscheinen ebenfalls im Ereignisstrom.
+      Ausschalten zieht jene übrig gebliebenen Entitäten wieder zurück.
   ha_discovery_trigger_app_id:
     name: Trigger-Anwendungs-ID
     description: >-
@@ -328,6 +328,12 @@ configuration:
       set, label und remove. Leer lassen zum Deaktivieren. Remove löscht das
       C-Gate-Gruppenobjekt — ON auf das Remove-Topic veröffentlichen. Labels
       werden hex-kodiert. Es werden keine Home-Assistant-Entitäten erstellt.
+  cbus_raw_event_log_apps:
+    name: Apps für Rohereignis-Aufzeichnung
+    description: >-
+      C-Bus-Anwendungs-IDs, deren rohe C-Gate-Ereigniszeilen protokolliert und
+      auf das raw-MQTT-Topic veröffentlicht werden. Leer deaktiviert. Laut; im
+      Normalbetrieb leer lassen.
   ha_bridge_diagnostics_enabled:
     name: Bridge-Diagnose aktivieren
     description: >-

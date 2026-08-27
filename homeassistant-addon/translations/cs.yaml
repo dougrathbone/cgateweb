@@ -195,8 +195,8 @@ configuration:
     description: >-
       Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
       sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
-      objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
-      ručně.
+      nepoužívané a scénové adresy se objevují i ve streamu událostí. Vypnutí
+      stáhne ty zbývající entity.
   ha_discovery_trigger_app_id:
     name: ID aplikace pro spouštěče
     description: >-
@@ -311,6 +311,12 @@ configuration:
       ID aplikace Enable Control C-Bus (typicky 203) pro MQTT zápisy set, label
       a remove. Prázdné vypne. Remove smaže objekt skupiny C-Gate — publikujte
       ON na téma remove. Štítky v hex. Nevytváří entity Home Assistant.
+  cbus_raw_event_log_apps:
+    name: Aplikace pro zachytávání surových událostí
+    description: >-
+      ID aplikací C-Bus, jejichž surové řádky událostí C-Gate se logují a
+      publikují do MQTT tématu raw. Prázdné vypne. Hlučné; při běžném použití
+      nechte prázdné.
   ha_bridge_diagnostics_enabled:
     name: Povolit diagnostiku bridge
     description: >-

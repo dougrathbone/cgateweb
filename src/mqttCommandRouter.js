@@ -1164,9 +1164,9 @@ class MqttCommandRouter extends EventEmitter {
             return;
         }
 
-        // Clamp to valid C-Bus HVAC temperature range, then encode at 0.5°C
-        // resolution (level = temperature * 2) via the shared helper.
-        const clampedTemp = Math.max(0, Math.min(50, tempCelsius));
+        // Same 10–32°C range the climate entity advertises (HVAC_MIN/MAX_TEMP_C),
+        // then encode at 0.5°C resolution (level = temperature * 2).
+        const clampedTemp = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempCelsius));
         const cbusLevel = temperatureToCbusLevel(clampedTemp);
 
         const cbusPath = this._buildCGatePath(command);

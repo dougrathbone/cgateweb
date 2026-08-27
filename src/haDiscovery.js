@@ -1,4 +1,6 @@
 // @ts-check
+const fs = require('fs');
+const path = require('path');
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
 const { parseSecurityZoneLabelKey, securityZoneLabelKey } = require('./securityZoneLabels');
@@ -132,6 +134,16 @@ class HaDiscovery {
         // "network/app/group" keys already handled this session.
         this._unlistedGroupSeen = new Set();
         this._treeDiscoveredGroups = new Set();
+        // Topics published for unlisted groups, keyed by "network/app/group".
+        // Survives restarts via a JSON file next to the label file so turning
+        // the option off can retract leftover retained configs (#63).
+        this._unlistedGroupTopics = new Map();
+        this._loadUnlistedDiscoveryStore();
+        if (this.settings.ha_discovery_unlisted_groups) {
+            for (const key of this._unlistedGroupTopics.keys()) {
+                this._unlistedGroupSeen.add(key);
+            }
+        }
 
         // Measurement (app 228) channels are discovered event-driven (first
         // reading for that device/channel). Tracks "network/app/device/channel"
@@ -177,6 +189,7 @@ class HaDiscovery {
             count++;
         }
         if (count > 0) this.logger.info(`Republished ${count} HA Discovery config(s)`);
+        this.syncUnlistedGroupDiscovery();
         return count;
     }
 
@@ -198,6 +211,137 @@ class HaDiscovery {
         if (this.entityIds.size > 0) parts.push(`${this.entityIds.size} entity IDs`);
         if (this.exclude.size > 0) parts.push(`${this.exclude.size} excluded`);
         this.logger.info(`Label data updated (${parts.join(', ')})`);
+        this._retractExcludedUnlistedGroups();
+        this.syncUnlistedGroupDiscovery();
+    }
+
+    /**
+     * Path of the unlisted-discovery topic store, or null when no label file
+     * is configured (no writable directory is known).
+     * @returns {string|null}
+     * @private
+     */
+    _unlistedDiscoveryStorePath() {
+        const labelFile = this.settings && this.settings.cbus_label_file;
+        if (!labelFile || typeof labelFile !== 'string') return null;
+        return path.join(path.dirname(labelFile), 'unlisted-discovery.json');
+    }
+
+    /**
+     * @private
+     */
+    _loadUnlistedDiscoveryStore() {
+        const filePath = this._unlistedDiscoveryStorePath();
+        if (!filePath) return;
+        try {
+            const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+            for (const [key, topics] of Object.entries(parsed)) {
+                if (typeof key !== 'string' || !Array.isArray(topics)) continue;
+                const clean = topics.filter((t) => typeof t === 'string' && t.endsWith(CONFIG_TOPIC_SUFFIX));
+                if (clean.length) this._unlistedGroupTopics.set(key, clean);
+            }
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                this.logger.warn(`Could not read unlisted discovery store (${err.message}); starting empty`);
+            }
+        }
+    }
+
+    /**
+     * @private
+     */
+    _persistUnlistedDiscoveryStore() {
+        const filePath = this._unlistedDiscoveryStorePath();
+        if (!filePath) return;
+        try {
+            const obj = {};
+            for (const [key, topics] of this._unlistedGroupTopics) {
+                obj[key] = topics;
+            }
+            fs.writeFileSync(filePath, JSON.stringify(obj, null, 2));
+        } catch (err) {
+            this.logger.warn(`Could not write unlisted discovery store (${err.message})`);
+        }
+    }
+
+    /**
+     * Record discovery topics published for an unlisted group so they can be
+     * retracted later (option off, exclude, restart).
+     * @param {string} key
+     * @param {Iterable<string>} topics
+     * @private
+     */
+    _rememberUnlistedGroupTopics(key, topics) {
+        const list = [...topics].filter((t) => typeof t === 'string' && t.endsWith(CONFIG_TOPIC_SUFFIX));
+        if (!list.length) return;
+        this._unlistedGroupTopics.set(key, list);
+        this._persistUnlistedDiscoveryStore();
+    }
+
+    /**
+     * Retract one unlisted group's configs. No-op if we never published it.
+     * @param {string} key
+     * @private
+     */
+    _retractUnlistedGroupKey(key) {
+        const topics = this._unlistedGroupTopics.get(key);
+        if (!topics) return;
+        for (const topic of topics) {
+            this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._publishedTopics.delete(topic);
+            this._eventDrivenDiscoveryTopics.delete(topic);
+        }
+        this._unlistedGroupTopics.delete(key);
+        this._unlistedGroupSeen.delete(key);
+        this._persistUnlistedDiscoveryStore();
+    }
+
+    /**
+     * Retract unlisted groups that are now on the exclude list.
+     * @private
+     */
+    _retractExcludedUnlistedGroups() {
+        for (const key of [...this._unlistedGroupTopics.keys()]) {
+            if (this.exclude.has(key)) this._retractUnlistedGroupKey(key);
+        }
+    }
+
+    /**
+     * Groups that later appeared in TREEXML are real Toolkit groups now; stop
+     * treating them as unlisted so turning the option off does not retract them.
+     * @private
+     */
+    _promoteUnlistedGroupsNowInTree() {
+        let changed = false;
+        for (const key of [...this._unlistedGroupTopics.keys()]) {
+            if (!this._treeDiscoveredGroups.has(key)) continue;
+            this._unlistedGroupTopics.delete(key);
+            this._unlistedGroupSeen.delete(key);
+            changed = true;
+        }
+        if (changed) this._persistUnlistedDiscoveryStore();
+    }
+
+    /**
+     * Retract leftover unlisted-group discovery when the option is off.
+     * Safe to call before MQTT is connected (publishFn queues or no-ops) and
+     * again after connect so a restart with the option off clears the broker.
+     * @returns {number} configs retracted
+     */
+    syncUnlistedGroupDiscovery() {
+        this._promoteUnlistedGroupsNowInTree();
+        if (this.settings.ha_discovery_unlisted_groups) return 0;
+        let count = 0;
+        for (const key of [...this._unlistedGroupTopics.keys()]) {
+            const topics = this._unlistedGroupTopics.get(key) || [];
+            count += topics.length;
+            this._retractUnlistedGroupKey(key);
+        }
+        if (count > 0) {
+            this.logger.info(`Retracted ${count} leftover unlisted-group discovery config(s)`);
+        }
+        return count;
     }
 
     /**
@@ -595,6 +739,8 @@ class HaDiscovery {
                 this._publishedTopics.delete(topic);
             }
         }
+
+        this.syncUnlistedGroupDiscovery();
 
         // Merge the current run's topics into the session-wide set.
         for (const topic of this._currentRunTopics) {

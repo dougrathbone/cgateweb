@@ -74,7 +74,7 @@ describe('enable control app id default', () => {
 });
 
 describe('unlisted group discovery default', () => {
-    it('defaults ha_discovery_unlisted_groups to false (retained configs are hard to clean up)', () => {
+    it('defaults ha_discovery_unlisted_groups to false (opt-in; leftover configs are retracted when turned off)', () => {
         expect(defaultSettings.ha_discovery_unlisted_groups).toBe(false);
     });
 });

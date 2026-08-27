@@ -204,8 +204,9 @@ configuration:
     description: >-
       Cria uma entidade Home Assistant na primeira vez que um grupo de
       iluminação aparece no barramento, mesmo ausente do projeto Toolkit.
-      Desligado por padrão: endereços de cena também aparecem, e configs retidas
-      no broker precisam ser apagadas à mão.
+      Desligado por padrão: endereços de cena e grupos não usados também
+      aparecem no fluxo de eventos. Desligar isto retira essas entidades
+      sobrantes.
   ha_discovery_trigger_app_id:
     name: ID de Aplicação de Triggers
     description: >-
@@ -326,6 +327,12 @@ configuration:
       set, label e remove. Deixe vazio para desativar. Remove apaga o objeto de
       grupo do C-Gate — publique ON no tópico remove. Etiquetas em hex. Não cria
       entidades do Home Assistant.
+  cbus_raw_event_log_apps:
+    name: Apps de captura de eventos em bruto
+    description: >-
+      IDs de aplicação C-Bus cujas linhas de evento C-Gate em bruto são
+      registadas e republicadas no tópico MQTT raw. Vazio desativa. Ruidoso;
+      deixe vazio no uso normal.
   ha_bridge_diagnostics_enabled:
     name: Ativar Diagnósticos do Bridge
     description: >-

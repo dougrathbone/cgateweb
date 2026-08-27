@@ -212,8 +212,8 @@ configuration:
     description: >-
       Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur
       le bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
-      adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
-      être retirées à la main.
+      adresses de scène et groupes inutilisés apparaissent aussi dans le flux
+      d'événements. Désactiver cette option retire ces entités restantes.
   ha_discovery_trigger_app_id:
     name: ID d'application pour les déclencheurs
     description: >-
@@ -336,6 +336,12 @@ configuration:
       MQTT set, label et remove. Laisser vide pour désactiver. Remove supprime
       l'objet groupe C-Gate — publiez ON sur le topic remove. Les libellés sont
       encodés en hex. Aucune entité Home Assistant n'est créée.
+  cbus_raw_event_log_apps:
+    name: Apps de capture d'événements bruts
+    description: >-
+      ID d'application C-Bus dont les lignes d'événements C-Gate brutes sont
+      journalisées et republiees sur le topic MQTT raw. Vide désactive. Bruyant
+      ; laisser vide en usage normal.
   ha_bridge_diagnostics_enabled:
     name: Activer les diagnostics du bridge
     description: >-

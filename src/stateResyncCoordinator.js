@@ -119,9 +119,10 @@ class StateResyncCoordinator {
         }
 
         let configs = 0;
-        if (republishDiscovery) {
-            const haDiscovery = this.getHaDiscovery();
-            if (haDiscovery) configs = haDiscovery.republishDiscoveryConfigs();
+        const haDiscovery = this.getHaDiscovery();
+        if (haDiscovery) {
+            haDiscovery.syncUnlistedGroupDiscovery();
+            if (republishDiscovery) configs = haDiscovery.republishDiscoveryConfigs();
         }
 
         // 'bulk' priority: a resync can be dozens of commands, and it fires

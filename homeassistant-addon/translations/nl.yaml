@@ -202,8 +202,8 @@ configuration:
     description: >-
       Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
       de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
-      uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
-      handmatig van de broker halen.
+      uit: ongebruikte en scène-adressen verschijnen ook in de eventstroom.
+      Uitschakelen trekt die overgebleven entiteiten in.
   ha_discovery_trigger_app_id:
     name: Trigger Applicatie-ID
     description: >-
@@ -323,6 +323,12 @@ configuration:
       label en remove. Leeg laten om uit te schakelen. Remove verwijdert het
       C-Gate-groepsobject — publiceer ON op het remove-topic. Labels zijn
       hex-gecodeerd. Er worden geen Home Assistant-entiteiten aangemaakt.
+  cbus_raw_event_log_apps:
+    name: Apps voor ruwe-eventopname
+    description: >-
+      C-Bus-app-ID's waarvan ruwe C-Gate-eventregels worden gelogd en opnieuw
+      gepubliceerd op het raw-MQTT-topic. Leeg schakelt uit. Luidruchtig; laat
+      leeg bij normaal gebruik.
   ha_bridge_diagnostics_enabled:
     name: Bridge Diagnostiek inschakelen
     description: >-

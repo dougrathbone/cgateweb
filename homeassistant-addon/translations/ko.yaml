@@ -147,8 +147,8 @@ configuration:
   ha_discovery_unlisted_groups:
     name: 프로젝트에 없는 그룹 검색
     description: >-
-      Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 장면
-      주소도 나타나며, 남은 검색 설정은 브로커에서 직접 지워야 합니다.
+      Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 미사용
+      및 장면 주소도 이벤트 스트림에 나타납니다. 끄면 남은 엔티티가 철회됩니다.
   ha_discovery_trigger_app_id:
     name: 트리거 애플리케이션 ID
     description: "트리거 그룹 (키패드, 장면)용 C-Bus 앱 ID. 일반적인 값: 202. 트리거 검색을 건너뛰려면 비워 두세요."
@@ -241,6 +241,11 @@ configuration:
       C-Bus Enable Control 애플리케이션 ID(보통 203). MQTT set, label, remove 쓰기용. 비우면
       꺼짐. remove는 C-Gate 그룹 객체를 삭제하므로 remove 토픽에 ON을 게시하세요. 라벨은 hex 인코딩. Home
       Assistant 엔티티는 만들지 않습니다.
+  cbus_raw_event_log_apps:
+    name: 원시 이벤트 캡처 앱
+    description: >-
+      원시 C-Gate 이벤트 줄을 기록하고 raw MQTT 토픽으로 다시 게시할 C-Bus 앱 ID. 비우면 꺼짐. 로그가 많으니
+      평소에는 비워 두세요.
   ha_bridge_diagnostics_enabled:
     name: Bridge 진단 활성화
     description: "Bridge 상태 엔티티 (준비 상태, 연결, 큐 깊이)를 Home Assistant에 게시합니다. 기본값: 활성화."

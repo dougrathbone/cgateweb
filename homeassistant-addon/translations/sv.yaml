@@ -194,9 +194,9 @@ configuration:
     name: Upptäck ogranskade grupper
     description: >-
       Skapar en Home Assistant-entitet första gången en belysningsgrupp syns på
-      bussen även om den saknas i Toolkit-projektet. Av som standard:
-      scenadresser syns också, och kvarvarande discovery-konfig måste tas bort
-      från brokern för hand.
+      bussen även om den saknas i Toolkit-projektet. Av som standard: oanvända
+      och scenadresser syns också i händelseströmmen. Att stänga av detta drar
+      tillbaka de kvarvarande entiteterna.
   ha_discovery_trigger_app_id:
     name: Applikations-ID för utlösare
     description: >-
@@ -314,6 +314,12 @@ configuration:
       set, label och remove. Tomt inaktiverar. Remove tar bort
       C-Gate-gruppobjektet — publicera ON på remove-ämnet. Etiketter hex-kodas.
       Inga Home Assistant-entiteter skapas.
+  cbus_raw_event_log_apps:
+    name: Appar för rå händelseinspelning
+    description: >-
+      C-Bus-applikations-ID vars råa C-Gate-händelserader loggas och publiceras
+      till MQTT-ämnet raw. Tomt inaktiverar. Bullrigt; lämna tomt vid vanlig
+      användning.
   ha_bridge_diagnostics_enabled:
     name: Aktivera bridge-diagnostik
     description: >-

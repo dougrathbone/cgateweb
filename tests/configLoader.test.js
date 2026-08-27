@@ -343,6 +343,22 @@ describe('ConfigLoader', () => {
         });
     });
 
+    describe('add-on raw event capture', () => {
+        const newLoader = () => new ConfigLoader({
+            environmentDetector: {
+                detect: () => ({ type: 'addon', isAddon: true, optionsPath: '/data/options.json' })
+            }
+        });
+
+        it('maps cbus_raw_event_log_apps onto cbusRawEventLogApps', () => {
+            const config = newLoader()._convertAddonOptionsToSettings({
+                cgate_host: '192.168.1.100',
+                cbus_raw_event_log_apps: [172, 228]
+            });
+            expect(config.cbusRawEventLogApps).toEqual([172, 228]);
+        });
+    });
+
     describe('add-on serial PC Interface option (issue #28)', () => {
         const newLoader = () => new ConfigLoader({
             environmentDetector: {

@@ -197,8 +197,8 @@ configuration:
     description: >-
       Tworzy encję Home Assistant, gdy grupa oświetleniowa pojawi się na
       magistrali, nawet jeśli nie ma jej w projekcie Toolkit. Domyślnie
-      wyłączone: adresy scen też się pojawiają, a retained konfiguracje trzeba
-      usunąć ręcznie z brokera.
+      wyłączone: nieużywane adresy i adresy scen też pojawiają się w strumieniu
+      zdarzeń. Wyłączenie wycofuje te pozostałe encje.
   ha_discovery_trigger_app_id:
     name: ID aplikacji wyzwalaczy
     description: >-
@@ -316,6 +316,12 @@ configuration:
       ID aplikacji Enable Control C-Bus (zazwyczaj 203) dla zapisów MQTT set,
       label i remove. Puste wyłącza. Remove usuwa obiekt grupy C-Gate — publikuj
       ON na temacie remove. Etykiety w hex. Nie tworzy encji Home Assistant.
+  cbus_raw_event_log_apps:
+    name: Aplikacje przechwytywania surowych zdarzeń
+    description: >-
+      ID aplikacji C-Bus, których surowe linie zdarzeń C-Gate są logowane i
+      publikowane na temat MQTT raw. Puste wyłącza. Głośne; w normalnym użyciu
+      zostaw puste.
   ha_bridge_diagnostics_enabled:
     name: Włącz diagnostykę bridge
     description: >-

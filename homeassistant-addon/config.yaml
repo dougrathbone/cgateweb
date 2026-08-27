@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.32.0"
+version: "1.33.0"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -113,6 +113,7 @@ options:
   # Object lists cannot be optional, so this needs a default here. Empty means
   # localhost-only access, identical to previous releases.
   cgate_external_clients: []
+  cbus_raw_event_log_apps: []
 
 # ─── Schema ─────────────────────────────────────────────────────────
 # Fields without ? are required. Fields with ? are optional and hidden
@@ -203,6 +204,9 @@ schema:
   # options. SET/LABEL/REMOVE MQTT writes only — no HA entities.
   cbus_enable_control_app_id: "int(1,255)?"
   ha_hvac_temperature_unit: "list(C|F)?"
+  # Raw C-Gate event capture for protocol samples. Array schema cannot be
+  # optional, so the empty default lives in options (upgrade-safe).
+  cbus_raw_event_log_apps: ["int(1,255)"]
 
   # ── Bridge Diagnostics ──
   ha_bridge_diagnostics_enabled: "bool?"

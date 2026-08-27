@@ -10,9 +10,9 @@ first-class feature alongside the native HVAC (172) support, requested in
 > @djagerif (status reports and zone events from a Ness/Comfort-style panel on
 > network 254).
 
-> **Status:** phase 1 (zone sensors) in progress. Live-panel captures received
-> 2026-07-27 (#42) — the event surface in §1 is confirmed; remaining unknowns
-> are listed in §7.
+> **Status:** shipped. Zone sensors, panel diagnostics, alarm_control_panel
+> arm/disarm/bypass, and HA restart resync are in production. Remaining
+> unknowns are listed in §7.
 
 ---
 
@@ -206,15 +206,13 @@ raw state in a JSON attributes topic (same pattern as djagerif's Comfort example
 Phase 1 is self-contained, read-only on the bus, and delivers all the value
 djagerif asked for first. No new dependencies; every mechanism already exists.
 
-### Phase 2 — Alarm control ("Part B", later)
+### Phase 2 — Alarm control (shipped)
 
-`alarm_control_panel` MQTT entity (arm away/home/night/vacation, disarm),
-built on the Phase 1 decoder's `system_arm`/`alarm_on`/`alarm_off` events and
-the §5.5.2 control messages sent via the command port. Needs a control-enabled
-flag like `cbus_aircon_control_enabled` (`security arm` is a write — same
-careful opt-in posture as aircon writes). Disarm-under-duress semantics
-(spec §5.12) still need real-panel captures before we touch them. Sized M–L,
-mostly because of capture-driven validation, not code volume.
+`alarm_control_panel` MQTT entity (arm away/home/night/vacation, disarm via
+keypad emulation, optional `#` bypass) is implemented behind
+`cbus_security_control_enabled` / `cbus_security_disarm_enabled` /
+`cbus_security_bypass_enabled`. Disarm-under-duress semantics (spec §5.12)
+still need real-panel captures before we treat them as verified.
 
 ## 6. Reporter captures — received
 
@@ -223,9 +221,10 @@ day-stay / vacation (local and remote), exit-delay expiry (`arm_failed`), zone
 bypass on arming (`zone_isolated`), fire alarm, and final-exit-door arming.
 Every verb in §1's table comes from those lines. Two practical notes:
 
-- The raw-capture setting (`cbusRawEventLogApps`, `src/defaultSettings.js:200`)
-  is **not exposed in the add-on config** — DEBUG level already logs the full
-  line text via "Ignoring comment from event port", which proved sufficient.
+- The raw-capture setting (`cbusRawEventLogApps`, add-on
+  `cbus_raw_event_log_apps`) logs the verbatim C-Gate line and republishes it
+  to `cbus/read/{net}/{app}/{group}/raw`. DEBUG level also logs comment-path
+  lines via "Ignoring comment from event port".
 - His Toolkit project uses default `Group1`, `Group2` zone names, so
   device-class inference gets no keywords from his install — the generic
   default matters as much as the mapping.

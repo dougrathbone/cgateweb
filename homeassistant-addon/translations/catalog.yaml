@@ -2778,66 +2778,67 @@ configuration:
     description:
       en: "Create a Home Assistant entity the first time a lighting-style group
         appears on the bus even if it is missing from the Toolkit project. Off by
-        default: unused and scene addresses also appear in the event stream, and
-        leftover discovery configs must be removed from the broker by hand."
+        default: unused and scene addresses also appear in the event stream.
+        Turning this off retracts those leftover entities."
       de: "Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf dem
         Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig aus:
-        ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
-        Discovery-Configs müssen manuell vom Broker gelöscht werden."
+        ungenutzte und Szenenadressen erscheinen ebenfalls im Ereignisstrom.
+        Ausschalten zieht jene übrig gebliebenen Entitäten wieder zurück."
       es: "Crea una entidad de Home Assistant la primera vez que un grupo de
         iluminación aparece en el bus aunque falte en el proyecto de Toolkit.
         Desactivado por defecto: las direcciones de escena y grupos no usados
-        también aparecen, y hay que borrar a mano las configs retenidas en el
-        broker."
+        también aparecen en el flujo de eventos. Al desactivar esto se retiran
+        esas entidades sobrantes."
       fr: "Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur le
         bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
-        adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
-        être retirées à la main."
+        adresses de scène et groupes inutilisés apparaissent aussi dans le flux
+        d'événements. Désactiver cette option retire ces entités restantes."
       it: "Crea un'entità Home Assistant la prima volta che un gruppo di illuminazione
         compare sul bus anche se assente dal progetto Toolkit. Disattivato di
-        default: anche indirizzi scena e gruppi inutilizzati compaiono, e le
-        config retained vanno rimosse a mano dal broker."
+        default: anche indirizzi scena e gruppi inutilizzati compaiono nel flusso
+        eventi. Disattivare ritira quelle entità residue."
       nl: "Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
         de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
-        uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
-        handmatig van de broker halen."
+        uit: ongebruikte en scène-adressen verschijnen ook in de eventstroom.
+        Uitschakelen trekt die overgebleven entiteiten in."
       pt: "Cria uma entidade Home Assistant na primeira vez que um grupo de iluminação
         aparece no barramento, mesmo ausente do projeto Toolkit. Desligado por
-        padrão: endereços de cena também aparecem, e configs retidas no broker
-        precisam ser apagadas à mão."
+        padrão: endereços de cena e grupos não usados também aparecem no fluxo de
+        eventos. Desligar isto retira essas entidades sobrantes."
       ru: "Создаёт сущность Home Assistant при первом появлении группы освещения на
-        шине, даже если её нет в проекте Toolkit. По умолчанию выкл.: адреса сцен
-        тоже видны, а retained-конфиги нужно удалять с брокера вручную."
+        шине, даже если её нет в проекте Toolkit. По умолчанию выкл.: неиспользуемые
+        и сценические адреса тоже видны в потоке событий. Выключение отзывает эти
+        оставшиеся сущности."
       zh: 总线首次出现照明类组时创建 Home Assistant 实体，即使 Toolkit
-        项目中没有该组。默认关闭：场景和未使用地址也会出现，残留的发现配置需从 MQTT 代理上手动删除。
+        项目中没有该组。默认关闭：未使用地址和场景地址也会出现在事件流中。关闭此选项会撤回那些残留实体。
       ja: Toolkit プロジェクトに無くても、照明系グループがバスに現れた初回に Home Assistant
-        エンティティを作ります。既定はオフ。シーン用アドレスも流れるため、残った discovery 設定はブローカーから手で消す必要があります。
-      ko: "Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 장면
-        주소도 나타나며, 남은 검색 설정은 브로커에서 직접 지워야 합니다."
+        エンティティを作ります。既定はオフ。未使用およびシーン用アドレスもイベントストリームに流れます。オフにすると残ったエンティティを撤回します。
+      ko: "Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐:
+        미사용 및 장면 주소도 이벤트 스트림에 나타납니다. 끄면 남은 엔티티가 철회됩니다."
       pl: "Tworzy encję Home Assistant, gdy grupa oświetleniowa pojawi się na
         magistrali, nawet jeśli nie ma jej w projekcie Toolkit. Domyślnie
-        wyłączone: adresy scen też się pojawiają, a retained konfiguracje trzeba
-        usunąć ręcznie z brokera."
+        wyłączone: nieużywane adresy i adresy scen też pojawiają się w strumieniu
+        zdarzeń. Wyłączenie wycofuje te pozostałe encje."
       sv: "Skapar en Home Assistant-entitet första gången en belysningsgrupp syns på
-        bussen även om den saknas i Toolkit-projektet. Av som standard:
-        scenadresser syns också, och kvarvarande discovery-konfig måste tas bort
-        från brokern för hand."
+        bussen även om den saknas i Toolkit-projektet. Av som standard: oanvända
+        och scenadresser syns också i händelseströmmen. Att stänga av detta drar
+        tillbaka de kvarvarande entiteterna."
       no: "Oppretter en Home Assistant-entitet første gang en belysningsgruppe vises
         på bussen selv om den mangler i Toolkit-prosjektet. Av som standard:
-        sceneadresser vises også, og gjenværende discovery-oppsett må slettes fra
-        brokeren for hånd."
+        ubrukte og sceneadresser vises også i hendelsesstrømmen. Å slå dette av
+        trekker tilbake de gjenværende entitetene."
       da: "Opretter en Home Assistant-entitet første gang en belysningsgruppe vises på
         bussen, også hvis den mangler i Toolkit-projektet. Fra som standard:
-        sceneadresser vises også, og tilbageholdte discovery-configs skal fjernes
-        fra brokeren i hånden."
+        ubrugte og sceneadresser vises også i hændelsesstrømmen. At slå dette fra
+        trækker de tilbageværende entiteter tilbage."
       cs: "Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
         sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
-        objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
-        ručně."
+        nepoužívané a scénové adresy se objevují i ve streamu událostí. Vypnutí
+        stáhne ty zbývající entity."
       uk: "Створює сутність Home Assistant, коли освітлювальна група вперше
         з'являється на шині, навіть якщо її немає в проєкті Toolkit. Типово
-        вимкнено: адреси сцен теж з'являються, а retained-конфіги треба прибрати з
-        брокера вручну."
+        вимкнено: невикористані та сценічні адреси теж з'являються у потоці подій.
+        Вимкнення відкликає ці залишкові сутності."
 
   ha_discovery_trigger_app_id:
     name:
@@ -4542,6 +4543,86 @@ configuration:
         label і remove. Порожнє вимикає. Remove видаляє об'єкт групи C-Gate —
         публікуйте ON у топік remove. Мітки в hex. Сутності Home Assistant не
         створюються.
+
+  cbus_raw_event_log_apps:
+    name:
+      en: Raw event capture apps
+      de: Apps für Rohereignis-Aufzeichnung
+      es: Apps de captura de eventos en bruto
+      fr: Apps de capture d'événements bruts
+      it: App cattura eventi grezzi
+      nl: Apps voor ruwe-eventopname
+      pt: Apps de captura de eventos em bruto
+      ru: Приложения для сырого захвата событий
+      zh: 原始事件捕获应用
+      ja: 生イベントキャプチャ対象アプリ
+      ko: 원시 이벤트 캡처 앱
+      pl: Aplikacje przechwytywania surowych zdarzeń
+      sv: Appar för rå händelseinspelning
+      no: Appar for rå hendelsesfangst
+      da: Apps til rå hændelsesfangst
+      cs: Aplikace pro zachytávání surových událostí
+      uk: Застосунки для сирого захоплення подій
+    description:
+      en: >-
+        C-Bus application IDs whose raw C-Gate event lines are logged and
+        republished to the raw MQTT topic for protocol capture. Empty disables.
+        Noisy; leave empty in normal use.
+      de: >-
+        C-Bus-Anwendungs-IDs, deren rohe C-Gate-Ereigniszeilen protokolliert und
+        auf das raw-MQTT-Topic veröffentlicht werden. Leer deaktiviert. Laut;
+        im Normalbetrieb leer lassen.
+      es: >-
+        IDs de aplicación C-Bus cuyas líneas de eventos C-Gate en bruto se
+        registran y republican en el topic MQTT raw. Vacío desactiva. Es ruidoso;
+        déjelo vacío en uso normal.
+      fr: >-
+        ID d'application C-Bus dont les lignes d'événements C-Gate brutes sont
+        journalisées et republiees sur le topic MQTT raw. Vide désactive. Bruyant ;
+        laisser vide en usage normal.
+      it: >-
+        ID applicazione C-Bus le cui righe evento C-Gate grezze vengono registrate
+        e ripubblicate sul topic MQTT raw. Vuoto disattiva. Rumoroso; lasciare
+        vuoto nell'uso normale.
+      nl: >-
+        C-Bus-app-ID's waarvan ruwe C-Gate-eventregels worden gelogd en opnieuw
+        gepubliceerd op het raw-MQTT-topic. Leeg schakelt uit. Luidruchtig; laat
+        leeg bij normaal gebruik.
+      pt: >-
+        IDs de aplicação C-Bus cujas linhas de evento C-Gate em bruto são
+        registadas e republicadas no tópico MQTT raw. Vazio desativa. Ruidoso;
+        deixe vazio no uso normal.
+      ru: >-
+        ID приложений C-Bus, чьи сырые строки событий C-Gate пишутся в журнал и
+        публикуются в MQTT-топик raw. Пусто выключает. Шумно; в обычной работе
+        оставляйте пустым.
+      zh: C-Bus 应用 ID，将其原始 C-Gate 事件行记录并发布到 raw MQTT 主题以供协议捕获。留空即关闭。较吵，日常使用请保持为空。
+      ja: 生の C-Gate イベント行をログし raw MQTT トピックへ再公開する C-Bus アプリ ID。空で無効。うるさいので通常は空のまま。
+      ko: 원시 C-Gate 이벤트 줄을 기록하고 raw MQTT 토픽으로 다시 게시할 C-Bus 앱 ID. 비우면 꺼짐. 로그가 많으니 평소에는 비워 두세요.
+      pl: >-
+        ID aplikacji C-Bus, których surowe linie zdarzeń C-Gate są logowane i
+        publikowane na temat MQTT raw. Puste wyłącza. Głośne; w normalnym użyciu
+        zostaw puste.
+      sv: >-
+        C-Bus-applikations-ID vars råa C-Gate-händelserader loggas och publiceras
+        till MQTT-ämnet raw. Tomt inaktiverar. Bullrigt; lämna tomt vid vanlig
+        användning.
+      no: >-
+        C-Bus-applikasjons-ID-er hvis rå C-Gate-hendelseslinjer logges og
+        publiseres til MQTT-emnet raw. Tomt slår av. Støyete; la stå tomt i
+        vanlig bruk.
+      da: >-
+        C-Bus-applikations-id'er hvis rå C-Gate-hændelseslinjer logges og
+        publiceres til MQTT-emnet raw. Tomt slår fra. Støjende; lad stå tomt ved
+        normal brug.
+      cs: >-
+        ID aplikací C-Bus, jejichž surové řádky událostí C-Gate se logují a
+        publikují do MQTT tématu raw. Prázdné vypne. Hlučné; při běžném použití
+        nechte prázdné.
+      uk: >-
+        ID застосунків C-Bus, чиї сирі рядки подій C-Gate журналюються й
+        публікуються в MQTT-топік raw. Порожнє вимикає. Шумно; у звичайній роботі
+        залишайте порожнім.
 
   ha_bridge_diagnostics_enabled:
     name:

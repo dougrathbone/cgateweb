@@ -246,7 +246,7 @@ class CgateWebBridge {
 
         // Decodes security (app 208) event lines and publishes zone state.
         // sendCommand feeds the throttled command queue (security
-        // status_request initial sync only — phase 1 is read-only on the bus).
+        // status_request initial sync; arm/disarm writes are MQTT-routed).
         this.securityEventHandler = new SecurityEventHandler({
             eventPublisher: this.eventPublisher,
             logger: this.logger,
