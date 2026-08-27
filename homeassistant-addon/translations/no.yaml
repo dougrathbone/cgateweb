@@ -194,8 +194,8 @@ configuration:
     description: >-
       Oppretter en Home Assistant-entitet første gang en belysningsgruppe vises
       på bussen selv om den mangler i Toolkit-prosjektet. Av som standard:
-      sceneadresser vises også, og gjenværende discovery-oppsett må slettes fra
-      brokeren for hånd.
+      ubrukte og sceneadresser vises også i hendelsesstrømmen. Å slå dette av
+      trekker tilbake de gjenværende entitetene.
   ha_discovery_trigger_app_id:
     name: Applikasjons-ID for utløser
     description: >-

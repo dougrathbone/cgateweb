@@ -2782,62 +2782,63 @@ configuration:
         Turning this off retracts those leftover entities."
       de: "Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf dem
         Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig aus:
-        ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
-        Discovery-Configs müssen manuell vom Broker gelöscht werden."
+        ungenutzte und Szenenadressen erscheinen ebenfalls im Ereignisstrom.
+        Ausschalten zieht jene übrig gebliebenen Entitäten wieder zurück."
       es: "Crea una entidad de Home Assistant la primera vez que un grupo de
         iluminación aparece en el bus aunque falte en el proyecto de Toolkit.
         Desactivado por defecto: las direcciones de escena y grupos no usados
-        también aparecen, y hay que borrar a mano las configs retenidas en el
-        broker."
+        también aparecen en el flujo de eventos. Al desactivar esto se retiran
+        esas entidades sobrantes."
       fr: "Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur le
         bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
-        adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
-        être retirées à la main."
+        adresses de scène et groupes inutilisés apparaissent aussi dans le flux
+        d'événements. Désactiver cette option retire ces entités restantes."
       it: "Crea un'entità Home Assistant la prima volta che un gruppo di illuminazione
         compare sul bus anche se assente dal progetto Toolkit. Disattivato di
-        default: anche indirizzi scena e gruppi inutilizzati compaiono, e le
-        config retained vanno rimosse a mano dal broker."
+        default: anche indirizzi scena e gruppi inutilizzati compaiono nel flusso
+        eventi. Disattivare ritira quelle entità residue."
       nl: "Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
         de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
-        uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
-        handmatig van de broker halen."
+        uit: ongebruikte en scène-adressen verschijnen ook in de eventstroom.
+        Uitschakelen trekt die overgebleven entiteiten in."
       pt: "Cria uma entidade Home Assistant na primeira vez que um grupo de iluminação
         aparece no barramento, mesmo ausente do projeto Toolkit. Desligado por
-        padrão: endereços de cena também aparecem, e configs retidas no broker
-        precisam ser apagadas à mão."
+        padrão: endereços de cena e grupos não usados também aparecem no fluxo de
+        eventos. Desligar isto retira essas entidades sobrantes."
       ru: "Создаёт сущность Home Assistant при первом появлении группы освещения на
-        шине, даже если её нет в проекте Toolkit. По умолчанию выкл.: адреса сцен
-        тоже видны, а retained-конфиги нужно удалять с брокера вручную."
+        шине, даже если её нет в проекте Toolkit. По умолчанию выкл.: неиспользуемые
+        и сценические адреса тоже видны в потоке событий. Выключение отзывает эти
+        оставшиеся сущности."
       zh: 总线首次出现照明类组时创建 Home Assistant 实体，即使 Toolkit
-        项目中没有该组。默认关闭：场景和未使用地址也会出现，残留的发现配置需从 MQTT 代理上手动删除。
+        项目中没有该组。默认关闭：未使用地址和场景地址也会出现在事件流中。关闭此选项会撤回那些残留实体。
       ja: Toolkit プロジェクトに無くても、照明系グループがバスに現れた初回に Home Assistant
-        エンティティを作ります。既定はオフ。シーン用アドレスも流れるため、残った discovery 設定はブローカーから手で消す必要があります。
-      ko: "Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 장면
-        주소도 나타나며, 남은 검색 설정은 브로커에서 직접 지워야 합니다."
+        エンティティを作ります。既定はオフ。未使用およびシーン用アドレスもイベントストリームに流れます。オフにすると残ったエンティティを撤回します。
+      ko: "Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐:
+        미사용 및 장면 주소도 이벤트 스트림에 나타납니다. 끄면 남은 엔티티가 철회됩니다."
       pl: "Tworzy encję Home Assistant, gdy grupa oświetleniowa pojawi się na
         magistrali, nawet jeśli nie ma jej w projekcie Toolkit. Domyślnie
-        wyłączone: adresy scen też się pojawiają, a retained konfiguracje trzeba
-        usunąć ręcznie z brokera."
+        wyłączone: nieużywane adresy i adresy scen też pojawiają się w strumieniu
+        zdarzeń. Wyłączenie wycofuje te pozostałe encje."
       sv: "Skapar en Home Assistant-entitet första gången en belysningsgrupp syns på
-        bussen även om den saknas i Toolkit-projektet. Av som standard:
-        scenadresser syns också, och kvarvarande discovery-konfig måste tas bort
-        från brokern för hand."
+        bussen även om den saknas i Toolkit-projektet. Av som standard: oanvända
+        och scenadresser syns också i händelseströmmen. Att stänga av detta drar
+        tillbaka de kvarvarande entiteterna."
       no: "Oppretter en Home Assistant-entitet første gang en belysningsgruppe vises
         på bussen selv om den mangler i Toolkit-prosjektet. Av som standard:
-        sceneadresser vises også, og gjenværende discovery-oppsett må slettes fra
-        brokeren for hånd."
+        ubrukte og sceneadresser vises også i hendelsesstrømmen. Å slå dette av
+        trekker tilbake de gjenværende entitetene."
       da: "Opretter en Home Assistant-entitet første gang en belysningsgruppe vises på
         bussen, også hvis den mangler i Toolkit-projektet. Fra som standard:
-        sceneadresser vises også, og tilbageholdte discovery-configs skal fjernes
-        fra brokeren i hånden."
+        ubrugte og sceneadresser vises også i hændelsesstrømmen. At slå dette fra
+        trækker de tilbageværende entiteter tilbage."
       cs: "Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
         sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
-        objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
-        ručně."
+        nepoužívané a scénové adresy se objevují i ve streamu událostí. Vypnutí
+        stáhne ty zbývající entity."
       uk: "Створює сутність Home Assistant, коли освітлювальна група вперше
         з'являється на шині, навіть якщо її немає в проєкті Toolkit. Типово
-        вимкнено: адреси сцен теж з'являються, а retained-конфіги треба прибрати з
-        брокера вручну."
+        вимкнено: невикористані та сценічні адреси теж з'являються у потоці подій.
+        Вимкнення відкликає ці залишкові сутності."
 
   ha_discovery_trigger_app_id:
     name:

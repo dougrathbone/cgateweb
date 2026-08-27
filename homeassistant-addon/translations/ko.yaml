@@ -147,8 +147,8 @@ configuration:
   ha_discovery_unlisted_groups:
     name: 프로젝트에 없는 그룹 검색
     description: >-
-      Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 장면
-      주소도 나타나며, 남은 검색 설정은 브로커에서 직접 지워야 합니다.
+      Toolkit 프로젝트에 없어도 조명 그룹이 버스에 처음 나타나면 Home Assistant 엔티티를 만듭니다. 기본 꺼짐: 미사용
+      및 장면 주소도 이벤트 스트림에 나타납니다. 끄면 남은 엔티티가 철회됩니다.
   ha_discovery_trigger_app_id:
     name: 트리거 애플리케이션 ID
     description: "트리거 그룹 (키패드, 장면)용 C-Bus 앱 ID. 일반적인 값: 202. 트리거 검색을 건너뛰려면 비워 두세요."

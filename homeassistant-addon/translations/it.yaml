@@ -207,7 +207,7 @@ configuration:
       Crea un'entità Home Assistant la prima volta che un gruppo di
       illuminazione compare sul bus anche se assente dal progetto Toolkit.
       Disattivato di default: anche indirizzi scena e gruppi inutilizzati
-      compaiono, e le config retained vanno rimosse a mano dal broker.
+      compaiono nel flusso eventi. Disattivare ritira quelle entità residue.
   ha_discovery_trigger_app_id:
     name: ID applicazione per trigger
     description: >-

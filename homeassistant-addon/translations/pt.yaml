@@ -204,8 +204,9 @@ configuration:
     description: >-
       Cria uma entidade Home Assistant na primeira vez que um grupo de
       iluminação aparece no barramento, mesmo ausente do projeto Toolkit.
-      Desligado por padrão: endereços de cena também aparecem, e configs retidas
-      no broker precisam ser apagadas à mão.
+      Desligado por padrão: endereços de cena e grupos não usados também
+      aparecem no fluxo de eventos. Desligar isto retira essas entidades
+      sobrantes.
   ha_discovery_trigger_app_id:
     name: ID de Aplicação de Triggers
     description: >-

@@ -202,8 +202,8 @@ configuration:
     description: >-
       Maakt een Home Assistant-entiteit aan de eerste keer dat een lichtgroep op
       de bus verschijnt, ook als die ontbreekt in het Toolkit-project. Standaard
-      uit: scène-adressen verschijnen ook, en retained discovery-configs moet je
-      handmatig van de broker halen.
+      uit: ongebruikte en scène-adressen verschijnen ook in de eventstroom.
+      Uitschakelen trekt die overgebleven entiteiten in.
   ha_discovery_trigger_app_id:
     name: Trigger Applicatie-ID
     description: >-

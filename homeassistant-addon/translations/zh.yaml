@@ -120,7 +120,7 @@ configuration:
     name: 发现未列入项目的组
     description: >-
       总线首次出现照明类组时创建 Home Assistant 实体，即使 Toolkit
-      项目中没有该组。默认关闭：场景和未使用地址也会出现，残留的发现配置需从 MQTT 代理上手动删除。
+      项目中没有该组。默认关闭：未使用地址和场景地址也会出现在事件流中。关闭此选项会撤回那些残留实体。
   ha_discovery_trigger_app_id:
     name: 触发器应用程序 ID
     description: 用于触发器组（键盘、场景）的 C-Bus 应用 ID。常用值：202。留空以 跳过触发器发现。

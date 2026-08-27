@@ -206,8 +206,8 @@ configuration:
     description: >-
       Legt eine Home-Assistant-Entität an, sobald eine Beleuchtungsgruppe auf
       dem Bus erscheint, auch wenn sie im Toolkit-Projekt fehlt. Standardmäßig
-      aus: ungenutzte und Szenenadressen erscheinen ebenfalls, und behaltene
-      Discovery-Configs müssen manuell vom Broker gelöscht werden.
+      aus: ungenutzte und Szenenadressen erscheinen ebenfalls im Ereignisstrom.
+      Ausschalten zieht jene übrig gebliebenen Entitäten wieder zurück.
   ha_discovery_trigger_app_id:
     name: Trigger-Anwendungs-ID
     description: >-

@@ -197,8 +197,8 @@ configuration:
     description: >-
       Tworzy encję Home Assistant, gdy grupa oświetleniowa pojawi się na
       magistrali, nawet jeśli nie ma jej w projekcie Toolkit. Domyślnie
-      wyłączone: adresy scen też się pojawiają, a retained konfiguracje trzeba
-      usunąć ręcznie z brokera.
+      wyłączone: nieużywane adresy i adresy scen też pojawiają się w strumieniu
+      zdarzeń. Wyłączenie wycofuje te pozostałe encje.
   ha_discovery_trigger_app_id:
     name: ID aplikacji wyzwalaczy
     description: >-

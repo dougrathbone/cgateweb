@@ -212,8 +212,8 @@ configuration:
     description: >-
       Crée une entité Home Assistant dès qu'un groupe d'éclairage apparaît sur
       le bus, même s'il manque au projet Toolkit. Désactivé par défaut : les
-      adresses de scène apparaissent aussi, et les configs MQTT retenues doivent
-      être retirées à la main.
+      adresses de scène et groupes inutilisés apparaissent aussi dans le flux
+      d'événements. Désactiver cette option retire ces entités restantes.
   ha_discovery_trigger_app_id:
     name: ID d'application pour les déclencheurs
     description: >-

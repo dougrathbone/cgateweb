@@ -195,8 +195,8 @@ configuration:
     description: >-
       Vytvoří entitu Home Assistant, když se osvětlovací skupina objeví na
       sběrnici, i když v projektu Toolkit chybí. Ve výchozím stavu vypnuto:
-      objevují se i adresy scén a retained konfigurace je třeba z brokeru smazat
-      ručně.
+      nepoužívané a scénové adresy se objevují i ve streamu událostí. Vypnutí
+      stáhne ty zbývající entity.
   ha_discovery_trigger_app_id:
     name: ID aplikace pro spouštěče
     description: >-

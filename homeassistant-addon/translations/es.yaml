@@ -208,8 +208,8 @@ configuration:
       Crea una entidad de Home Assistant la primera vez que un grupo de
       iluminación aparece en el bus aunque falte en el proyecto de Toolkit.
       Desactivado por defecto: las direcciones de escena y grupos no usados
-      también aparecen, y hay que borrar a mano las configs retenidas en el
-      broker.
+      también aparecen en el flujo de eventos. Al desactivar esto se retiran
+      esas entidades sobrantes.
   ha_discovery_trigger_app_id:
     name: ID de aplicación para triggers
     description: >-
