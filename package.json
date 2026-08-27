@@ -83,7 +83,8 @@
     "testPathIgnorePatterns": [
       "<rootDir>/node_modules/",
       "<rootDir>/.claude/",
-      "<rootDir>/.worktrees/"
+      "<rootDir>/.worktrees/",
+      "<rootDir>/tests/perf/"
     ],
     "collectCoverageFrom": [
       "src/**/*.js",
