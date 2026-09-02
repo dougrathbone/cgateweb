@@ -24,6 +24,15 @@ describe('cgateweb-project-serial-fixup (issue #28)', () => {
     let tmpDir;
     let dbPath;
 
+    // Compile the sql.js WASM module once, up front. Instantiating it costs
+    // seconds on a loaded CI runner with coverage instrumentation, and without
+    // this the whole cost landed on whichever test ran first, flaking it
+    // against the default 5s per-test timeout while every later test reused
+    // the cached module and passed.
+    beforeAll(async () => {
+        await initSqlJs();
+    }, 60000);
+
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'serial-fixup-'));
         dbPath = path.join(tmpDir, 'TEST.db');
