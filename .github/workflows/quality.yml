@@ -533,8 +533,16 @@ jobs:
           exit 0
         fi
 
+        # A leg that skipped while run-expensive is true did not opt out: its
+        # `needs` failed, so the unit tests (or another upstream) went red and
+        # the leg never ran. Say that rather than blaming the integration
+        # tests, which reads as a C-Gate failure and sends you to the wrong log.
+        if [[ "$DOWNLOAD_RESULT" == "skipped" ]]; then
+          echo "::error::The download-mode C-Gate integration legs never ran because an upstream job failed. Check the unit test job."
+          exit 1
+        fi
         if [[ "$DOWNLOAD_RESULT" != "success" ]]; then
-          echo "::error::One or more download-mode C-Gate integration tests failed."
+          echo "::error::One or more download-mode C-Gate integration tests failed (result: ${DOWNLOAD_RESULT})."
           exit 1
         fi
         if [[ "$REQUIRE_UPLOAD" == "true" ]]; then
