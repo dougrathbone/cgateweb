@@ -11,29 +11,40 @@ const EventEmitter = require('events');
 // its subscriptions attached and events fired by a later test also run every
 // earlier test's handlers against a half-torn-down bridge.
 const mockConnectionPool = new EventEmitter();
+
+function setPoolHealthyCount(count) {
+    const connections = [];
+    const healthy = new Set();
+    for (let i = 0; i < count; i++) {
+        const conn = { poolIndex: i };
+        connections.push(conn);
+        healthy.add(conn);
+    }
+    mockConnectionPool.connections = connections;
+    mockConnectionPool.healthyConnections = healthy;
+}
+
 mockConnectionPool.start = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = true;
-    mockConnectionPool.healthyConnections = { size: 3 };
-    mockConnectionPool.connections = [{ poolIndex: 0 }, { poolIndex: 1 }, { poolIndex: 2 }];
+    setPoolHealthyCount(3);
     setImmediate(() => mockConnectionPool.emit('started', { healthy: 3, total: 3 }));
 });
 mockConnectionPool.stop = jest.fn().mockImplementation(async () => {
     mockConnectionPool.isStarted = false;
-    mockConnectionPool.healthyConnections = { size: 0 };
-    mockConnectionPool.connections = [];
+    setPoolHealthyCount(0);
     setImmediate(() => mockConnectionPool.emit('stopped'));
 });
 mockConnectionPool.execute = jest.fn().mockImplementation(async () => true);
 mockConnectionPool.getStats = jest.fn(() => ({
     poolSize: 3,
-    totalConnections: 3,
-    healthyConnections: 3,
+    totalConnections: mockConnectionPool.connections.length,
+    healthyConnections: mockConnectionPool.healthyConnections.size,
+    writableConnections: mockConnectionPool.healthyConnections.size,
     isStarted: mockConnectionPool.isStarted || false,
     isShuttingDown: false
 }));
 mockConnectionPool.isStarted = false;
-mockConnectionPool.healthyConnections = { size: 0 };
-mockConnectionPool.connections = [];
+setPoolHealthyCount(0);
 
 jest.mock('../src/cgateConnectionPool', () => {
     return jest.fn().mockImplementation(() => mockConnectionPool);
@@ -45,8 +56,6 @@ mockMqttClient.connect = jest.fn();
 mockMqttClient.subscribe = jest.fn((topic, options, callback) => callback ? callback(null) : null);
 mockMqttClient.publish = jest.fn();
 mockMqttClient.end = jest.fn();
-mockMqttClient.removeAllListeners = jest.fn();
-mockMqttClient.on = jest.fn(); 
 jest.mock('mqtt', () => ({
     connect: jest.fn(() => mockMqttClient) 
 }));
@@ -74,15 +83,15 @@ describe('CgateWebBridge', () => {
         mockConnectionPool.execute.mockClear();
         mockConnectionPool.getStats.mockClear();
         mockConnectionPool.isStarted = false;
-        mockConnectionPool.healthyConnections = { size: 0 };
-        mockConnectionPool.connections = [];
+        setPoolHealthyCount(0);
         
-        // Reset MQTT mocks
-        mockMqttClient.removeAllListeners.mockClear();
+        // Reset MQTT mocks. Leave EventEmitter.on intact so MqttManager.connect()
+        // actually wires client events; clear listeners so they do not leak
+        // across tests that share this module-scoped client.
+        mockMqttClient.removeAllListeners();
         mockMqttClient.subscribe.mockClear();
         mockMqttClient.publish.mockClear();
         mockMqttClient.end.mockClear();
-        mockMqttClient.on.mockClear();
         const mqtt = require('mqtt');
         mqtt.connect.mockClear();
 
@@ -182,6 +191,7 @@ describe('CgateWebBridge', () => {
         // listeners have to be dropped explicitly (bridge.stop() would do it,
         // but the teardown above deliberately stops short of a full stop()).
         mockConnectionPool.removeAllListeners();
+        mockMqttClient.removeAllListeners();
 
         jest.clearAllTimers();
         mockConsoleWarn.mockClear();
@@ -390,6 +400,19 @@ describe('CgateWebBridge', () => {
                 cmdPoolStartSpy.mockRestore();
                 evtConnectSpy.mockRestore();
             });
+
+            it('wires MQTT client events through to the manager', async () => {
+                await bridge.start();
+
+                const connected = new Promise((resolve) => {
+                    bridge.mqttManager.once('connect', resolve);
+                });
+                mockMqttClient.emit('connect');
+                await connected;
+
+                expect(bridge.mqttManager.connected).toBe(true);
+                expect(mockMqttClient.subscribe).toHaveBeenCalled();
+            });
         });
 
         describe('stop()', () => {
@@ -487,7 +510,7 @@ describe('CgateWebBridge', () => {
                 bridge.settings.getallperiod = 5; // 5 seconds (not milliseconds)
                 bridge.mqttManager.connected = true;
                 bridge.commandConnectionPool.isStarted = true;
-                bridge.commandConnectionPool.healthyConnections = { size: 3 };
+                setPoolHealthyCount(3);
                 bridge.eventConnection.connected = true;
 
                 bridge._handleAllConnected();
@@ -507,7 +530,7 @@ describe('CgateWebBridge', () => {
                 bridge.settings.ha_discovery_enabled = true;
                 bridge.mqttManager.connected = true;
                 bridge.commandConnectionPool.isStarted = true;
-                bridge.commandConnectionPool.healthyConnections = { size: 3 };
+                setPoolHealthyCount(3);
                 bridge.eventConnection.connected = true;
 
                 // Mock haDiscovery since it gets created in _handleAllConnected
@@ -585,7 +608,7 @@ describe('CgateWebBridge', () => {
                 isStarted: true,
                 isShuttingDown: false
             });
-            mockConnectionPool.healthyConnections = { size: 0 };
+            setPoolHealthyCount(0);
 
             mockConnectionPool.emit('allConnectionsUnhealthy');
 
@@ -1601,6 +1624,80 @@ describe('CgateWebBridge', () => {
                     { retain: false }
                 );
             });
+
+            it('_getAdaptiveQueueIntervalMs halves when queue depth exceeds writableConnections * 20', () => {
+                bridge.settings.messageinterval = 200;
+                bridge.settings.messageIntervalMinMs = 1;
+                bridge.settings.commandMinIntervalMs = 1;
+                bridge.settings.commandMinIntervalFloorMs = 1;
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 2,
+                    writableConnections: 2
+                }));
+                Object.defineProperty(bridge.cgateCommandQueue, 'length', { get: () => 41, configurable: true });
+                expect(bridge._getAdaptiveQueueIntervalMs()).toBe(50); // (200 / 2) * 0.5
+            });
+
+            it('stalls the real command queue until the mocked pool recovers', async () => {
+                jest.useFakeTimers();
+                try {
+                mockConnectionPool.isStarted = true;
+                setPoolHealthyCount(3);
+                mockConnectionPool.getStats.mockImplementation(() => ({
+                    isStarted: mockConnectionPool.isStarted,
+                    isShuttingDown: false,
+                    healthyConnections: mockConnectionPool.healthyConnections.size,
+                    writableConnections: mockConnectionPool.healthyConnections.size
+                }));
+                mockConnectionPool.execute.mockImplementation(async () => true);
+
+                bridge.settings.messageinterval = 50;
+                bridge.settings.maxQueueSize = 3;
+                bridge.settings.queueRetryWhenBlockedMinMs = 20;
+                bridge.settings.queueRetryWhenBlockedCapMs = 20;
+                bridge._buildQueues();
+
+                const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+
+                bridge.cgateCommandQueue.add('CMD_A\n');
+                await Promise.resolve();
+                await Promise.resolve();
+                expect(mockConnectionPool.execute).toHaveBeenCalledWith('CMD_A\n');
+
+                mockConnectionPool.execute.mockClear();
+                mockConnectionPool.healthyConnections.clear();
+
+                bridge.cgateCommandQueue.add('CMD_B\n');
+                await Promise.resolve();
+                jest.advanceTimersByTime(200);
+                await Promise.resolve();
+                expect(mockConnectionPool.execute).not.toHaveBeenCalled();
+                expect(bridge.cgateCommandQueue.length).toBeGreaterThan(0);
+
+                bridge.cgateCommandQueue.add('CMD_C\n');
+                bridge.cgateCommandQueue.add('CMD_D\n');
+                bridge.cgateCommandQueue.add('CMD_E\n');
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'hello/cgateweb/warnings',
+                    expect.stringContaining('C-Gate command queue full'),
+                    { retain: false }
+                );
+
+                setPoolHealthyCount(3);
+                for (let i = 0; i < 20 && bridge.cgateCommandQueue.length > 0; i++) {
+                    jest.advanceTimersByTime(50);
+                    await Promise.resolve();
+                    await Promise.resolve();
+                }
+
+                expect(mockConnectionPool.execute).toHaveBeenCalled();
+                expect(bridge.cgateCommandQueue.length).toBe(0);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
         });
 
         describe('EventPublisher direct publish', () => {
