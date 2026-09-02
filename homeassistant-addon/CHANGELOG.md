@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.0] - 2026-09-02
+
+### Changed
+
+- Internal: command connections no longer leave a leftover connect timer, and add-on image CI now fails the merge check if any architecture build fails.
+
 ## [1.33.0] - 2026-08-27
 
 ### Added
