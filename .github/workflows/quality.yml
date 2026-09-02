@@ -199,7 +199,10 @@ jobs:
 
   addon-image:
     timeout-minutes: 30
-    name: Build add-on image (${{ matrix.arch }})
+    # Display name is not the required check. Branch protection requires
+    # "Build add-on image (amd64)", which is the aggregator below so that a
+    # 32-bit (or any other arch) failure cannot merge while amd64 is green.
+    name: Add-on image (${{ matrix.arch }})
     runs-on: ubuntu-latest
     # Build the real add-on image for every architecture the add-on ships to,
     # so arch-specific breakage (base image tags, native modules under
@@ -207,9 +210,8 @@ jobs:
     # builds run under QEMU binfmt emulation.
     #
     # The JOB always runs even when run-expensive is false, and gates its steps
-    # instead. "Build add-on image (amd64)" is a required status check, and a
-    # skipped job does not satisfy one - skipping the job outright would leave
-    # every docs-only PR permanently unmergeable.
+    # instead. A skipped job does not satisfy a required check - skipping this
+    # outright would leave every docs-only PR permanently unmergeable.
     strategy:
       fail-fast: false
       matrix:
@@ -311,6 +313,50 @@ jobs:
           test -d /app/node_modules
           node -e "require(\"/app/package.json\")"
         '
+
+  # Required status check. The name is load-bearing: master's branch protection
+  # already requires "Build add-on image (amd64)". The matrix jobs above are
+  # not individually required; this aggregator fails if any architecture
+  # failed, which is what makes i386/armv7/armhf/aarch64 merge-blocking
+  # without a branch-protection API change.
+  #
+  # Same skip contract as addon-image itself: the matrix jobs still run (and
+  # succeed) when run-expensive is false, so this job stays green on docs PRs.
+  addon-image-gate:
+    timeout-minutes: 5
+    name: Build add-on image (amd64)
+    runs-on: ubuntu-latest
+    needs: addon-image
+    if: always()
+    steps:
+    - name: Verify every architecture image build passed
+      env:
+        MATRIX_RESULT: ${{ needs.addon-image.result }}
+        RUN_EXPENSIVE: ${{ inputs.run-expensive }}
+        REASON: ${{ inputs.expensive-skip-reason }}
+      run: |
+        echo "add-on image matrix: $MATRIX_RESULT (run-expensive=${RUN_EXPENSIVE})"
+
+        if [[ "$MATRIX_RESULT" == "failure" || "$MATRIX_RESULT" == "cancelled" ]]; then
+          echo "::error::One or more add-on image builds failed (${MATRIX_RESULT})."
+          exit 1
+        fi
+
+        if [[ "$RUN_EXPENSIVE" != "true" ]]; then
+          echo "::notice::Add-on image builds skipped: ${REASON}."
+          {
+            echo "### Add-on image builds skipped"
+            echo ""
+            echo "${REASON}, so the built image cannot have changed."
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        if [[ "$MATRIX_RESULT" != "success" ]]; then
+          echo "::error::Add-on image matrix result was '${MATRIX_RESULT}', expected success."
+          exit 1
+        fi
+        echo "All architecture add-on image builds passed."
 
   # Boot the full managed stack against each openly-downloadable C-Gate version
   # so version-specific regressions (e.g. the 3.7.x TREEXML addressing bug, #23)

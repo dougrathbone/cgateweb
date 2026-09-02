@@ -45,7 +45,7 @@ That job — and the whole quality gate — lives in `.github/workflows/quality.
 Two consequences worth knowing before touching it:
 
 - **Check names are `quality / <job name>`** and several are required status checks on master. Renaming a job in `quality.yml` breaks branch protection until the required contexts are updated to match (`gh api -X PATCH repos/dougrathbone/cgateweb/branches/master/protection/required_status_checks`).
-- **Docs-only changes skip the image builds and integration legs.** `ci.yml`'s `changes` job decides, and passes `run-expensive` in. `addon-image` gates its *steps* rather than skipping the job, because a skipped job does not satisfy a required check — skipping it outright would make every docs PR unmergeable. The integration legs are not individually required, so those skip wholesale and the aggregator reports why.
+- **Docs-only changes skip the image builds and integration legs.** `ci.yml`'s `changes` job decides, and passes `run-expensive` in. `addon-image` gates its *steps* rather than skipping the job, because a skipped job does not satisfy a required check — skipping it outright would make every docs PR unmergeable. The required image check is `quality / Build add-on image (amd64)`, implemented as an aggregator over the whole arch matrix (not the amd64 cell alone), so a 32-bit image failure cannot merge. The integration legs are not individually required, so those skip wholesale and the aggregator reports why.
 
 After tagging, `hacs-distribution.yml` creates GitHub Releases on **both** the distribution repo and this source repo (notes from `homeassistant-addon/CHANGELOG.md`). You no longer need to backfill the source release by hand.
 

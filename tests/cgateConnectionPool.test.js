@@ -541,6 +541,28 @@ describe('CgateConnectionPool', () => {
 
             await smallPool.stop();
         });
+
+        it('clears the establishment timeout so a later timer fire cannot reject a live connection', async () => {
+            CgateConnection.mockImplementation(() => makeMockConnection());
+            const smallPool = new CgateConnectionPool('command', '192.168.1.100', 20023, {
+                ...mockSettings,
+                connectionPoolSize: 1,
+                connectionTimeout: 2000
+            });
+            const clearSpy = jest.spyOn(global, 'clearTimeout');
+
+            await smallPool.start();
+            expect(smallPool.healthyConnections.size).toBe(1);
+            expect(clearSpy).toHaveBeenCalled();
+
+            jest.advanceTimersByTime(5000);
+            await Promise.resolve();
+            expect(smallPool.healthyConnections.size).toBe(1);
+            expect(smallPool.healthyConnections.has(smallPool.connections[0])).toBe(true);
+
+            clearSpy.mockRestore();
+            await smallPool.stop();
+        });
     });
 
     describe('stop()', () => {

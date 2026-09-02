@@ -279,7 +279,26 @@ class CgateConnectionPool extends EventEmitter {
             
             connection.poolIndex = index;
             connection.lastActivity = Date.now();
-            
+
+            // Wrap resolve/reject BEFORE connect() and BEFORE the 'connect'
+            // handler. connect() can emit synchronously (tests do; a reused
+            // socket can too), and assigning the wrappers afterwards left the
+            // establishment timer running after a successful connect.
+            let settled = false;
+            const timeoutId = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                reject(new Error(
+                    `Connection ${index} establishment timed out after ${this.connectionTimeout}ms`
+                ));
+            }, this.connectionTimeout);
+            const finish = (cb) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeoutId);
+                cb();
+            };
+
             // Connection event handlers
             connection.on('connect', () => {
                 this.logger.info(`Pool connection ${index} established`);
@@ -287,7 +306,7 @@ class CgateConnectionPool extends EventEmitter {
                 this.connectionInFlight.set(connection, 0);
                 connection.lastActivity = Date.now();
                 this.emit('connectionAdded', { index, connection });
-                resolve(connection);
+                finish(() => resolve(connection));
             });
             
             connection.on('close', (hadError) => {
@@ -335,25 +354,7 @@ class CgateConnectionPool extends EventEmitter {
             
             // Store connection and attempt to connect
             this.connections[index] = connection;
-            
-            // Set timeout for connection establishment
-            const timeoutId = setTimeout(() => {
-                reject(new Error(`Connection ${index} establishment timed out after ${this.connectionTimeout}ms`));
-            }, this.connectionTimeout);
-            
             connection.connect();
-            
-            // Clear timeout on resolution
-            const originalResolve = resolve;
-            const originalReject = reject;
-            resolve = (...args) => {
-                clearTimeout(timeoutId);
-                originalResolve(...args);
-            };
-            reject = (...args) => {
-                clearTimeout(timeoutId);
-                originalReject(...args);
-            };
         });
     }
     
