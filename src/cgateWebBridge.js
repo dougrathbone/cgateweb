@@ -203,9 +203,10 @@ class CgateWebBridge {
         this.discoveredNetworks = null;
 
         // Post-sync (762) bookkeeping per network: when the last refresh ran,
-        // how many notifications have arrived since, and the deferred-run
+        // when the current burst of notifications started, how many distinct
+        // syncs have been reported since the last refresh, and the deferred-run
         // timer. See _handleNetworkSyncComplete.
-        /** @type {Map<string, {lastRunAt: number, notifications: number, deferHandle: (NodeJS.Timeout|null)}>} */
+        /** @type {Map<string, {lastRunAt: number, burstStartedAt: number, syncs: number, deferHandle: (NodeJS.Timeout|null)}>} */
         this._networkSyncState = new Map();
 
         // Owns lifecycle state + readiness reason; emits 'readinessChanged' which
@@ -894,29 +895,33 @@ class CgateWebBridge {
 
         let state = this._networkSyncState.get(key);
         if (!state) {
-            state = { lastRunAt: 0, notifications: 0, deferHandle: null };
+            state = { lastRunAt: 0, burstStartedAt: 0, syncs: 0, deferHandle: null };
             this._networkSyncState.set(key, state);
         }
-        state.notifications++;
+
+        // Copies of one sync from the other pooled connections and the event
+        // port. Measured from the start of the burst rather than from the last
+        // copy, so a network that reports faster than the window cannot keep
+        // extending it and starve the refresh entirely.
+        if (state.burstStartedAt > 0 && now - state.burstStartedAt < coalesceMs) {
+            this.logger.debug(`Duplicate network ${key} sync notification; already counted`);
+            return false;
+        }
+        state.burstStartedAt = now;
+        state.syncs++;
 
         if (state.deferHandle) {
-            this.logger.debug(`Network ${key} sync notification folded into the pending post-sync refresh`);
+            this.logger.debug(`Network ${key} sync folded into the pending post-sync refresh`);
             return false;
         }
 
         const sinceLastRun = now - state.lastRunAt;
-        if (state.lastRunAt > 0 && sinceLastRun < coalesceMs) {
-            // The same sync arriving on another pooled connection.
-            this.logger.debug(`Duplicate network ${key} sync notification ${sinceLastRun}ms after the last refresh; ignoring`);
-            return false;
-        }
-
         if (state.lastRunAt > 0 && sinceLastRun < minIntervalMs) {
             const waitMs = minIntervalMs - sinceLastRun;
             this.warn(
-                `C-Bus network ${key} has reported sync complete ${state.notifications} times since the last refresh ` +
-                `(${Math.round(sinceLastRun / 1000)}s ago); deferring the next one ${Math.round(waitMs / 1000)}s to avoid ` +
-                'flooding C-Gate. Repeated syncs usually mean the CNI/PCI interface is dropping.'
+                `C-Bus network ${key} has reported sync complete ${state.syncs} times since the last refresh ` +
+                `(${Math.round(sinceLastRun / 1000)}s ago); deferring the next refresh ${Math.round(waitMs / 1000)}s to ` +
+                'avoid flooding C-Gate. Repeated syncs usually mean the CNI/PCI interface is dropping.'
             );
             state.deferHandle = setTimeout(() => {
                 state.deferHandle = null;
@@ -926,8 +931,6 @@ class CgateWebBridge {
             return false;
         }
 
-        state.lastRunAt = now;
-        state.notifications = 1;
         return true;
     }
 
@@ -947,7 +950,7 @@ class CgateWebBridge {
         const state = this._networkSyncState.get(String(networkId));
         if (state) {
             state.lastRunAt = Date.now();
-            state.notifications = 0;
+            state.syncs = 0;
         }
         if (this.haDiscovery) {
             this.haDiscovery.handleNetworkSyncComplete(networkId);

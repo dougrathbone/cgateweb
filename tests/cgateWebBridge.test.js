@@ -1080,6 +1080,28 @@ describe('CgateWebBridge', () => {
                     }
                 });
 
+                it('keeps refreshing at the interval while a network reports faster than the coalesce window', () => {
+                    // The pathological case: an interface flapping so fast that
+                    // every sync looks like a duplicate of the last. It must
+                    // still get one refresh per minimum interval rather than
+                    // being starved of them for ever.
+                    jest.useFakeTimers();
+                    try {
+                        const spies = postSyncSpies();
+
+                        for (let elapsed = 0; elapsed <= 125000; elapsed += 1000) {
+                            bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                            jest.advanceTimersByTime(1000);
+                        }
+
+                        // ~2 minutes of continuous syncs: the initial refresh
+                        // plus one per 60s interval, not one per sync.
+                        expect(spies.discovery.mock.calls.length).toBe(3);
+                    } finally {
+                        jest.useRealTimers();
+                    }
+                });
+
                 it('warns that the interface is unstable when it starts deferring', () => {
                     jest.useFakeTimers();
                     try {
