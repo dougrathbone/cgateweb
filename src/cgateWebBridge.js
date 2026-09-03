@@ -202,6 +202,13 @@ class CgateWebBridge {
         // by the init service and by _resolveGetallNetworks; starts unset.
         this.discoveredNetworks = null;
 
+        // Post-sync (762) bookkeeping per network: when the last refresh ran,
+        // when the current burst of notifications started, how many distinct
+        // syncs have been reported since the last refresh, and the deferred-run
+        // timer. See _handleNetworkSyncComplete.
+        /** @type {Map<string, {lastRunAt: number, burstStartedAt: number, syncs: number, deferHandle: (NodeJS.Timeout|null)}>} */
+        this._networkSyncState = new Map();
+
         // Owns lifecycle state + readiness reason; emits 'readinessChanged' which
         // the bridge subscribes to (after haBridgeDiagnostics is built) to drive
         // the hello/cgateweb status publish and diagnostics refresh.
@@ -314,7 +321,9 @@ class CgateWebBridge {
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
             onNetworkSyncComplete: (networkId) => this._handleNetworkSyncComplete(networkId),
+            getNetworkInterfaceState: (networkId) => this.networkInterfaceMonitor.getNetwork(networkId),
             maxPendingTreeMessages: resolveSetting(this.settings, 'commandResponseMaxPendingTreeMessages'),
+            errorRepeatWindowMs: resolveSetting(this.settings, 'commandErrorRepeatWindowMs'),
             logger: this.logger
         });
 
@@ -597,6 +606,7 @@ class CgateWebBridge {
 
         this.initializationService.stop();
         this.stateResyncCoordinator.dispose();
+        this._clearNetworkSyncTimers();
         this.haBridgeDiagnostics.stop();
         this.staleDeviceDetector.stop();
 
@@ -845,23 +855,121 @@ class CgateWebBridge {
     /**
      * Single entry point for C-Gate's "Network sync ok" (762), reached from
      * both the event-port line (_processEventLine) and the command-port async
-     * event (CommandResponseProcessor onNetworkSyncComplete). Runs every
-     * post-sync effect exactly once per notification:
+     * event (CommandResponseProcessor onNetworkSyncComplete).
+     *
+     * One network sync produces several notifications - one per pooled command
+     * connection, since each subscribes at event level 6, plus the event port -
+     * and a network whose CNI/PCI link is flapping re-syncs every few seconds.
+     * The post-sync work is not free (a TREEXML, a level getall, a security
+     * status_request pair and a clock refresh, the last two being real C-Bus
+     * traffic), so running it per notification turned one unstable interface
+     * into a permanent flood that C-Gate answered with 408s on everything,
+     * including the switch commands the user was pressing.
+     *
+     * So notifications are collapsed here rather than at each effect: repeats
+     * within networkSyncCoalesceMs are the same sync arriving on the other
+     * connections, and anything sooner than networkSyncMinIntervalMs after the
+     * last refresh is deferred to that boundary and collapsed into one run.
+     */
+    _handleNetworkSyncComplete(networkId) {
+        this.logger.info(`C-Gate event: network ${networkId} sync complete`);
+        if (this._acceptNetworkSyncNotification(networkId)) {
+            this._runPostNetworkSyncRefresh(networkId);
+        }
+    }
+
+    /**
+     * Rate-limits post-sync refreshes for one network. Returns true when the
+     * caller should refresh now; false when this notification was a duplicate
+     * of the last sync or has been deferred into a pending run.
+     *
+     * @param {string} networkId
+     * @returns {boolean}
+     * @private
+     */
+    _acceptNetworkSyncNotification(networkId) {
+        const key = String(networkId);
+        const now = Date.now();
+        const coalesceMs = resolveSetting(this.settings, 'networkSyncCoalesceMs');
+        const minIntervalMs = resolveSetting(this.settings, 'networkSyncMinIntervalMs');
+
+        let state = this._networkSyncState.get(key);
+        if (!state) {
+            state = { lastRunAt: 0, burstStartedAt: 0, syncs: 0, deferHandle: null };
+            this._networkSyncState.set(key, state);
+        }
+
+        // Copies of one sync from the other pooled connections and the event
+        // port. Measured from the start of the burst rather than from the last
+        // copy, so a network that reports faster than the window cannot keep
+        // extending it and starve the refresh entirely.
+        if (state.burstStartedAt > 0 && now - state.burstStartedAt < coalesceMs) {
+            this.logger.debug(`Duplicate network ${key} sync notification; already counted`);
+            return false;
+        }
+        state.burstStartedAt = now;
+        state.syncs++;
+
+        if (state.deferHandle) {
+            this.logger.debug(`Network ${key} sync folded into the pending post-sync refresh`);
+            return false;
+        }
+
+        const sinceLastRun = now - state.lastRunAt;
+        if (state.lastRunAt > 0 && sinceLastRun < minIntervalMs) {
+            const waitMs = minIntervalMs - sinceLastRun;
+            this.warn(
+                `C-Bus network ${key} has reported sync complete ${state.syncs} times since the last refresh ` +
+                `(${Math.round(sinceLastRun / 1000)}s ago); deferring the next refresh ${Math.round(waitMs / 1000)}s to ` +
+                'avoid flooding C-Gate. Repeated syncs usually mean the CNI/PCI interface is dropping.'
+            );
+            state.deferHandle = setTimeout(() => {
+                state.deferHandle = null;
+                this._runPostNetworkSyncRefresh(key);
+            }, waitMs);
+            if (typeof state.deferHandle.unref === 'function') state.deferHandle.unref();
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Runs every post-sync effect once for a network:
      *   - HA Discovery re-fetches the now fully-populated tree to pick up
      *     groups that were still empty (unsynced) at startup (issue #25)
      *   - security zone-state refresh, deduplicated inside the handler
      *     (one post-762 pair per network per session)
      *   - lighting level resync: any startup getall that ran before the sync
-     *     missed state (issue #44); debounced inside the coordinator so
-     *     repeated 762s collapse
+     *     missed state (issue #44); debounced inside the coordinator
+     *
+     * @param {string} networkId
+     * @private
      */
-    _handleNetworkSyncComplete(networkId) {
-        this.logger.info(`C-Gate event: network ${networkId} sync complete`);
+    _runPostNetworkSyncRefresh(networkId) {
+        const state = this._networkSyncState.get(String(networkId));
+        if (state) {
+            state.lastRunAt = Date.now();
+            state.syncs = 0;
+        }
         if (this.haDiscovery) {
             this.haDiscovery.handleNetworkSyncComplete(networkId);
         }
         this.securityEventHandler.requestStatusSync(networkId, 'sync');
         this.stateResyncCoordinator.requestResync('network-sync');
+    }
+
+    /**
+     * Cancel any deferred post-sync refresh (bridge shutdown).
+     * @private
+     */
+    _clearNetworkSyncTimers() {
+        for (const state of this._networkSyncState.values()) {
+            if (state.deferHandle) {
+                clearTimeout(state.deferHandle);
+                state.deferHandle = null;
+            }
+        }
     }
 
     /**

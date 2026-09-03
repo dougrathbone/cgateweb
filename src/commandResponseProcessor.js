@@ -22,6 +22,9 @@ const CGATE_TIMESTAMP_PREFIX = /^\d{8}-\d{6}(?:\.\d+)?\s+/;
 const CGATE_ASYNC_CHANNEL_PREFIX = /^#[esc]#\s+/;
 // Extracts the numeric network id from a C-Gate object path "//PROJECT/254 ...".
 const CGATE_NETWORK_PATH = /\/\/[^/]+\/(\d+)\b/;
+// Distinct command errors tracked for repeat collapsing before the tracker is
+// pruned. Generous: one entry per group of a large network still fits.
+const MAX_TRACKED_ERROR_REPEATS = 500;
 
 /**
  * Handles processing of C-Gate command responses.
@@ -41,10 +44,12 @@ class CommandResponseProcessor {
      * @param {Function} [options.onCommandError] - Callback for C-Gate command error responses
      * @param {Function} [options.onNetworkState] - Callback for network-level interface/state readings: (networkId, reading) => void
      * @param {Function} [options.onNetworkSyncComplete] - Callback for C-Gate 762 network-sync-complete events: (networkId) => void
+     * @param {Function} [options.getNetworkInterfaceState] - Last CNI/PCI reading for a network: (networkId) => ({online, interfaceState}|null)
      * @param {number} [options.maxPendingTreeMessages] - Cap on TREEXML fragments buffered before HA Discovery is ready
+     * @param {number} [options.errorRepeatWindowMs] - Window in which an identical command error is counted instead of logged again
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, maxPendingTreeMessages, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, getNetworkInterfaceState, maxPendingTreeMessages, errorRepeatWindowMs, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
@@ -63,9 +68,22 @@ class CommandResponseProcessor {
         // so the bridge can refresh entity levels with the tree now fully
         // populated. Signature: (networkId).
         this.onNetworkSyncComplete = onNetworkSyncComplete || null;
+        // Reads the CNI/PCI state the interface monitor last polled, so an
+        // error on a network whose C-Bus link is down can say so.
+        this.getNetworkInterfaceState = typeof getNetworkInterfaceState === 'function'
+            ? getNetworkInterfaceState
+            : null;
         // network/app pairs already reported as having no groups, so the
         // explanation is logged once rather than on every poll (#51).
         this._emptyApplicationsSeen = new Set();
+        // Identical command errors already logged: key → { loggedAt, count }.
+        // A C-Bus network that cannot be reached fails every command with the
+        // same 408, thousands of lines of it, which buries everything else.
+        this._errorRepeats = new Map();
+        const repeatWindow = Number(errorRepeatWindowMs);
+        this._errorRepeatWindowMs = Number.isFinite(repeatWindow) && repeatWindow >= 0
+            ? repeatWindow
+            : resolveSetting({}, 'commandErrorRepeatWindowMs');
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -269,6 +287,11 @@ class CommandResponseProcessor {
      * Discovery re-fetches it to pick up groups that were still empty
      * (unsynced) at startup (issue #25).
      *
+     * Every pooled command connection subscribes at event level 6, so C-Gate
+     * delivers one 762 once per connection and this runs pool-size times for
+     * a single network sync. Downstream handling has to be idempotent and
+     * rate-limited; see CgateWebBridge._handleNetworkSyncComplete.
+     *
      * Example payload: "//PROJECT/254 Network sync ok"
      */
     _processNetworkSyncComplete(statusData) {
@@ -278,10 +301,16 @@ class CommandResponseProcessor {
             this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${this._safeStatusData(data)}`);
             return;
         }
-        if (this._haDiscovery) this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
-        // The level refresh is independent of HA discovery: MQTT-only installs
-        // need their state topics repopulated after a sync too.
-        if (this.onNetworkSyncComplete) this.onNetworkSyncComplete(pathMatch[1]);
+        // One dispatch only. When the bridge has wired onNetworkSyncComplete it
+        // owns every post-sync effect, HA Discovery included, and rate-limits
+        // them per network; calling discovery from here as well doubled the
+        // tree re-fetches and bypassed that limit. Without the callback (an
+        // MQTT-only embedder) discovery is still refreshed directly.
+        if (this.onNetworkSyncComplete) {
+            this.onNetworkSyncComplete(pathMatch[1]);
+        } else if (this._haDiscovery) {
+            this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
+        }
     }
 
     /**
@@ -351,22 +380,94 @@ class CommandResponseProcessor {
                 case '401': hint = ' (Object Not Found or Unauthorized)'; isWarn = true; break;
                 case '404': hint = ' (Not Found - Check Object Path)'; isWarn = true; break;
                 case '406': hint = ' (Not Acceptable - Invalid Parameter Value)'; break;
+                // C-Gate accepted the command and could not carry it out on the
+                // bus. Almost always the C-Bus side rather than anything we
+                // sent, and it used to print with no explanation at all.
+                case '408': hint = ' (Operation Failed - C-Gate could not complete this on the C-Bus network)'; break;
                 case '500': hint = ' (Internal Server Error)'; break;
                 case '503': hint = ' (Service Unavailable)'; break;
             }
 
             const detail = statusData ? this._safeStatusData(statusData) : 'No details provided';
-            const message = `${baseMessage}${hint} - ${detail}`;
-            if (isWarn) {
-                this.logger.warn(message);
-            } else {
-                this.logger.error(message);
+            const repeat = this._trackErrorRepeat(`${responseCode}|${detail}`);
+            if (!repeat.suppressed) {
+                const message = `${baseMessage}${hint} - ${detail}${this._networkOutageContext(statusData)}${repeat.summary}`;
+                if (isWarn) {
+                    this.logger.warn(message);
+                } else {
+                    this.logger.error(message);
+                }
             }
         }
 
         if (this.onCommandError) {
             this.onCommandError(responseCode, statusData);
         }
+    }
+
+    /**
+     * Names the real fault when the failed object's network has a C-Bus
+     * interface that is known to be down: every command to that network fails
+     * until the CNI/PCI link comes back, and the response code alone does not
+     * say so.
+     *
+     * @param {string} statusData
+     * @returns {string} suffix for the log line, empty when nothing is known
+     * @private
+     */
+    _networkOutageContext(statusData) {
+        if (!this.getNetworkInterfaceState) return '';
+        const match = CGATE_NETWORK_PATH.exec(statusData || '');
+        if (!match) return '';
+        const reading = this.getNetworkInterfaceState(match[1]);
+        if (!reading || reading.online !== false) return '';
+        return ` — C-Bus network ${match[1]}'s interface is down (InterfaceState=${reading.interfaceState}), `
+            + 'so no command to it can complete until the CNI/PCI link is back.';
+    }
+
+    /**
+     * Collapses identical command errors: the first is logged, repeats inside
+     * errorRepeatWindowMs are counted, and the count rides on the next line
+     * that does get logged. An unreachable network fails every command with
+     * the same message, and thousands of identical lines hide the events that
+     * explain why.
+     *
+     * @param {string} key - response code plus redacted detail
+     * @returns {{suppressed: boolean, summary: string}}
+     * @private
+     */
+    _trackErrorRepeat(key) {
+        if (this._errorRepeatWindowMs <= 0) return { suppressed: false, summary: '' };
+        const now = Date.now();
+        const entry = this._errorRepeats.get(key);
+        if (entry && now - entry.loggedAt < this._errorRepeatWindowMs) {
+            entry.count++;
+            return { suppressed: true, summary: '' };
+        }
+
+        const repeats = entry ? entry.count : 0;
+        this._errorRepeats.set(key, { loggedAt: now, count: 0 });
+        this._pruneErrorRepeats(now);
+        return {
+            suppressed: false,
+            summary: repeats > 0
+                ? ` (plus ${repeats} identical error(s) in the last ${Math.round(this._errorRepeatWindowMs / 1000)}s)`
+                : ''
+        };
+    }
+
+    /**
+     * Keep the repeat tracker bounded: a misconfigured install can produce a
+     * distinct message per group.
+     * @param {number} now
+     * @private
+     */
+    _pruneErrorRepeats(now) {
+        if (this._errorRepeats.size <= MAX_TRACKED_ERROR_REPEATS) return;
+        for (const [key, entry] of this._errorRepeats) {
+            if (now - entry.loggedAt >= this._errorRepeatWindowMs) this._errorRepeats.delete(key);
+        }
+        if (this._errorRepeats.size > MAX_TRACKED_ERROR_REPEATS) this._errorRepeats.clear();
     }
 
     /**
