@@ -416,6 +416,20 @@ describe('LabelLoader', () => {
     });
 
     describe('watch / hot-reload', () => {
+        /**
+         * Wait for a real fs.watch event to have been delivered and debounced,
+         * giving up quietly after a margin no healthy run needs. Deliberately
+         * does not throw: the caller's assertion holds whether or not the
+         * watcher fired, and requiring it would just trade one timing
+         * dependency for another.
+         */
+        async function waitForWatcherReload(reloadSpy, timeoutMs = 2000) {
+            const deadline = Date.now() + timeoutMs;
+            while (reloadSpy.mock.calls.length === 0 && Date.now() < deadline) {
+                await new Promise((resolve) => setTimeout(resolve, 25));
+            }
+        }
+
         it('should emit labels-changed when the file is modified', (done) => {
             const data = { version: 1, labels: { '254/56/10': 'Original' } };
             fs.writeFileSync(labelFile, JSON.stringify(data));
@@ -437,11 +451,19 @@ describe('LabelLoader', () => {
             }, 100);
         }, 5000);
 
-        it('save() emits labels-changed exactly once even with the watcher running (no double-fire)', (done) => {
-            // The watcher's SELF_WRITE_GRACE_MS exists to prevent a SECOND
-            // labels-changed firing from the fs.watch callback after our own
-            // write. The FIRST emit comes from save() directly so the in-
-            // process listeners (HA Discovery refresh, web UI SSE) wake up.
+        it('save() emits labels-changed exactly once even with the watcher running (no double-fire)', async () => {
+            // The FIRST emit comes from save() directly, so the in-process
+            // listeners (HA Discovery refresh, web UI SSE) wake up. A SECOND
+            // one, from the watcher seeing our own write, must not follow.
+            //
+            // Nothing here may depend on when the OS delivers that watcher
+            // event. The previous version asserted 800ms into the 1000ms grace
+            // window on the theory that a later event could not have been
+            // processed yet - but the grace is checked when the event is
+            // delivered, not when the reload runs, so an event-loop stall of
+            // about a second let the delivery escape the grace and the
+            // assertion land after the resulting second emit. That is the flake
+            // that failed the v1.34.0 release.
             const data = { version: 1, labels: { '254/56/10': 'Init' } };
             fs.writeFileSync(labelFile, JSON.stringify(data));
 
@@ -451,22 +473,24 @@ describe('LabelLoader', () => {
 
             const handler = jest.fn();
             loader.on('labels-changed', handler);
+            const reloads = jest.spyOn(loader, '_onFileChanged');
 
             loader.save({ '254/56/10': 'Via Save' });
 
-            // Assert INSIDE the grace window (1000ms): the direct emit from
-            // save() is synchronous, and every watcher event arriving before
-            // this point is suppressed by SELF_WRITE_GRACE_MS by construction,
-            // so a second emit is impossible regardless of event-loop lag.
-            // Waiting longer than the grace (as this test used to) makes the
-            // outcome depend on watcher delivery timing on loaded CI runners.
-            setTimeout(() => {
-                expect(handler).toHaveBeenCalledTimes(1);
-                expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Via Save');
-                loader.unwatch();
-                done();
-            }, 800);
-        }, 5000);
+            // save() emits synchronously, before any watcher event can exist.
+            expect(handler).toHaveBeenCalledTimes(1);
+
+            // Then give the real watcher its chance. Not required to fire -
+            // whether the grace suppresses it or it reloads identical data
+            // afterwards, the count is one either way, and inotify is not
+            // guaranteed in every sandbox - so this waits for it rather than
+            // asserting on it.
+            await waitForWatcherReload(reloads);
+
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Via Save');
+            loader.unwatch();
+        }, 15000);
 
         it('should do nothing when no file path is configured', () => {
             const loader = new LabelLoader(null);
@@ -585,6 +609,21 @@ describe('LabelLoader', () => {
             expect(handler.mock.calls[1][0].labels.get('254/56/10')).toBe('After Grace');
         });
 
+        // The grace window is checked when the OS delivers the event, so a
+        // delivery slower than the grace escapes it. Reloading is then
+        // unavoidable; emitting is not.
+        it('does not emit when a reload finds the file unchanged', () => {
+            const handler = jest.fn();
+            loader.save({ '254/56/10': 'Via Save' });
+            loader.on('labels-changed', handler);
+
+            jest.advanceTimersByTime(GRACE_MS + 1);
+            watchListener('change', path.basename(labelFile));
+            jest.advanceTimersByTime(DEBOUNCE_MS);
+
+            expect(handler).not.toHaveBeenCalled();
+        });
+
         it('ignores watch events for unrelated filenames', () => {
             const onChanged = jest.spyOn(loader, '_onFileChanged');
             watchListener('change', 'other-file.json');
@@ -642,7 +681,7 @@ describe('reload robustness (transient file absence, e.g. HA backup)', () => {
         expect(handler).not.toHaveBeenCalled();
     });
 
-    it('recovers on the retry when the file comes back', () => {
+    it('recovers on the retry when the file comes back unchanged, without a spurious emit', () => {
         const loader = seedLoader({ '254/56/10': 'Kitchen' });
         const handler = jest.fn();
         loader.on('labels-changed', handler);
@@ -655,8 +694,30 @@ describe('reload robustness (transient file absence, e.g. HA backup)', () => {
         fs.renameSync(`${labelFile}.bak`, labelFile);
         jest.runOnlyPendingTimers();
 
+        // The labels were held in memory throughout and the file came back
+        // identical, so there is nothing for HA Discovery or the web UI to redo.
+        expect(loader.getLabelsObject()).toEqual({ '254/56/10': 'Kitchen' });
+        expect(handler).not.toHaveBeenCalled();
+        expect(loader._reloadRetried).toBe(false);
+    });
+
+    it('emits on the retry when the file comes back different', () => {
+        const loader = seedLoader({ '254/56/10': 'Kitchen' });
+        const handler = jest.fn();
+        loader.on('labels-changed', handler);
+
+        fs.renameSync(labelFile, `${labelFile}.bak`);
+        loader._onFileChanged();
+
+        // A restore puts back an edited copy
+        fs.writeFileSync(labelFile, JSON.stringify({
+            version: 1,
+            labels: { '254/56/10': 'Kitchen Restored' }
+        }));
+        jest.runOnlyPendingTimers();
+
         expect(handler).toHaveBeenCalledTimes(1);
-        expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Kitchen');
+        expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Kitchen Restored');
     });
 
     it('keeps current labels when the file is briefly unreadable (partial write)', () => {

@@ -315,8 +315,19 @@ class LabelLoader extends EventEmitter {
         this._areas = new Map();
     }
 
+    /**
+     * Canonical form of everything a listener would act on, for deciding
+     * whether a reload actually changed anything.
+     * @returns {string}
+     * @private
+     */
+    _dataSignature() {
+        return JSON.stringify(this.getFullData());
+    }
+
     _onFileChanged() {
         const previousSize = this._labels.size;
+        const previousSignature = this._dataSignature();
         this.load({ keepOnError: true });
         if (this._lastLoadError) {
             // Backup tools (HA backup) briefly remove or replace the label
@@ -337,6 +348,19 @@ class LabelLoader extends EventEmitter {
             return;
         }
         this._reloadRetried = false;
+        // The grace window is checked when the OS delivers the watch event, so
+        // an event for our own save() that arrives later than the grace escapes
+        // it and reloads a file nobody edited. That happens whenever the event
+        // loop stalls for about a second - a busy Home Assistant host, or a
+        // loaded CI runner. Reloading identical data is harmless; telling every
+        // listener the labels changed is not, since it re-runs HA Discovery and
+        // pushes an SSE update for nothing. So the emit is gated on the data
+        // rather than on the clock, which also makes the grace a pure
+        // optimisation instead of the correctness mechanism.
+        if (this._dataSignature() === previousSignature) {
+            this.logger.debug('Label file reload produced no changes; not emitting labels-changed');
+            return;
+        }
         this.logger.info('Label file changed on disk, reloading...');
         this.logger.info(`Labels reloaded: ${previousSize} -> ${this._labels.size} labels`);
         this.emit('labels-changed', this.getLabelData());

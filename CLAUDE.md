@@ -49,6 +49,8 @@ Two consequences worth knowing before touching it:
 
 After tagging, `hacs-distribution.yml` creates GitHub Releases on **both** the distribution repo and this source repo (notes from `homeassistant-addon/CHANGELOG.md`). You no longer need to backfill the source release by hand.
 
+**A tag is not a release.** The tag push re-runs the whole quality gate, so anything red there — including a test that only fails sometimes — stops the publish *after* the version has been tagged and the changelog written. The source repo then looks released while Supervisor still offers the previous version, and nothing tells you. That is how v1.34.0 was tagged and never reached a single Home Assistant. Two scheduled jobs in `ci.yml` now cover it: `flake-watch` repeats the unit suite on an unchanged master (on Node 20 and 22) so a nondeterministic test is found overnight instead of at a release, and `distribution-drift-check` compares master's `homeassistant-addon/config.yaml` version against the one the distribution repo is serving — it fails when the version is tagged but not published, and only notes it when the tag is still pending. After any release, confirm the newest `Build and Deploy Home Assistant Addon` run is green rather than assuming the tag was enough.
+
 ### Home Assistant Add-on config.yaml Rules
 
 When modifying `homeassistant-addon/config.yaml`, follow these rules to prevent upgrade failures:
