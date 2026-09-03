@@ -18,6 +18,10 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 - **Failed C-Gate commands now say why.** A network with a dropped CNI or PCI link is named as the cause, and identical errors are counted rather than repeated thousands of times.
 - **Saving labels no longer refreshes discovery a second time on a busy system.**
 
+### Changed
+
+- Internal: the nightly build repeats the unit tests to catch tests that only fail sometimes, and checks that the add-on repository is serving the released version.
+
 ## [1.34.0] - 2026-09-02
 
 ### Changed
