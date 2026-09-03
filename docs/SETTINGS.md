@@ -434,6 +434,15 @@ Mostly standalone-only knobs. Defaults are chosen for a typical install; change 
 | `stateResyncOnMqttReconnect` | *standalone only* | boolean | `true` | Same, for an MQTT broker reconnect. |
 | `stateResyncDebounceMs` | *standalone only* | integer (ms) | `5000` | Collapse near-simultaneous triggers (a broker bounce that also restarts HA) into one pass. |
 
+### Network sync refresh
+
+C-Gate reports "Network sync ok" whenever a network finishes synchronising, which includes every time its CNI/PCI interface reopens. cgateweb answers with a post-sync refresh: a `TREEXML`, a level getall, the security `status_request` pair and a clock refresh. These bound how often that can happen, so a flapping interface cannot turn into a continuous flood of C-Gate and C-Bus traffic.
+
+| Setting | Add-on option | Type | Default | Notes |
+|---|---|---|---|---|
+| `networkSyncCoalesceMs` | *standalone only* | integer (ms) | `2000` | Window in which repeated sync-complete notifications for one network are treated as the same sync. Every pooled command connection reports it, so one sync arrives `connectionPoolSize` times plus once on the event port. |
+| `networkSyncMinIntervalMs` | *standalone only* | integer (ms) | `60000` | Minimum gap between post-sync refreshes for one network. Extra syncs inside the gap collapse into a single deferred refresh, and the first deferral logs a warning naming the unstable interface. Well below C-Gate's own hourly background sync, so a healthy network never reaches it. |
+
 ### Discovery tree retrieval
 
 C-Gate accepts connections on the command port before its networks have loaded, so an early `TREEXML` can return `401 Network not found`. These bound the retry budget.

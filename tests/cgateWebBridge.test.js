@@ -1020,6 +1020,113 @@ describe('CgateWebBridge', () => {
                 securitySpy.mockRestore();
             });
 
+            // Regression for the 1.33.0 field report: a network whose CNI kept
+            // dropping re-synced every few seconds, and every pooled command
+            // connection reported each sync, so the post-sync refresh (tree
+            // re-fetch, level getall, security status_request pair, clock
+            // refresh) ran continuously and C-Gate answered 408 to everything
+            // — including the user's own switch commands.
+            describe('post-sync refresh rate limiting', () => {
+                function postSyncSpies() {
+                    // syncUnlistedGroupDiscovery is reached when the resync
+                    // debounce fires under fake timers.
+                    bridge.haDiscovery = {
+                        handleNetworkSyncComplete: jest.fn(),
+                        syncUnlistedGroupDiscovery: jest.fn(),
+                        republishDiscoveryConfigs: jest.fn(() => 0),
+                        stop: jest.fn()
+                    };
+                    return {
+                        discovery: bridge.haDiscovery.handleNetworkSyncComplete,
+                        resync: jest.spyOn(bridge.stateResyncCoordinator, 'requestResync'),
+                        security: jest.spyOn(bridge.securityEventHandler, 'requestStatusSync')
+                    };
+                }
+
+                it('treats copies of one sync arriving on each pooled connection as one sync', () => {
+                    const spies = postSyncSpies();
+
+                    // Pool size 3 plus the event port: four notifications, one sync.
+                    for (let i = 0; i < 3; i++) bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                    bridge._processEventLine('762 //TestProject/254 Network sync ok');
+
+                    expect(spies.discovery).toHaveBeenCalledTimes(1);
+                    expect(spies.resync).toHaveBeenCalledTimes(1);
+                    expect(spies.security).toHaveBeenCalledTimes(1);
+                });
+
+                it('defers a later sync inside the minimum interval into a single refresh', () => {
+                    jest.useFakeTimers();
+                    try {
+                        const spies = postSyncSpies();
+
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                        expect(spies.discovery).toHaveBeenCalledTimes(1);
+
+                        // Past the coalesce window, so these are genuinely new
+                        // syncs — a flapping interface, not pool fan-out.
+                        jest.advanceTimersByTime(5000);
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                        jest.advanceTimersByTime(5000);
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                        expect(spies.discovery).toHaveBeenCalledTimes(1);
+
+                        // Both collapse into one refresh at the interval boundary.
+                        jest.advanceTimersByTime(60000);
+                        expect(spies.discovery).toHaveBeenCalledTimes(2);
+                        expect(spies.resync).toHaveBeenCalledTimes(2);
+                    } finally {
+                        jest.useRealTimers();
+                    }
+                });
+
+                it('warns that the interface is unstable when it starts deferring', () => {
+                    jest.useFakeTimers();
+                    try {
+                        const warnSpy = jest.spyOn(bridge, 'warn');
+                        postSyncSpies();
+
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                        jest.advanceTimersByTime(5000);
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+
+                        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('reported sync complete'));
+                        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('CNI/PCI'));
+                        warnSpy.mockRestore();
+                    } finally {
+                        jest.useRealTimers();
+                    }
+                });
+
+                it('rate-limits each network independently', () => {
+                    const spies = postSyncSpies();
+
+                    bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                    bridge.commandResponseProcessor.onNetworkSyncComplete('253');
+
+                    expect(spies.discovery).toHaveBeenCalledWith('254');
+                    expect(spies.discovery).toHaveBeenCalledWith('253');
+                    expect(spies.discovery).toHaveBeenCalledTimes(2);
+                });
+
+                it('cancels a deferred refresh on shutdown', async () => {
+                    jest.useFakeTimers();
+                    try {
+                        const spies = postSyncSpies();
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+                        jest.advanceTimersByTime(5000);
+                        bridge.commandResponseProcessor.onNetworkSyncComplete('254');
+
+                        await bridge.stop();
+                        jest.advanceTimersByTime(120000);
+
+                        expect(spies.discovery).toHaveBeenCalledTimes(1);
+                    } finally {
+                        jest.useRealTimers();
+                    }
+                });
+            });
+
             it('tolerates a 762 line when HA Discovery is not initialized', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 bridge.haDiscovery = null;

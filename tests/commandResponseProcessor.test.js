@@ -339,16 +339,17 @@ describe('CommandResponseProcessor', () => {
             expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
         });
 
-        it('produces both the discovery refresh and the callback with the same id on one 762', () => {
-            // The command-port path's full effect set: discovery re-fetch here,
-            // plus the callback the bridge uses for the security status sync
-            // and the level resync.
+        it('dispatches a 762 once, to the callback, when one is wired', () => {
+            // The callback owner runs every post-sync effect (discovery
+            // included) and rate-limits them per network. Refreshing discovery
+            // from here as well doubled the tree re-fetches and escaped that
+            // limit, which is how one flapping interface became a flood.
             const onNetworkSyncComplete = jest.fn();
             processor.onNetworkSyncComplete = onNetworkSyncComplete;
             processor._processCommandResponse('762', '//PROJECT/254 Network sync ok');
-            expect(mockHaDiscovery.handleNetworkSyncComplete).toHaveBeenCalledWith('254');
             expect(onNetworkSyncComplete).toHaveBeenCalledWith('254');
             expect(onNetworkSyncComplete).toHaveBeenCalledTimes(1);
+            expect(mockHaDiscovery.handleNetworkSyncComplete).not.toHaveBeenCalled();
         });
 
         it('should invoke onNetworkSyncComplete on 762 even with discovery disabled (haDiscovery null)', () => {

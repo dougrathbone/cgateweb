@@ -11,14 +11,14 @@ describe('defaultSettings — frozen baseline', () => {
         expect(defaultSettings).toStrictEqual(defaultSettingsSnapshot);
     });
 
-    it('exports the same 144 keys as the baseline', () => {
+    it('exports the same 146 keys as the baseline', () => {
         expect(Object.keys(defaultSettings).sort())
             .toEqual(Object.keys(defaultSettingsSnapshot).sort());
         // Bumping this count is only ever legitimate alongside a genuinely NEW
         // setting added to the fixture; a changed value for an existing key is
         // the thing this baseline exists to catch, and must never be "fixed"
         // in the fixture.
-        expect(Object.keys(defaultSettings)).toHaveLength(144);
+        expect(Object.keys(defaultSettings)).toHaveLength(146);
     });
 
     it('returns a fresh object so consumers cannot mutate the schema defaults', () => {

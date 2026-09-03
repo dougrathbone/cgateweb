@@ -1159,6 +1159,24 @@ const SETTINGS_SCHEMA = {
         description: 'Collapse near-simultaneous resync triggers (a broker bounce that also restarts HA) into a single pass.',
         reason: TUNING_ONLY_REASON
     },
+    networkSyncCoalesceMs: {
+        key: 'networkSyncCoalesceMs',
+        type: 'number',
+        default: 2000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Window in which repeated C-Gate network-sync-complete notifications for one network count as the same sync.',
+        reason: 'Every pooled command connection subscribes to async events at level 6, so one sync is reported once per connection (plus the event port). Without a window each copy ran the full post-sync refresh.'
+    },
+    networkSyncMinIntervalMs: {
+        key: 'networkSyncMinIntervalMs',
+        type: 'number',
+        default: 60000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Minimum gap between post-sync refreshes (tree re-fetch, level getall, security and clock refresh) for one network. Extra syncs inside the gap collapse into one deferred refresh.',
+        reason: 'C-Gate re-syncs a network every time its CNI/PCI interface reopens, so a flapping interface can report sync complete every few seconds. Refreshing each time floods C-Gate and the bus, which is how a single dropped interface turned into every command failing with 408. Well below C-Gate\'s own hourly background sync, so healthy networks never reach it.'
+    },
     haStatusTopic: {
         key: 'haStatusTopic',
         type: 'string',

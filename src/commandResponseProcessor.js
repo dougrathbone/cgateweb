@@ -269,6 +269,11 @@ class CommandResponseProcessor {
      * Discovery re-fetches it to pick up groups that were still empty
      * (unsynced) at startup (issue #25).
      *
+     * Every pooled command connection subscribes at event level 6, so C-Gate
+     * delivers one 762 once per connection and this runs pool-size times for
+     * a single network sync. Downstream handling has to be idempotent and
+     * rate-limited; see CgateWebBridge._handleNetworkSyncComplete.
+     *
      * Example payload: "//PROJECT/254 Network sync ok"
      */
     _processNetworkSyncComplete(statusData) {
@@ -278,10 +283,16 @@ class CommandResponseProcessor {
             this.logger.debug(`C-Gate sync complete event 762 (no network id parsed): ${this._safeStatusData(data)}`);
             return;
         }
-        if (this._haDiscovery) this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
-        // The level refresh is independent of HA discovery: MQTT-only installs
-        // need their state topics repopulated after a sync too.
-        if (this.onNetworkSyncComplete) this.onNetworkSyncComplete(pathMatch[1]);
+        // One dispatch only. When the bridge has wired onNetworkSyncComplete it
+        // owns every post-sync effect, HA Discovery included, and rate-limits
+        // them per network; calling discovery from here as well doubled the
+        // tree re-fetches and bypassed that limit. Without the callback (an
+        // MQTT-only embedder) discovery is still refreshed directly.
+        if (this.onNetworkSyncComplete) {
+            this.onNetworkSyncComplete(pathMatch[1]);
+        } else if (this._haDiscovery) {
+            this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
+        }
     }
 
     /**
