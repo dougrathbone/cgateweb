@@ -1421,6 +1421,15 @@ const SETTINGS_SCHEMA = {
         description: 'How many TREEXML fragments to buffer while HA Discovery is still starting. Further fragments are dropped (with one warning) until discovery is ready.',
         reason: TUNING_ONLY_REASON
     },
+    commandErrorRepeatWindowMs: {
+        key: 'commandErrorRepeatWindowMs',
+        type: 'number',
+        default: 60000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Window in which an identical C-Gate command error is counted rather than logged again; the count rides on the next line that is logged. 0 logs every occurrence.',
+        reason: 'A C-Bus network C-Gate cannot reach fails every command with the same error, thousands of lines of it, which buries the interface-state and sync events that explain why.'
+    },
     webDashboardMaxDevices: {
         key: 'webDashboardMaxDevices',
         type: 'number',

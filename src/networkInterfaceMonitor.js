@@ -78,6 +78,16 @@ class NetworkInterfaceMonitor {
     }
 
     /**
+     * The last reading for one network, or null when it has never been polled.
+     *
+     * @param {string|number} networkId
+     * @returns {{interfaceState:?string, state:?string, online:?boolean, since:number, lastChecked:number}|null}
+     */
+    getNetwork(networkId) {
+        return this._networks.get(String(networkId)) || null;
+    }
+
+    /**
      * @returns {Array<{network:string, interfaceState:?string, state:?string, online:?boolean, since:number, lastChecked:number}>}
      */
     getSnapshot() {

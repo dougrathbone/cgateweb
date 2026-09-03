@@ -597,6 +597,101 @@ describe('CommandResponseProcessor', () => {
             expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('LOGIN admin ***'));
         });
 
+        // 408 is what C-Gate answers with when it accepted the command but
+        // could not carry it out on the bus - the code an operator sees for
+        // every light while the CNI is down. It used to print bare.
+        it('explains a 408 as a failure on the C-Bus side', () => {
+            processor._processCommandErrorResponse('408', 'Operation failed: //5COGAN/254/56/8');
+            expect(mockLogger.error).toHaveBeenCalledWith(
+                expect.stringContaining('could not complete this on the C-Bus network')
+            );
+        });
+
+        it('names a down C-Bus interface as the reason a command failed', () => {
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                onObjectStatus: mockOnObjectStatus,
+                getNetworkInterfaceState: (networkId) => (
+                    networkId === '254' ? { online: false, interfaceState: 'closed' } : null
+                ),
+                logger: mockLogger
+            });
+
+            p._processCommandErrorResponse('408', 'Operation failed: //5COGAN/254/56/8');
+
+            const message = mockLogger.error.mock.calls[0][0];
+            expect(message).toContain("C-Bus network 254's interface is down (InterfaceState=closed)");
+        });
+
+        it('says nothing about the interface when it is up', () => {
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                onObjectStatus: mockOnObjectStatus,
+                getNetworkInterfaceState: () => ({ online: true, interfaceState: 'running' }),
+                logger: mockLogger
+            });
+
+            p._processCommandErrorResponse('408', 'Operation failed: //5COGAN/254/56/8');
+
+            expect(mockLogger.error.mock.calls[0][0]).not.toContain('interface is down');
+        });
+
+        describe('repeated identical errors', () => {
+            function processorWith(windowMs) {
+                return new CommandResponseProcessor({
+                    eventPublisher: mockEventPublisher,
+                    onObjectStatus: mockOnObjectStatus,
+                    errorRepeatWindowMs: windowMs,
+                    logger: mockLogger
+                });
+            }
+
+            it('logs the first and counts the rest, reporting the count on the next one', () => {
+                jest.useFakeTimers();
+                try {
+                    const p = processorWith(60000);
+                    const detail = 'Operation failed: //5COGAN/254/56/8';
+
+                    for (let i = 0; i < 50; i++) p._processCommandErrorResponse('408', detail);
+                    expect(mockLogger.error).toHaveBeenCalledTimes(1);
+
+                    jest.advanceTimersByTime(60001);
+                    p._processCommandErrorResponse('408', detail);
+
+                    expect(mockLogger.error).toHaveBeenCalledTimes(2);
+                    expect(mockLogger.error.mock.calls[1][0]).toContain('plus 49 identical error(s)');
+                } finally {
+                    jest.useRealTimers();
+                }
+            });
+
+            it('never collapses two different errors into one another', () => {
+                const p = processorWith(60000);
+                p._processCommandErrorResponse('408', 'Operation failed: //5COGAN/254/56/8');
+                p._processCommandErrorResponse('408', 'Operation failed: //5COGAN/254/56/9');
+                expect(mockLogger.error).toHaveBeenCalledTimes(2);
+            });
+
+            it('still fires onCommandError for every occurrence, logged or not', () => {
+                // The 401 poll-stopping logic hangs off this callback, so
+                // collapsing the log must not collapse the callback.
+                const onCommandError = jest.fn();
+                const p = processorWith(60000);
+                p.onCommandError = onCommandError;
+
+                for (let i = 0; i < 5; i++) p._processCommandErrorResponse('408', 'Operation failed: //P/254/56/8');
+
+                expect(mockLogger.error).toHaveBeenCalledTimes(1);
+                expect(onCommandError).toHaveBeenCalledTimes(5);
+            });
+
+            it('logs every occurrence when the window is zero', () => {
+                const p = processorWith(0);
+                for (let i = 0; i < 3; i++) p._processCommandErrorResponse('408', 'Operation failed: //P/254/56/8');
+                expect(mockLogger.error).toHaveBeenCalledTimes(3);
+            });
+        });
+
         it('should log error without hint for unknown error codes', () => {
             processor._processCommandErrorResponse('499', 'Unknown error');
 

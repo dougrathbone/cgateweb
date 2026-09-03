@@ -320,7 +320,9 @@ class CgateWebBridge {
             onObjectStatus: (event) => this.deviceStateManager.updateLevelFromEvent(event),
             onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
             onNetworkSyncComplete: (networkId) => this._handleNetworkSyncComplete(networkId),
+            getNetworkInterfaceState: (networkId) => this.networkInterfaceMonitor.getNetwork(networkId),
             maxPendingTreeMessages: resolveSetting(this.settings, 'commandResponseMaxPendingTreeMessages'),
+            errorRepeatWindowMs: resolveSetting(this.settings, 'commandErrorRepeatWindowMs'),
             logger: this.logger
         });
 

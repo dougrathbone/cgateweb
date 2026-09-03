@@ -442,6 +442,7 @@ C-Gate reports "Network sync ok" whenever a network finishes synchronising, whic
 |---|---|---|---|---|
 | `networkSyncCoalesceMs` | *standalone only* | integer (ms) | `2000` | Window in which repeated sync-complete notifications for one network are treated as the same sync. Every pooled command connection reports it, so one sync arrives `connectionPoolSize` times plus once on the event port. |
 | `networkSyncMinIntervalMs` | *standalone only* | integer (ms) | `60000` | Minimum gap between post-sync refreshes for one network. Extra syncs inside the gap collapse into a single deferred refresh, and the first deferral logs a warning naming the unstable interface. Well below C-Gate's own hourly background sync, so a healthy network never reaches it. |
+| `commandErrorRepeatWindowMs` | *standalone only* | integer (ms) | `60000` | Window in which an identical C-Gate command error is counted rather than logged again; the count rides on the next line that is logged. A network C-Gate cannot reach fails every command with the same error, and thousands of identical lines hide the interface and sync events that explain why. Set to `0` to log every occurrence. |
 
 ### Discovery tree retrieval
 
