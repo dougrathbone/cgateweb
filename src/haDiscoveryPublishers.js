@@ -1461,16 +1461,20 @@ class _HaDiscoveryPublishers {
      * panel, on the same device as the trouble sensors. State comes from
      * securityEventHandler via cbus/read/{net}/{app}/panel/state (HA alarm
      * states); the arm_not_ready blocking zone rides the attributes topic.
-     * The command topic only exists when cbus_security_control_enabled — an
-     * arm write carries no PIN on the bus, so control is opt-in (the entity
-     * is read-only without it, following the native-aircon precedent).
+     * Control is opt-in via cbus_security_control_enabled — an arm write
+     * carries no PIN on the bus. Read-only cannot mean "no command_topic",
+     * though: Home Assistant's MQTT alarm schema requires that key and throws
+     * away the whole config without it ("required key not provided @
+     * data['command_topic']"), so the entity never appeared at all for the
+     * default (control off) install. The topic is therefore always published
+     * and read-only is expressed by advertising no arm actions; the router
+     * refuses any write that arrives on it while control is off.
      *
-     * Home Assistant always renders a Disarm button once a command_topic exists
-     * (supported_features has no disarm flag to withhold). Whether it does
-     * anything depends on cbus_security_disarm_enabled, a second opt-in on top
-     * of control: C-Bus has no disarm command, so disarming means replaying the
-     * PIN through Emulate Keypad (#51), and that is a bigger decision than
-     * arming.
+     * Home Assistant always renders a Disarm button (supported_features has no
+     * disarm flag to withhold). Whether it does anything depends on
+     * cbus_security_disarm_enabled, a second opt-in on top of control: C-Bus
+     * has no disarm command, so disarming means replaying the PIN through
+     * Emulate Keypad (#51), and that is a bigger decision than arming.
      *
      * With disarm on, the panel uses Home Assistant's own keypad via
      * `code: REMOTE_CODE`. That is the variant worth having: HA shows a numeric
@@ -1485,8 +1489,8 @@ class _HaDiscoveryPublishers {
         const discoveryTopic = this._securityAlarmTopic(networkId, appId);
         const readBase = `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/panel`;
         const controlEnabled = !!this.settings.cbus_security_control_enabled;
-        // Disarm rides on control: without a command topic there is nothing to
-        // send a PIN over.
+        // Disarm rides on control: the router refuses every panel write while
+        // control is off, so there would be nothing for a PIN to reach.
         const disarmEnabled = controlEnabled && !!this.settings.cbus_security_disarm_enabled;
         // Same shape as disarm: a second opt-in riding on control. Withheld
         // from supported_features rather than accepted-and-ignored, so the
@@ -1510,10 +1514,17 @@ class _HaDiscoveryPublishers {
                 // action and it is what the panel actually offers, so the bypass
                 // appears on the alarm card itself instead of only as a separate
                 // button entity (#62). Present only with cbus_security_bypass_enabled.
-                supported_features: [
-                    'arm_home', 'arm_away', 'arm_night', 'arm_vacation',
-                    ...(bypassEnabled ? ['arm_custom_bypass'] : [])
-                ],
+                //
+                // Empty with control off: that is how a read-only panel is
+                // expressed now that the command topic has to be present
+                // regardless, so the card shows state without offering an arm
+                // the bridge would refuse.
+                supported_features: controlEnabled
+                    ? [
+                        'arm_home', 'arm_away', 'arm_night', 'arm_vacation',
+                        ...(bypassEnabled ? ['arm_custom_bypass'] : [])
+                    ]
+                    : [],
                 // Home Assistant defaults both of these to true and then refuses to
                 // publish an arm/disarm without a code — it pops "PIN required" and
                 // the command never reaches MQTT at all, which is how 1.23.1 shipped
@@ -1521,9 +1532,7 @@ class _HaDiscoveryPublishers {
                 // C-Bus, so there is never a code to enter for it.
                 code_arm_required: false,
                 code_disarm_required: disarmEnabled,
-                ...(controlEnabled && {
-                    command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`
-                }),
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/panel/arm`,
                 ...(disarmEnabled && {
                     // REMOTE_CODE: show HA's numeric keypad but skip HA's local
                     // validation, since only the panel can judge the PIN. A literal

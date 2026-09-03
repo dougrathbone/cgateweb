@@ -357,12 +357,39 @@ describe('HaDiscovery — app 208 security zones', () => {
             expect(payload.name).toBeNull(); // primary entity takes the device name
             expect(payload.state_topic).toBe('cbus/read/254/208/panel/state');
             expect(payload.json_attributes_topic).toBe('cbus/read/254/208/panel/attributes');
-            // arm_custom_bypass is absent here on purpose: it maps to the '#'
-            // force-arm keypress, which needs cbus_security_bypass_enabled.
-            expect(payload.supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation']);
+            // Read-only means no arm actions offered, not a missing command
+            // topic: Home Assistant requires command_topic on every MQTT alarm
+            // panel and discards the whole config without it.
+            expect(payload.supported_features).toEqual([]);
             expect(payload.device.identifiers).toEqual(['cgateweb_254_208_panel']);
             expect(payload.device.name).toBe('C-Bus Security Panel 254/208');
-            expect('command_topic' in payload).toBe(false);
+            expect(payload.command_topic).toBe('cbus/write/254/208/panel/arm');
+        });
+
+        // Regression: the read-only payload shipped without command_topic, so
+        // Home Assistant rejected it with "required key not provided @
+        // data['command_topic']" and the panel entity never existed on the
+        // default (control off) install.
+        it('always publishes a command topic, control enabled or not', () => {
+            d.ensureSecurityPanelDiscovery('254', '208');
+            expect(alarmPayload().command_topic).toBe('cbus/write/254/208/panel/arm');
+        });
+
+        it('offers the arm actions once security control is enabled', () => {
+            const controlled = new HaDiscovery(
+                {
+                    ha_discovery_enabled: true,
+                    ha_discovery_prefix: 'homeassistant',
+                    cbus_security_app_id: '208',
+                    cbus_security_control_enabled: true
+                },
+                publishFn,
+                jest.fn()
+            );
+            controlled.ensureSecurityPanelDiscovery('254', '208');
+            // arm_custom_bypass is absent here on purpose: it maps to the '#'
+            // force-arm keypress, which needs cbus_security_bypass_enabled.
+            expect(alarmPayload().supported_features).toEqual(['arm_home', 'arm_away', 'arm_night', 'arm_vacation']);
         });
 
         it('adds the command topic when security control is enabled', () => {
@@ -502,11 +529,11 @@ describe('HaDiscovery — app 208 security zones', () => {
                 expect(payload.code_disarm_required).toBe(false);
             });
 
-            it('ignores disarm without control, since there is no command topic', () => {
+            it('ignores disarm without control, since every panel write is refused', () => {
                 const payload = panelWith({ cbus_security_disarm_enabled: true });
-                expect('command_topic' in payload).toBe(false);
                 expect('code' in payload).toBe(false);
                 expect(payload.code_disarm_required).toBe(false);
+                expect(payload.supported_features).toEqual([]);
             });
         });
 
