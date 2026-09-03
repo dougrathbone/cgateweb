@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.1] - 2026-09-03
+
+### Fixed
+
+- **The alarm panel entity now appears in Home Assistant.** Home Assistant rejected the read-only version of it, so installs without Security Panel Control had no panel at all.
+- **A C-Bus network whose interface keeps dropping no longer floods C-Gate.** Repeated network syncs now trigger at most one refresh a minute instead of one each, which had left every command failing.
+- **Failed C-Gate commands now say why.** A network with a dropped CNI or PCI link is named as the cause, and identical errors are counted rather than repeated thousands of times.
+
 ## [1.34.0] - 2026-09-02
 
 ### Changed
