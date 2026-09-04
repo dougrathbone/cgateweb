@@ -101,20 +101,25 @@ function makeService(bridge) {
 }
 
 // A complete HaDiscovery mock instance. The production code calls trigger(),
-// updateLabels(), handleCommandError() and stop() on whatever the HaDiscovery
-// constructor returns, so every mock instance MUST expose all four. Tests that
-// need to observe construction/trigger ordering pass `extra` to override or
-// append behaviour WITHOUT dropping any of the required methods (a partial
-// override is what previously caused intermittent "cannot read 'trigger'" /
-// "cannot read 'updateLabels'" failures when an implementation leaked across
-// tests). Keeping a single factory means an override can never be missing a
-// method the service depends on.
+// updateLabels(), handleCommandError(), stop(), and (via StateResyncCoordinator)
+// syncUnlistedGroupDiscovery() / republishDiscoveryConfigs() on whatever the
+// HaDiscovery constructor returns, so every mock instance MUST expose them.
+// Tests that need to observe construction/trigger ordering pass `extra` to
+// override or append behaviour WITHOUT dropping any of the required methods (a
+// partial override is what previously caused intermittent "cannot read
+// 'trigger'" / "cannot read 'updateLabels'" / "syncUnlistedGroupDiscovery is
+// not a function" failures when an implementation leaked across tests). Keeping
+// a single factory means an override can never be missing a method the service
+// depends on.
 function createHaDiscoveryMock(extra = {}) {
     return {
         trigger: jest.fn(),
         updateLabels: jest.fn(),
         handleCommandError: jest.fn(),
         stop: jest.fn(),
+        // Called by StateResyncCoordinator when a debounced resync fires.
+        syncUnlistedGroupDiscovery: jest.fn(),
+        republishDiscoveryConfigs: jest.fn(() => 0),
         ...extra
     };
 }

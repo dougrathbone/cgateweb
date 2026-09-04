@@ -173,6 +173,11 @@ describe('CgateWebBridge', () => {
                 // Clear queues first to stop async operations
                 bridge.cgateCommandQueue?.clear?.();
                 bridge.haBridgeDiagnostics?.stop?.();
+                // Cancel debounced post-sync / state-resync work before any
+                // useRealTimers() leftover from a test can fire against a
+                // stub haDiscovery missing syncUnlistedGroupDiscovery.
+                bridge.stateResyncCoordinator?.dispose?.();
+                bridge._clearNetworkSyncTimers?.();
                 bridge.eventConnection?.disconnect?.();
                 await bridge.commandConnectionPool?.stop?.();
                 // Close the web server that bridge.start() launches
@@ -955,7 +960,11 @@ describe('CgateWebBridge', () => {
             it('routes a network sync-complete (762) event line to HA Discovery', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
                 const warnSpy = jest.spyOn(bridge, 'warn');
-                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
 
                 bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
 
@@ -968,7 +977,11 @@ describe('CgateWebBridge', () => {
             });
 
             it('accepts a 762 line without a timestamp prefix', () => {
-                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
 
                 bridge._processEventLine('762 //TestProject/254 Network sync ok');
 
@@ -979,7 +992,11 @@ describe('CgateWebBridge', () => {
                 // The tree is only fully populated after sync-ok, so any
                 // startup getall that ran before it missed state (issue #44).
                 const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
-                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
 
                 bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
 
@@ -990,7 +1007,11 @@ describe('CgateWebBridge', () => {
             it('runs all post-sync effects on the event-port 762 path', () => {
                 const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
                 const securitySpy = jest.spyOn(bridge.securityEventHandler, 'requestStatusSync');
-                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
 
                 bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
 
@@ -1008,7 +1029,11 @@ describe('CgateWebBridge', () => {
                 // must produce the same three effects as the event-port path.
                 const resyncSpy = jest.spyOn(bridge.stateResyncCoordinator, 'requestResync');
                 const securitySpy = jest.spyOn(bridge.securityEventHandler, 'requestStatusSync');
-                bridge.haDiscovery = { handleNetworkSyncComplete: jest.fn() };
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
 
                 bridge.commandResponseProcessor.onNetworkSyncComplete('254');
 
