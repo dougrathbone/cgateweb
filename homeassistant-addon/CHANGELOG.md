@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.6] - 2026-09-04
+
+### Fixed
+
+- **The add-on release that was blocked by a flaky unit suite can ship.** Leftover state-resync timers no longer throw against incomplete discovery stubs in CI.
+
+### Security
+
+- **Dev dependency advisories for browserslist and humanfs are pinned.** Transitive copies stay on patched versions via npm overrides.
+
+### Changed
+
+- Internal: Home Assistant discovery publishers and the MQTT command router are split by domain, with thicker rate-limiter tests.
+
 ## [1.34.5] - 2026-09-04
 
 ### Security
