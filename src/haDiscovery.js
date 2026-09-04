@@ -19,10 +19,10 @@ const CONFIG_TOPIC_SUFFIX = `/${HA_DISCOVERY_SUFFIX}`;
 /**
  * Methods mixed into HaDiscovery.prototype from haDiscoveryTreeSession.js,
  * haDiscoveryPublishers.js, haDiscoveryPublishersLighting.js,
- * haDiscoveryPublishersSecurity.js and haDiscoveryPublishersAircon.js at
- * module load (see the Object.assign calls at the bottom of this file).
- * Declared here so calls into the mixin modules type-check; the
- * implementations live in those modules.
+ * haDiscoveryPublishersSensors.js, haDiscoveryPublishersSecurity.js and
+ * haDiscoveryPublishersAircon.js at module load (see the Object.assign calls
+ * at the bottom of this file). Declared here so calls into the mixin modules
+ * type-check; the implementations live in those modules.
  * @typedef {Object} HaDiscoveryMixinMethods
  * @property {(networkId: string|number) => void} queueTreeRequest
  * @property {(networkId: string) => void} _clearTreeState
@@ -838,6 +838,7 @@ class HaDiscovery {
 Object.assign(HaDiscovery.prototype, require('./haDiscoveryTreeSession'));
 Object.assign(HaDiscovery.prototype, require('./haDiscoveryPublishers'));
 Object.assign(HaDiscovery.prototype, require('./haDiscoveryPublishersLighting'));
+Object.assign(HaDiscovery.prototype, require('./haDiscoveryPublishersSensors'));
 Object.assign(HaDiscovery.prototype, require('./haDiscoveryPublishersSecurity'));
 Object.assign(HaDiscovery.prototype, require('./haDiscoveryPublishersAircon'));
 module.exports = HaDiscovery;
