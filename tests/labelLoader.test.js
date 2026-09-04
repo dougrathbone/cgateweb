@@ -18,6 +18,7 @@ describe('LabelLoader', () => {
 
     afterEach(() => {
         jest.restoreAllMocks();
+        jest.useRealTimers();
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
@@ -416,19 +417,13 @@ describe('LabelLoader', () => {
     });
 
     describe('watch / hot-reload', () => {
-        /**
-         * Wait for a real fs.watch event to have been delivered and debounced,
-         * giving up quietly after a margin no healthy run needs. Deliberately
-         * does not throw: the caller's assertion holds whether or not the
-         * watcher fired, and requiring it would just trade one timing
-         * dependency for another.
-         */
-        async function waitForWatcherReload(reloadSpy, timeoutMs = 2000) {
-            const deadline = Date.now() + timeoutMs;
-            while (reloadSpy.mock.calls.length === 0 && Date.now() < deadline) {
-                await new Promise((resolve) => setTimeout(resolve, 25));
-            }
-        }
+        // Real fs.watch / setTimeout paths must not inherit fake timers from a
+        // previous file in the same Jest worker. A frozen Date.now() turns any
+        // "poll until deadline" helper into an infinite loop (the Node 20
+        // nightly flake after v1.34.1).
+        beforeEach(() => {
+            jest.useRealTimers();
+        });
 
         it('should emit labels-changed when the file is modified', (done) => {
             const data = { version: 1, labels: { '254/56/10': 'Original' } };
@@ -451,46 +446,30 @@ describe('LabelLoader', () => {
             }, 100);
         }, 5000);
 
-        it('save() emits labels-changed exactly once even with the watcher running (no double-fire)', async () => {
-            // The FIRST emit comes from save() directly, so the in-process
-            // listeners (HA Discovery refresh, web UI SSE) wake up. A SECOND
-            // one, from the watcher seeing our own write, must not follow.
-            //
-            // Nothing here may depend on when the OS delivers that watcher
-            // event. The previous version asserted 800ms into the 1000ms grace
-            // window on the theory that a later event could not have been
-            // processed yet - but the grace is checked when the event is
-            // delivered, not when the reload runs, so an event-loop stall of
-            // about a second let the delivery escape the grace and the
-            // assertion land after the resulting second emit. That is the flake
-            // that failed the v1.34.0 release.
+        it('save() emits labels-changed once; an identical reload does not emit again', () => {
+            // Production correctness is the content-signature gate in
+            // _onFileChanged (a late fs.watch delivery after self-write grace
+            // still reloads, but must not notify listeners). Prove that by
+            // calling the reload path directly — do not poll real inotify or
+            // wall-clock deadlines; those hang if fake timers leak into this
+            // worker (nightly Node 20 after v1.34.1). Grace + debounce are
+            // covered under fake timers in the suite below.
             const data = { version: 1, labels: { '254/56/10': 'Init' } };
             fs.writeFileSync(labelFile, JSON.stringify(data));
 
             const loader = new LabelLoader(labelFile);
             loader.load();
-            loader.watch();
 
             const handler = jest.fn();
             loader.on('labels-changed', handler);
-            const reloads = jest.spyOn(loader, '_onFileChanged');
 
             loader.save({ '254/56/10': 'Via Save' });
-
-            // save() emits synchronously, before any watcher event can exist.
             expect(handler).toHaveBeenCalledTimes(1);
 
-            // Then give the real watcher its chance. Not required to fire -
-            // whether the grace suppresses it or it reloads identical data
-            // afterwards, the count is one either way, and inotify is not
-            // guaranteed in every sandbox - so this waits for it rather than
-            // asserting on it.
-            await waitForWatcherReload(reloads);
-
+            loader._onFileChanged();
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('Via Save');
-            loader.unwatch();
-        }, 15000);
+        });
 
         it('should do nothing when no file path is configured', () => {
             const loader = new LabelLoader(null);
