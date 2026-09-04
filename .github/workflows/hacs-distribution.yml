@@ -97,15 +97,11 @@ jobs:
           *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
         # Same digest-pinned refs as build.yaml — do not hardcode the floating tag.
-        BUILD_FROM=$(python3 -c "
-import re, sys
-arch = sys.argv[1]
-text = open('homeassistant-addon/build.yaml', encoding='utf-8').read()
-m = re.search(rf'(?m)^\\s*{re.escape(arch)}:\\s*\"([^\"]+)\"', text)
-if not m:
-    raise SystemExit(f'no build_from entry for {arch}')
-print(m.group(1))
-" "${ARCH}")
+        BUILD_FROM=$(sed -n "s/^[[:space:]]*${ARCH}:[[:space:]]*\"\\(.*\\)\"/\\1/p" homeassistant-addon/build.yaml | head -1)
+        if [ -z "${BUILD_FROM}" ]; then
+          echo "no build_from entry for ${ARCH}" >&2
+          exit 1
+        fi
         docker buildx build \
           --platform "$platform" \
           --build-arg "BUILD_FROM=${BUILD_FROM}" \

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.3] - 2026-09-04
+
+### Changed
+
+- Internal: release workflows parse again after the base-image digest pin broke their YAML.
+
 ## [1.34.2] - 2026-09-04
 
 ### Fixed
