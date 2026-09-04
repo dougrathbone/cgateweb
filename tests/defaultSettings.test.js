@@ -18,7 +18,7 @@ describe('defaultSettings — frozen baseline', () => {
         // setting added to the fixture; a changed value for an existing key is
         // the thing this baseline exists to catch, and must never be "fixed"
         // in the fixture.
-        expect(Object.keys(defaultSettings)).toHaveLength(147);
+        expect(Object.keys(defaultSettings)).toHaveLength(148);
     });
 
     it('returns a fresh object so consumers cannot mutate the schema defaults', () => {

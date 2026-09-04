@@ -140,6 +140,7 @@
   "topicCacheMaxEntries": 5000,
   "webMaxBodySizeBytes": 10485760,
   "webRateLimitWindowMs": 60000,
+  "webRateLimitMaxTrackedSources": 5000,
   "webSseKeepaliveMs": 15000,
   "web_active_device_window_ms": 86400000,
   "web_allow_unauthenticated_mutations": false,

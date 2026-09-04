@@ -1031,6 +1031,15 @@ const SETTINGS_SCHEMA = {
         description: 'Sliding window length for web API per-client rate limits (mutation, read, and auth-failure buckets).',
         reason: TUNING_ONLY_REASON
     },
+    webRateLimitMaxTrackedSources: {
+        key: 'webRateLimitMaxTrackedSources',
+        type: 'number',
+        default: 5000,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Cap on distinct client addresses tracked by the web API rate limiters. Excess addresses are evicted least-recently-used.',
+        reason: TUNING_ONLY_REASON
+    },
     ingressDiscoveryMaxBackoffMs: {
         key: 'ingressDiscoveryMaxBackoffMs',
         type: 'number',

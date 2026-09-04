@@ -115,6 +115,7 @@ class WebServer {
  * @param {number} [options.maxMutationRequestsPerWindow=120] - Maximum mutating requests per minute per client
  * @param {number} [options.maxReadRequestsPerWindow=300] - Maximum sensitive GET requests per window per client
  * @param {number} [options.maxAuthFailuresPerWindow=20] - Maximum failed auth attempts per minute per client before 429
+ * @param {number} [options.maxTrackedSources] - Cap on distinct client addresses tracked by the rate limiters
  * @param {number} [options.rateLimitWindowMs] - Shared rate-limit window in ms (default 60000)
  * @param {number} [options.webRateLimitWindowMs] - Alias for rateLimitWindowMs (bridge settings)
  * @param {string|null} [options.triggerAppId] - C-Bus app ID configured as trigger groups (e.g. '202')
@@ -154,6 +155,7 @@ class WebServer {
         // Failed authentication attempts get a separate, stricter bucket so an
         // exposed web_api_key can't be brute-forced unthrottled.
         this.maxAuthFailuresPerWindow = atLeastOne(options.maxAuthFailuresPerWindow, resolveSetting({}, 'web_auth_failure_rate_limit_per_minute'));
+        this.maxTrackedSources = atLeastOne(options.maxTrackedSources, resolveSetting({}, 'webRateLimitMaxTrackedSources'));
         this.maxBodySizeBytes = positiveNumber(options.maxBodySizeBytes, resolveSetting({}, 'webMaxBodySizeBytes'));
         this.activeDeviceWindowMs = positiveNumber(options.activeDeviceWindowMs, resolveSetting({}, 'web_active_device_window_ms'));
         this.haAreasCacheTtlMs = positiveNumber(options.haAreasCacheTtlMs, resolveSetting({}, 'web_ha_areas_cache_ttl_ms'));
@@ -180,15 +182,18 @@ class WebServer {
         this.apiKey = this._apiAuth.apiKey;
         this._rateLimiter = new RateLimiter({
             windowMs: this.rateLimitWindowMs,
-            maxRequests: this.maxMutationRequestsPerWindow
+            maxRequests: this.maxMutationRequestsPerWindow,
+            maxTrackedSources: this.maxTrackedSources
         });
         this._readRateLimiter = new RateLimiter({
             windowMs: this.rateLimitWindowMs,
-            maxRequests: this.maxReadRequestsPerWindow
+            maxRequests: this.maxReadRequestsPerWindow,
+            maxTrackedSources: this.maxTrackedSources
         });
         this._authFailureLimiter = new RateLimiter({
             windowMs: this.rateLimitWindowMs,
-            maxRequests: this.maxAuthFailuresPerWindow
+            maxRequests: this.maxAuthFailuresPerWindow,
+            maxTrackedSources: this.maxTrackedSources
         });
         this._labelRoutes = new LabelRoutes({
             labelLoader: this.labelLoader,

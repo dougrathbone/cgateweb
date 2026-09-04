@@ -1,5 +1,5 @@
 // @ts-check
-
+const { resolveSetting } = require('../config/schema');
 
 /**
  * Sliding-window rate limiter, keyed by an arbitrary string.
@@ -16,7 +16,7 @@
 // attacker with an IPv6 /64 - i.e. anyone on a modern LAN - has effectively
 // unlimited addresses. Comfortably above any real deployment: a household has
 // tens of clients, not thousands.
-const DEFAULT_MAX_TRACKED_SOURCES = 5000;
+const DEFAULT_MAX_TRACKED_SOURCES = resolveSetting({}, 'webRateLimitMaxTrackedSources');
 
 class RateLimiter {
     /**
