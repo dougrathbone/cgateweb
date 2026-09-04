@@ -272,9 +272,15 @@ jobs:
           i386) platform=linux/386 ;;
           *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
+        # Same digest-pinned refs as build.yaml — do not hardcode the floating tag.
+        BUILD_FROM=$(sed -n "s/^[[:space:]]*${ARCH}:[[:space:]]*\"\\(.*\\)\"/\\1/p" homeassistant-addon/build.yaml | head -1)
+        if [ -z "${BUILD_FROM}" ]; then
+          echo "no build_from entry for ${ARCH}" >&2
+          exit 1
+        fi
         docker buildx build \
           --platform "$platform" \
-          --build-arg "BUILD_FROM=ghcr.io/home-assistant/${ARCH}-base:3.21" \
+          --build-arg "BUILD_FROM=${BUILD_FROM}" \
           --build-arg "BUILD_ARCH=${ARCH}" \
           --build-arg BUILD_VERSION=ci \
           --build-arg BUILD_DATE=ci \

@@ -3,7 +3,7 @@ const { EventEmitter } = require('events');
 const CBusCommand = require('./cbusCommand');
 const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
-const { temperatureToCbusLevel, redactMqttPayload, describeCbusAddressRangeError } = require('./utils');
+const { redactMqttPayload, describeCbusAddressRangeError } = require('./utils');
 const { resolveSetting } = require('./config/schema');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
@@ -11,7 +11,6 @@ const {
     MQTT_RETAINED_STATE_OPTIONS,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_STATE,
-    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
     MQTT_CMD_TYPE_SWITCH,
@@ -29,9 +28,6 @@ const {
     MQTT_CMD_TYPE_SET,
     MQTT_CMD_TYPE_LABEL,
     MQTT_CMD_TYPE_REMOVE,
-    MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
-    MQTT_TOPIC_SUFFIX_HVAC_MODE,
-    MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
@@ -40,7 +36,6 @@ const {
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
-    CGATE_CMD_TERMINATERAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
     CGATE_LEVEL_MIN,
@@ -50,60 +45,41 @@ const {
     SECURITY_ARM_TOPIC_REGEX,
     SECURITY_BYPASS_TOPIC_REGEX,
     MEASUREMENT_DATA_TOPIC_REGEX,
-    DEFAULT_CBUS_APP_TEMPERATURE,
-    HVAC_MIN_TEMP_C,
-    HVAC_MAX_TEMP_C
+    DEFAULT_CBUS_APP_TEMPERATURE
 } = require('./constants');
-const {
-    HVAC_CODE_BY_MODE,
-    FAN_LEVEL_SENTINEL,
-    DEFAULT_SETPOINT_C,
-    buildSetZoneHvacMode,
-    buildSetWardOff
-} = require('./airconControlRegistry');
-const { buildSecurityArmCommand, buildSecurityEmulateKeypadCommand } = require('./securityCommand');
 const { buildMeasurementDataCommand } = require('./measurementCommand');
 const { buildTemperatureBroadcastCommand, celsiusToTemperatureBroadcastByte } = require('./temperatureCommand');
 const { buildScenePlayCommand, buildSceneRecordCommand } = require('./sceneCommand');
 const { buildEnableSetCommand, buildEnableLabelCommand, buildEnableRemoveCommand } = require('./enableCommand');
-const RateLimiter = require('./web/rateLimiter');
 const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/measurementDecoder');
 
-// Upper bound on PIN length before we start typing at the panel. Alarm PINs are
-// 4-8 digits in practice; this is a sanity guard so a malformed payload cannot
-// queue hundreds of keypresses, not a protocol limit.
-const SECURITY_MAX_PIN_DIGITS = 16;
+/**
+ * Methods mixed into MqttCommandRouter.prototype from mqttCommandRouterSecurity.js
+ * at module load (see the Object.assign call at the bottom of this file).
+ * Declared here so calls into the mixin type-check; the implementations live there.
+ * @typedef {Object} MqttCommandRouterSecurityMethods
+ * @property {(network: string, application: string, payload: string, topic: string) => void} _handleSecurityArm
+ * @property {(network: string, application: string, topic: string) => void} _handleSecurityBypass
+ */
 
-// Key that submits a typed code at the panel. Confirmed on real hardware in
-// #51: without it the panel just holds the digits, and ENTER ($0D) does
-// nothing. `#` is also the key that forces an arm past open zones, so the panel
-// treats it as the general accept.
-const SECURITY_KEYPAD_ACCEPT = '#';
+/**
+ * Methods mixed into MqttCommandRouter.prototype from mqttCommandRouterAircon.js
+ * at module load (see the Object.assign call at the bottom of this file).
+ * @typedef {Object} MqttCommandRouterAirconMethods
+ * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacSetpoint
+ * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacMode
+ * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacFanMode
+ */
 
-// HA MQTT alarm command payloads → C-Gate arm-mode keyword.
-//
-// These are the words C-Gate's command interface expects, not the numeric
-// values the application spec defines. C-Gate manual §4.5.177:
-//
-//     SECURITY ARM app arm-mode
-//     arm-mode = "away" | "night" (home) | "day" | "vacation" | "highest"
-//
-// 1.23.0 and 1.23.1 sent the spec's bus-level numbers ($01..$04) here and every
-// arm was rejected with `405 Parameter out of range (bad arm mode)`, so arming
-// has never worked. The numbers were not wrong for the bus, just never right
-// for the interface we actually write to — read the C-Gate manual for command
-// syntax and the application spec only for what travels on the bus (#42).
-//
-// Arming only. There is deliberately no DISARM entry: C-Gate offers no disarm
-// arm-mode, and the spec reserves $00 rather than defining it as disarm.
-// Disarming needs SECURITY EMULATE_KEYPAD, replaying the PIN keypress by
-// keypress — tracked separately in #51.
-const SECURITY_ARM_MODE_BY_PAYLOAD = {
-    ARM_AWAY: 'away',
-    ARM_NIGHT: 'night',
-    ARM_HOME: 'day',
-    ARM_VACATION: 'vacation'
-};
+/**
+ * Methods mixed into MqttCommandRouter.prototype from mqttCommandRouterCovers.js
+ * at module load (see the Object.assign call at the bottom of this file).
+ * @typedef {Object} MqttCommandRouterCoverMethods
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handlePosition
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handleTilt
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handleStop
+ * @property {(network: string, application: string, group: string, targetLevel: number, durationMs: number|null) => void} _startCoverRamp
+ */
 
 class MqttCommandRouter extends EventEmitter {
     /**
@@ -151,36 +127,6 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Sliding-window limiter for disarm attempts. Shares the web API's
-     * implementation rather than repeating the window logic - see
-     * RateLimiter for why the eviction order there is worth having once.
-     *
-     * The tracked-key cap matters here too: an attacker can address any
-     * network/application pair, so without it the map would grow with each one
-     * tried. The pairs are already bounded by CBusEvent's range check on the
-     * read side and by the topic regex here, but the cap makes it explicit.
-     *
-     * @returns {RateLimiter}
-     * @private
-     */
-    _getDisarmLimiter() {
-        const maxRequests = resolveSetting(this.settings, 'securityDisarmMaxAttempts');
-        const windowMs = resolveSetting(this.settings, 'securityDisarmAttemptWindowMs');
-        const maxTrackedSources = resolveSetting(this.settings, 'securityDisarmMaxTrackedKeys');
-        if (!this._disarmLimiter
-            || this._disarmLimiter.maxRequests !== maxRequests
-            || this._disarmLimiter.windowMs !== windowMs
-            || this._disarmLimiter.maxTrackedSources !== maxTrackedSources) {
-            this._disarmLimiter = new RateLimiter({
-                windowMs,
-                maxRequests,
-                maxTrackedSources
-            });
-        }
-        return this._disarmLimiter;
-    }
-
-    /**
      * Returns the CoverRampTracker used by this router.
      * Callers (e.g. EventPublisher wiring) can use this to share the same tracker instance.
      *
@@ -192,7 +138,7 @@ class MqttCommandRouter extends EventEmitter {
 
     /**
      * Routes an incoming MQTT message to the appropriate handler.
-     * 
+     *
      * @param {string} topic - MQTT topic
      * @param {string} payload - MQTT payload
      */
@@ -210,12 +156,17 @@ class MqttCommandRouter extends EventEmitter {
 
         // Security panel arm/disarm: the panel command topic has no numeric
         // group, so it can't parse as a CBusCommand — routed directly like the
-        // manual discovery trigger.
+        // manual discovery trigger. Handlers are mixed in from
+        // mqttCommandRouterSecurity.js (see Object.assign below).
+        const self = /** @type {MqttCommandRouter & MqttCommandRouterSecurityMethods} */ (
+            /** @type {unknown} */ (this)
+        );
+
         const securityArmMatch = topic.match(SECURITY_ARM_TOPIC_REGEX);
         if (securityArmMatch) {
             const [, network, application] = securityArmMatch;
             if (this._hasAddressInRange(topic, { network, application })) {
-                this._handleSecurityArm(network, application, payload, topic);
+                self._handleSecurityArm(network, application, payload, topic);
             }
             return;
         }
@@ -226,7 +177,7 @@ class MqttCommandRouter extends EventEmitter {
         if (securityBypassMatch) {
             const [, network, application] = securityBypassMatch;
             if (this._hasAddressInRange(topic, { network, application })) {
-                this._handleSecurityBypass(network, application, topic);
+                self._handleSecurityBypass(network, application, topic);
             }
             return;
         }
@@ -299,7 +250,14 @@ class MqttCommandRouter extends EventEmitter {
      */
     _processCommand(command, topic, payload) {
         const commandType = command.getCommandType();
-        
+        // HVAC / cover handlers live on mixins (see Object.assign below).
+        const aircon = /** @type {MqttCommandRouter & MqttCommandRouterAirconMethods} */ (
+            /** @type {unknown} */ (this)
+        );
+        const covers = /** @type {MqttCommandRouter & MqttCommandRouterCoverMethods} */ (
+            /** @type {unknown} */ (this)
+        );
+
         switch (commandType) {
             case MQTT_CMD_TYPE_GETTREE:
                 this._handleGetTree(command);
@@ -314,25 +272,25 @@ class MqttCommandRouter extends EventEmitter {
                 this._handleRamp(command, payload, topic);
                 break;
             case MQTT_CMD_TYPE_POSITION:
-                this._handlePosition(command, topic);
+                covers._handlePosition(command, topic);
                 break;
             case MQTT_CMD_TYPE_TILT:
-                this._handleTilt(command, topic);
+                covers._handleTilt(command, topic);
                 break;
             case MQTT_CMD_TYPE_STOP:
-                this._handleStop(command, topic);
+                covers._handleStop(command, topic);
                 break;
             case MQTT_CMD_TYPE_TRIGGER:
                 this._handleTrigger(command, topic);
                 break;
             case MQTT_CMD_TYPE_HVAC_SETPOINT:
-                this._handleHvacSetpoint(command, payload, topic);
+                aircon._handleHvacSetpoint(command, payload, topic);
                 break;
             case MQTT_CMD_TYPE_HVAC_MODE:
-                this._handleHvacMode(command, payload, topic);
+                aircon._handleHvacMode(command, payload, topic);
                 break;
             case MQTT_CMD_TYPE_HVAC_FAN_MODE:
-                this._handleHvacFanMode(command, payload, topic);
+                aircon._handleHvacFanMode(command, payload, topic);
                 break;
             case MQTT_CMD_TYPE_TEMPERATURE:
                 this._handleTemperatureBroadcast(command, payload, topic);
@@ -362,230 +320,6 @@ class MqttCommandRouter extends EventEmitter {
         } else {
             this.logger.warn('Manual HA Discovery trigger received, but feature is disabled in settings');
         }
-    }
-
-    /**
-     * Handles security panel arm/disarm (cbus/write/{net}/{app}/panel/arm).
-     * Gated on cbus_security_control_enabled; disarm additionally on
-     * cbus_security_disarm_enabled. The panel confirms with a system_arm (or
-     * arm_not_ready) broadcast, which drives the state machine — no optimistic
-     * state is published here.
-     *
-     * Nothing in here may log the payload. With the keypad enabled it carries
-     * the alarm PIN, so only the parsed action and a digit count are ever
-     * logged — see _parseSecurityCommand.
-     *
-     * @param {string} network - Network id from the topic.
-     * @param {string} application - Application id from the topic.
-     * @param {string} payload - Bare action, or the JSON the command_template emits.
-     * @param {string} topic - Original topic for logging.
-     * @private
-     */
-    _handleSecurityArm(network, application, payload, topic) {
-        if (!this.settings.cbus_security_control_enabled) {
-            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring command on ${topic}`);
-            return;
-        }
-        const appId = this.settings.cbus_security_app_id;
-        if (!appId || String(appId) === '0' || String(application) !== String(appId)) {
-            this.logger.warn(`Security command for unconfigured application ${application} on topic ${topic}`);
-            return;
-        }
-
-        const { action, code } = this._parseSecurityCommand(payload);
-
-        if (action === 'DISARM') {
-            this._handleSecurityDisarm(network, application, code, topic);
-            return;
-        }
-
-        if (action === 'ARM_CUSTOM_BYPASS') {
-            // Home Assistant's own alarm-panel action for "arm, bypassing what
-            // is in the way". On this panel that is exactly the '#' keypress,
-            // so it routes to the same place as the bypass button rather than
-            // being a second implementation. Reported on #62 by the user who
-            // was already driving it this way from his own project.
-            this._sendBypassKeypress(network, application, topic);
-            return;
-        }
-
-        const mode = SECURITY_ARM_MODE_BY_PAYLOAD[action];
-        if (mode === undefined) {
-            // Deliberately quotes the action, never the payload: the payload may
-            // be JSON carrying a PIN.
-            this.logger.warn(`Unknown security command "${action}" on topic ${topic} (expected DISARM|ARM_AWAY|ARM_NIGHT|ARM_HOME|ARM_VACATION)`);
-            return;
-        }
-
-        const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
-        this._queueCommand(cmd + NEWLINE);
-        this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${action})`);
-    }
-
-    /**
-     * Handles the zone-bypass button (cbus/write/{net}/{app}/panel/bypass).
-     * Sends the '#' keypress through `security emulate_keypad`, which is what
-     * the physical keypad uses to bypass open zones when arming stalls at
-     * arm_not_ready (#42). Gated on cbus_security_control_enabled like every
-     * other panel write, and additionally on cbus_security_bypass_enabled.
-     *
-     * @param {string} network
-     * @param {string} application
-     * @param {string} topic - For log context only.
-     * @private
-     */
-    _handleSecurityBypass(network, application, topic) {
-        if (!this.settings.cbus_security_control_enabled) {
-            this.logger.warn(`Security panel control is disabled (set cbus_security_control_enabled to enable); ignoring command on ${topic}`);
-            return;
-        }
-        const appId = this.settings.cbus_security_app_id;
-        if (!appId || String(appId) === '0' || String(application) !== String(appId)) {
-            this.logger.warn(`Security command for unconfigured application ${application} on topic ${topic}`);
-            return;
-        }
-
-        this._sendBypassKeypress(network, application, topic);
-    }
-
-    /**
-     * Send the '#' keypress that forces an arm past open zones.
-     *
-     * Shared by the two ways a user can reach it: the dedicated bypass button
-     * on its own topic, and Home Assistant's `arm_custom_bypass` action on the
-     * alarm panel itself (#62). Both end up here so the two cannot drift.
-     *
-     * The cbus_security_bypass_enabled check lives HERE rather than in the two
-     * callers, deliberately. Forcing an arm past an open zone is a different
-     * promise from arming - the alarm reports armed while that door is not
-     * actually covered - so it gets its own opt-in on top of control. Putting
-     * the check at the single point both routes funnel through means a future
-     * third caller cannot miss it, which is exactly how the first cut of this
-     * feature ended up ungated: the HA arm_custom_bypass action was added as a
-     * second entry point and inherited only the arm gate.
-     *
-     * Callers remain responsible for the control-enabled and application checks
-     * - both entry points already do them for their own error messages.
-     *
-     * @param {string} network
-     * @param {string} application
-     * @param {string} topic - For log context only.
-     * @returns {boolean} false if bypass is disabled and nothing was sent.
-     * @private
-     */
-    _sendBypassKeypress(network, application, topic) {
-        if (!this.settings.cbus_security_bypass_enabled) {
-            this.logger.warn(`Security zone bypass is disabled (set cbus_security_bypass_enabled to allow arming past open zones); ignoring command on ${topic}`);
-            return false;
-        }
-        const cmd = buildSecurityEmulateKeypadCommand({
-            cbusname: this.cbusname, network, application, key: SECURITY_KEYPAD_ACCEPT.charCodeAt(0)
-        });
-        this._queueCommand(cmd + NEWLINE);
-        this.logger.info(`Security zone bypass keypress (#) sent: ${network}/${application}`);
-        return true;
-    }
-
-    /**
-     * Split a panel command payload into its action and code.
-     *
-     * Two shapes reach this topic. With the keypad enabled, Home Assistant's
-     * command_template emits `{"action": "DISARM", "code": "1234"}`. Without it
-     * — and from any hand-rolled panel or script — the payload is the bare
-     * action, `ARM_AWAY`. Both are accepted so enabling disarm does not break
-     * anyone's existing automations.
-     *
-     * A payload that starts with `{` but does not parse is treated as an empty
-     * action rather than being echoed anywhere, on the assumption that a
-     * malformed template still contained a code.
-     *
-     * @param {string} payload
-     * @returns {{action: string, code: string}}
-     * @private
-     */
-    _parseSecurityCommand(payload) {
-        const raw = String(payload === null || payload === undefined ? '' : payload).trim();
-        if (!raw.startsWith('{')) {
-            return { action: raw.toUpperCase(), code: '' };
-        }
-        try {
-            const parsed = JSON.parse(raw);
-            const field = (value) => String(value === null || value === undefined ? '' : value).trim();
-            return {
-                action: field(parsed && parsed.action).toUpperCase(),
-                code: field(parsed && parsed.code)
-            };
-        } catch {
-            this.logger.warn('Security command payload looked like JSON but could not be parsed; ignoring it (payload withheld — it may contain a PIN)');
-            return { action: '', code: '' };
-        }
-    }
-
-    /**
-     * Disarm by replaying the PIN through `security emulate_keypad`, one
-     * keypress per digit, exactly as if typed on the panel's own keypad
-     * (C-Gate manual §4.5.179, issue #51).
-     *
-     * C-Bus has no disarm command, so this is the only route. The panel decides
-     * whether the PIN is right — cgateweb never sees a success or failure
-     * beyond the panel's subsequent broadcast, and deliberately does not guess.
-     *
-     * @param {string} network
-     * @param {string} application
-     * @param {string} code - Digits typed on Home Assistant's keypad.
-     * @param {string} topic
-     * @private
-     */
-    _handleSecurityDisarm(network, application, code, topic) {
-        if (!this.settings.cbus_security_disarm_enabled) {
-            this.logger.warn(`Security disarm is disabled (set cbus_security_disarm_enabled to enable); ignoring disarm on ${topic}`);
-            return;
-        }
-        if (!code) {
-            this.logger.warn(`Security disarm on ${topic} carried no PIN; the panel cannot be disarmed without one. If Home Assistant did not prompt for a code, re-run discovery so the panel picks up the keypad configuration.`);
-            return;
-        }
-        // Digits only. The keypad emulation can send any ASCII character, so
-        // without this a stray payload could type arbitrary keys at the panel.
-        if (!/^[0-9]+$/.test(code)) {
-            this.logger.warn(`Security disarm on ${topic} rejected: PIN must be digits only (value withheld)`);
-            return;
-        }
-        if (code.length > SECURITY_MAX_PIN_DIGITS) {
-            this.logger.warn(`Security disarm on ${topic} rejected: PIN longer than ${SECURITY_MAX_PIN_DIGITS} digits`);
-            return;
-        }
-        // Counted last, so a malformed payload cannot burn a real user's
-        // allowance - only a well-formed guess costs an attempt.
-        //
-        // Every attempt counts, right PIN or wrong: cgateweb cannot tell them
-        // apart, since only the panel judges the code and it answers with a
-        // broadcast rather than a reply. Guessing that from the state machine
-        // would mean the limiter could be reset by anything that looked like a
-        // disarm, which is the wrong way for that to fail.
-        if (this._getDisarmLimiter().isLimitedByKey(`${network}/${application}`)) {
-            this.logger.warn(`Security disarm on ${topic} rejected: too many disarm attempts for ${network}/${application}; refusing further PIN entry for now. If this was not you, someone is guessing your alarm code over MQTT.`);
-            return;
-        }
-
-        // The digits, then the accept key. Without the terminator the panel
-        // holds the digits and waits, so 1.24.0's disarm looked like it did
-        // nothing at all (#51). ENTER was tried on real hardware first and had
-        // no effect; `#` is what actually submits the code.
-        const keys = [...code, SECURITY_KEYPAD_ACCEPT];
-        for (const character of keys) {
-            const cmd = buildSecurityEmulateKeypadCommand({
-                cbusname: this.cbusname,
-                network,
-                application,
-                // The command takes the ASCII code of the key, not the character.
-                key: character.charCodeAt(0)
-            });
-            this._queueCommand(cmd + NEWLINE);
-        }
-        // Digit count, never the digits. Enough to confirm the keypresses went
-        // out and to spot a truncated PIN, without putting it in the log.
-        this.logger.info(`Security disarm: ${network}/${application} -> sent ${code.length} digits + accept key`);
     }
 
     /**
@@ -772,7 +506,10 @@ class MqttCommandRouter extends EventEmitter {
         // the command (switch) topic rather than a dedicated stop topic, so a STOP
         // on the switch topic must be routed to the cover-stop (TERMINATERAMP) path.
         if (action === MQTT_COMMAND_STOP) {
-            this._handleStop(command, command.getTopic());
+            const covers = /** @type {MqttCommandRouter & MqttCommandRouterCoverMethods} */ (
+                /** @type {unknown} */ (this)
+            );
+            covers._handleStop(command, command.getTopic());
             return;
         }
 
@@ -917,44 +654,6 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles cover position commands (set position 0-100%).
-     * Uses RAMP command to set the position level and starts interpolated
-     * position updates so Home Assistant shows smooth progress.
-     * @param {CBusCommand} command - The position command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handlePosition(command, topic) {
-        this._queueRampCommand(command, topic, {
-            name: 'Position',
-            priority: 'interactive',
-            invalidText: `Invalid position value for topic ${topic}`,
-            debugLine: (n, a, g, l) => `Setting cover position: ${n}/${a}/${g} to level ${l}`,
-            afterQueue: (level) => {
-                // Start interpolated position updates so HA shows smooth movement
-                // Position payloads always produce a numeric level (or null, excluded above).
-                this._startCoverRamp(command.getNetwork(), command.getApplication(), command.getGroup(), /** @type {number} */ (level), null);
-            }
-        });
-    }
-
-    /**
-     * Handles cover tilt commands (set tilt angle 0-100%).
-     * Uses RAMP command to set the tilt level.
-     * @param {CBusCommand} command - The tilt command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handleTilt(command, topic) {
-        this._queueRampCommand(command, topic, {
-            name: 'Tilt',
-            priority: 'interactive',
-            invalidText: `Invalid tilt value for topic ${topic}`,
-            debugLine: (n, a, g, l) => `Setting cover tilt: ${n}/${a}/${g} to level ${l}`
-        });
-    }
-
-    /**
      * Shared core for the level-carrying write handlers (position, tilt,
      * trigger): group guard, RAMP assembly, queue and debug log. The deltas
      * live in the spec: queue priority, log wording and an optional
@@ -994,80 +693,6 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles stop commands for covers/blinds.
-     * Uses TERMINATERAMP to stop any in-progress movement.
-     * Also cancels any active interpolated position ramp.
-     * @param {CBusCommand} command - The stop command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handleStop(command, topic) {
-        if (!command.getGroup()) {
-            this.logger.warn(`Stop command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const cbusPath = this._buildCGatePath(command);
-        const network = command.getNetwork();
-        const application = command.getApplication();
-        const group = command.getGroup();
-
-        // TERMINATERAMP stops any in-progress ramp operation, effectively stopping the cover
-        const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
-        this._queueCommand(cgateCommand, 'critical');
-        this.logger.debug(`Stopping cover: ${network}/${application}/${group}`);
-
-        // Cancel any interpolated ramp so estimated positions stop being published
-        const key = `${network}/${application}/${group}`;
-        this._coverRampTracker.cancelRamp(key);
-    }
-
-    /**
-     * Starts a cover ramp tracker entry to publish interpolated position values.
-     *
-     * Reads the current level from deviceStateManager, then starts a
-     * CoverRampTracker ramp that publishes estimated position and level every
-     * 500 ms until the ramp completes or is cancelled.
-     *
-     * @param {string}      network     - C-Bus network number
-     * @param {string}      application - C-Bus application number
-     * @param {string}      group       - C-Bus group number
-     * @param {number}      targetLevel - Target C-Bus level (0–255)
-     * @param {number|null} durationMs  - Ramp duration in ms, or null to use default setting
-     * @private
-     */
-    _startCoverRamp(network, application, group, targetLevel, durationMs) {
-        if (!this.mqttClient) {
-            return;
-        }
-
-        const key = `${network}/${application}/${group}`;
-        const startLevel = (this.deviceStateManager && this.deviceStateManager.getLevel(network, application, group)) || 0;
-        const duration = durationMs !== null && durationMs !== undefined
-            ? durationMs
-            : resolveSetting(this.settings, 'cover_ramp_duration_ms');
-
-        const mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
-        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
-
-        this._coverRampTracker.startRamp(key, startLevel, targetLevel, duration, (level) => {
-            const positionPercent = Math.round(level / CGATE_LEVEL_MAX * 100);
-            this.mqttClient.publish(
-                `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
-                String(positionPercent),
-                mqttOptions
-            );
-            this.mqttClient.publish(
-                `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
-                String(positionPercent),
-                mqttOptions
-            );
-        });
-
-        this.logger.debug(`Cover ramp started: ${key} from ${startLevel} to ${targetLevel} over ${duration}ms`);
-    }
-
-    /**
      * Handles trigger commands for C-Bus trigger groups.
      * Fires the trigger at the specified level (default full level 255 for 'ON' payload).
      * @param {CBusCommand} command - The trigger command
@@ -1081,246 +706,6 @@ class MqttCommandRouter extends EventEmitter {
             invalidText: `Invalid trigger payload for topic ${topic}`,
             debugLine: (n, a, g, l) => `Firing trigger: ${n}/${a}/${g} at level ${l}`
         });
-    }
-
-    /**
-     * Handles HVAC setpoint commands for the "HVAC-via-lighting" pattern.
-     *
-     * This is NOT the native C-Bus Air Conditioning ($AC/172) protocol — C-Gate
-     * exposes no command verb for that application. Instead this maps a target
-     * temperature onto a lighting-style group level, which works when a PAC or
-     * touchscreen has been programmed to expose HVAC control as a lighting-
-     * compatible group (the common real-world setup; see the project README).
-     *
-     * Mapping: level = round(clamp(temp, 0, 50) * 2)  →  0.5°C resolution.
-     * The receiving logic block in the PAC interprets the level. Adjust the PAC
-     * logic, not this code, if your resolution differs.
-     *
-     * @param {CBusCommand} command - The setpoint command
-     * @param {string} payload - Temperature value as a string (e.g., "22.5")
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    /**
-     * True when the command targets the native Air Conditioning application
-     * (cbus_aircon_app_id) rather than the HVAC-via-lighting pattern.
-     * @private
-     */
-    _isNativeAircon(command) {
-        return !!this.settings.cbus_aircon_app_id &&
-            String(command.getApplication()) === String(this.settings.cbus_aircon_app_id);
-    }
-
-    /**
-     * Whether a native HVAC write may proceed: warns and returns false when
-     * cbus_aircon_control_enabled is off.
-     *
-     * @param {string} what - What was attempted ('setpoint', 'mode', 'fan mode').
-     * @param {string} topic - Original topic for the warning.
-     * @returns {boolean}
-     * @private
-     */
-    _nativeAirconControlAllowed(what, topic) {
-        if (this.settings.cbus_aircon_control_enabled) return true;
-        this.logger.warn(`Native HVAC control is disabled (set cbus_aircon_control_enabled to enable); ignoring ${what} on ${topic}`);
-        return false;
-    }
-
-    /**
-     * The thermostat state learned from its broadcasts, or null (with a
-     * warning) when the unit hasn't reported yet — native writes need its
-     * ward/zones/type, so there is nothing to build a command from before then.
-     *
-     * @param {string} network
-     * @param {string} unit - Thermostat source unit address.
-     * @param {string} what - What was attempted ('set setpoint', 'set mode', 'set fan mode').
-     * @param {string} topic - Original topic for the warning.
-     * @returns {Object|null}
-     * @private
-     */
-    _requireNativeAirconState(network, unit, what, topic) {
-        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
-        if (!state) {
-            this.logger.warn(`No known HVAC state for ${network}/${unit} yet; cannot ${what} until the thermostat reports once (${topic})`);
-            return null;
-        }
-        return state;
-    }
-
-    _handleHvacSetpoint(command, payload, topic) {
-        if (this._isNativeAircon(command)) {
-            if (!this._nativeAirconControlAllowed('setpoint', topic)) return;
-            return this._handleNativeAirconSetpoint(command, payload, topic);
-        }
-
-        if (!command.getGroup()) {
-            this.logger.warn(`HVAC setpoint command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const tempCelsius = parseFloat(payload);
-        if (isNaN(tempCelsius)) {
-            this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
-            return;
-        }
-
-        // Same 10–32°C range the climate entity advertises (HVAC_MIN/MAX_TEMP_C),
-        // then encode at 0.5°C resolution (level = temperature * 2).
-        const clampedTemp = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempCelsius));
-        const cbusLevel = temperatureToCbusLevel(clampedTemp);
-
-        const cbusPath = this._buildCGatePath(command);
-        const cgateCommand = `${CGATE_CMD_RAMP} ${cbusPath} ${cbusLevel}${NEWLINE}`;
-        this._queueCommand(cgateCommand);
-        this.logger.debug(`HVAC setpoint: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} temp=${clampedTemp}°C level=${cbusLevel}`);
-    }
-
-    /**
-     * Handles HVAC mode commands for the "HVAC-via-lighting" pattern.
-     *
-     * As with the setpoint handler, this drives a lighting-compatible group, not
-     * the native Air Conditioning application. Only two modes exist here: 'off' →
-     * C-Gate OFF, 'auto' → C-Gate ON, leaving the actual heat/cool decision to the
-     * PAC/touchscreen logic the group feeds.
-     *
-     * Named modes (heat/cool/dry/fan_only) are refused rather than sent as a bare
-     * ON. A single group level has nowhere to carry a mode, and C-Bus never reports
-     * one back, so an accepted 'heat' would turn the unit on in whatever mode the
-     * PAC chose and then report itself as 'auto'. Discovery therefore advertises
-     * off/auto only; the warning is for anyone publishing to the topic by hand.
-     *
-     * @param {CBusCommand} command - The mode command
-     * @param {string} payload - Mode string ("off" or "auto")
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handleHvacMode(command, payload, topic) {
-        if (this._isNativeAircon(command)) {
-            if (!this._nativeAirconControlAllowed('mode', topic)) return;
-            return this._handleNativeAirconMode(command, payload, topic);
-        }
-
-        if (!command.getGroup()) {
-            this.logger.warn(`HVAC mode command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const cbusPath = this._buildCGatePath(command);
-        const mode = payload.toLowerCase();
-        let cgateCommand;
-
-        if (mode === 'off') {
-            cgateCommand = `${CGATE_CMD_OFF} ${cbusPath}${NEWLINE}`;
-        } else if (mode === 'auto') {
-            // ON only — the thermostat keeps its last setpoint and picks its own mode.
-            // TODO: If the C-Bus hardware supports dedicated mode group addresses,
-            // extend this to send mode-specific RAMP values to additional group addresses.
-            cgateCommand = `${CGATE_CMD_ON} ${cbusPath}${NEWLINE}`;
-        } else if (['heat', 'cool', 'heat_cool', 'dry', 'fan_only'].includes(mode)) {
-            this.logger.warn(`HVAC mode "${payload}" is not supported on the ha_discovery_hvac_app_id path — a single lighting group cannot carry a mode, so only off and auto work. Use the native Air Conditioning application (cbus_aircon_app_id) for real mode control. Ignoring ${topic}`);
-            return;
-        } else {
-            this.logger.warn(`Unknown HVAC mode "${payload}" on topic ${topic}`);
-            return;
-        }
-
-        this._queueCommand(cgateCommand);
-        this.logger.debug(`HVAC mode: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} mode=${mode}`);
-    }
-
-    /**
-     * Native Air Conditioning setpoint: keep the thermostat's current mode and
-     * change the target temperature, via AIRCON SET_ZONE_HVAC_MODE. Needs the
-     * thermostat's ward/zones/type, learned from its broadcasts (registry).
-     * @private
-     */
-    _handleNativeAirconSetpoint(command, payload, topic) {
-        const network = command.getNetwork();
-        const unit = command.getGroup();
-        const state = this._requireNativeAirconState(network, unit, 'set setpoint', topic);
-        if (!state) return;
-        if (state.modeRaw === 0) {
-            // Writing a setpoint to an off thermostat would force it on in the
-            // fallback mode — the climate card adjusting a target must never
-            // power the unit up.
-            this.logger.warn(`HVAC unit ${network}/${unit} is off; ignoring setpoint of ${payload}°C — turn it on first (${topic})`);
-            return;
-        }
-        const tempC = parseFloat(payload);
-        if (isNaN(tempC)) {
-            this.logger.warn(`Invalid HVAC setpoint value "${payload}" on topic ${topic}`);
-            return;
-        }
-        const clamped = Math.max(HVAC_MIN_TEMP_C, Math.min(HVAC_MAX_TEMP_C, tempC));
-        // Optimistically reflect the new target so the HA card updates instantly,
-        // then debounce the actual command: the thermostat echoes each Set Zone
-        // HVAC Mode message, so streaming increments causes race conditions —
-        // §25.12.11 says wait until the user has finished, then send one message.
-        this._publishOptimisticHvacState(network, command.getApplication(), unit, { setpointC: clamped });
-        this._debounceAirconSetpoint(network, command.getApplication(), unit, clamped);
-    }
-
-    /**
-     * Collapse rapid setpoint adjustments into a single AIRCON command sent a
-     * few seconds after the last change (spec §25.12.11 "Timeout on
-     * Adjustment"; §25.8.10 also recommends spacing these commands). The
-     * command is built at fire time from the then-current learned state.
-     * @private
-     */
-    _debounceAirconSetpoint(network, application, unit, clamped) {
-        const key = `${network}/${unit}`;
-        const pending = this._airconSetpointTimers.get(key);
-        if (pending) clearTimeout(pending.handle);
-        const delayMs = resolveSetting(this.settings, 'airconSetpointDebounceMs');
-        const handle = setTimeout(() => {
-            this._airconSetpointTimers.delete(key);
-            this._sendAirconSetpoint(network, application, unit, clamped);
-        }, delayMs);
-        if (typeof handle.unref === 'function') handle.unref();
-        this._airconSetpointTimers.set(key, { handle });
-        this.logger.debug(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C queued (debounced ${delayMs}ms)`);
-    }
-
-    /**
-     * Cancel a pending (debounced) setpoint write, e.g. when the user switches
-     * mode instead — the latest explicit action wins.
-     * @private
-     */
-    _cancelPendingAirconSetpoint(network, unit) {
-        const pending = this._airconSetpointTimers.get(`${network}/${unit}`);
-        if (pending) {
-            clearTimeout(pending.handle);
-            this._airconSetpointTimers.delete(`${network}/${unit}`);
-        }
-    }
-
-    /**
-     * Actually send a debounced setpoint write, using the thermostat's current
-     * learned state (mode, flags, ward/zones/type) at fire time.
-     * @private
-     */
-    _sendAirconSetpoint(network, application, unit, clamped) {
-        const state = this.airconControlRegistry && this.airconControlRegistry.get(network, unit);
-        if (!state) return;
-        const level = Math.round(clamped * 256); // °C × 256, temperature value (rawlevel=0)
-        const modeRaw = (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
-            ? state.modeRaw : HVAC_CODE_BY_MODE.heat;
-        const cmd = buildSetZoneHvacMode({
-            cbusname: this.cbusname,
-            network,
-            application,
-            ward: state.ward,
-            zones: state.zones,
-            modeRaw,
-            rawlevel: 0,
-            ...this._airconFlagEcho(state),
-            type: state.type,
-            level
-        });
-        this._queueCommand(cmd + NEWLINE);
-        // Keep the learned state coherent until the thermostat's echo broadcast.
-        this.airconControlRegistry.noteSetpointWrite(network, unit, modeRaw, level);
-        this.logger.info(`Native HVAC setpoint: ${network}/${unit} -> ${clamped}°C (ward ${state.ward}, zones ${state.zones})`);
     }
 
     /**
@@ -1350,201 +735,6 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Publish the expected HVAC state to the read topics immediately after a
-     * write, so Home Assistant's card reflects the change without waiting for
-     * the thermostat's broadcast. The real broadcast confirms it shortly after.
-     * @param {string} network - C-Bus network address
-     * @param {string} application - C-Bus application address
-     * @param {string} unit - Aircon unit (group) address
-     * @param {Object} [state] - State fields to publish
-     * @param {string} [state.mode] - HVAC mode to publish
-     * @param {number} [state.setpointC] - Target temperature in °C to publish
-     * @param {string} [state.fanMode] - Fan mode to publish
-     * @private
-     */
-    _publishOptimisticHvacState(network, application, unit, { mode, setpointC, fanMode } = {}) {
-        if (!this.mqttClient || typeof this.mqttClient.publish !== 'function') return;
-        const base = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${unit}`;
-        const opts = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
-        if (setpointC !== undefined && setpointC !== null) {
-            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_SETPOINT}`, String(setpointC), opts);
-        }
-        if (mode !== undefined && mode !== null) {
-            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_MODE}`, String(mode), opts);
-        }
-        if (fanMode !== undefined && fanMode !== null) {
-            this.mqttClient.publish(`${base}/${MQTT_TOPIC_SUFFIX_HVAC_FAN_MODE}`, String(fanMode), opts);
-        }
-    }
-
-    /**
-     * Native Air Conditioning mode change via AIRCON SET_WARD_OFF (off) or
-     * SET_ZONE_HVAC_MODE (any active mode, keeping the last setpoint; Fan Only
-     * uses the raw "no level" sentinel).
-     * @private
-     */
-    _handleNativeAirconMode(command, payload, topic) {
-        const network = command.getNetwork();
-        const unit = command.getGroup();
-        const application = command.getApplication();
-        const state = this._requireNativeAirconState(network, unit, 'set mode', topic);
-        if (!state) return;
-
-        const mode = String(payload).toLowerCase();
-        if (mode === 'off') {
-            this._cancelPendingAirconSetpoint(network, unit);
-            this._queueCommand(buildSetWardOff({ cbusname: this.cbusname, network, application, ward: state.ward }) + NEWLINE);
-            this._publishOptimisticHvacState(network, application, unit, { mode: 'off' });
-            this.logger.info(`Native HVAC mode: ${network}/${unit} -> off (ward ${state.ward})`);
-            return;
-        }
-
-        const code = HVAC_CODE_BY_MODE[mode];
-        if (code === undefined) {
-            this.logger.warn(`Unknown HVAC mode "${payload}" on topic ${topic}`);
-            return;
-        }
-
-        this._cancelPendingAirconSetpoint(network, unit);
-        const { rawlevel, level } = this._airconLevelForModeRaw(state, code);
-        const cmd = buildSetZoneHvacMode({
-            cbusname: this.cbusname,
-            network,
-            application,
-            ward: state.ward,
-            zones: state.zones,
-            modeRaw: code,
-            rawlevel,
-            ...this._airconFlagEcho(state),
-            type: state.type,
-            level
-        });
-        this._queueCommand(cmd + NEWLINE);
-        this._publishOptimisticHvacState(network, application, unit, { mode });
-        this.logger.info(`Native HVAC mode: ${network}/${unit} -> ${mode} (ward ${state.ward}, zones ${state.zones})`);
-    }
-
-    /**
-     * Resolve the <Level> for a SET_ZONE_HVAC_MODE write: Fan Only carries the
-     * raw-level fan value; otherwise §25.12.11 says each Operating Type recalls
-     * its own Set Point — use the one learned for the target mode, falling back
-     * to the last seen target, then a default, when never observed.
-     * @private
-     */
-    _airconLevelForModeRaw(state, modeRaw) {
-        if (modeRaw === HVAC_CODE_BY_MODE.fan_only) {
-            return { rawlevel: 1, level: FAN_LEVEL_SENTINEL };
-        }
-        const byMode = state.setpointRawByMode && state.setpointRawByMode[modeRaw];
-        if (Number.isInteger(byMode) && byMode > 0 && byMode <= 12800) {
-            return { rawlevel: 0, level: byMode };
-        }
-        if (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= 12800) {
-            return { rawlevel: 0, level: state.setpointRaw };
-        }
-        return { rawlevel: 0, level: Math.round(DEFAULT_SETPOINT_C * 256) };
-    }
-
-    /**
-     * HVAC fan mode command entry point (cbus/write/…/fanmode). Only the native
-     * Air Conditioning application supports it (via the Aux Level, §25.6.11);
-     * HVAC-via-lighting has no fan concept.
-     * @private
-     */
-    _handleHvacFanMode(command, payload, topic) {
-        if (this._isNativeAircon(command)) {
-            if (!this._nativeAirconControlAllowed('fan mode', topic)) return;
-            return this._handleNativeAirconFanMode(command, payload, topic);
-        }
-        this.logger.warn(`HVAC fan mode is only supported on the native Air Conditioning application; ignoring ${topic}`);
-    }
-
-    /**
-     * Native Air Conditioning fan mode via the Aux Level (§25.6.3 A bit +
-     * §25.6.11): 'automatic' clears the aux-used flag (aux-controlled functions
-     * run automatically); 'continuous' sets Aux Level bit 6, preserving any
-     * learned fan-speed setting in bits 0-5. Mode and setpoint are kept from the
-     * thermostat's current state.
-     * @private
-     */
-    _handleNativeAirconFanMode(command, payload, topic) {
-        const network = command.getNetwork();
-        const unit = command.getGroup();
-        const application = command.getApplication();
-        const state = this._requireNativeAirconState(network, unit, 'set fan mode', topic);
-        if (!state) return;
-        if (state.modeRaw === 0) {
-            // Same guard as the setpoint path: a fan-mode write would force the
-            // off unit on in the fallback mode.
-            this.logger.warn(`HVAC unit ${network}/${unit} is off; ignoring fan mode "${payload}" — turn it on first (${topic})`);
-            return;
-        }
-
-        const fanMode = String(payload).toLowerCase();
-        let useaux;
-        let aux;
-        if (fanMode === 'automatic') {
-            useaux = 0;
-            aux = 0;
-        } else if (fanMode === 'continuous') {
-            useaux = 1;
-            // Re-combine bit 6 with the learned speed bits whenever we have
-            // them — including after an automatic write, which clears the
-            // aux-used flag but deliberately keeps the learned aux level.
-            aux = 0x40 | (Number.isInteger(state.auxLevel) ? (state.auxLevel & 0x3F) : 0);
-        } else {
-            this.logger.warn(`Unknown HVAC fan mode "${payload}" on topic ${topic} (expected automatic|continuous)`);
-            return;
-        }
-
-        const modeRaw = (state.modeRaw !== null && state.modeRaw !== undefined && state.modeRaw !== 0)
-            ? state.modeRaw : HVAC_CODE_BY_MODE.heat;
-        this._cancelPendingAirconSetpoint(network, unit);
-        const { rawlevel, level } = this._airconLevelForModeRaw(state, modeRaw);
-        const flags = this._airconFlagEcho(state);
-        const cmd = buildSetZoneHvacMode({
-            cbusname: this.cbusname,
-            network,
-            application,
-            ward: state.ward,
-            zones: state.zones,
-            modeRaw,
-            rawlevel,
-            setback: flags.setback,
-            guard: flags.guard,
-            useaux,
-            type: state.type,
-            level,
-            aux
-        });
-        this._queueCommand(cmd + NEWLINE);
-        // An automatic write clears the aux-used flag but must not clobber the
-        // learned fan-speed bits — a later continuous write combines bit 6
-        // with them (§25.6.11).
-        this.airconControlRegistry.noteAuxLevelWrite(network, unit, useaux === 1,
-            useaux === 1 ? aux : (Number.isInteger(state.auxLevel) ? state.auxLevel : aux));
-        this._publishOptimisticHvacState(network, application, unit, { fanMode });
-        this.logger.info(`Native HVAC fan mode: ${network}/${unit} -> ${fanMode} (ward ${state.ward}, zones ${state.zones})`);
-    }
-
-    /**
-     * Resolve the Mode & Flags byte fields (§25.6.3) and Aux Level for a write
-     * from the thermostat's learned broadcasts, so HA-originated commands echo
-     * its configuration instead of silently clearing setback/guard/aux state.
-     * Defaults mirror the thermostat-typical broadcast (setback 0, guard 0,
-     * aux used, aux level 0) when nothing has been learned.
-     * @private
-     */
-    _airconFlagEcho(state) {
-        return {
-            setback: state.setbackEnabled === true ? 1 : 0,
-            guard: state.guardEnabled === true ? 1 : 0,
-            useaux: state.auxLevelUsed === false ? 0 : 1,
-            aux: (state.auxLevelUsed && Number.isInteger(state.auxLevel)) ? state.auxLevel : 0
-        };
-    }
-
-    /**
      * Builds a C-Gate device path from a command.
      * @param {CBusCommand} command - The command containing address information
      * @returns {string} C-Gate path format: //PROJECT/network/application/group
@@ -1563,4 +753,7 @@ class MqttCommandRouter extends EventEmitter {
     }
 }
 
+Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterSecurity'));
+Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterAircon'));
+Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterCovers'));
 module.exports = MqttCommandRouter;

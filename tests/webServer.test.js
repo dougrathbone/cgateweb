@@ -723,7 +723,24 @@ describe('WebServer', () => {
             expect(defaults.maxMutationRequestsPerWindow).toBe(resolveSetting({}, 'web_mutation_rate_limit_per_minute'));
             expect(defaults.maxReadRequestsPerWindow).toBe(resolveSetting({}, 'web_read_rate_limit_per_minute'));
             expect(defaults.maxAuthFailuresPerWindow).toBe(resolveSetting({}, 'web_auth_failure_rate_limit_per_minute'));
+            expect(defaults.maxTrackedSources).toBe(resolveSetting({}, 'webRateLimitMaxTrackedSources'));
             expect(defaults.maxDashboardDevices).toBe(resolveSetting({}, 'webDashboardMaxDevices'));
+            expect(defaults._rateLimiter.maxTrackedSources).toBe(defaults.maxTrackedSources);
+            expect(defaults._readRateLimiter.maxTrackedSources).toBe(defaults.maxTrackedSources);
+            expect(defaults._authFailureLimiter.maxTrackedSources).toBe(defaults.maxTrackedSources);
+        });
+
+        it('honors webRateLimitMaxTrackedSources override for all three limiters', () => {
+            const custom = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({}),
+                maxTrackedSources: 42
+            });
+            expect(custom.maxTrackedSources).toBe(42);
+            expect(custom._rateLimiter.maxTrackedSources).toBe(42);
+            expect(custom._readRateLimiter.maxTrackedSources).toBe(42);
+            expect(custom._authFailureLimiter.maxTrackedSources).toBe(42);
         });
 
         it('should reject mutating routes by default when no API key is configured', async () => {

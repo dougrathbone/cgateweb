@@ -1,7 +1,7 @@
 # Default matches production's HA base (build.yaml). Compose overrides this
 # explicitly. Remaining diffs vs homeassistant-addon/Dockerfile are intentional
 # for local/CI speed: no BUILDPLATFORM builder stage, no OpenJDK arch fallback.
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.21
+ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base:3.21@sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249
 
 # ----------------------------------------------------------------------------
 # Builder stage: install npm + run `npm ci` only. Mirrors the production

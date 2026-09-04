@@ -355,6 +355,7 @@ The web server hosts the status page and the label-editing API. Under the add-on
 | `web_mutation_rate_limit_per_minute` | `web_mutation_rate_limit_per_minute` | integer | `120` | Per-client write rate limit on mutating endpoints, over a fixed 60 s window. |
 | `web_read_rate_limit_per_minute` | *standalone only* | integer | `300` | Per-client read rate limit on non-mutating web endpoints, over `webRateLimitWindowMs`. Passed through to the web server as `maxReadRequestsPerWindow`. |
 | `webRateLimitWindowMs` | *standalone only* | integer (ms) | `60000` | Sliding window length for web API per-client rate limits (mutation, read, and auth-failure buckets). |
+| `webRateLimitMaxTrackedSources` | *standalone only* | integer | `5000` | Cap on distinct client addresses tracked by the web API rate limiters. Excess addresses are evicted least-recently-used. |
 | `web_auth_failure_rate_limit_per_minute` | *standalone only* | integer | `20` | Stricter, separate bucket for **failed** authentication attempts, so an exposed `web_api_key` cannot be brute-forced unthrottled. |
 | `ingressDiscoveryMaxBackoffMs` | *standalone only* | integer (ms) | `8000` | Ceiling for the Supervisor ingress-path discovery retry backoff after add-on start. |
 | `web_max_sse_connections` | *standalone only* | integer | `32` | Cap on concurrent clients of the `/api/events/stream` SSE endpoint. A denial-of-service guard for exposed ports. |

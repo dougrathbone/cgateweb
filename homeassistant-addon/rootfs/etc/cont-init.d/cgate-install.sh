@@ -20,9 +20,16 @@ CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_
 # The inner payload is byte-for-byte the same C-Gate — still cgate-3.3.2_1855.zip
 # — and the bundled release-notes PDF came back named "C-Gate 3 Release Notes
 # (3).pdf", a browser download-collision suffix, so this was a manual re-zip
-# rather than a new C-Gate build. Expect it to recur: the escape hatch above is
-# the supported answer for users, and this constant is the fix for everyone else.
+# rather than a new C-Gate build. Expect it to recur — which is why the payload
+# pin below exists, so a recurrence no longer waits on an add-on release.
 CGATEWEB_DEFAULT_DOWNLOAD_SHA256="1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+# sha256 of the payload *inside* that wrapper (cgate-3.3.2_1855.zip). A re-zip
+# of the wrapper changes the checksum above but not this one, so accepting a
+# match on either means the next repackage does not break fresh installs while
+# waiting on an add-on release. The wrapper pin above stays the exact-file
+# canary the scheduled CI download check watches; this one is what keeps users
+# installing. Both must describe the same C-Gate build.
+CGATEWEB_DEFAULT_PAYLOAD_SHA256="b135a367f435b63ec0a08e5cde0b96735da23c8a48f3f48da7b47e118c057379"
 
 # Managed C-Gate log retention (#81). C-Gate writes unbounded files under
 # /data/cgate/logs/ and rotated event-file segments; without a cap a busy
@@ -155,6 +162,74 @@ _cgateweb_record_installed_version() {
     fi
 }
 
+# The payload pin only applies where the script's own default checksum does:
+# the built-in URL with no user override. Someone who pins their own checksum
+# gets exactly the file they asked for, never a fallback to ours.
+_cgateweb_resolve_payload_sha256() {
+    local url="${1:-}"
+    local sha
+    sha=$(bashio::config 'cgate_download_sha256')
+    if [[ "${sha}" == "null" ]]; then
+        sha=""
+    fi
+    if [[ -z "${sha}" && "${url}" == "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" ]]; then
+        printf '%s' "${CGATEWEB_DEFAULT_PAYLOAD_SHA256}"
+    fi
+}
+
+# Echo the sha256 of the C-Gate payload nested inside a Schneider wrapper zip
+# (the cgate-X.Y.Z_NNNN.zip beside the release-notes PDF), or nothing when the
+# archive holds no single such entry — a flat package, or the payload itself.
+# Streamed through a pipe so a 57MB wrapper needs no second copy on disk.
+#
+# Requiring exactly one candidate keeps this unambiguous: an archive with two
+# nested cgate zips has no single payload, so the caller falls back to hashing
+# the whole file rather than picking one arbitrarily.
+_cgateweb_payload_sha256() {
+    local zip_path="$1"
+    local entries count
+    entries=$(unzip -Z1 "${zip_path}" 2>/dev/null | grep -E '(^|/)cgate-[^/]*\.zip$')
+    count=$(printf '%s' "${entries}" | grep -c . || true)
+    if [[ "${count}" != "1" ]]; then
+        return 0
+    fi
+    # An entry name is a match pattern to unzip, so a name carrying glob
+    # metacharacters simply matches nothing and yields an empty digest, which
+    # the caller treats as "no payload" — never as a passing comparison.
+    unzip -p "${zip_path}" "${entries}" 2>/dev/null | sha256sum | awk '{print $1}'
+}
+
+# Decide whether a zip satisfies its pin, accepting a match on either the whole
+# archive or its nested payload. Echoes which form matched ('archive' or
+# 'payload') and returns 0; returns 1 with no output when neither does.
+#
+# Two expected values because they mean different things: ${2} is the checksum
+# in force for this download (a user's, or the wrapper pin) and must be matched
+# by either form, so a user may pin whichever they computed. ${3} is our
+# payload pin and is only ever compared against a payload.
+_cgateweb_zip_matches_pin() {
+    local zip_path="$1" expected="$2" expected_payload="${3:-}"
+    local actual payload
+    actual=$(sha256sum "${zip_path}" | awk '{print $1}')
+    if [[ -n "${expected}" && "${actual}" == "${expected}" ]]; then
+        printf 'archive'
+        return 0
+    fi
+    payload=$(_cgateweb_payload_sha256 "${zip_path}")
+    if [[ -z "${payload}" ]]; then
+        return 1
+    fi
+    if [[ -n "${expected}" && "${payload}" == "${expected}" ]]; then
+        printf 'payload'
+        return 0
+    fi
+    if [[ -n "${expected_payload}" && "${payload}" == "${expected_payload}" ]]; then
+        printf 'payload'
+        return 0
+    fi
+    return 1
+}
+
 # Standard "what to do now" block for every C-Gate download failure. The most
 # common external cause is Clipsal/Schneider changing the download URL or
 # repackaging the zip (they did on 2026-07-24, breaking every fresh install
@@ -258,6 +333,16 @@ _cgateweb_apply_cgate_config() {
     _cgateweb_set_config_key "${config_file}" "event-file.split-count" "${CGATEWEB_EVENT_FILE_SPLIT_COUNT}"
 }
 
+# Portable file size / mtime (GNU stat on Alpine; BSD stat on macOS hosts that
+# run the install-script unit tests). Same pattern as the download-size checks.
+_cgateweb_stat_size() {
+    stat -c '%s' "$1" 2>/dev/null || stat -f '%z' "$1" 2>/dev/null || echo 0
+}
+
+_cgateweb_stat_mtime() {
+    stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null || echo 0
+}
+
 # Return 0 when a file under the managed C-Gate install may be pruned.
 # Only log directories and rotated event-file segments are eligible — never
 # Projects/, config/, or the live event.log C-Gate is writing.
@@ -300,7 +385,7 @@ _cgateweb_prune_cgate_logs() {
     for file in "${candidates[@]}"; do
         [[ -f "${file}" ]] || continue
         if find "${file}" -mtime +"${max_age_days}" -print -quit 2>/dev/null | grep -q .; then
-            age_bytes=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+            age_bytes=$(_cgateweb_stat_size "${file}")
             rm -f "${file}" && deleted_age=$((deleted_age + 1)) && reclaimed=$((reclaimed + age_bytes))
         fi
     done
@@ -313,10 +398,19 @@ _cgateweb_prune_cgate_logs() {
     done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
         -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
 
+    # Bash 3.2 (macOS /bin/bash) treats "${arr[@]}" as unbound under set -u
+    # when the array is empty. Skip the size-cap loop entirely in that case.
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        if [[ ${deleted_age} -gt 0 ]]; then
+            bashio::log.info "Pruned C-Gate log files: ${deleted_age} older than ${max_age_days} day(s), 0 over the ${max_bytes}-byte cap (~$((reclaimed / 1048576)) MiB reclaimed)"
+        fi
+        return 0
+    fi
+
     local total=0 size
     for file in "${candidates[@]}"; do
         [[ -f "${file}" ]] || continue
-        size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+        size=$(_cgateweb_stat_size "${file}")
         total=$((total + size))
     done
 
@@ -325,11 +419,11 @@ _cgateweb_prune_cgate_logs() {
         for i in "${!candidates[@]}"; do
             file="${candidates[$i]}"
             [[ -f "${file}" ]] || continue
-            mtime=$(stat -c '%Y' "${file}" 2>/dev/null || echo 0)
+            mtime=$(_cgateweb_stat_mtime "${file}")
             if [[ ${mtime} -lt ${oldest_mtime} ]]; then
                 oldest_mtime=${mtime}
                 oldest="${file}"
-                oldest_size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+                oldest_size=$(_cgateweb_stat_size "${file}")
                 idx=${i}
             fi
         done
@@ -337,12 +431,16 @@ _cgateweb_prune_cgate_logs() {
         rm -f "${oldest}" && deleted_size=$((deleted_size + 1)) && reclaimed=$((reclaimed + oldest_size)) \
             && total=$((total - oldest_size))
         unset "candidates[${idx}]"
-        # Compact sparse array after unset.
+        # Compact sparse array after unset (bash 3.2 + set -u safe).
         local compact=()
-        for file in "${candidates[@]}"; do
+        for file in ${candidates[@]+"${candidates[@]}"}; do
             [[ -n "${file}" ]] && compact+=("${file}")
         done
-        candidates=("${compact[@]}")
+        if [[ ${#compact[@]} -eq 0 ]]; then
+            candidates=()
+        else
+            candidates=("${compact[@]}")
+        fi
     done
 
     if [[ $((deleted_age + deleted_size)) -gt 0 ]]; then
@@ -1019,6 +1117,9 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     DOWNLOAD_SIZE=0
     DOWNLOAD_OK=0
     EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
+    # Empty unless this is the built-in download with no user-set checksum.
+    EXPECTED_PAYLOAD_SHA256=$(_cgateweb_resolve_payload_sha256 "${DOWNLOAD_URL}")
+    MATCHED_ON=""
 
     # Retry the download a few times: field reports show CDN/proxy paths that
     # hand back truncated or error-page content (different bytes each run), and
@@ -1061,8 +1162,15 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
         fi
 
         ACTUAL_SHA256=$(sha256sum "${TEMP_ZIP}" | awk '{print $1}')
-        if [[ "${ACTUAL_SHA256}" == "${EXPECTED_SHA256}" ]]; then
-            bashio::log.info "Checksum verification passed"
+        if MATCHED_ON=$(_cgateweb_zip_matches_pin "${TEMP_ZIP}" "${EXPECTED_SHA256}" "${EXPECTED_PAYLOAD_SHA256}"); then
+            if [[ "${MATCHED_ON}" == "payload" ]]; then
+                # Worth saying out loud: the wrapper has been re-zipped since
+                # this add-on was released, and the pin wants updating even
+                # though the install is proceeding correctly.
+                bashio::log.info "Checksum verification passed on the C-Gate payload (the outer zip has been repackaged since this add-on release)"
+            else
+                bashio::log.info "Checksum verification passed"
+            fi
             DOWNLOAD_OK=1
             break
         fi
@@ -1083,9 +1191,18 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
         else
             bashio::log.error "Expected: ${EXPECTED_SHA256}"
             bashio::log.error "Actual:   ${ACTUAL_SHA256} (${DOWNLOAD_SIZE} bytes)"
+            # The payload digest is the more useful of the two here: it rules a
+            # repackage in or out. Absent means the archive had no nested C-Gate
+            # zip at all, which points at a wrong file rather than a re-zip.
+            ACTUAL_PAYLOAD_SHA256=$(_cgateweb_payload_sha256 "${TEMP_ZIP}")
+            if [[ -n "${ACTUAL_PAYLOAD_SHA256}" ]]; then
+                bashio::log.error "Payload:  ${ACTUAL_PAYLOAD_SHA256} (the nested C-Gate zip, which did not match either pin)"
+            else
+                bashio::log.error "The archive contains no nested C-Gate zip, so it is not a Schneider C-Gate package."
+            fi
             bashio::log.error "Either the download path is corrupting the file (flaky network, proxy or CDN block page),"
-            bashio::log.error "or Clipsal/Schneider repackaged the zip — they did on 2026-07-24, breaking fresh"
-            bashio::log.error "installs until this add-on's pinned checksum was updated."
+            bashio::log.error "or Clipsal/Schneider changed the C-Gate build itself. A mere repackage would still have"
+            bashio::log.error "matched on the payload, so this is more than the 2026-07-24 re-zip."
         fi
         _cgateweb_log_download_guidance
         exit 1
@@ -1126,7 +1243,10 @@ elif [[ "${INSTALL_SOURCE}" == "upload" ]]; then
     if [[ -n "${DOWNLOAD_SHA256}" ]]; then
         ACTUAL_SHA256=$(sha256sum "${ZIP_FILE}" | awk '{print $1}')
         EXPECTED_SHA256=$(echo "${DOWNLOAD_SHA256}" | tr '[:upper:]' '[:lower:]')
-        if [[ "${ACTUAL_SHA256}" != "${EXPECTED_SHA256}" ]]; then
+        # No payload pin here: an uploaded zip can be any C-Gate version, so
+        # only the user's own checksum applies — matched against the whole file
+        # or its nested payload, whichever they happened to compute.
+        if ! _cgateweb_zip_matches_pin "${ZIP_FILE}" "${EXPECTED_SHA256}" >/dev/null; then
             bashio::log.error "Uploaded C-Gate checksum mismatch"
             bashio::log.error "Expected: ${EXPECTED_SHA256}"
             bashio::log.error "Actual:   ${ACTUAL_SHA256}"
