@@ -11,7 +11,6 @@ const {
     MQTT_RETAINED_STATE_OPTIONS,
     MQTT_TOPIC_SUFFIX_LEVEL,
     MQTT_TOPIC_SUFFIX_STATE,
-    MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_CMD_TYPE_GETALL,
     MQTT_CMD_TYPE_GETTREE,
     MQTT_CMD_TYPE_SWITCH,
@@ -37,7 +36,6 @@ const {
     CGATE_CMD_ON,
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
-    CGATE_CMD_TERMINATERAMP,
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
     CGATE_LEVEL_MIN,
@@ -71,6 +69,16 @@ const { UNIT_TABLE: MEASUREMENT_UNIT_TABLE } = require('./applicationDecoders/me
  * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacSetpoint
  * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacMode
  * @property {(command: import('./cbusCommand'), payload: string, topic: string) => void} _handleHvacFanMode
+ */
+
+/**
+ * Methods mixed into MqttCommandRouter.prototype from mqttCommandRouterCovers.js
+ * at module load (see the Object.assign call at the bottom of this file).
+ * @typedef {Object} MqttCommandRouterCoverMethods
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handlePosition
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handleTilt
+ * @property {(command: import('./cbusCommand'), topic: string) => void} _handleStop
+ * @property {(network: string, application: string, group: string, targetLevel: number, durationMs: number|null) => void} _startCoverRamp
  */
 
 class MqttCommandRouter extends EventEmitter {
@@ -242,8 +250,11 @@ class MqttCommandRouter extends EventEmitter {
      */
     _processCommand(command, topic, payload) {
         const commandType = command.getCommandType();
-        // HVAC handlers live on the aircon mixin (see Object.assign below).
+        // HVAC / cover handlers live on mixins (see Object.assign below).
         const aircon = /** @type {MqttCommandRouter & MqttCommandRouterAirconMethods} */ (
+            /** @type {unknown} */ (this)
+        );
+        const covers = /** @type {MqttCommandRouter & MqttCommandRouterCoverMethods} */ (
             /** @type {unknown} */ (this)
         );
 
@@ -261,13 +272,13 @@ class MqttCommandRouter extends EventEmitter {
                 this._handleRamp(command, payload, topic);
                 break;
             case MQTT_CMD_TYPE_POSITION:
-                this._handlePosition(command, topic);
+                covers._handlePosition(command, topic);
                 break;
             case MQTT_CMD_TYPE_TILT:
-                this._handleTilt(command, topic);
+                covers._handleTilt(command, topic);
                 break;
             case MQTT_CMD_TYPE_STOP:
-                this._handleStop(command, topic);
+                covers._handleStop(command, topic);
                 break;
             case MQTT_CMD_TYPE_TRIGGER:
                 this._handleTrigger(command, topic);
@@ -495,7 +506,10 @@ class MqttCommandRouter extends EventEmitter {
         // the command (switch) topic rather than a dedicated stop topic, so a STOP
         // on the switch topic must be routed to the cover-stop (TERMINATERAMP) path.
         if (action === MQTT_COMMAND_STOP) {
-            this._handleStop(command, command.getTopic());
+            const covers = /** @type {MqttCommandRouter & MqttCommandRouterCoverMethods} */ (
+                /** @type {unknown} */ (this)
+            );
+            covers._handleStop(command, command.getTopic());
             return;
         }
 
@@ -640,44 +654,6 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles cover position commands (set position 0-100%).
-     * Uses RAMP command to set the position level and starts interpolated
-     * position updates so Home Assistant shows smooth progress.
-     * @param {CBusCommand} command - The position command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handlePosition(command, topic) {
-        this._queueRampCommand(command, topic, {
-            name: 'Position',
-            priority: 'interactive',
-            invalidText: `Invalid position value for topic ${topic}`,
-            debugLine: (n, a, g, l) => `Setting cover position: ${n}/${a}/${g} to level ${l}`,
-            afterQueue: (level) => {
-                // Start interpolated position updates so HA shows smooth movement
-                // Position payloads always produce a numeric level (or null, excluded above).
-                this._startCoverRamp(command.getNetwork(), command.getApplication(), command.getGroup(), /** @type {number} */ (level), null);
-            }
-        });
-    }
-
-    /**
-     * Handles cover tilt commands (set tilt angle 0-100%).
-     * Uses RAMP command to set the tilt level.
-     * @param {CBusCommand} command - The tilt command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handleTilt(command, topic) {
-        this._queueRampCommand(command, topic, {
-            name: 'Tilt',
-            priority: 'interactive',
-            invalidText: `Invalid tilt value for topic ${topic}`,
-            debugLine: (n, a, g, l) => `Setting cover tilt: ${n}/${a}/${g} to level ${l}`
-        });
-    }
-
-    /**
      * Shared core for the level-carrying write handlers (position, tilt,
      * trigger): group guard, RAMP assembly, queue and debug log. The deltas
      * live in the spec: queue priority, log wording and an optional
@@ -714,80 +690,6 @@ class MqttCommandRouter extends EventEmitter {
         }
         this.logger.debug(spec.debugLine(command.getNetwork(), command.getApplication(), command.getGroup(), level));
         if (spec.afterQueue) spec.afterQueue(level);
-    }
-
-    /**
-     * Handles stop commands for covers/blinds.
-     * Uses TERMINATERAMP to stop any in-progress movement.
-     * Also cancels any active interpolated position ramp.
-     * @param {CBusCommand} command - The stop command
-     * @param {string} topic - Original topic for error logging
-     * @private
-     */
-    _handleStop(command, topic) {
-        if (!command.getGroup()) {
-            this.logger.warn(`Stop command requires device ID on topic ${topic}`);
-            return;
-        }
-
-        const cbusPath = this._buildCGatePath(command);
-        const network = command.getNetwork();
-        const application = command.getApplication();
-        const group = command.getGroup();
-
-        // TERMINATERAMP stops any in-progress ramp operation, effectively stopping the cover
-        const cgateCommand = `${CGATE_CMD_TERMINATERAMP} ${cbusPath}${NEWLINE}`;
-        this._queueCommand(cgateCommand, 'critical');
-        this.logger.debug(`Stopping cover: ${network}/${application}/${group}`);
-
-        // Cancel any interpolated ramp so estimated positions stop being published
-        const key = `${network}/${application}/${group}`;
-        this._coverRampTracker.cancelRamp(key);
-    }
-
-    /**
-     * Starts a cover ramp tracker entry to publish interpolated position values.
-     *
-     * Reads the current level from deviceStateManager, then starts a
-     * CoverRampTracker ramp that publishes estimated position and level every
-     * 500 ms until the ramp completes or is cancelled.
-     *
-     * @param {string}      network     - C-Bus network number
-     * @param {string}      application - C-Bus application number
-     * @param {string}      group       - C-Bus group number
-     * @param {number}      targetLevel - Target C-Bus level (0–255)
-     * @param {number|null} durationMs  - Ramp duration in ms, or null to use default setting
-     * @private
-     */
-    _startCoverRamp(network, application, group, targetLevel, durationMs) {
-        if (!this.mqttClient) {
-            return;
-        }
-
-        const key = `${network}/${application}/${group}`;
-        const startLevel = (this.deviceStateManager && this.deviceStateManager.getLevel(network, application, group)) || 0;
-        const duration = durationMs !== null && durationMs !== undefined
-            ? durationMs
-            : resolveSetting(this.settings, 'cover_ramp_duration_ms');
-
-        const mqttOptions = this.settings.retainreads ? MQTT_RETAINED_STATE_OPTIONS : { qos: 0 };
-        const topicBase = `${MQTT_TOPIC_PREFIX_READ}/${network}/${application}/${group}`;
-
-        this._coverRampTracker.startRamp(key, startLevel, targetLevel, duration, (level) => {
-            const positionPercent = Math.round(level / CGATE_LEVEL_MAX * 100);
-            this.mqttClient.publish(
-                `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
-                String(positionPercent),
-                mqttOptions
-            );
-            this.mqttClient.publish(
-                `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
-                String(positionPercent),
-                mqttOptions
-            );
-        });
-
-        this.logger.debug(`Cover ramp started: ${key} from ${startLevel} to ${targetLevel} over ${duration}ms`);
     }
 
     /**
@@ -853,4 +755,5 @@ class MqttCommandRouter extends EventEmitter {
 
 Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterSecurity'));
 Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterAircon'));
+Object.assign(MqttCommandRouter.prototype, require('./mqttCommandRouterCovers'));
 module.exports = MqttCommandRouter;
