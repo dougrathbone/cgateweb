@@ -54,7 +54,7 @@ const RAW_CAPTURE_MQTT_OPTIONS = Object.freeze({ retain: false, qos: 0 });
  *   mqtt: 'mqtt://localhost:1883',
  *   cbusip: '192.168.1.100',
  *   cbuscommandport: 20023,
- *   cbuseventport: 20024,
+ *   cbuseventport: 20025,
  *   cbusname: 'SHAC'
  * });
  * bridge.start();
@@ -67,7 +67,7 @@ class CgateWebBridge {
      * @param {string} settings.mqtt - MQTT broker URL (e.g., 'mqtt://localhost:1883')
      * @param {string} settings.cbusip - C-Gate server IP address
      * @param {number} settings.cbuscommandport - C-Gate command port (typically 20023)
-     * @param {number} settings.cbuseventport - C-Gate event port (typically 20024)
+     * @param {number} settings.cbuseventport - C-Gate event port (typically 20025)
      * @param {string} settings.cbusname - C-Gate project name
      * @param {Function} [mqttClientFactory=null] - Factory for creating MQTT clients (for testing)
      * @param {Function} [commandSocketFactory=null] - Factory for command sockets (for testing)
