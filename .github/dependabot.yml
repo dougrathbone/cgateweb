@@ -21,3 +21,18 @@ updates:
       github-actions:
         patterns:
           - "*"
+
+  # Base images are digest-pinned in the Dockerfiles. Dependabot refreshes those
+  # digests; build.yaml arch entries still need a manual/scripted bump when the
+  # HA base tags move (Dependabot does not read build.yaml).
+  - package-ecosystem: "docker"
+    directory: "/homeassistant-addon"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: "docker"
+    directory: "/test-env"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
