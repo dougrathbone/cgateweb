@@ -31,7 +31,7 @@ services:
       context: ..
       dockerfile: test-env/Dockerfile
       args:
-        BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.21
+        BUILD_FROM: ghcr.io/home-assistant/amd64-base:3.21@sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249
         BUILD_ARCH: amd64
         BUILD_DATE: "2026-01-01T00:00:00Z"
         BUILD_REF: "local-test"

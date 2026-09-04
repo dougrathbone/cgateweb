@@ -1,9 +1,12 @@
+# Digests pin the exact base image bits so a silent :3.21 rebuild cannot
+# change what we ship. Refresh by resolving each tag's docker-content-digest
+# (registry HEAD) and updating the @sha256:… suffix; keep the tag for humans.
 build_from:
-  aarch64: "ghcr.io/home-assistant/aarch64-base:3.21"
-  amd64: "ghcr.io/home-assistant/amd64-base:3.21"
-  armhf: "ghcr.io/home-assistant/armhf-base:3.21"
-  armv7: "ghcr.io/home-assistant/armv7-base:3.21"
-  i386: "ghcr.io/home-assistant/i386-base:3.21"
+  aarch64: "ghcr.io/home-assistant/aarch64-base:3.21@sha256:5100b3a2e4741440e7bd587c124920fa3bf02287c4de3cb48aacef7049530ee1"
+  amd64: "ghcr.io/home-assistant/amd64-base:3.21@sha256:995fc8a44059b3bac015603f63b56b1bf935c2227c5176823d9bb76b45fc2249"
+  armhf: "ghcr.io/home-assistant/armhf-base:3.21@sha256:1a569194b1a6febaaea0991e1fbb2f36f6e3d9333954aeb77c8df0e6d349db4f"
+  armv7: "ghcr.io/home-assistant/armv7-base:3.21@sha256:07ab71e0eb954e1c13d925723431e8c8c95326cce2d830ecc2f75d0637123f5a"
+  i386: "ghcr.io/home-assistant/i386-base:3.21@sha256:3c408b049a53a56c5379d3afdc818b7e2725ffeec1c160c57e211dc817b2b27e"
 args:
   BUILD_DATE: "${now}"
   BUILD_REF: "${ref}"

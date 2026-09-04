@@ -12,7 +12,9 @@ ARG BUILD_FROM
 # aarch64/armv7 has caused intermittent SIGILL crashes in CI.
 # ----------------------------------------------------------------------------
 ARG BUILDPLATFORM
-FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.21 AS builder
+# Multi-arch index digest for alpine:3.21 — BUILDPLATFORM still selects the
+# host arch; the pin stops the tag floating underneath us.
+FROM --platform=${BUILDPLATFORM:-linux/amd64} alpine:3.21@sha256:48b0309ca019d89d40f670aa1bc06e426dc0931948452e8491e3d65087abc07d AS builder
 
 RUN apk add --no-cache nodejs npm
 
