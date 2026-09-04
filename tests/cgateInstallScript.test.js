@@ -24,6 +24,18 @@ const DEFAULT_DOWNLOAD_URL = 'https://download.se.com/files?p_Doc_Ref=C-Gate_3_L
 // CGATEWEB_DEFAULT_DOWNLOAD_SHA256. Duplicated here so a regression in the
 // script's constant fails the unit tests.
 const DEFAULT_DOWNLOAD_SHA256 = '1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d';
+// sha256 of the payload nested inside that zip (cgate-3.3.2_1855.zip), pinned
+// as CGATEWEB_DEFAULT_PAYLOAD_SHA256. Same duplication rationale: the two pins
+// must keep describing one C-Gate build, and drift between them is silent.
+const DEFAULT_PAYLOAD_SHA256 = 'b135a367f435b63ec0a08e5cde0b96735da23c8a48f3f48da7b47e118c057379';
+
+// macOS has shasum but not coreutils sha256sum; the add-on image and CI have
+// sha256sum. Shim it so the production script runs unmodified on dev machines.
+const SHA256SUM_SHIM = `
+            if ! command -v sha256sum >/dev/null 2>&1; then
+                sha256sum() { shasum -a 256 "$@"; }
+            fi
+`;
 
 function callHelper(helperName, configObject) {
     const env = {
@@ -931,12 +943,7 @@ describeBash('cgate-install.sh download failure guidance (main flow)', () => {
             set -u
             ${BASHIO_STUB_WITH_LOGS}
             sleep() { :; }
-            # macOS has shasum but not coreutils sha256sum; the add-on image
-            # and CI have sha256sum. Shim it so the production script runs
-            # unmodified on dev machines.
-            if ! command -v sha256sum >/dev/null 2>&1; then
-                sha256sum() { shasum -a 256 "$@"; }
-            fi
+            ${SHA256SUM_SHIM}
             curl() {
                 local n out=""
                 n=$(cat "$CGW_CURL_COUNTER" 2>/dev/null || echo 0)
@@ -993,7 +1000,225 @@ describeBash('cgate-install.sh download failure guidance (main flow)', () => {
         expect(r.attempts).toBe(3);
         expect(r.output).toMatch(/Expected: [0-9a-f]{64}/);
         expect(r.output).toMatch(/Actual: {3}[0-9a-f]{64}/);
-        expect(r.output).toMatch(/repackaged the zip/);
+        expect(r.output).toMatch(/changed the C-Gate build itself/);
         for (const re of GUIDANCE) expect(r.output).toMatch(re);
+    });
+
+    test('a file with no nested C-Gate zip is called out as not being a C-Gate package', () => {
+        // Distinguishes "wrong file entirely" from "same C-Gate, re-zipped":
+        // only the latter would have matched on the payload.
+        const r = runDownloadFlow('printf "PK\\x03\\x04 not-a-cgate-package" > "$out"; printf "200"');
+        expect(r.status).toBe(1);
+        expect(r.output).toMatch(/contains no nested C-Gate zip/);
+    });
+});
+
+// Payload-checksum verification. Schneider re-zipped the wrapper on 2026-07-24
+// without touching the C-Gate inside it, which changed the outer checksum and
+// broke every fresh managed install until this add-on shipped a new pin.
+// Verifying the nested payload as well as the wrapper means the next re-zip
+// costs users nothing, while the wrapper pin stays the exact-file canary the
+// scheduled CI download check watches.
+describeBash('cgate-install.sh payload checksum verification', () => {
+    const AdmZip = require('adm-zip');
+    const crypto = require('crypto');
+
+    const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+
+    // The bytes Schneider ships inside the wrapper: a zip of the C-Gate tree.
+    // Built once so every wrapper below embeds an identical payload, which is
+    // what makes the re-zip test meaningful.
+    function makePayloadBuffer(entryPath = 'cgate/cgate.jar', contents = 'cgate-jar-bytes') {
+        const payload = new AdmZip();
+        payload.addFile(entryPath, Buffer.from(contents));
+        return payload.toBuffer();
+    }
+
+    // A Schneider-shaped wrapper: release notes plus one nested cgate-*.zip.
+    // `notes` is what a re-zip changes in practice (the PDF came back named
+    // "C-Gate 3 Release Notes (3).pdf"), so varying it models the real event.
+    function writeWrapper(dir, name, { payloadBuffer, payloadName = 'cgate-3.3.2_1855.zip', notes = 'release notes v1', extra = null }) {
+        const wrapper = new AdmZip();
+        wrapper.addFile('C-Gate 3 Release Notes.pdf', Buffer.from(notes));
+        if (payloadBuffer) wrapper.addFile(payloadName, payloadBuffer);
+        if (extra) wrapper.addFile(extra.name, extra.buffer);
+        const file = path.join(dir, name);
+        fs.writeFileSync(file, wrapper.toBuffer());
+        return { file, archiveSha: sha256(fs.readFileSync(file)) };
+    }
+
+    const tmpDirs = [];
+    function tmpDir() {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-payload-'));
+        tmpDirs.push(dir);
+        return dir;
+    }
+    afterAll(() => {
+        for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    // Run one of the pin helpers, returning its exit status and stdout. Paths
+    // travel via the environment, never interpolated into the command text,
+    // matching the other helper runners in this file.
+    function runPinHelper(helperName, args = [], configObject = {}) {
+        const env = {
+            ...process.env,
+            CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+            CGW_INSTALL_SCRIPT: SCRIPT,
+            CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB
+        };
+        for (const [k, v] of Object.entries(configObject)) env[`CGW_TEST_${k}`] = v;
+        args.forEach((a, i) => { env[`CGW_ARG_${i}`] = a; });
+        const argRefs = args.map((_, i) => `"$CGW_ARG_${i}"`).join(' ');
+        const script = `
+            set -u
+            ${BASHIO_STUB}
+            ${SHA256SUM_SHIM}
+            source "$CGW_INSTALL_SCRIPT"
+            ${helperName} ${argRefs}
+        `;
+        let status = 0;
+        let out;
+        try {
+            out = execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+        } catch (err) {
+            status = err.status;
+            out = `${err.stdout || ''}`;
+        }
+        return { status, out: out.trim() };
+    }
+
+    describe('_cgateweb_payload_sha256', () => {
+        test('digests the nested C-Gate zip, not the wrapper around it', () => {
+            const payloadBuffer = makePayloadBuffer();
+            const { file, archiveSha } = writeWrapper(tmpDir(), 'wrapper.zip', { payloadBuffer });
+
+            const r = runPinHelper('_cgateweb_payload_sha256', [file]);
+
+            expect(r.out).toBe(sha256(payloadBuffer));
+            expect(r.out).not.toBe(archiveSha);
+        });
+
+        test('yields nothing for a flat package with no nested C-Gate zip', () => {
+            // C-Gate 3.4.1 ships this shape: cgate.jar at the top level and a
+            // plain cgate.zip, neither matching the cgate-<version> pattern.
+            const dir = tmpDir();
+            const flat = new AdmZip();
+            flat.addFile('cgate.jar', Buffer.from('jar'));
+            flat.addFile('cgate.zip', Buffer.from('not the versioned payload'));
+            const file = path.join(dir, 'flat.zip');
+            fs.writeFileSync(file, flat.toBuffer());
+
+            expect(runPinHelper('_cgateweb_payload_sha256', [file]).out).toBe('');
+        });
+
+        test('yields nothing when two nested C-Gate zips make the payload ambiguous', () => {
+            const payloadBuffer = makePayloadBuffer();
+            const { file } = writeWrapper(tmpDir(), 'two.zip', {
+                payloadBuffer,
+                extra: { name: 'cgate-3.3.1_1836.zip', buffer: makePayloadBuffer('cgate/other.jar', 'other') }
+            });
+
+            expect(runPinHelper('_cgateweb_payload_sha256', [file]).out).toBe('');
+        });
+
+        test('yields nothing for a file that is not a zip at all', () => {
+            const dir = tmpDir();
+            const file = path.join(dir, 'login-page.zip');
+            fs.writeFileSync(file, '<html>login</html>');
+
+            expect(runPinHelper('_cgateweb_payload_sha256', [file]).out).toBe('');
+        });
+    });
+
+    describe('_cgateweb_zip_matches_pin', () => {
+        test('accepts a wrapper whose own checksum matches, reporting the archive form', () => {
+            const { file, archiveSha } = writeWrapper(tmpDir(), 'w.zip', { payloadBuffer: makePayloadBuffer() });
+
+            const r = runPinHelper('_cgateweb_zip_matches_pin', [file, archiveSha]);
+
+            expect(r.status).toBe(0);
+            expect(r.out).toBe('archive');
+        });
+
+        test('accepts a re-zipped wrapper on the payload pin, which is the whole point', () => {
+            // Same C-Gate, different wrapper bytes: exactly 2026-07-24. The
+            // wrapper pin is stale, so only the payload pin can save the install.
+            const payloadBuffer = makePayloadBuffer();
+            const dir = tmpDir();
+            const original = writeWrapper(dir, 'original.zip', { payloadBuffer, notes: 'release notes v1' });
+            const rezipped = writeWrapper(dir, 'rezipped.zip', { payloadBuffer, notes: 'release notes v2 (3).pdf' });
+
+            expect(rezipped.archiveSha).not.toBe(original.archiveSha);
+
+            const r = runPinHelper('_cgateweb_zip_matches_pin', [
+                rezipped.file, original.archiveSha, sha256(payloadBuffer)
+            ]);
+
+            expect(r.status).toBe(0);
+            expect(r.out).toBe('payload');
+        });
+
+        test("accepts a user's own checksum given as the payload digest", () => {
+            // Someone who computed the checksum of the inner zip rather than
+            // the download should not be told their file is corrupt.
+            const payloadBuffer = makePayloadBuffer();
+            const { file } = writeWrapper(tmpDir(), 'w.zip', { payloadBuffer });
+
+            const r = runPinHelper('_cgateweb_zip_matches_pin', [file, sha256(payloadBuffer)]);
+
+            expect(r.status).toBe(0);
+            expect(r.out).toBe('payload');
+        });
+
+        test('rejects a genuinely different C-Gate build', () => {
+            // A new build changes the payload too, so neither pin matches and
+            // the install must stop rather than silently accept new bytes.
+            const { file } = writeWrapper(tmpDir(), 'w.zip', { payloadBuffer: makePayloadBuffer('cgate/cgate.jar', 'a-different-build') });
+
+            const r = runPinHelper('_cgateweb_zip_matches_pin', [file, 'a'.repeat(64), 'b'.repeat(64)]);
+
+            expect(r.status).toBe(1);
+            expect(r.out).toBe('');
+        });
+
+        test('rejects a flat archive that matches neither pin, with no payload to fall back on', () => {
+            const dir = tmpDir();
+            const file = path.join(dir, 'flat.zip');
+            const flat = new AdmZip();
+            flat.addFile('cgate.jar', Buffer.from('jar'));
+            fs.writeFileSync(file, flat.toBuffer());
+
+            expect(runPinHelper('_cgateweb_zip_matches_pin', [file, 'a'.repeat(64)]).status).toBe(1);
+        });
+    });
+
+    describe('_cgateweb_resolve_payload_sha256', () => {
+        test('applies the payload pin to the built-in download', () => {
+            const r = runPinHelper('_cgateweb_resolve_payload_sha256', [DEFAULT_DOWNLOAD_URL]);
+            expect(r.out).toBe(DEFAULT_PAYLOAD_SHA256);
+        });
+
+        test('stands aside when the user pinned their own checksum', () => {
+            // Explicit user intent must not fall back to our payload pin, or
+            // the add-on would install a file they did not ask for.
+            const r = runPinHelper('_cgateweb_resolve_payload_sha256', [DEFAULT_DOWNLOAD_URL], {
+                cgate_download_sha256: 'c'.repeat(64)
+            });
+            expect(r.out).toBe('');
+        });
+
+        test('stands aside for a custom download URL', () => {
+            const r = runPinHelper('_cgateweb_resolve_payload_sha256', ['https://example.com/cgate.zip']);
+            expect(r.out).toBe('');
+        });
+    });
+
+    test('the two pins are the wrapper and payload of the same C-Gate release', () => {
+        // Guards against re-pinning one and forgetting the other: nothing at
+        // runtime would notice, and the resilience would quietly be gone.
+        const r = runPinHelper('_cgateweb_resolve_download_sha256', [DEFAULT_DOWNLOAD_URL]);
+        expect(r.out).toBe(DEFAULT_DOWNLOAD_SHA256);
+        expect(DEFAULT_PAYLOAD_SHA256).not.toBe(DEFAULT_DOWNLOAD_SHA256);
     });
 });
