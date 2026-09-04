@@ -333,6 +333,16 @@ _cgateweb_apply_cgate_config() {
     _cgateweb_set_config_key "${config_file}" "event-file.split-count" "${CGATEWEB_EVENT_FILE_SPLIT_COUNT}"
 }
 
+# Portable file size / mtime (GNU stat on Alpine; BSD stat on macOS hosts that
+# run the install-script unit tests). Same pattern as the download-size checks.
+_cgateweb_stat_size() {
+    stat -c '%s' "$1" 2>/dev/null || stat -f '%z' "$1" 2>/dev/null || echo 0
+}
+
+_cgateweb_stat_mtime() {
+    stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null || echo 0
+}
+
 # Return 0 when a file under the managed C-Gate install may be pruned.
 # Only log directories and rotated event-file segments are eligible — never
 # Projects/, config/, or the live event.log C-Gate is writing.
@@ -375,7 +385,7 @@ _cgateweb_prune_cgate_logs() {
     for file in "${candidates[@]}"; do
         [[ -f "${file}" ]] || continue
         if find "${file}" -mtime +"${max_age_days}" -print -quit 2>/dev/null | grep -q .; then
-            age_bytes=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+            age_bytes=$(_cgateweb_stat_size "${file}")
             rm -f "${file}" && deleted_age=$((deleted_age + 1)) && reclaimed=$((reclaimed + age_bytes))
         fi
     done
@@ -388,10 +398,19 @@ _cgateweb_prune_cgate_logs() {
     done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
         -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
 
+    # Bash 3.2 (macOS /bin/bash) treats "${arr[@]}" as unbound under set -u
+    # when the array is empty. Skip the size-cap loop entirely in that case.
+    if [[ ${#candidates[@]} -eq 0 ]]; then
+        if [[ ${deleted_age} -gt 0 ]]; then
+            bashio::log.info "Pruned C-Gate log files: ${deleted_age} older than ${max_age_days} day(s), 0 over the ${max_bytes}-byte cap (~$((reclaimed / 1048576)) MiB reclaimed)"
+        fi
+        return 0
+    fi
+
     local total=0 size
     for file in "${candidates[@]}"; do
         [[ -f "${file}" ]] || continue
-        size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+        size=$(_cgateweb_stat_size "${file}")
         total=$((total + size))
     done
 
@@ -400,11 +419,11 @@ _cgateweb_prune_cgate_logs() {
         for i in "${!candidates[@]}"; do
             file="${candidates[$i]}"
             [[ -f "${file}" ]] || continue
-            mtime=$(stat -c '%Y' "${file}" 2>/dev/null || echo 0)
+            mtime=$(_cgateweb_stat_mtime "${file}")
             if [[ ${mtime} -lt ${oldest_mtime} ]]; then
                 oldest_mtime=${mtime}
                 oldest="${file}"
-                oldest_size=$(stat -c '%s' "${file}" 2>/dev/null || echo 0)
+                oldest_size=$(_cgateweb_stat_size "${file}")
                 idx=${i}
             fi
         done
@@ -412,12 +431,16 @@ _cgateweb_prune_cgate_logs() {
         rm -f "${oldest}" && deleted_size=$((deleted_size + 1)) && reclaimed=$((reclaimed + oldest_size)) \
             && total=$((total - oldest_size))
         unset "candidates[${idx}]"
-        # Compact sparse array after unset.
+        # Compact sparse array after unset (bash 3.2 + set -u safe).
         local compact=()
-        for file in "${candidates[@]}"; do
+        for file in ${candidates[@]+"${candidates[@]}"}; do
             [[ -n "${file}" ]] && compact+=("${file}")
         done
-        candidates=("${compact[@]}")
+        if [[ ${#compact[@]} -eq 0 ]]; then
+            candidates=()
+        else
+            candidates=("${compact[@]}")
+        fi
     done
 
     if [[ $((deleted_age + deleted_size)) -gt 0 ]]; then
