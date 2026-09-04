@@ -8,10 +8,11 @@ on:
   pull_request:
     branches: [ "main", "master" ]
   schedule:
-    # Daily pulse so a Schneider download-portal change (they repackaged the
-    # C-Gate zip once already, breaking fresh installs) is caught by the
-    # cgate-download-check job even when nothing is pushed. Scheduled
-    # workflows only run on the default branch.
+    # Daily pulse for the things a push cannot tell us about: a Schneider
+    # download-portal change (they repackaged the C-Gate zip once already,
+    # breaking fresh installs), a nondeterministic test, and a release that
+    # never reached the add-on repository. Scheduled workflows only run on the
+    # default branch.
     - cron: '23 4 * * *'
 
 # Restrict the default GITHUB_TOKEN to read-only. No job here writes to the
@@ -147,9 +148,10 @@ jobs:
   # a zip). Deliberately NOT in the required status checks: a failure is a
   # loud signal, but a third-party outage must not block merges.
   #
-  # This is also the only job a scheduled run performs. The quality gate above
-  # is skipped on schedule: re-running the whole pipeline daily against an
-  # unchanged master proved nothing and cost ~20 runner-minutes a day.
+  # The quality gate above is still skipped on schedule: re-running the whole
+  # pipeline daily against an unchanged master costs ~20 runner-minutes for no
+  # signal. The two jobs below are the exceptions - each answers a question a
+  # push cannot, for about a minute of runner time.
   cgate-download-check:
     name: Verify C-Gate download (${{ matrix.cgate.version }})
     runs-on: ubuntu-latest
@@ -312,3 +314,113 @@ jobs:
           exit 1
         fi
         echo "ci-assets C-Gate ${{ matrix.cgate.version }} verified."
+
+  # Repeat the unit suite on an unchanged master to catch tests that only fail
+  # sometimes. A flaky test is invisible on a push - the run that hit it is
+  # attributed to whatever change happened to be in flight, and a re-run makes
+  # it green - so the first place it reliably bites is the release, where the
+  # gate runs again on the tag and a red run blocks distribution after the
+  # version has already been tagged and the changelog published. That is
+  # exactly how v1.34.0 was tagged but never reached anyone's Home Assistant.
+  #
+  # Cheap enough to be worth it daily: the suite takes well under a minute, so
+  # three passes on each supported Node version is a couple of runner-minutes.
+  # Node 20 is included deliberately - the flake that cost v1.34.0 only ever
+  # reproduced there.
+  flake-watch:
+    name: Repeat unit tests (${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: github.event_name == 'schedule'
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run the unit suite three times
+      run: |
+        set -uo pipefail
+        FAILED=0
+        for pass in 1 2 3; do
+          echo "=== Pass ${pass}/3 ==="
+          if ! npm test; then
+            echo "::error::Unit suite failed on pass ${pass} of 3 against an unchanged master. This is a nondeterministic test - fix it before it fails a release."
+            FAILED=1
+          fi
+        done
+        exit "${FAILED}"
+
+  # Did the last release actually reach the add-on repository Home Assistant
+  # installs from? Nothing else asks. A tag push runs the whole quality gate
+  # again, so anything from a flaky test to an expired deploy token leaves the
+  # source repo looking released - tag, changelog, GitHub release - while
+  # Supervisor still offers the previous version. v1.34.0 sat like that for a
+  # day and was found only because a user reported a bug that was already
+  # fixed in it.
+  distribution-drift-check:
+    name: Verify the add-on repository is up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'schedule'
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # Tags decide whether a version was released at all, which is what
+        # separates "the release broke" from "not released yet".
+        fetch-depth: 0
+        fetch-tags: true
+
+    - name: Compare master's add-on version with the published one
+      env:
+        DISTRIBUTION_CONFIG: 'https://raw.githubusercontent.com/dougrathbone/cgateweb-homeassistant/main/cgateweb/config.yaml'
+      run: |
+        set -uo pipefail
+
+        read_version() {
+          grep -m1 -E '^version:' "$1" | sed -E 's/^version:[[:space:]]*"?([^"]+)"?[[:space:]]*$/\1/'
+        }
+
+        SOURCE_VERSION=$(read_version homeassistant-addon/config.yaml)
+        if [[ -z "${SOURCE_VERSION}" ]]; then
+          echo "::error::Could not read the version from homeassistant-addon/config.yaml."
+          exit 1
+        fi
+
+        if ! curl -fsSL --retry 3 --retry-all-errors --retry-delay 5 \
+          --max-time 60 -o published-config.yaml "${DISTRIBUTION_CONFIG}"; then
+          echo "::error::Could not fetch the published add-on config from the distribution repository."
+          exit 1
+        fi
+        PUBLISHED_VERSION=$(read_version published-config.yaml)
+        if [[ -z "${PUBLISHED_VERSION}" ]]; then
+          echo "::error::The published config.yaml has no readable version key."
+          exit 1
+        fi
+
+        echo "master:    ${SOURCE_VERSION}"
+        echo "published: ${PUBLISHED_VERSION}"
+
+        if [[ "${SOURCE_VERSION}" == "${PUBLISHED_VERSION}" ]]; then
+          echo "Add-on repository is serving ${PUBLISHED_VERSION}; nothing pending."
+          exit 0
+        fi
+
+        if git rev-parse -q --verify "refs/tags/v${SOURCE_VERSION}" >/dev/null; then
+          echo "::error::v${SOURCE_VERSION} is tagged but the add-on repository still serves ${PUBLISHED_VERSION}. The release did not land - check the newest 'Build and Deploy Home Assistant Addon' run and re-run it."
+          exit 1
+        fi
+
+        echo "::notice::master is at ${SOURCE_VERSION} and the add-on repository serves ${PUBLISHED_VERSION}. No v${SOURCE_VERSION} tag yet, so the release is still pending: push the tag to ship it."
