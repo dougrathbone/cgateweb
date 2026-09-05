@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Variation A - Refined - cgateweb design prototype</title>
+<!--
+  DESIGN PROTOTYPE - static mock, no live data, not wired to the API.
+  Variation A: "Refined". Same DOM as public/index.html, new design tokens.
+  Open with ?theme=dark to preview the dark palette, ?tab=labels to deep-link a tab.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f6f8;
+  --surface: #ffffff;
+  --surface-alt: #f7f8fa;
+  --surface-sunken: #eef1f4;
+  --border: #e3e7ec;
+  --border-strong: #cfd6de;
+  --text: #16202b;
+  --text-muted: #66727f;
+  --primary: #1f6feb;
+  --primary-hover: #1a5fd0;
+  --primary-soft: #e8f1ff;
+  --success: #1a7f4b;
+  --success-bg: #e3f6ec;
+  --danger: #c62f37;
+  --danger-bg: #fdeaea;
+  --warning: #9a6100;
+  --warning-bg: #fff2d9;
+  --accent: #6b3fbe;
+  --accent-bg: #f1eafd;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 20px -12px rgba(16, 24, 40, 0.18);
+  --shadow-pop: 0 12px 32px -8px rgba(16, 24, 40, 0.28);
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f141a;
+  --surface: #171d25;
+  --surface-alt: #1d242e;
+  --surface-sunken: #131920;
+  --border: #262f3a;
+  --border-strong: #34404e;
+  --text: #dfe5ec;
+  --text-muted: #8b97a5;
+  --primary: #529bff;
+  --primary-hover: #74b0ff;
+  --primary-soft: #16273f;
+  --success: #52c98a;
+  --success-bg: #12291d;
+  --danger: #ff7b7b;
+  --danger-bg: #2e1919;
+  --warning: #f0b45f;
+  --warning-bg: #2c2415;
+  --accent: #b48bff;
+  --accent-bg: #221a33;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 24px -14px rgba(0, 0, 0, 0.8);
+  --shadow-pop: 0 14px 34px -10px rgba(0, 0, 0, 0.75);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.app { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+
+/* ---------- header ---------- */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 30px; height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(140deg, var(--primary), var(--accent));
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 0.8rem;
+  box-shadow: var(--shadow-sm);
+}
+header h1 { font-size: 1.15rem; font-weight: 650; letter-spacing: -0.015em; }
+.brand-sub { font-size: 0.75rem; color: var(--text-muted); }
+.header-actions { display: flex; gap: 8px; align-items: center; }
+
+/* ---------- tabs as segmented control ---------- */
+.tab-bar {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+.tab-btn {
+  padding: 7px 15px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.87rem;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ---------- panels ---------- */
+.tab-panel {
+  display: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.tab-panel.active { display: block; }
+.panel-title {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* ---------- status tiles ---------- */
+.diag-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  gap: 10px;
+}
+.diag-item {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 13px;
+}
+.diag-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.diag-value {
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  display: flex; align-items: center; gap: 7px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.dot-ok { background: var(--success); box-shadow: 0 0 0 3px var(--success-bg); }
+.dot-warn { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-bg); }
+.dot-bad { background: var(--danger); box-shadow: 0 0 0 3px var(--danger-bg); }
+.mono-value { font-family: var(--mono); font-size: 0.92rem; }
+
+.status-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.status-item {
+  display: flex; gap: 6px; align-items: baseline;
+  padding: 5px 11px;
+  background: var(--surface-sunken);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.status-value { font-weight: 650; color: var(--text); }
+
+/* ---------- toolbar / inputs ---------- */
+.toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.search-wrap { position: relative; flex: 1; min-width: 200px; }
+.search-wrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+.search-input {
+  width: 100%;
+  padding: 8px 12px 8px 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.9rem;
+}
+.search-input::placeholder { color: var(--text-muted); }
+.search-input:focus, .filter-select:focus, button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+.filter-select, .page-size-select {
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+/* ---------- buttons ---------- */
+button {
+  padding: 7px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 550;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+button:hover { background: var(--surface-alt); border-color: var(--text-muted); }
+button:active { transform: translateY(1px); }
+button.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: transparent;
+}
+button.primary:hover { background: var(--primary-hover); }
+button.danger { color: var(--danger); border-color: var(--border); box-shadow: none; }
+button.danger:hover { background: var(--danger-bg); border-color: var(--danger); }
+button.small { padding: 3px 9px; font-size: 0.78rem; }
+button.ghost { border-color: transparent; box-shadow: none; background: none; }
+button.ghost:hover { background: var(--surface-alt); }
+button:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+button:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+
+/* ---------- table ---------- */
+.table-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+thead th {
+  text-align: left;
+  padding: 9px 12px;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  position: sticky; top: 0; z-index: 2;
+}
+thead th:hover { color: var(--text); }
+thead th.no-sort { cursor: default; }
+tbody tr { border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--surface-alt); }
+tbody tr.selected { background: var(--primary-soft); }
+tbody tr.excluded td:not(.actions-cell) { opacity: 0.45; }
+td { padding: 8px 12px; vertical-align: middle; }
+td.addr { white-space: nowrap; }
+.addr-chip {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+}
+.label-display { cursor: text; padding: 3px 6px; border-radius: 5px; display: inline-block; font-weight: 500; }
+.label-display:hover { background: var(--primary-soft); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.eid-display, .area-display {
+  cursor: text; padding: 3px 6px; border-radius: 5px; display: inline-block;
+  font-size: 0.82rem; color: var(--text-muted);
+}
+.eid-display { font-family: var(--mono); }
+.eid-display:hover, .area-display:hover { background: var(--primary-soft); }
+.has-value { color: var(--text); }
+.muted-italic { color: var(--text-muted); font-style: italic; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.badge-custom { background: var(--success-bg); color: var(--success); }
+.badge-trigger { background: var(--accent-bg); color: var(--accent); }
+.type-select {
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.type-select:hover { border-color: var(--border-strong); }
+.select-cb { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; }
+.exclude-cb { width: 15px; height: 15px; accent-color: var(--danger); cursor: pointer; }
+th.cb-col, td.cb-col { width: 42px; text-align: center; padding: 8px 4px; }
+
+.bulk-toolbar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  background: var(--primary-soft);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+}
+.bulk-count { font-weight: 650; color: var(--primary); }
+.bulk-toolbar button { padding: 4px 10px; font-size: 0.8rem; }
+.bulk-sep { width: 1px; height: 20px; background: var(--border-strong); margin: 0 2px; }
+
+.pagination-bar { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; font-size: 0.85rem; }
+.pagination-info { color: var(--text-muted); }
+.pagination-bar button { padding: 5px 11px; font-size: 0.8rem; }
+
+.add-row {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 14px;
+  border-top: 1px dashed var(--border-strong);
+}
+.add-row input, .add-row select {
+  padding: 7px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+/* ---------- import ---------- */
+.drop-zone {
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 40px 16px;
+  text-align: center;
+  cursor: pointer;
+  background: var(--surface-alt);
+  transition: border-color 0.15s, background 0.15s;
+}
+.drop-zone:hover { border-color: var(--primary); background: var(--primary-soft); }
+.drop-zone p { color: var(--text-muted); margin-bottom: 10px; }
+.drop-zone strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 1rem; }
+.import-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+/* ---------- events ---------- */
+.event-log-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.event-log-toolbar input[type=text] {
+  flex: 1; min-width: 180px;
+  padding: 7px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text); font-size: 0.85rem;
+}
+.event-badge {
+  background: var(--primary); color: #fff; border-radius: 999px;
+  padding: 2px 10px; font-size: 0.75rem; font-weight: 650;
+}
+.event-log-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.event-log-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+.event-log-table th {
+  background: var(--surface-alt); padding: 7px 11px; text-align: left;
+  font-size: 0.7rem; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.event-log-table td { padding: 6px 11px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.event-log-table tr:last-child td { border-bottom: none; }
+.event-log-table td.time { font-family: var(--mono); color: var(--text-muted); font-size: 0.78rem; }
+.event-bar-bg { background: var(--surface-sunken); border-radius: 999px; height: 6px; width: 110px; overflow: hidden; }
+.event-bar-fill { background: var(--primary); height: 100%; border-radius: 999px; }
+.level-num { font-family: var(--mono); font-weight: 600; }
+
+.proto-note {
+  margin-top: 22px; text-align: center;
+  font-size: 0.75rem; color: var(--text-muted);
+}
+.theme-toggle { font-size: 0.8rem; }
+
+@media (max-width: 768px) {
+  .app { padding: 14px 12px 30px; }
+  .tab-panel { padding: 12px; }
+  .table-card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-card table { min-width: 560px; }
+  /* Drop the lowest-priority columns, as the shipped UI already does:
+     5 = Entity ID, 8 = unsaved badge. */
+  .table-card th:nth-child(5), .table-card td:nth-child(5),
+  .table-card th:nth-child(8), .table-card td:nth-child(8) { display: none; }
+  .diag-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+}
+@media (max-width: 480px) {
+  header { align-items: flex-start; }
+  .header-actions { width: 100%; flex-wrap: wrap; }
+  .header-actions button { padding: 8px 12px; }
+  .header-actions .primary { margin-left: auto; }
+  .diag-grid { grid-template-columns: 1fr 1fr; }
+  .tab-bar { width: 100%; }
+  /* 4 = Type as well; type is still settable from the bulk toolbar. */
+  .table-card th:nth-child(4), .table-card td:nth-child(4) { display: none; }
+  .table-card table { min-width: 420px; }
+  .add-row { flex-direction: column; align-items: stretch; }
+  .add-row > * { width: 100% !important; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="brand-mark">CB</div>
+      <div>
+        <h1>C-Bus Web</h1>
+        <div class="brand-sub">cgateweb &middot; 1.22.3</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="ghost" disabled title="Undo">&#8630; Undo (0)</button>
+      <button class="ghost" disabled title="Redo">&#8631; Redo (0)</button>
+      <button class="primary">Save Labels</button>
+      <button class="ghost theme-toggle" id="themeToggle" title="Prototype only">Theme</button>
+    </div>
+  </header>
+
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-btn active" data-tab="status">Status</button>
+    <button class="tab-btn" data-tab="labels">Device Labels</button>
+    <button class="tab-btn" data-tab="events">Live Events</button>
+    <button class="tab-btn" data-tab="import">Import / Export</button>
+  </div>
+
+  <div class="tab-panel active" id="tabStatus">
+    <div class="panel-title">Bridge health</div>
+    <div class="diag-grid">
+      <div class="diag-item"><div class="diag-label">Version</div><div class="diag-value">1.22.3</div></div>
+      <div class="diag-item"><div class="diag-label">Uptime</div><div class="diag-value">4d 6h 12m</div></div>
+      <div class="diag-item"><div class="diag-label">Ready</div><div class="diag-value"><span class="dot dot-ok"></span>yes</div></div>
+      <div class="diag-item"><div class="diag-label">Lifecycle</div><div class="diag-value">running</div></div>
+      <div class="diag-item"><div class="diag-label">Reason</div><div class="diag-value" style="color:var(--text-muted);font-weight:500">&mdash;</div></div>
+      <div class="diag-item"><div class="diag-label">MQTT</div><div class="diag-value"><span class="dot dot-ok"></span>connected</div></div>
+      <div class="diag-item"><div class="diag-label">Event</div><div class="diag-value"><span class="dot dot-ok"></span>connected</div></div>
+      <div class="diag-item"><div class="diag-label">Reconnects</div><div class="diag-value">0</div></div>
+      <div class="diag-item"><div class="diag-label">Cmd Pool Healthy</div><div class="diag-value">3 / 3</div></div>
+      <div class="diag-item"><div class="diag-label">Queue Depth</div><div class="diag-value">0</div></div>
+      <div class="diag-item"><div class="diag-label">C-Bus Networks (CNI)</div><div class="diag-value mono-value"><span class="dot dot-ok"></span>254 &middot; 192.168.1.50</div></div>
+    </div>
+    <div class="status-bar">
+      <div class="status-item">Labels <span class="status-value">418</span></div>
+      <div class="status-item">Custom <span class="status-value">37</span></div>
+      <div class="status-item">Overrides <span class="status-value">12</span></div>
+      <div class="status-item">Excluded <span class="status-value">5</span></div>
+      <div class="status-item">Unsaved <span class="status-value">0</span></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabLabels">
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input type="text" class="search-input" placeholder="Search by address, label, entity ID, or area...">
+      </div>
+      <select class="filter-select">
+        <option>All types</option><option>Lights</option><option>Covers</option>
+        <option>Switches</option><option>Triggers</option><option>Excluded</option>
+      </select>
+      <button>&#10024; Auto-fill areas</button>
+    </div>
+
+    <div class="bulk-toolbar">
+      <span class="bulk-count">2 selected</span>
+      <div class="bulk-sep"></div>
+      <span style="color:var(--text-muted)">Set type:</span>
+      <button>light</button><button>cover</button><button>switch</button>
+      <div class="bulk-sep"></div>
+      <button>Exclude</button><button>Include</button>
+      <div class="bulk-sep"></div>
+      <button class="ghost">Clear selection</button>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th class="cb-col no-sort"><input type="checkbox" class="select-cb"></th>
+            <th>Address &#9650;</th><th>Label</th><th>Type</th><th>Entity ID</th>
+            <th class="no-sort">Area</th><th class="no-sort">Excl</th><th class="no-sort"></th><th class="no-sort"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="selected">
+            <td class="cb-col"><input type="checkbox" class="select-cb" checked></td>
+            <td class="addr"><span class="addr-chip">254/56/1</span></td>
+            <td><span class="label-display">Kitchen Downlights</span></td>
+            <td><select class="type-select"><option>light</option><option>cover</option><option>switch</option></select></td>
+            <td><span class="eid-display has-value">light.kitchen_downlights</span></td>
+            <td><span class="area-display has-value">Kitchen</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td><span class="badge badge-custom">unsaved</span></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr class="selected">
+            <td class="cb-col"><input type="checkbox" class="select-cb" checked></td>
+            <td class="addr"><span class="addr-chip">254/56/2</span></td>
+            <td><span class="label-display">Kitchen Pendants</span></td>
+            <td><select class="type-select"><option>light</option><option>cover</option><option>switch</option></select></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display has-value">Kitchen</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr>
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/56/4</span></td>
+            <td><span class="label-display">Living Room Lamps</span></td>
+            <td><select class="type-select"><option>light</option><option>cover</option><option>switch</option></select></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display has-value">Living Room</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr>
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/56/12</span></td>
+            <td><span class="label-display">Hallway Sconces</span></td>
+            <td><select class="type-select"><option>light</option><option>cover</option><option>switch</option></select></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display"><span class="muted-italic">Hall?</span></span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr>
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/203/1</span></td>
+            <td><span class="label-display">Living Room Blinds</span></td>
+            <td><select class="type-select"><option>cover</option><option>light</option><option>switch</option></select></td>
+            <td><span class="eid-display has-value">cover.living_blinds</span></td>
+            <td><span class="area-display has-value">Living Room</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr>
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/56/33</span></td>
+            <td><span class="label-display">Garage Door Relay</span></td>
+            <td><select class="type-select"><option>switch</option><option>light</option><option>cover</option></select></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display has-value">Garage</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr class="excluded">
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/56/40</span></td>
+            <td><span class="label-display">Alfresco Flood</span></td>
+            <td><select class="type-select"><option>light</option><option>cover</option><option>switch</option></select></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display has-value">Alfresco</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb" checked></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+          <tr>
+            <td class="cb-col"><input type="checkbox" class="select-cb"></td>
+            <td class="addr"><span class="addr-chip">254/202/5</span></td>
+            <td><span class="label-display">Scene: Movie Night</span></td>
+            <td><span class="badge badge-trigger">trigger</span></td>
+            <td><span class="eid-display"><span class="muted-italic">auto</span></span></td>
+            <td><span class="area-display has-value">Living Room</span></td>
+            <td style="text-align:center"><input type="checkbox" class="exclude-cb"></td>
+            <td></td>
+            <td class="actions-cell"><button class="small danger">Remove</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination-bar">
+      <button>&#8592; Prev</button>
+      <button>Next &#8594;</button>
+      <span class="pagination-info">Showing 1&ndash;8 of 418 devices</span>
+      <label style="margin-left:auto;display:flex;gap:6px;align-items:center;color:var(--text-muted)">
+        Per page:
+        <select class="page-size-select"><option>25</option><option selected>50</option><option>100</option><option>All</option></select>
+      </label>
+    </div>
+
+    <div class="add-row">
+      <input type="text" placeholder="network/app/group" style="width:170px;font-family:var(--mono)">
+      <input type="text" placeholder="Label name" style="flex:1;min-width:160px">
+      <select><option>light (default)</option><option>cover</option><option>switch</option></select>
+      <button class="primary">Add</button>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabEvents">
+    <div class="event-log-toolbar">
+      <button class="primary">&#9632; Pause</button>
+      <button>Clear</button>
+      <span class="event-badge">126</span>
+      <input type="text" placeholder="Filter by address or label...">
+    </div>
+    <div class="event-log-table-wrap">
+      <table class="event-log-table">
+        <thead><tr><th>Time</th><th>Address</th><th>Label</th><th>Level</th><th>Bar</th></tr></thead>
+        <tbody>
+          <tr><td class="time">09:24:16</td><td><span class="addr-chip">254/56/1</span></td><td>Kitchen Downlights</td><td class="level-num">100%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:100%"></div></div></td></tr>
+          <tr><td class="time">09:24:11</td><td><span class="addr-chip">254/56/4</span></td><td>Living Room Lamps</td><td class="level-num">64%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:64%"></div></div></td></tr>
+          <tr><td class="time">09:23:58</td><td><span class="addr-chip">254/203/1</span></td><td>Living Room Blinds</td><td class="level-num">40%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:40%"></div></div></td></tr>
+          <tr><td class="time">09:23:41</td><td><span class="addr-chip">254/56/12</span></td><td>Hallway Sconces</td><td class="level-num">0%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:0%"></div></div></td></tr>
+          <tr><td class="time">09:23:02</td><td><span class="addr-chip">254/56/33</span></td><td>Garage Door Relay</td><td class="level-num">100%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:100%"></div></div></td></tr>
+          <tr><td class="time">09:22:47</td><td><span class="addr-chip">254/56/2</span></td><td>Kitchen Pendants</td><td class="level-num">25%</td><td><div class="event-bar-bg"><div class="event-bar-fill" style="width:25%"></div></div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabImport">
+    <div class="panel-title">Project file</div>
+    <div class="drop-zone">
+      <strong>Drop a .cbz or .xml project file here</strong>
+      <p>or click to browse. Labels, areas and device types are read from the Toolkit project.</p>
+      <button>Choose File</button>
+    </div>
+    <div class="import-actions">
+      <button>&#11015; Download backup</button>
+      <button>&#11015; Export project XML</button>
+    </div>
+  </div>
+
+  <div class="proto-note">Design prototype &mdash; Variation A "Refined". Static mock, not connected to the bridge.</div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  if (params.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else if (params.get('theme') !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  var wanted = params.get('tab');
+  function showTab(name) {
+    var panels = document.querySelectorAll('.tab-panel');
+    for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+    var btns = document.querySelectorAll('.tab-btn');
+    for (var j = 0; j < btns.length; j++) btns[j].classList.toggle('active', btns[j].dataset.tab === name);
+    var panel = document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1));
+    if (panel) panel.classList.add('active');
+  }
+  if (wanted) showTab(wanted);
+  document.getElementById('tabBar').addEventListener('click', function (e) {
+    if (e.target.dataset.tab) showTab(e.target.dataset.tab);
+  });
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>
