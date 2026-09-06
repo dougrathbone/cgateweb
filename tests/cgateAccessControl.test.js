@@ -112,7 +112,7 @@ function runAccessControlOn(file, { config = {}, withLogs = false } = {}) {
         CGW_ACCESS_FILE: file
     };
     for (const [k, v] of Object.entries(config)) {
-        env[k.startsWith('CGW_') ? k : `CGW_TEST_${k}`] = v;
+        env[k.startsWith('CGW_') || k.startsWith('CGATEWEB_') ? k : `CGW_TEST_${k}`] = v;
     }
 
     const stub = withLogs ? BASHIO_STUB_WITH_LOGS : BASHIO_STUB;
@@ -250,6 +250,66 @@ describeBash('_cgateweb_write_access_control', () => {
         expect(contents).toContain('remote 192.168.1.255 monitor');
         // Localhost access is never dropped when external clients are added.
         expect(contents).toContain('remote 127.0.0.1 program');
+    });
+
+    it('also grants the Docker NAT gateway when external clients are configured (#104)', () => {
+        const { status, contents, output } = writeAccessControl({
+            config: {
+                CGW_EXTERNAL_RULES: 'remote 192.168.1.60 program',
+                CGATEWEB_NAT_GATEWAY: '172.30.32.1'
+            },
+            withLogs: true
+        });
+
+        expect(status).toBe(0);
+        expect(contents).toContain('remote 192.168.1.60 program');
+        expect(contents).toContain('remote 172.30.32.1 program');
+        expect(output).toMatch(/Docker gateway 172\.30\.32\.1 at program level/);
+    });
+
+    it('uses the highest configured client level for the Docker NAT gateway (#104)', () => {
+        const { contents } = writeAccessControl({
+            config: {
+                CGW_EXTERNAL_RULES: 'remote 192.168.1.60 monitor\nremote 192.168.1.70 operate',
+                CGATEWEB_NAT_GATEWAY: '172.30.32.1'
+            }
+        });
+
+        expect(contents).toContain('remote 172.30.32.1 operate');
+        expect(contents).not.toContain('remote 172.30.32.1 monitor');
+        expect(contents).not.toContain('remote 172.30.32.1 program');
+    });
+
+    it('does not grant a public default gateway (#104)', () => {
+        const { contents, output } = writeAccessControl({
+            config: {
+                CGW_EXTERNAL_RULES: 'remote 192.168.1.60 program',
+                CGATEWEB_NAT_GATEWAY: '8.8.8.8'
+            },
+            withLogs: true
+        });
+
+        expect(contents).not.toContain('remote 8.8.8.8');
+        expect(output).toMatch(/not a private address/);
+    });
+
+    it('does not duplicate a NAT gateway that is already listed (#104)', () => {
+        const { contents } = writeAccessControl({
+            config: {
+                CGW_EXTERNAL_RULES: 'remote 172.30.32.1 program',
+                CGATEWEB_NAT_GATEWAY: '172.30.32.1'
+            }
+        });
+
+        expect(contents.match(/remote 172\.30\.32\.1 program/g)).toHaveLength(1);
+    });
+
+    it('does not grant a NAT gateway when no external clients are configured (#104)', () => {
+        const { contents } = writeAccessControl({
+            config: { CGATEWEB_NAT_GATEWAY: '172.30.32.1' }
+        });
+
+        expect(contents).not.toContain('remote 172.30.32.1');
     });
 
     it('revokes access when an address is removed from the option', () => {
