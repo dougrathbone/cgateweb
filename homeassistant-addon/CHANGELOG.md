@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.7] - 2026-09-06
+
+### Fixed
+
+- **C-Bus Toolkit can reach managed C-Gate again after an upgrade.** Command, event, status and SSL ports are published on the host by default; turn any off in the Network panel if you do not need them. (#104)
+
+### Changed
+
+- Internal: the add-on builder uses Alpine 3.24, and the QEMU and GitHub Release actions are current.
+
 ## [1.34.6] - 2026-09-04
 
 ### Fixed

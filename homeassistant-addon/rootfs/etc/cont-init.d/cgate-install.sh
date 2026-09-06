@@ -716,6 +716,45 @@ _cgateweb_ipv4_wildcard_meaning() {
     printf '%s.%s.%s.%s' "${o1}" "${o2}" "${o3}" "${o4}"
 }
 
+# True when the address is IPv4 RFC1918. Used so a Docker NAT grant cannot
+# accidentally open C-Gate to a public default gateway.
+_cgateweb_ipv4_is_rfc1918() {
+    local address="$1"
+    [[ "${address}" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]] || return 1
+    local o1 o2
+    IFS='.' read -r o1 o2 _ _ <<< "${address}"
+    [[ "${o1}" == "10" ]] && return 0
+    [[ "${o1}" == "192" && "${o2}" == "168" ]] && return 0
+    if [[ "${o1}" == "172" ]]; then
+        ((10#${o2} >= 16 && 10#${o2} <= 31)) && return 0
+    fi
+    return 1
+}
+
+# IPv4 default gateway from /proc/net/route (little-endian dest/gateway hex).
+# Empty when there is no default route. Issue #104: Docker may SNAT LAN
+# Toolkit connections so C-Gate sees this address instead of the PC.
+_cgateweb_default_gateway_ipv4() {
+    local hex
+    hex=$(awk '$2 == "00000000" { print $3; exit }' /proc/net/route 2>/dev/null)
+    [[ "${hex}" =~ ^[0-9A-Fa-f]{8}$ ]] || return 0
+    local b1 b2 b3 b4
+    b1=$((16#${hex:6:2}))
+    b2=$((16#${hex:4:2}))
+    b3=$((16#${hex:2:2}))
+    b4=$((16#${hex:0:2}))
+    printf '%d.%d.%d.%d' "${b1}" "${b2}" "${b3}" "${b4}"
+}
+
+_cgateweb_access_level_rank() {
+    case "$1" in
+        program) printf '3' ;;
+        operate) printf '2' ;;
+        monitor) printf '1' ;;
+        *) printf '0' ;;
+    esac
+}
+
 # Write C-Gate's access control file (manual 4.10.1).
 #
 # The grammar is `<keyword> <address> <level>` with exactly three keywords:
@@ -837,6 +876,7 @@ _cgateweb_write_access_control() {
     fi
 
     local line keyword address level extra wildcard_meaning
+    local max_external_level=""
     while IFS= read -r line; do
         [[ -z "${line}" ]] && continue
         # `read` splits on whitespace without performing pathname expansion,
@@ -872,7 +912,32 @@ _cgateweb_write_access_control() {
         fi
         rules+=("remote ${address} ${level}")
         bashio::log.warning "C-Gate access granted to ${address} at ${level} level"
+        if [[ $(_cgateweb_access_level_rank "${level}") -gt $(_cgateweb_access_level_rank "${max_external_level}") ]]; then
+            max_external_level="${level}"
+        fi
     done <<< "${external_rules}"
+
+    # Docker SNAT on the Home Assistant bridge often presents every LAN client
+    # as the container's default gateway. Without this extra remote rule,
+    # Toolkit connections are refused even when the PC is listed (#104).
+    local nat_gw="${CGATEWEB_NAT_GATEWAY:-}"
+    if [[ -n "${nat_gw}" && -n "${max_external_level}" ]]; then
+        if _cgateweb_ipv4_is_rfc1918 "${nat_gw}"; then
+            local already=0 existing
+            for existing in "${rules[@]}"; do
+                if [[ "${existing}" == "remote ${nat_gw} "* ]]; then
+                    already=1
+                    break
+                fi
+            done
+            if [[ ${already} -eq 0 ]]; then
+                rules+=("remote ${nat_gw} ${max_external_level}")
+                bashio::log.warning "C-Gate access also granted to Docker gateway ${nat_gw} at ${max_external_level} level so LAN clients still match after address translation (#104)"
+            fi
+        else
+            bashio::log.warning "Not granting C-Gate access to default gateway ${nat_gw}: it is not a private address"
+        fi
+    fi
 
     if [[ ${#rules[@]} -gt 2 ]]; then
         bashio::log.warning "C-Gate has no authentication on its command ports; only publish them if you need external access"
@@ -1346,6 +1411,8 @@ _cgateweb_record_installed_version "${CGATE_DIR}" "${CGATE_VERSION:-}"
 # Configure access.txt. Runs on every boot, not only when the file is absent,
 # so the grammar fix and any configured external clients reach existing installs.
 ACCESS_FILE="${CGATE_DIR}/config/access.txt"
+CGATEWEB_NAT_GATEWAY=$(_cgateweb_default_gateway_ipv4)
+export CGATEWEB_NAT_GATEWAY
 if ! _cgateweb_write_access_control "${ACCESS_FILE}"; then
     bashio::log.error "Failed to write C-Gate access control file"
     exit 1

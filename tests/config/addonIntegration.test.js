@@ -35,6 +35,16 @@ describe('Addon Configuration Integration', () => {
             expect(configYaml.host_network).toBe(false);
         });
 
+        test('should publish managed C-Gate ports on the host by default (#104)', () => {
+            expect(configYaml.ports['8080/tcp']).toBeNull();
+            expect(configYaml.ports['20023/tcp']).toBe(20023);
+            expect(configYaml.ports['20024/tcp']).toBe(20024);
+            expect(configYaml.ports['20025/tcp']).toBe(20025);
+            expect(configYaml.ports['20123/tcp']).toBe(20123);
+            expect(configYaml.ports['20124/tcp']).toBe(20124);
+            expect(configYaml.ports['20125/tcp']).toBe(20125);
+        });
+
         test('should mount share for C-Gate uploads', () => {
             expect(configYaml.map).toContain('share:ro');
         });
