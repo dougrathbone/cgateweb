@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
-## [1.34.8] - 2026-09-11
+## [1.34.9] - 2026-09-11
+
+### Security
+
+- **Toolkit project imports use a patched ZIP library.** Extraction no longer follows destination symlinks.
+
+### Changed
+
+- Internal: the 1.34.7 changelog heading is restored so release notes stop at the right version.
+
+
 
 ### Fixed
 
