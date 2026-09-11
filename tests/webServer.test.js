@@ -1595,6 +1595,28 @@ describe('WebServer', () => {
             await expect(dupServer.start()).rejects.toThrow();
             await badServer.close();
         });
+
+        it('applies Node-default HTTP headers and request timeouts', () => {
+            expect(server._server.headersTimeout).toBe(60000);
+            expect(server._server.requestTimeout).toBe(300000);
+        });
+
+        it('applies configured HTTP timeouts', async () => {
+            const timed = new WebServer({
+                port: 0,
+                labelLoader,
+                getStatus: () => ({}),
+                headersTimeoutMs: 15000,
+                requestTimeoutMs: 45000
+            });
+            await timed.start();
+            try {
+                expect(timed._server.headersTimeout).toBe(15000);
+                expect(timed._server.requestTimeout).toBe(45000);
+            } finally {
+                await timed.close();
+            }
+        });
     });
 
     describe('Request error handler (catch block)', () => {
