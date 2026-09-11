@@ -34,6 +34,59 @@ function _isSafeZipEntryName(name) {
     return !parts.includes('..');
 }
 
+/**
+ * True when the ZIP extra attributes mark a Unix symlink. We never write
+ * extracted files to disk (getData() only), so CVE-2026-76845's extractAllTo
+ * destination-symlink write does not apply — but a symlink entry is still
+ * not a project XML/DB, and rejecting it keeps a future on-disk extract from
+ * inheriting the library bug.
+ * @param {{ header?: { attr?: number }, attr?: number }} entry
+ * @returns {boolean}
+ */
+function _isZipSymlinkEntry(entry) {
+    const attr = (entry && entry.header && typeof entry.header.attr === 'number')
+        ? entry.header.attr
+        : (entry && typeof entry.attr === 'number' ? entry.attr : null);
+    if (typeof attr !== 'number') return false;
+    const unixMode = (attr >>> 16) & 0xFFFF;
+    return (unixMode & 0xF000) === 0xA000; // S_IFLNK
+}
+
+/**
+ * Reject traversal names, symlink entries, and zip-bomb declared sizes
+ * before any inflate. Used by _extractCBZ; exported for unit tests because
+ * AdmZip sanitises attributes when round-tripping a JS-built archive.
+ * @param {Array<{isDirectory?: boolean, entryName?: string, header?: {size?: number, attr?: number}}>} entries
+ * @param {number} maxDecompressedBytes
+ */
+function _preflightCbzEntries(entries, maxDecompressedBytes) {
+    let totalUncompressed = 0;
+    for (const entry of entries) {
+        if (entry.isDirectory) continue;
+        if (_isZipSymlinkEntry(entry)) {
+            throw new Error(
+                `CBZ archive entry "${entry.entryName}" is a symbolic link; rejecting`
+            );
+        }
+        if (!_isSafeZipEntryName(entry.entryName)) {
+            throw new Error(`CBZ archive entry name rejected: ${entry.entryName}`);
+        }
+        const size = entry.header && entry.header.size;
+        if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
+            throw new Error(
+                `CBZ archive entry "${entry.entryName}" declares no uncompressed size; `
+                + 'rejecting (zip-bomb protection)'
+            );
+        }
+        totalUncompressed += size;
+        if (totalUncompressed > maxDecompressedBytes) {
+            throw new Error(
+                `CBZ archive decompressed size exceeds ${maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
+            );
+        }
+    }
+}
+
 class CbusProjectParser {
     // Group address 255 is a terminator/placeholder row Toolkit writes into
     // every application (tagged "<Unused>") — never a real group. Lighting
@@ -142,23 +195,7 @@ class CbusProjectParser {
         // around 10GB, i.e. an OOM kill on any normal Home Assistant host.
         //
         // So a non-positive declared size is now a rejection, not a free pass.
-        let totalUncompressed = 0;
-        for (const entry of entries) {
-            if (entry.isDirectory) continue;
-            const size = entry.header && entry.header.size;
-            if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) {
-                throw new Error(
-                    `CBZ archive entry "${entry.entryName}" declares no uncompressed size; `
-                    + 'rejecting (zip-bomb protection)'
-                );
-            }
-            totalUncompressed += size;
-            if (totalUncompressed > this.maxDecompressedBytes) {
-                throw new Error(
-                    `CBZ archive decompressed size exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
-                );
-            }
-        }
+        _preflightCbzEntries(entries, this.maxDecompressedBytes);
 
         // Find the project XML. Match the extension case-insensitively — C-Bus
         // Toolkit on Windows (e.g. 1.17.6 on Server 2025) can emit ".XML" — and,
@@ -494,3 +531,5 @@ module.exports = CbusProjectParser;
 // Attached as a static for tests; the cast keeps @ts-check from treating the
 // property assignment as a second module export next to the assignment above.
 /** @type {any} */ (module.exports)._isSafeZipEntryName = _isSafeZipEntryName;
+/** @type {any} */ (module.exports)._isZipSymlinkEntry = _isZipSymlinkEntry;
+/** @type {any} */ (module.exports)._preflightCbzEntries = _preflightCbzEntries;

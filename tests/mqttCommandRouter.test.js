@@ -1002,6 +1002,7 @@ describe('MqttCommandRouter', () => {
 
         it('should clean up listener after timeout if no matching response arrives', () => {
             jest.useFakeTimers();
+            const warnSpy = jest.spyOn(router.logger, 'warn');
 
             router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
             expect(mockInternalEmitter.listenerCount('level')).toBe(1);
@@ -1009,6 +1010,8 @@ describe('MqttCommandRouter', () => {
             jest.advanceTimersByTime(5000);
 
             expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('INCREASE aborted'));
+            expect(queueSpy.mock.calls.some((c) => String(c[0]).startsWith('RAMP'))).toBe(false);
 
             queueSpy.mockClear();
 
@@ -1016,6 +1019,7 @@ describe('MqttCommandRouter', () => {
             mockInternalEmitter.emit('level', '254/56/1', 100);
             expect(queueSpy).not.toHaveBeenCalled();
 
+            warnSpy.mockRestore();
             jest.useRealTimers();
         });
 

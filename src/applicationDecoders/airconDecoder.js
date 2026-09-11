@@ -1,5 +1,11 @@
 // @ts-check
-const { DEFAULT_CBUS_APP_AIRCON } = require('../constants');
+const {
+    DEFAULT_CBUS_APP_AIRCON,
+    HVAC_SETPOINT_RAW_MAX,
+    INT16_MIN,
+    INT16_MAX,
+    UINT16_MAX
+} = require('../constants');
 const { normalizeAppEventLine } = require('./appEventLine');
 
 /**
@@ -253,8 +259,8 @@ function decodeZoneTemperature({ network, application, params, sourceUnit, verb 
 
     // Two-byte field: accept the signed (-32768..32767) and unsigned (0..65535)
     // renderings, reject anything outside both.
-    if (!Number.isInteger(raw) || raw < -32768 || raw > 65535) return null;
-    const signed = raw > 32767 ? raw - 65536 : raw;
+    if (!Number.isInteger(raw) || raw < INT16_MIN || raw > UINT16_MAX) return null;
+    const signed = raw > INT16_MAX ? raw - (UINT16_MAX + 1) : raw;
 
     // °C = raw / 256, rounded to 1 decimal place
     const celsius = Math.round(signed / 256 * 10) / 10;
@@ -327,7 +333,7 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     // Otherwise it is °C × 256 (§25.5.1); 0 means no setpoint, and a >0 °C /
     // ≤50 °C plausibility window keeps garbage from becoming a bogus target.
     const f6Raw = parseInt(params[8], 10);
-    const setpoint = (!levelIsRaw && Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= 12800)
+    const setpoint = (!levelIsRaw && Number.isInteger(f6Raw) && f6Raw > 0 && f6Raw <= HVAC_SETPOINT_RAW_MAX)
         ? Math.round(f6Raw / 256 * 10) / 10
         : null;
     // setpointRaw (f6) and type (f5) are retained verbatim so write-back can echo
@@ -351,8 +357,8 @@ function decodeZoneHvacMode({ network, application, params, sourceUnit, verb }) 
     // Normalise it to 0–100% of plant capacity (Raw Level / $7FFF) — the
     // plant's numbered speeds aren't broadcast (§25.12.11 Zone Group Data is
     // manual configuration only), so a percentage is the honest representation.
-    const fanSpeedPercent = (levelIsRaw && Number.isInteger(f6Raw) && f6Raw >= 0 && f6Raw <= 32767)
-        ? Math.round(f6Raw / 32767 * 100)
+    const fanSpeedPercent = (levelIsRaw && Number.isInteger(f6Raw) && f6Raw >= 0 && f6Raw <= INT16_MAX)
+        ? Math.round(f6Raw / INT16_MAX * 100)
         : null;
 
     // Evaporative plant in (auto) cooling presents a Comfort Level instead of a

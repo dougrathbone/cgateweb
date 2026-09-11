@@ -1,7 +1,7 @@
 // @ts-check
 const CbusProjectParser = require('../cbusProjectParser');
 const { DEFAULT_ADDON_LABEL_FILE } = require('../constants');
-const { sendJSON, sendJSONAndClose, isUnsafeObjectKey } = require('./httpHelpers');
+const { sendJSON, sendJSONAndClose, isUnsafeObjectKey, sanitizePlainObject } = require('./httpHelpers');
 const { readRequestBody, parseMultipart, BODY_TOO_LARGE } = require('./bodyReader');
 
 const CBUS_APP_NAMES = {
@@ -51,6 +51,8 @@ function normalizeLabelPayload(data, { requireLabels = true } = {}) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
         return { error: 'Body must be an object' };
     }
+
+    data = sanitizePlainObject(data);
 
     /** @type {Object} */
     const payload = {};

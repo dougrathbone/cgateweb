@@ -9,7 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
-## [1.34.7] - 2026-09-06
+## [1.34.8] - 2026-09-11
+
+### Fixed
+
+- **Dimmer increase and decrease no longer fail silently.** If the current level is not reported in time, the command is dropped and a warning is logged.
+
+### Security
+
+- **Project imports reject symbolic links inside ZIP archives.**
+- **The web UI warns when it is bound off loopback without an API key.** Set the web API key if you publish the port outside Home Assistant Ingress.
+
+### Changed
+
+- Internal: shared C-Bus numeric bounds, a single event-line dispatch path, connection-pool reconnect tests, and label-body sanitization.
+
+
 
 ### Fixed
 

@@ -100,6 +100,20 @@ const MQTT_TOPIC_SUFFIX_UNIT = 'unit';                             // Unit strin
 // value the thermostat will silently reject.
 const HVAC_MIN_TEMP_C = 10;
 const HVAC_MAX_TEMP_C = 32;
+// HVAC setpoint field f6 is °C × 256 (spec §25.5.1). 0 means no setpoint;
+// 50 °C × 256 = 12800 is the decoder plausibility ceiling (not the HA card clamp).
+const HVAC_SETPOINT_RAW_MAX = 50 * 256;
+
+// Signed 16-bit range: Measurement channel values and HVAC two-byte fields.
+const INT16_MIN = -32768;
+const INT16_MAX = 32767;
+const UINT16_MAX = 65535;
+const INT8_MIN = -128;
+const INT8_MAX = 127;
+
+// Security zone numbers are $01-$7F (spec §5.5.1.11).
+const SECURITY_ZONE_MIN = 1;
+const SECURITY_ZONE_MAX = 127;
 const MQTT_TOPIC_STATUS = 'hello/cgateweb';
 const MQTT_TOPIC_MANUAL_TRIGGER = `${MQTT_TOPIC_PREFIX_WRITE}/bridge/announce`;
 
@@ -300,6 +314,14 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_UNIT,
     HVAC_MIN_TEMP_C,
     HVAC_MAX_TEMP_C,
+    HVAC_SETPOINT_RAW_MAX,
+    INT16_MIN,
+    INT16_MAX,
+    UINT16_MAX,
+    INT8_MIN,
+    INT8_MAX,
+    SECURITY_ZONE_MIN,
+    SECURITY_ZONE_MAX,
     MQTT_TOPIC_STATUS,
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_RETAINED_STATE_OPTIONS,

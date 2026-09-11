@@ -1,5 +1,5 @@
 // @ts-check
-const { DEFAULT_CBUS_APP_SECURITY } = require('../constants');
+const { DEFAULT_CBUS_APP_SECURITY, SECURITY_ZONE_MIN, SECURITY_ZONE_MAX } = require('../constants');
 const { normalizeAppEventLine } = require('./appEventLine');
 const {
     PANEL_TROUBLE_VERBS,
@@ -78,8 +78,8 @@ const ZONE_STATE_BY_CODE = [ZONE_STATE.SEALED, ZONE_STATE.UNSEALED, ZONE_STATE.O
  */
 const ARM_MODE_BY_CODE = { 0: 'disarmed', 1: 'away', 2: 'night', 3: 'day', 4: 'vacation' };
 
-const MIN_ZONE = 1;
-const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
+const MIN_ZONE = SECURITY_ZONE_MIN;
+const MAX_ZONE = SECURITY_ZONE_MAX;
 
 // Verbs whose address carries a trailing zone (//PROJECT/<net>/<app>/<zone>).
 // arm_ready belongs here: spec §5.5.1.25 defines one Arm Ready / Not Ready

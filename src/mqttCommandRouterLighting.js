@@ -190,6 +190,10 @@ class _MqttCommandRouterLighting {
 
         const timeoutMs = resolveSetting(this.settings, 'relativeLevelTimeoutMs');
         this.deviceStateManager.setupRelativeLevelOperation(levelAddress, (currentLevel) => {
+            if (!Number.isInteger(currentLevel)) {
+                this.logger.warn(`${actionName} aborted for ${levelAddress}: current level was not received in time`);
+                return;
+            }
             const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
             this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
             this._queueCommand(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);

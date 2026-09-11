@@ -411,6 +411,24 @@ describe('CbusProjectParser', () => {
             expect(_isSafeZipEntryName('')).toBe(false);
             expect(_isSafeZipEntryName(undefined)).toBe(false);
         });
+
+        it('_isZipSymlinkEntry detects Unix S_IFLNK attributes', () => {
+            const { _isZipSymlinkEntry } = require('../src/cbusProjectParser');
+            expect(_isZipSymlinkEntry({ header: { attr: 0 } })).toBe(false);
+            expect(_isZipSymlinkEntry({ header: { attr: 0o100644 << 16 } })).toBe(false);
+            expect(_isZipSymlinkEntry({ header: { attr: 0o120777 << 16 } })).toBe(true);
+            expect(_isZipSymlinkEntry({ attr: 0o120777 << 16 })).toBe(true);
+            expect(_isZipSymlinkEntry({})).toBe(false);
+        });
+
+        it('_preflightCbzEntries rejects symlink entries', () => {
+            const { _preflightCbzEntries } = require('../src/cbusProjectParser');
+            expect(() => _preflightCbzEntries([{
+                isDirectory: false,
+                entryName: 'project.xml',
+                header: { attr: 0o120777 << 16, size: 12 }
+            }], 1024)).toThrow(/symbolic link/i);
+        });
     });
 });
 

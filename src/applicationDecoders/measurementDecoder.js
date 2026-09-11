@@ -1,5 +1,5 @@
 // @ts-check
-const { DEFAULT_CBUS_APP_MEASUREMENT } = require('../constants');
+const { DEFAULT_CBUS_APP_MEASUREMENT, INT16_MIN, INT16_MAX, INT8_MIN, INT8_MAX } = require('../constants');
 const { normalizeAppEventLine, isAppEventLine } = require('./appEventLine');
 
 /**
@@ -128,8 +128,8 @@ function decodeLine(line) {
  * @returns {{kind: 'measurement', network: string|null, application: string, device: string, channel: string, value: number, unit: string|null, unitCode: number, deviceClass: string|null, stateClass: string}|null}
  */
 function decodeChannelData({ network, application, device, channel, value, multiplier, unitsCode }) {
-    if (!Number.isInteger(value) || value < -32768 || value > 32767) return null;
-    if (!Number.isInteger(multiplier) || multiplier < -128 || multiplier > 127) return null;
+    if (!Number.isInteger(value) || value < INT16_MIN || value > INT16_MAX) return null;
+    if (!Number.isInteger(multiplier) || multiplier < INT8_MIN || multiplier > INT8_MAX) return null;
     if (!Number.isInteger(unitsCode) || !Object.prototype.hasOwnProperty.call(UNIT_TABLE, unitsCode)) return null;
 
     // toFixed only accepts 0-100 fraction digits and throws RangeError beyond

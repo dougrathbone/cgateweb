@@ -175,10 +175,13 @@ class DeviceStateManager {
      * 
      * @param {string} address - Device address (network/app/group)
      * @param {Function} callback - Callback function to handle the level response
-     * @param {number} [timeout=5000] - Timeout in milliseconds for the operation
+     * @param {number} [timeout] - Timeout in milliseconds (schema default if omitted)
      * @returns {string} Operation ID that can be used to cancel the operation
      */
-    setupRelativeLevelOperation(address, callback, timeout = 5000) {
+    setupRelativeLevelOperation(address, callback, timeout) {
+        if (!Number.isFinite(timeout) || timeout <= 0) {
+            timeout = resolveSetting(this.settings, 'relativeLevelTimeoutMs');
+        }
         if (this.activeOperations.has(address)) {
             this.logger.warn(`Relative level operation already active for ${address}, skipping`);
             return null;
@@ -204,6 +207,7 @@ class DeviceStateManager {
         const timeoutHandle = setTimeout(() => {
             cleanup.call(this);
             this.logger.warn(`Timeout waiting for level response from ${address}`);
+            callback(null);
         }, timeout).unref();
 
         this.activeOperations.set(address, { handler: levelHandler, timeoutHandle });

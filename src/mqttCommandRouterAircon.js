@@ -12,7 +12,8 @@ const {
     CGATE_CMD_RAMP,
     NEWLINE,
     HVAC_MIN_TEMP_C,
-    HVAC_MAX_TEMP_C
+    HVAC_MAX_TEMP_C,
+    HVAC_SETPOINT_RAW_MAX
 } = require('./constants');
 const {
     HVAC_CODE_BY_MODE,
@@ -406,10 +407,10 @@ class _MqttCommandRouterAircon {
             return { rawlevel: 1, level: FAN_LEVEL_SENTINEL };
         }
         const byMode = state.setpointRawByMode && state.setpointRawByMode[modeRaw];
-        if (Number.isInteger(byMode) && byMode > 0 && byMode <= 12800) {
+        if (Number.isInteger(byMode) && byMode > 0 && byMode <= HVAC_SETPOINT_RAW_MAX) {
             return { rawlevel: 0, level: byMode };
         }
-        if (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= 12800) {
+        if (state.setpointRaw !== null && state.setpointRaw !== undefined && state.setpointRaw > 0 && state.setpointRaw <= HVAC_SETPOINT_RAW_MAX) {
             return { rawlevel: 0, level: state.setpointRaw };
         }
         return { rawlevel: 0, level: Math.round(DEFAULT_SETPOINT_C * 256) };

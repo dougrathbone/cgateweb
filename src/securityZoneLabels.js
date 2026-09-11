@@ -8,8 +8,7 @@
  * these helpers instead of re-implementing it.
  */
 
-const MIN_ZONE = 1;
-const MAX_ZONE = 127; // zone numbers are $01-$7F (spec §5.5.1.11)
+const { SECURITY_ZONE_MIN, SECURITY_ZONE_MAX } = require('./constants');
 
 /**
  * Build the label-map key for a security zone: `{network}/1/{zone}`.
@@ -35,7 +34,7 @@ function parseSecurityZoneLabelKey(key) {
     const match = /^(\d+)\/1\/(\d+)$/.exec(key);
     if (!match) return null;
     const zoneNum = parseInt(match[2], 10);
-    if (zoneNum < MIN_ZONE || zoneNum > MAX_ZONE) return null;
+    if (zoneNum < SECURITY_ZONE_MIN || zoneNum > SECURITY_ZONE_MAX) return null;
     return { network: match[1], zone: match[2] };
 }
 
