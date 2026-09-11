@@ -1907,6 +1907,38 @@ describe('CgateWebBridge', () => {
         });
     });
 
+    describe('command error and HA discovery wiring', () => {
+        let wired;
+        beforeEach(() => {
+            wired = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+        });
+        afterEach(() => jest.restoreAllMocks());
+
+        it('routes command errors to the initialization service', () => {
+            const spy = jest.spyOn(wired.initializationService, 'handleCommandError').mockImplementation(() => {});
+            wired.commandResponseProcessor.onCommandError(401, '401 tree empty');
+            expect(spy).toHaveBeenCalledWith(401, '401 tree empty');
+        });
+
+        it('triggers HA discovery from the MQTT command router', () => {
+            wired.haDiscovery = { trigger: jest.fn(), queueTreeRequest: jest.fn() };
+            wired.mqttCommandRouter.emit('haDiscoveryTrigger');
+            expect(wired.haDiscovery.trigger).toHaveBeenCalledTimes(1);
+        });
+
+        it('queues a tree request from the MQTT command router', () => {
+            wired.haDiscovery = { trigger: jest.fn(), queueTreeRequest: jest.fn() };
+            wired.mqttCommandRouter.emit('treeRequest', '254');
+            expect(wired.haDiscovery.queueTreeRequest).toHaveBeenCalledWith('254');
+        });
+
+        it('ignores discovery router events when haDiscovery is missing', () => {
+            wired.haDiscovery = null;
+            expect(() => wired.mqttCommandRouter.emit('haDiscoveryTrigger')).not.toThrow();
+            expect(() => wired.mqttCommandRouter.emit('treeRequest', '254')).not.toThrow();
+        });
+    });
+
     // The coordinator is built inside _buildSubsystems, before the bridge
     // assigns this.initializationService. Passing the property by value there
     // captured undefined and every resync threw
