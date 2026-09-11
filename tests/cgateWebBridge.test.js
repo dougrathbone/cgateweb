@@ -418,6 +418,23 @@ describe('CgateWebBridge', () => {
                 expect(bridge.mqttManager.connected).toBe(true);
                 expect(mockMqttClient.subscribe).toHaveBeenCalled();
             });
+
+            it('records a web bind failure without failing start', async () => {
+                const failed = Promise.reject(new Error('EADDRINUSE'));
+                const swallowed = failed.catch(() => {});
+                jest.spyOn(bridge.webServer, 'start').mockReturnValue(failed);
+                const publishSpy = jest.spyOn(bridge.haBridgeDiagnostics, 'publishNow');
+
+                await expect(bridge.start()).resolves.toBe(bridge);
+                await swallowed;
+
+                const web = bridge._getBridgeStatus().connections.web;
+                expect(web.listening).toBe(false);
+                expect(web.error).toBe('EADDRINUSE');
+                expect(bridge.bridgeReadiness.getLifecycleSnapshot().reason).toBe('web-bind-failed');
+                expect(bridge._getBridgeStatus().ready).toBe(false);
+                expect(publishSpy).toHaveBeenCalledWith('web-bind-failed');
+            });
         });
 
         describe('stop()', () => {

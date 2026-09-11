@@ -77,7 +77,8 @@ class HaBridgeDiagnostics {
             { key: 'command_pool_healthy', component: HA_COMPONENT_SENSOR, name: 'Healthy Command Connections', icon: 'mdi:pool' },
             { key: 'command_queue_depth', component: HA_COMPONENT_SENSOR, name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out' },
             { key: 'reconnect_indicator', component: HA_COMPONENT_SENSOR, name: 'Reconnect Indicator', icon: 'mdi:restart-alert' },
-            { key: 'cgate_version', component: HA_COMPONENT_SENSOR, name: 'C-Gate Version', icon: 'mdi:tag-outline' }
+            { key: 'cgate_version', component: HA_COMPONENT_SENSOR, name: 'C-Gate Version', icon: 'mdi:tag-outline' },
+            { key: 'web_listening', component: HA_COMPONENT_BINARY_SENSOR, name: 'Web UI Listening', icon: 'mdi:web' }
         ];
 
         for (const entity of diagnostics) {
@@ -133,7 +134,8 @@ class HaBridgeDiagnostics {
             command_pool_healthy: String(Number(commandPool.healthyConnections || 0)),
             command_queue_depth: String(Number(queueDepth)),
             reconnect_indicator: reconnectIndicator,
-            cgate_version: cgateVersion
+            cgate_version: cgateVersion,
+            web_listening: status.connections?.web?.listening ? 'ON' : 'OFF'
         };
 
         for (const [key, value] of Object.entries(values)) {
@@ -152,7 +154,8 @@ class HaBridgeDiagnostics {
                 mqtt: !!status.connections?.mqtt,
                 event: !!status.connections?.event,
                 commandPoolHealthy: Number(commandPool.healthyConnections || 0),
-                commandPoolTotal: Number(commandPool.totalConnections || 0)
+                commandPoolTotal: Number(commandPool.totalConnections || 0),
+                webListening: !!status.connections?.web?.listening
             },
             queue: {
                 depth: Number(queue.depth || 0),

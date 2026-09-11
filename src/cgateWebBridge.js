@@ -131,6 +131,10 @@ class CgateWebBridge {
     staleDeviceDetector;
     /** @type {*} */
     initializationService;
+    /** @type {boolean} */
+    _webListening;
+    /** @type {string|null} */
+    _webListenError;
 
     /**
      * Creates a new CgateWebBridge instance.
@@ -295,9 +299,20 @@ class CgateWebBridge {
         this._updateBridgeReadiness('startup-complete');
 
         // Off the await chain so it never gates the critical startup path.
-        this.webServer.start().catch((err) => {
-            this.logger.warn(`Web server failed to start: ${err.message}`);
-        });
+        this.webServer.start()
+            .then(() => {
+                this._webListening = true;
+                this._webListenError = null;
+                this._updateBridgeReadiness('web-listening');
+                this.haBridgeDiagnostics.publishNow('web-listening');
+            })
+            .catch((err) => {
+                this._webListening = false;
+                this._webListenError = err.message;
+                this.logger.warn(`Web server failed to start: ${err.message}`);
+                this._updateBridgeReadiness('web-bind-failed');
+                this.haBridgeDiagnostics.publishNow('web-bind-failed');
+            });
 
         // Fire-and-forget alongside the web server: learns the ingress base
         // path and applies it once known (GitHub #33).
@@ -890,7 +905,11 @@ class CgateWebBridge {
                     isShuttingDown: commandStats ? commandStats.isShuttingDown : false
                 },
                 event: eventConnected,
-                eventReconnectAttempts: this.eventConnection?.reconnectAttempts || 0
+                eventReconnectAttempts: this.eventConnection?.reconnectAttempts || 0,
+                web: {
+                    listening: this._webListening === true,
+                    error: this._webListenError || null
+                }
             },
             metrics: {
                 commandQueue: {

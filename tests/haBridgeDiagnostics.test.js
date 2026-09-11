@@ -20,7 +20,8 @@ describe('HaBridgeDiagnostics', () => {
                 mqtt: true,
                 event: true,
                 commandPool: { healthyConnections: 3, pendingReconnects: 0 },
-                eventReconnectAttempts: 1
+                eventReconnectAttempts: 1,
+                web: { listening: true, error: null }
             },
             metrics: {
                 commandQueue: { depth: 4 }
@@ -32,7 +33,7 @@ describe('HaBridgeDiagnostics', () => {
     test('publishes discovery and state on first publishNow call', () => {
         diagnostics.publishNow('test');
 
-        expect(publishFn).toHaveBeenCalledTimes(17); // 8 discovery + 8 state + 1 consolidated stats
+        expect(publishFn).toHaveBeenCalledTimes(19); // 9 discovery + 9 state + 1 consolidated stats
         expect(publishFn).toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
             expect.any(String),
@@ -44,8 +45,8 @@ describe('HaBridgeDiagnostics', () => {
             { retain: true, qos: 0 }
         );
         expect(publishFn).toHaveBeenCalledWith(
-            'cbus/read/bridge/diagnostics/command_queue_depth/state',
-            '4',
+            'cbus/read/bridge/diagnostics/web_listening/state',
+            'ON',
             { retain: true, qos: 0 }
         );
     });
@@ -56,7 +57,7 @@ describe('HaBridgeDiagnostics', () => {
 
         diagnostics.publishNow('second');
 
-        expect(publishFn).toHaveBeenCalledTimes(9); // 8 state + 1 consolidated stats
+        expect(publishFn).toHaveBeenCalledTimes(10); // 9 state + 1 consolidated stats
         expect(publishFn).not.toHaveBeenCalledWith(
             expect.stringContaining('/config'),
             expect.any(String),
@@ -70,7 +71,7 @@ describe('HaBridgeDiagnostics', () => {
 
         diagnostics.republishDiscovery();
 
-        expect(publishFn).toHaveBeenCalledTimes(8); // 8 discovery configs only
+        expect(publishFn).toHaveBeenCalledTimes(9); // 9 discovery configs only
         expect(publishFn).toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
             expect.any(String),
@@ -151,7 +152,8 @@ describe('HaBridgeDiagnostics', () => {
             mqtt: true,
             event: true,
             commandPoolHealthy: 3,
-            commandPoolTotal: 0
+            commandPoolTotal: 0,
+            webListening: true
         });
         expect(stats.queue).toHaveProperty('depth', 4);
         expect(stats.publisher).toHaveProperty('published');
