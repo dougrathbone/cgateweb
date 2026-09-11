@@ -1,6 +1,6 @@
 {
   "name": "cgateweb",
-  "version": "1.34.8",
+  "version": "1.34.9",
   "description": "Node.js bridge connecting Clipsal C-Bus automation systems to MQTT for Home Assistant integration",
   "keywords": [
     "cbus",
@@ -30,7 +30,7 @@
     "node": "^20.19.0 || ^22.13.0 || >=24"
   },
   "dependencies": {
-    "adm-zip": "^0.6.0",
+    "adm-zip": "^0.6.1",
     "mqtt": "^5.15.2",
     "sql.js": "^1.14.2",
     "xml2js": "^0.6.2"
