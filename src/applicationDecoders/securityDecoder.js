@@ -274,6 +274,197 @@ function decodeStatusReport2({ network, application, params, verb }) {
 }
 
 /**
+ * Zone-state verbs (sealed/unsealed/open/short).
+ * @private
+ */
+function decodeZoneKind({ network, application, zone, verb }) {
+    if (zone === null) return null;
+    return { kind: 'zone', network, application, zone, zoneState: ZONE_STATE_BY_VERB[verb], verb };
+}
+
+/**
+ * Echo of our own status_request commands on the event port — consumed
+ * quietly instead of logging as undecoded.
+ * @private
+ */
+function decodeStatusRequest({ network, application, params, verb }) {
+    const report = params.length > 0 ? parseInt(params[0], 10) : NaN;
+    return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
+}
+
+/**
+ * Echo of `security request_zone_name //PROJECT/<net>/<app> <zone>`.
+ * @private
+ */
+function decodeRequestZoneName({ network, application, zone, params, verb }) {
+    const zoneParam = params.length > 0 ? parseInt(params[0], 10) : NaN;
+    return {
+        kind: 'zone_name_request_echo',
+        network,
+        application,
+        zone: Number.isInteger(zoneParam) ? String(zoneParam) : zone,
+        verb
+    };
+}
+
+/**
+ * Panel zone-name reply. Name is 11 bytes, space-padded in the spec;
+ * C-Gate's text form is inferred (no live capture). Empty names still
+ * consume the line so they do not warn-spam.
+ * @private
+ */
+function decodeZoneName({ network, application, zone, params, verb }) {
+    const name = params.join(' ').replace(/^["']|["']$/g, '').trim();
+    if (zone === null) return { kind: 'zone_name', network, application, zone: null, name, verb };
+    return { kind: 'zone_name', network, application, zone, name, verb };
+}
+
+/**
+ * Spec $90 password-entry codes 1–4. C-Gate verb inferred as password_entry;
+ * unknown extra tokens still consume the line.
+ * @private
+ */
+function decodePasswordEntry({ network, application, params, verb }) {
+    const code = params.length > 0 ? parseInt(params[0], 10) : NaN;
+    return {
+        kind: 'password_entry',
+        network,
+        application,
+        code: Number.isInteger(code) && code >= 1 && code <= 4 ? code : null,
+        verb
+    };
+}
+
+/**
+ * Echo of our own `security arm` commands. The echo carries no state worth
+ * acting on — the panel's own exit_delay_started/system_arm events follow —
+ * so it is recognised purely to keep it out of the undecoded log (#42).
+ * @private
+ */
+function decodeArmEcho({ network, application, params, verb }) {
+    return { kind: 'arm_command_echo', network, application, mode: params.length > 0 ? params[0] : null, verb };
+}
+
+/**
+ * Echo of `security emulate_keypad`. The argument is one character of the
+ * user's alarm PIN; every path that logs an undecoded line would have
+ * written it out verbatim (#51). Deliberately does not carry the key.
+ * @private
+ */
+function decodeKeypadEcho({ network, application, verb }) {
+    return { kind: 'keypad_command_echo', network, application, verb };
+}
+
+/**
+ * zone is '0' when the panel armed with nothing blocking, a zone number on
+ * panels that report readiness per zone, and null on panels that omit the
+ * segment entirely.
+ * @private
+ */
+function decodeArmReady({ network, application, zone, verb }) {
+    return { kind: 'arm_ready', network, application, zone, verb };
+}
+
+/** @private */
+function decodeArmNotReady({ network, application, zone, verb }) {
+    return { kind: 'arm_not_ready', network, application, zone, verb };
+}
+
+/** @private */
+function decodeExitDelay({ network, application, verb }) {
+    return { kind: 'exit_delay_started', network, application, verb };
+}
+
+/**
+ * The system is armed and a delay zone just opened: the siren follows
+ * unless it is disarmed in time (spec §5.5.1.4). Verb spelling inferred
+ * from exit_delay_started — see the header note.
+ *
+ * zone is the zone that started the delay when the panel names one, null
+ * when it does not; a literal 0 means "no particular zone" and is
+ * reported as null so nothing downstream addresses a zone 0 that does
+ * not exist.
+ * @private
+ */
+function decodeEntryDelay({ network, application, zone, verb }) {
+    return {
+        kind: 'entry_delay_started', network, application,
+        zone: zone === '0' ? null : zone,
+        verb
+    };
+}
+
+/** @private */
+function decodeSystemArm({ network, application, params, verb }) {
+    const mode = params.length > 0 ? parseInt(params[0], 10) : NaN;
+    const modeName = Object.prototype.hasOwnProperty.call(ARM_MODE_BY_CODE, mode)
+        ? ARM_MODE_BY_CODE[mode]
+        : null;
+    return { kind: 'system_arm', network, application, mode: Number.isInteger(mode) ? mode : null, modeName, verb };
+}
+
+/** @private */
+function decodeAlarm({ network, application, verb }) {
+    return { kind: verb, network, application, verb };
+}
+
+/** @private */
+function decodeZoneIsolated({ network, application, zone, verb }) {
+    return { kind: 'zone_isolated', network, application, zone, verb };
+}
+
+/**
+ * Panel-wide trouble (mains, battery, tamper, panic, phone line, arm
+ * failure, fire). Raise/clear sense is resolved here so downstream code
+ * never parses verbs. PANEL_TROUBLE_VERBS name their own sense; the rest
+ * carry it in a "<verb>_raised" / "<verb>_cleared" argument, where a bare
+ * verb with no argument means raised.
+ * @private
+ */
+function decodePanelTrouble({ network, application, params, verb }) {
+    const named = PANEL_TROUBLE_VERBS.get(verb);
+    const detailCondition = PANEL_TROUBLE_DETAIL_VERBS.get(verb);
+    if (!named && !detailCondition) return null;
+    const detail = params.length > 0 ? params.join(' ') : null;
+    return {
+        kind: 'panel_trouble', network, application,
+        condition: named ? named.condition : detailCondition,
+        active: named ? named.active : !(detail && detail.endsWith('_cleared')),
+        verb,
+        detail
+    };
+}
+
+const VERB_HANDLERS = Object.assign(Object.create(null), {
+    zone_sealed: decodeZoneKind,
+    zone_unsealed: decodeZoneKind,
+    zone_open: decodeZoneKind,
+    zone_short: decodeZoneKind,
+    status_report_1: decodeStatusReport1,
+    status_report_2: decodeStatusReport2,
+    status_request: decodeStatusRequest,
+    request_zone_name: decodeRequestZoneName,
+    zone_name: decodeZoneName,
+    password_entry: decodePasswordEntry,
+    arm: decodeArmEcho,
+    emulate_keypad: decodeKeypadEcho,
+    arm_ready: decodeArmReady,
+    arm_not_ready: decodeArmNotReady,
+    exit_delay_started: decodeExitDelay,
+    entry_delay_started: decodeEntryDelay,
+    system_arm: decodeSystemArm,
+    alarm_on: decodeAlarm,
+    alarm_off: decodeAlarm,
+    zone_isolated: decodeZoneIsolated
+});
+for (const verb of PANEL_TROUBLE_VERBS.keys()) {
+    VERB_HANDLERS[verb] = decodePanelTrouble;
+}
+for (const verb of PANEL_TROUBLE_DETAIL_VERBS.keys()) {
+    VERB_HANDLERS[verb] = decodePanelTrouble;
+}
+
+/**
  * Decode a single C-Gate event line from the Security application.
  *
  * @param {string} line - Raw line from the C-Gate event stream.
@@ -307,151 +498,9 @@ function decodeLine(line) {
     if (!parsed) return null;
     const { network, application, zone } = parsed;
 
-    // 4. Dispatch by verb
-    const zoneState = ZONE_STATE_BY_VERB[verb];
-    if (zoneState !== undefined) {
-        if (zone === null) return null;
-        return { kind: 'zone', network, application, zone, zoneState, verb };
-    }
-
-    if (verb === 'status_report_1') {
-        return decodeStatusReport1({ network, application, params, verb });
-    }
-
-    if (verb === 'status_report_2') {
-        return decodeStatusReport2({ network, application, params, verb });
-    }
-
-    // Our own status_request commands echo back on the event port
-    // ("security status_request //PROJECT/<net>/<app> <report> #sourceunit=0
-    // OID= sessionId=cmd6 …") — recognise them so they are consumed quietly
-    // instead of logging as undecoded.
-    if (verb === 'status_request') {
-        const report = params.length > 0 ? parseInt(params[0], 10) : NaN;
-        return { kind: 'status_request', network, application, report: Number.isInteger(report) ? report : null, verb };
-    }
-
-    // Echo of `security request_zone_name //PROJECT/<net>/<app> <zone>`.
-    if (verb === 'request_zone_name') {
-        const zoneParam = params.length > 0 ? parseInt(params[0], 10) : NaN;
-        return {
-            kind: 'zone_name_request_echo',
-            network,
-            application,
-            zone: Number.isInteger(zoneParam) ? String(zoneParam) : zone,
-            verb
-        };
-    }
-
-    // Panel zone-name reply. Name is 11 bytes, space-padded in the spec;
-    // C-Gate's text form is inferred (no live capture). Empty names still
-    // consume the line so they do not warn-spam.
-    if (verb === 'zone_name') {
-        const name = params.join(' ').replace(/^["']|["']$/g, '').trim();
-        if (zone === null) return { kind: 'zone_name', network, application, zone: null, name, verb };
-        return { kind: 'zone_name', network, application, zone, name, verb };
-    }
-
-    // Spec $90 password-entry codes 1–4. C-Gate verb inferred as
-    // password_entry; unknown extra tokens still consume the line.
-    if (verb === 'password_entry') {
-        const code = params.length > 0 ? parseInt(params[0], 10) : NaN;
-        return {
-            kind: 'password_entry',
-            network,
-            application,
-            code: Number.isInteger(code) && code >= 1 && code <= 4 ? code : null,
-            verb
-        };
-    }
-
-    // Same for our own `security arm` commands ("security arm //PROJECT/254/208
-    // day #sourceunit=0 …"). The echo carries no state worth acting on — the
-    // panel's own exit_delay_started/system_arm events follow and drive the
-    // entity — so it is recognised purely to keep it out of the undecoded log
-    // (#42).
-    if (verb === 'arm') {
-        return { kind: 'arm_command_echo', network, application, mode: params.length > 0 ? params[0] : null, verb };
-    }
-
-    // Our own `security emulate_keypad` commands echo back the same way. Beyond
-    // the log noise, these must be recognised for a second reason: the argument
-    // is one character of the user's alarm PIN, and every path that logs an
-    // undecoded line would have written it out verbatim (#51). Deliberately does
-    // not carry the key.
-    if (verb === 'emulate_keypad') {
-        return { kind: 'keypad_command_echo', network, application, verb };
-    }
-
-    // System state verbs (decoded, logged and surfaced to Live Events; the
-    // panel condition sensors build on these — see securityPanelState).
-    if (verb === 'arm_ready') {
-        // zone is '0' when the panel armed with nothing blocking, a zone number
-        // on panels that report readiness per zone, and null on panels that
-        // omit the segment entirely.
-        return { kind: 'arm_ready', network, application, zone, verb };
-    }
-
-    if (verb === 'arm_not_ready') {
-        return { kind: 'arm_not_ready', network, application, zone, verb };
-    }
-
-    if (verb === 'exit_delay_started') {
-        return { kind: 'exit_delay_started', network, application, verb };
-    }
-
-    if (verb === 'entry_delay_started') {
-        // The system is armed and a delay zone just opened: the siren follows
-        // unless it is disarmed in time (spec §5.5.1.4). Verb spelling inferred
-        // from exit_delay_started — see the header note.
-        //
-        // zone is the zone that started the delay when the panel names one,
-        // null when it does not; a literal 0 means "no particular zone" and is
-        // reported as null so nothing downstream addresses a zone 0 that does
-        // not exist.
-        return {
-            kind: 'entry_delay_started', network, application,
-            zone: zone === '0' ? null : zone,
-            verb
-        };
-    }
-
-    if (verb === 'system_arm') {
-        const mode = params.length > 0 ? parseInt(params[0], 10) : NaN;
-        const modeName = Object.prototype.hasOwnProperty.call(ARM_MODE_BY_CODE, mode)
-            ? ARM_MODE_BY_CODE[mode]
-            : null;
-        return { kind: 'system_arm', network, application, mode: Number.isInteger(mode) ? mode : null, modeName, verb };
-    }
-
-    if (verb === 'alarm_on' || verb === 'alarm_off') {
-        return { kind: verb, network, application, verb };
-    }
-
-    if (verb === 'zone_isolated') {
-        return { kind: 'zone_isolated', network, application, zone, verb };
-    }
-
-    // Panel-wide trouble conditions (mains, battery, tamper, panic, phone line,
-    // arm failure, fire). These become diagnostic binary_sensors; the raise and
-    // clear senses are resolved here so downstream code never parses verbs.
-    const named = PANEL_TROUBLE_VERBS.get(verb);
-    const detailCondition = PANEL_TROUBLE_DETAIL_VERBS.get(verb);
-    if (named || detailCondition) {
-        // Verbs in PANEL_TROUBLE_VERBS name their own sense; the rest carry it
-        // in a "<verb>_raised" / "<verb>_cleared" argument, where a bare verb
-        // with no argument means raised.
-        const detail = params.length > 0 ? params.join(' ') : null;
-        return {
-            kind: 'panel_trouble', network, application,
-            condition: named ? named.condition : detailCondition,
-            active: named ? named.active : !(detail && detail.endsWith('_cleared')),
-            verb,
-            detail
-        };
-    }
-
-    return null;
+    const handler = VERB_HANDLERS[verb];
+    if (!handler) return null;
+    return handler({ network, application, zone, params, verb });
 }
 
 module.exports = {
