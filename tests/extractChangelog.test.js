@@ -1,4 +1,4 @@
-const { extractChangelogSection } = require('../tools/extract-changelog');
+const { extractChangelogSection, insertChangelogVersion } = require('../tools/extract-changelog');
 
 describe('extractChangelogSection', () => {
     const md = `# Changelog
@@ -60,5 +60,36 @@ describe('extractChangelogSection', () => {
         const previous = extractChangelogSection(markdown, headings[1]);
         expect(previous).toContain(`## [${headings[1]}]`);
         expect(previous).not.toContain(`## [${current}]`);
+    });
+});
+
+describe('insertChangelogVersion', () => {
+    const md = `# Changelog
+
+## [1.27.0] - 2026-08-21
+
+- First item.
+
+## [1.26.0] - 2026-08-15
+
+- Older item.
+`;
+
+    it('inserts the new heading above the current top version', () => {
+        const next = insertChangelogVersion(md, '1.27.1', '2026-09-11');
+        expect(next).toContain('## [1.27.1] - 2026-09-11');
+        expect(next.indexOf('## [1.27.1]')).toBeLessThan(next.indexOf('## [1.27.0]'));
+        expect(next).toContain('## [1.27.0] - 2026-08-21');
+        expect(extractChangelogSection(next, '1.27.1')).not.toContain('First item.');
+        expect(extractChangelogSection(next, '1.27.0')).toContain('First item.');
+    });
+
+    it('refuses to replace or duplicate an existing version', () => {
+        expect(() => insertChangelogVersion(md, '1.27.0', '2026-09-11')).toThrow(/already has/);
+    });
+
+    it('rejects a non-semver version and a non-ISO date', () => {
+        expect(() => insertChangelogVersion(md, '1.27', '2026-09-11')).toThrow(/invalid version/);
+        expect(() => insertChangelogVersion(md, '1.27.1', '11/09/2026')).toThrow(/invalid date/);
     });
 });
