@@ -19,7 +19,7 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 - Internal: the 1.34.7 changelog heading is restored so release notes stop at the right version.
 
-
+## [1.34.8] - 2026-09-11
 
 ### Fixed
 
