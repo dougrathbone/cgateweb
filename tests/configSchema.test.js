@@ -104,6 +104,18 @@ describe('settings schema — self lint', () => {
         }).map((entry) => entry.key);
         expect(bad).toEqual([]);
     });
+
+    it('declares warnMin/warnMax as numbers with min not above max', () => {
+        const bad = ENTRIES.filter((entry) => {
+            const hasMin = entry.warnMin !== undefined;
+            const hasMax = entry.warnMax !== undefined;
+            if (!hasMin && !hasMax) return false;
+            if (hasMin && typeof entry.warnMin !== 'number') return true;
+            if (hasMax && typeof entry.warnMax !== 'number') return true;
+            return hasMin && hasMax && entry.warnMin > entry.warnMax;
+        }).map((entry) => entry.key);
+        expect(bad).toEqual([]);
+    });
 });
 
 describe('settings schema — unit suffix convention', () => {
