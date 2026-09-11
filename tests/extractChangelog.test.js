@@ -48,7 +48,12 @@ describe('extractChangelogSection', () => {
         const current = require('../package.json').version;
         const headings = [...markdown.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)].map((m) => m[1]);
         expect(headings[0]).toBe(current);
-        expect(headings[1]).toBeDefined();
+        const parts = current.split('.').map(Number);
+        if (parts[2] > 0) {
+            expect(headings[1]).toBe(`${parts[0]}.${parts[1]}.${parts[2] - 1}`);
+        } else {
+            expect(headings[1]).toBeDefined();
+        }
         const section = extractChangelogSection(markdown, current);
         expect(section).toContain(`## [${current}]`);
         expect(section).not.toContain(`## [${headings[1]}]`);
