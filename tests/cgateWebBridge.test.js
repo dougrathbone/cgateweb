@@ -1982,10 +1982,17 @@ describe('CgateWebBridge', () => {
             expect(rescheduleSpy).toHaveBeenCalled();
         });
 
-        it('forces label reload', () => {
+        it('forces label reload and pushes the snapshot into HA discovery', () => {
             const loadSpy = jest.spyOn(bridge.labelLoader, 'load');
+            const labelData = { labels: new Map() };
+            jest.spyOn(bridge.labelLoader, 'getLabelData').mockReturnValue(labelData);
+            bridge.haDiscovery = { updateLabels: jest.fn(), trigger: jest.fn() };
+
             bridge.reloadSettings({ ...defaultSettings });
+
             expect(loadSpy).toHaveBeenCalled();
+            expect(bridge.haDiscovery.updateLabels).toHaveBeenCalledWith(labelData);
+            expect(bridge.haDiscovery.trigger).not.toHaveBeenCalled();
         });
 
         it('does not throw when called with minimal settings', () => {

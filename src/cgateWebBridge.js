@@ -522,25 +522,56 @@ class CgateWebBridge {
         return true;
     }
 
+    /**
+     * App-specific event-port handlers, in claim order. Each reports a
+     * tri-state (true / LINE_UNPARSED / false) so a line is classified once
+     * and the unparsed branch below can skip CBusEvent without re-scanning.
+     * Security and aircon are `#`-comment-prefixed; clock is not, but is
+     * claimed here so a comment-prefixed variant is not swallowed as a
+     * generic comment.
+     * @private
+     */
+    _runAppLineHandlers(line) {
+        /** @type {Array<[string, () => (true|typeof LINE_UNPARSED|false)]>} */
+        const handlers = [
+            ['aircon', () => this._handleAirconLine(line)],
+            ['security', () => this._handleSecurityLine(line)],
+            ['measurement', () => this._handleMeasurementLine(line)],
+            ['clock', () => this._handleClockLine(line)]
+        ];
+        /** @type {Record<string, true|typeof LINE_UNPARSED|false>} */
+        const states = {};
+        for (const [name, handle] of handlers) {
+            const state = handle();
+            if (state === true) return { consumed: true, states };
+            states[name] = state;
+        }
+        return { consumed: false, states };
+    }
+
+    /**
+     * App lines the handlers recognised but didn't consume are never valid
+     * CBusEvents — skip the parse so they don't spam "Could not parse event
+     * line". Raw capture has already run, so cbusRawEventLogApps still sees
+     * them (including undecoded clock traffic when the feature is off).
+     * @private
+     * @returns {boolean} true if the line should not reach CBusEvent
+     */
+    _dropUnparsedAppLine(states, line) {
+        for (const name of ['aircon', 'security', 'measurement', 'clock']) {
+            if (states[name] === LINE_UNPARSED) {
+                this.logger.debug(
+                    `Unparsed ${name} line (captured, not a standard event): ${redactCgateLine(line)}`
+                );
+                return true;
+            }
+        }
+        return false;
+    }
+
     _processEventLine(line) {
-        // Security lines are `#`-comment-prefixed like aircon lines; consume
-        // them before the generic comment-dropping branch so zone events don't
-        // publish a bogus OFF and status reports don't warn-spam the parser.
-        // All three handlers classify the line exactly once and report a
-        // tri-state, which the unparsed branches below reuse instead of
-        // re-scanning.
-        const airconState = this._handleAirconLine(line);
-        if (airconState === true) return;
-        const securityState = this._handleSecurityLine(line);
-        if (securityState === true) return;
-        const measurementState = this._handleMeasurementLine(line);
-        if (measurementState === true) return;
-        // Ahead of the comment branch like aircon/security: the captured clock
-        // lines are not `#`-prefixed, but claiming them here means a
-        // comment-prefixed variant is handled the same way rather than being
-        // swallowed as a generic comment.
-        const clockState = this._handleClockLine(line);
-        if (clockState === true) return;
+        const appLine = this._runAppLineHandlers(line);
+        if (appLine.consumed) return;
 
         if (line.startsWith('#')) {
             this.logger.debug(`Ignoring comment from event port: ${redactCgateLine(line)}`);
@@ -565,33 +596,7 @@ class CgateWebBridge {
             this.logger.debug(`C-Gate Recv (Evt): ${redactCgateLine(line)}`);
         }
 
-        // App lines the handlers recognised but didn't consume (an unsupported
-        // verb or a different app) are surfaced in raw capture but are never
-        // valid CBusEvents — skip the parse so they don't spam a "Could not
-        // parse event line" warning on every broadcast. The handlers already
-        // classified the line, so these reuse their tri-state instead of
-        // re-scanning with isAirconLine/isSecurityLine.
-        if (airconState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed aircon line (captured, not a standard event): ${redactCgateLine(line)}`);
-            return;
-        }
-        if (securityState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed security line (captured, not a standard event): ${redactCgateLine(line)}`);
-            return;
-        }
-        if (measurementState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed measurement line (captured, not a standard event): ${redactCgateLine(line)}`);
-            return;
-        }
-        // Reached when the feature is off, or on but the line was a shape the
-        // decoder refuses to guess at. Either way it has now passed through
-        // _publishRawEventCapture above, so `cbusRawEventLogApps` can capture
-        // real app-223 traffic without decoding it blind. Known
-        // `request_refresh` echoes are consumed in _handleClockLine instead.
-        if (clockState === LINE_UNPARSED) {
-            this.logger.debug(`Unparsed clock line (captured, not a standard event): ${redactCgateLine(line)}`);
-            return;
-        }
+        if (this._dropUnparsedAppLine(appLine.states, line)) return;
 
         try {
             const event = new CBusEvent(line);
@@ -934,6 +939,12 @@ class CgateWebBridge {
         }
 
         this.labelLoader.load();
+        // Settings reload is distinct from fs.watch: load() itself does not
+        // emit labels-changed, so HA discovery would keep stale maps unless
+        // we push the (possibly unchanged) snapshot here.
+        if (this.haDiscovery && typeof this.haDiscovery.updateLabels === 'function') {
+            this.haDiscovery.updateLabels(this.labelLoader.getLabelData());
+        }
 
         if (changed.length > 0) {
             this.logger.info(`Settings reloaded. Changed: ${changed.join(', ')}`);
