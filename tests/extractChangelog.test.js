@@ -37,4 +37,23 @@ describe('extractChangelogSection', () => {
         expect(() => extractChangelogSection(md, '1.27.0-rc.1')).toThrow(/invalid version/);
         expect(() => extractChangelogSection(md, '.*')).toThrow(/invalid version/);
     });
+
+    it('stops the live changelog at the next version heading', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const markdown = fs.readFileSync(
+            path.join(__dirname, '..', 'homeassistant-addon', 'CHANGELOG.md'),
+            'utf8'
+        );
+        const current = require('../package.json').version;
+        const headings = [...markdown.matchAll(/^## \[(\d+\.\d+\.\d+)\]/gm)].map((m) => m[1]);
+        expect(headings[0]).toBe(current);
+        expect(headings[1]).toBeDefined();
+        const section = extractChangelogSection(markdown, current);
+        expect(section).toContain(`## [${current}]`);
+        expect(section).not.toContain(`## [${headings[1]}]`);
+        const previous = extractChangelogSection(markdown, headings[1]);
+        expect(previous).toContain(`## [${headings[1]}]`);
+        expect(previous).not.toContain(`## [${current}]`);
+    });
 });

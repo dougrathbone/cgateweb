@@ -24,7 +24,7 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 - Internal: shared C-Bus numeric bounds, a single event-line dispatch path, connection-pool reconnect tests, and label-body sanitization.
 
-
+## [1.34.7] - 2026-09-06
 
 ### Fixed
 
