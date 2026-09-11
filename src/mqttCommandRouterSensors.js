@@ -9,7 +9,11 @@ const {
     MQTT_CMD_TYPE_SET,
     MQTT_CMD_TYPE_LABEL,
     NEWLINE,
-    DEFAULT_CBUS_APP_TEMPERATURE
+    DEFAULT_CBUS_APP_TEMPERATURE,
+    INT16_MIN,
+    INT16_MAX,
+    INT8_MIN,
+    INT8_MAX
 } = require('./constants');
 
 class _MqttCommandRouterSensors {
@@ -56,12 +60,12 @@ class _MqttCommandRouterSensors {
         const multiplier = parts.length > 1 ? parseInt(parts[1], 10) : 0;
         const unitsCode = parts.length > 2 ? parseInt(parts[2], 10) : 0; // default $00 (°C)
 
-        if (!Number.isInteger(value) || value < -32768 || value > 32767) {
-            this.logger.warn(`Invalid measurement value "${parts[0]}" on topic ${topic} (expected an integer, -32768..32767)`);
+        if (!Number.isInteger(value) || value < INT16_MIN || value > INT16_MAX) {
+            this.logger.warn(`Invalid measurement value "${parts[0]}" on topic ${topic} (expected an integer, ${INT16_MIN}..${INT16_MAX})`);
             return;
         }
-        if (!Number.isInteger(multiplier) || multiplier < -128 || multiplier > 127) {
-            this.logger.warn(`Invalid measurement multiplier "${parts[1]}" on topic ${topic} (expected an integer, -128..127)`);
+        if (!Number.isInteger(multiplier) || multiplier < INT8_MIN || multiplier > INT8_MAX) {
+            this.logger.warn(`Invalid measurement multiplier "${parts[1]}" on topic ${topic} (expected an integer, ${INT8_MIN}..${INT8_MAX})`);
             return;
         }
         if (!Number.isInteger(unitsCode) || !Object.prototype.hasOwnProperty.call(MEASUREMENT_UNIT_TABLE, unitsCode)) {
