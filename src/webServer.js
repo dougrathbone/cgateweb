@@ -230,6 +230,12 @@ class WebServer {
             );
         } else if (!this.apiKey && this.allowUnauthenticatedMutations) {
             this.logger.warn('Web API key not configured; mutating endpoints are unauthenticated due to explicit override.');
+        } else if (!this.apiKey && !isLoopbackBindHost(this.bindHost)) {
+            this.logger.warn(
+                `Web server is bound to ${this.bindHost} without a web_api_key. `
+                + 'Direct (non-Ingress) mutating requests will be denied. '
+                + 'Set web_api_key if you publish this port outside Home Assistant Ingress.'
+            );
         } else if (!this.apiKey) {
             this.logger.info('Web API key not configured; mutating endpoints require explicit unsafe override.');
         }

@@ -1187,6 +1187,25 @@ describe('WebServer', () => {
     });
 
     describe('Constructor options', () => {
+        it('warns when bound off loopback without an API key', () => {
+            new WebServer({
+                labelLoader,
+                bindHost: '0.0.0.0',
+                getStatus: () => ({})
+            });
+            expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('web_api_key'));
+        });
+
+        it('does not warn about a missing API key on loopback', () => {
+            console.warn.mockClear();
+            new WebServer({
+                labelLoader,
+                bindHost: '127.0.0.1',
+                getStatus: () => ({})
+            });
+            expect(console.warn).not.toHaveBeenCalledWith(expect.stringContaining('web_api_key'));
+        });
+
         it('refuses allowUnauthenticatedMutations when bindHost is not loopback', () => {
             const s = new WebServer({
                 labelLoader,
