@@ -269,7 +269,7 @@ describe('DeviceStateManager', () => {
 
             jest.advanceTimersByTime(timeout + 50);
 
-            expect(callback).not.toHaveBeenCalled();
+            expect(callback).toHaveBeenCalledWith(null);
             expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
             expect(mockLogger.warn).toHaveBeenCalledWith(
                 expect.stringContaining('Timeout waiting for level response from 254/56/4')
