@@ -406,6 +406,37 @@ describe('CgateConnectionPool', () => {
 
             createSpy.mockRestore();
         });
+
+        it('destroys the old socket and logs when reconnection create fails', async () => {
+            pool.isStarted = true;
+            const errorSpy = jest.spyOn(pool.logger, 'error').mockImplementation(() => {});
+            const destroy = jest.fn();
+            const removeAllListeners = jest.fn();
+            const failedConn = {
+                poolIndex: 0,
+                removeAllListeners,
+                socket: { destroyed: false, destroy }
+            };
+            pool.connections[0] = failedConn;
+
+            const createSpy = jest.spyOn(pool, '_createConnection').mockRejectedValue(new Error('connect refused'));
+
+            pool._scheduleReconnection(failedConn, 0);
+            jest.advanceTimersByTime(2000);
+            await Promise.resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(removeAllListeners).toHaveBeenCalled();
+            expect(destroy).toHaveBeenCalled();
+            expect(errorSpy).toHaveBeenCalledWith(
+                expect.stringContaining('reconnection failed'),
+                expect.objectContaining({ error: 'connect refused' })
+            );
+
+            createSpy.mockRestore();
+            errorSpy.mockRestore();
+        });
     });
 
     // Helper: configure mock to capture connections and start the pool
@@ -760,6 +791,35 @@ describe('CgateConnectionPool', () => {
             for (const c of connections) {
                 expect(pool.connectionInFlight.get(c) || 0).toBe(0);
             }
+        });
+
+        it('prefers a writable connection over a backpressured one in execute()', async () => {
+            const connections = await startWithConnections();
+            connections[0].isWritable = false;
+            connections[1].isWritable = true;
+            connections[2].isWritable = true;
+            for (const c of connections) {
+                c.sendWithBackpressure.mockClear();
+            }
+
+            await expect(pool.execute('cmd\n')).resolves.toBe(true);
+
+            expect(connections[1].sendWithBackpressure).toHaveBeenCalledWith('cmd\n');
+            expect(connections[0].sendWithBackpressure).not.toHaveBeenCalled();
+        });
+
+        it('forwards backpressure and writable events from pooled connections', async () => {
+            const connections = await startWithConnections();
+            const backpressure = jest.fn();
+            const writable = jest.fn();
+            pool.on('connectionBackpressure', backpressure);
+            pool.on('connectionWritable', writable);
+
+            connections[0].emit('backpressure');
+            connections[0].emit('writable');
+
+            expect(backpressure).toHaveBeenCalledWith({ index: 0, connection: connections[0] });
+            expect(writable).toHaveBeenCalledWith({ index: 0, connection: connections[0] });
         });
 
         it('falls back to send() when sendWithBackpressure is absent', async () => {

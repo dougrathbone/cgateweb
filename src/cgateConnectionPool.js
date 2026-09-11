@@ -345,10 +345,14 @@ class CgateConnectionPool extends EventEmitter {
             });
 
             connection.on('backpressure', () => {
+                // isWritable is already false on the connection; drop the
+                // healthy-array cache so the next execute() re-sorts.
+                this._healthyArray = null;
                 this.emit('connectionBackpressure', { index, connection });
             });
 
             connection.on('writable', () => {
+                this._healthyArray = null;
                 this.emit('connectionWritable', { index, connection });
             });
             
