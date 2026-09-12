@@ -46,6 +46,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   version-sync:
@@ -256,12 +257,12 @@ jobs:
       if: ${{ inputs.run-expensive }}
       uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
 
-    - name: Build image
-      # BuildKit + BUILDPLATFORM lets the npm install stage run on the host
-      # arch (pure JS deps), avoiding QEMU SIGILL during npm ci on aarch64.
+    - name: Resolve image platform
+      # Maps the add-on arch name to a BuildKit platform and the digest-pinned
+      # base from build.yaml. Outputs feed the cache-aware build below.
       if: ${{ inputs.run-expensive }}
+      id: image
       env:
-        DOCKER_BUILDKIT: 1
         ARCH: ${{ matrix.arch }}
       run: |
         case "${ARCH}" in
@@ -272,22 +273,35 @@ jobs:
           i386) platform=linux/386 ;;
           *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
-        # Same digest-pinned refs as build.yaml — do not hardcode the floating tag.
         BUILD_FROM=$(sed -n "s/^[[:space:]]*${ARCH}:[[:space:]]*\"\\(.*\\)\"/\\1/p" homeassistant-addon/build.yaml | head -1)
         if [ -z "${BUILD_FROM}" ]; then
           echo "no build_from entry for ${ARCH}" >&2
           exit 1
         fi
-        docker buildx build \
-          --platform "$platform" \
-          --build-arg "BUILD_FROM=${BUILD_FROM}" \
-          --build-arg "BUILD_ARCH=${ARCH}" \
-          --build-arg BUILD_VERSION=ci \
-          --build-arg BUILD_DATE=ci \
-          --build-arg BUILD_REF="${GITHUB_SHA}" \
-          --load \
-          -t "cgateweb-addon:ci-${ARCH}" \
-          ctx
+        echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+        echo "build_from=${BUILD_FROM}" >> "$GITHUB_OUTPUT"
+
+    - name: Build image
+      # BuildKit + BUILDPLATFORM lets the npm install stage run on the host
+      # arch (pure JS deps), avoiding QEMU SIGILL during npm ci on aarch64.
+      # type=gha cache is scoped per architecture so QEMU rebuilds reuse layers.
+      if: ${{ inputs.run-expensive }}
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+      with:
+        context: ctx
+        file: ctx/Dockerfile
+        load: true
+        push: false
+        tags: cgateweb-addon:ci-${{ matrix.arch }}
+        platforms: ${{ steps.image.outputs.platform }}
+        build-args: |
+          BUILD_FROM=${{ steps.image.outputs.build_from }}
+          BUILD_ARCH=${{ matrix.arch }}
+          BUILD_VERSION=ci
+          BUILD_DATE=ci
+          BUILD_REF=${{ github.sha }}
+        cache-from: type=gha,scope=cgateweb-addon-${{ matrix.arch }}
+        cache-to: type=gha,mode=max,scope=cgateweb-addon-${{ matrix.arch }}
 
     - name: Smoke-check image contents
       # Override the s6/bashio entrypoint (which needs the HA Supervisor) and

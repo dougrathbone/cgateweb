@@ -36,6 +36,9 @@ jobs:
   quality:
     name: quality
     uses: ./.github/workflows/quality.yml
+    permissions:
+      contents: read
+      actions: write
     with:
       run-expensive: true
       require-upload-integration: true
@@ -52,6 +55,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      actions: write
     strategy:
       fail-fast: false
       matrix:
@@ -82,7 +86,8 @@ jobs:
         GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: echo "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
-    - name: Build and publish image
+    - name: Resolve image platform
+      id: image
       env:
         ARCH: ${{ matrix.arch }}
         VERSION: ${{ github.ref_name }}
@@ -96,23 +101,33 @@ jobs:
           i386) platform=linux/386 ;;
           *) echo "Unknown arch ${ARCH}"; exit 1 ;;
         esac
-        # Same digest-pinned refs as build.yaml — do not hardcode the floating tag.
         BUILD_FROM=$(sed -n "s/^[[:space:]]*${ARCH}:[[:space:]]*\"\\(.*\\)\"/\\1/p" homeassistant-addon/build.yaml | head -1)
         if [ -z "${BUILD_FROM}" ]; then
           echo "no build_from entry for ${ARCH}" >&2
           exit 1
         fi
-        docker buildx build \
-          --platform "$platform" \
-          --build-arg "BUILD_FROM=${BUILD_FROM}" \
-          --build-arg "BUILD_ARCH=${ARCH}" \
-          --build-arg "BUILD_VERSION=${VERSION}" \
-          --build-arg "BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
-          --build-arg "BUILD_REF=${GITHUB_SHA}" \
-          --provenance=false \
-          --push \
-          -t "ghcr.io/dougrathbone/cgateweb:${VERSION}-${ARCH}" \
-          ctx
+        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+        echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+        echo "build_from=${BUILD_FROM}" >> "$GITHUB_OUTPUT"
+        echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+    - name: Build and publish image
+      uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+      with:
+        context: ctx
+        file: ctx/Dockerfile
+        push: true
+        provenance: false
+        tags: ghcr.io/dougrathbone/cgateweb:${{ steps.image.outputs.version }}-${{ matrix.arch }}
+        platforms: ${{ steps.image.outputs.platform }}
+        build-args: |
+          BUILD_FROM=${{ steps.image.outputs.build_from }}
+          BUILD_ARCH=${{ matrix.arch }}
+          BUILD_VERSION=${{ steps.image.outputs.version }}
+          BUILD_DATE=${{ steps.image.outputs.build_date }}
+          BUILD_REF=${{ github.sha }}
+        cache-from: type=gha,scope=cgateweb-addon-${{ matrix.arch }}
+        cache-to: type=gha,mode=max,scope=cgateweb-addon-${{ matrix.arch }}
 
   publish-manifest:
     name: Publish multi-architecture manifest
