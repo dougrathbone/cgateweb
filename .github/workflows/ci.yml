@@ -134,6 +134,9 @@ jobs:
     name: quality
     needs: changes
     if: github.event_name != 'schedule'
+    permissions:
+      contents: read
+      actions: write
     uses: ./.github/workflows/quality.yml
     with:
       run-expensive: ${{ needs.changes.outputs.code == 'true' }}

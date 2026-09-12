@@ -7,6 +7,7 @@ const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LA
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword, normalizeOptionalSecret } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
 const { supervisorJson } = require('../supervisorHttp');
+const { redactUrl } = require('../utils');
 
 const DEFAULT_MQTT_VALUES = ['core-mosquitto:1883', '127.0.0.1:1883', undefined, null, ''];
 
@@ -468,7 +469,7 @@ class ConfigLoader {
             if (hasDefaultBroker && missingCredentials) {
                 this.logger.warn(
                     'MQTT auto-detection from Supervisor API failed and no MQTT credentials are configured. ' +
-                    `MQTT broker "${settings.mqtt || '(not set)'}" may require authentication. ` +
+                    `MQTT broker "${redactUrl(settings.mqtt || '(not set)')}" may require authentication. ` +
                     'Set mqtt_username/mqtt_password in addon options if connection fails.'
                 );
             }
@@ -486,7 +487,7 @@ class ConfigLoader {
         if (DEFAULT_MQTT_VALUES.includes(settings.mqtt)) {
             const detectedMqtt = `${mqttConfig.host}:${mqttConfig.port}`;
             settings.mqtt = detectedMqtt;
-            this.logger.info(`Applied auto-detected MQTT broker: ${detectedMqtt}`);
+            this.logger.info(`Applied auto-detected MQTT broker: ${redactUrl(detectedMqtt)}`);
         }
 
         return settings;

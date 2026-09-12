@@ -1759,6 +1759,19 @@ describe('CgateWebBridge', () => {
                 expect(bridge._getAdaptiveQueueIntervalMs()).toBe(50); // 200 / 4
             });
 
+            it('_getAdaptiveQueueIntervalMs uses writable count when the pool is backpressured', () => {
+                bridge.settings.messageinterval = 200;
+                bridge.settings.commandMinIntervalMs = 10;
+                bridge.commandConnectionPool.getStats = jest.fn(() => ({
+                    isStarted: true,
+                    isShuttingDown: false,
+                    healthyConnections: 4,
+                    writableConnections: 1
+                }));
+                Object.defineProperty(bridge.cgateCommandQueue, 'length', { get: () => 0, configurable: true });
+                expect(bridge._getAdaptiveQueueIntervalMs()).toBe(200);
+            });
+
             it('_getAdaptiveQueueIntervalMs honours messageIntervalMinMs and commandMinIntervalFloorMs', () => {
                 bridge.settings.messageinterval = 1;
                 bridge.settings.messageIntervalMinMs = 40;

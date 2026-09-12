@@ -242,6 +242,26 @@ describe('CgateConnection', () => {
             expect(mockSocket.write).toHaveBeenCalledTimes(2);
         });
 
+        it('returns false when drain wait times out', async () => {
+            jest.useFakeTimers();
+            try {
+                mockSocket.write.mockReturnValue(false);
+                const sendPromise = connection.sendWithBackpressure('test command');
+                await jest.advanceTimersByTimeAsync(5000);
+                await expect(sendPromise).resolves.toBe(false);
+                expect(mockSocket.write).toHaveBeenCalledTimes(1);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('returns false when the socket closes while waiting for drain', async () => {
+            mockSocket.write.mockReturnValue(false);
+            const sendPromise = connection.sendWithBackpressure('test command');
+            mockSocket.emit('close');
+            await expect(sendPromise).resolves.toBe(false);
+        });
+
         it('should warn when not connected', () => {
             connection.connected = false;
             const loggerSpy = jest.spyOn(connection.logger, 'warn');
