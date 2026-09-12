@@ -184,6 +184,12 @@ class _CgateWebBridgeBuild {
         /** @type {Map<string, {lastRunAt: number, burstStartedAt: number, syncs: number, deferHandle: (NodeJS.Timeout|null)}>} */
         this._networkSyncState = new Map();
 
+        // Web listen state is independent of C-Gate/MQTT readiness: a bind
+        // failure must not mark the bridge unready, but it is reported on the
+        // status payload and HA diagnostics so an Ingress 502 is explainable.
+        this._webListening = false;
+        this._webListenError = null;
+
         // Owns lifecycle state + readiness reason; emits 'readinessChanged' which
         // the bridge subscribes to (after haBridgeDiagnostics is built) to drive
         // the hello/cgateweb status publish and diagnostics refresh.
@@ -353,6 +359,8 @@ class _CgateWebBridgeBuild {
             maxDashboardDevices: resolveSetting(this.settings, 'webDashboardMaxDevices'),
             maxSseConnections: resolveSetting(this.settings, 'web_max_sse_connections'),
             _sseKeepaliveMs: resolveSetting(this.settings, 'webSseKeepaliveMs'),
+            headersTimeoutMs: resolveSetting(this.settings, 'webHeadersTimeoutMs'),
+            requestTimeoutMs: resolveSetting(this.settings, 'webRequestTimeoutMs'),
             triggerAppId: resolveSetting(this.settings, 'ha_discovery_trigger_app_id'),
             getStatus: () => this._getBridgeStatus(),
             deviceStateManager: this.deviceStateManager,

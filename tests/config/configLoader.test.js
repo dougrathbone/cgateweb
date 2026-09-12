@@ -1557,6 +1557,7 @@ describe('ConfigLoader', () => {
         });
 
         test('should warn when messageinterval is below minimum', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1565,9 +1566,11 @@ describe('ConfigLoader', () => {
 
             // Should not throw - just warn
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('Message interval should be between 10 and 10000 milliseconds');
         });
 
         test('should warn when messageinterval is above maximum', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1575,9 +1578,11 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('Message interval should be between 10 and 10000 milliseconds');
         });
 
         test('should warn when commandMinIntervalMs is out of range', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1585,9 +1590,11 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('commandMinIntervalMs should be between 1 and 1000 milliseconds');
         });
 
         test('should warn when commandMinIntervalMs is above maximum', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1595,9 +1602,11 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('commandMinIntervalMs should be between 1 and 1000 milliseconds');
         });
 
         test('should warn when eventPublishDedupWindowMs is out of range', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1605,9 +1614,11 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('eventPublishDedupWindowMs should be between 0 and 60000 milliseconds');
         });
 
         test('should warn when eventPublishDedupMaxEntries is below minimum', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1615,9 +1626,11 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('eventPublishDedupMaxEntries should be at least 100');
         });
 
         test('should warn when topicCacheMaxEntries is below minimum', () => {
+            const warn = jest.spyOn(configLoader.logger, 'warn').mockImplementation(() => {});
             const config = {
                 cbusip: '127.0.0.1',
                 mqtt: '127.0.0.1:1883',
@@ -1625,6 +1638,7 @@ describe('ConfigLoader', () => {
             };
 
             expect(() => configLoader.validate(config)).not.toThrow();
+            expect(warn).toHaveBeenCalledWith('topicCacheMaxEntries should be at least 100');
         });
     });
 });

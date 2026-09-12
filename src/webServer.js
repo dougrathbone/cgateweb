@@ -128,6 +128,8 @@ class WebServer {
  * @param {number} [options.maxDashboardDevices] - Maximum device rows on GET /api/dashboard
  * @param {number} [options.maxSseConnections] - Maximum concurrent SSE connections
  * @param {number} [options._sseKeepaliveMs] - SSE keep-alive interval in ms (internal)
+ * @param {number} [options.headersTimeoutMs] - HTTP headers timeout in ms
+ * @param {number} [options.requestTimeoutMs] - HTTP request inactivity timeout in ms
      */
     constructor(options = {}) {
         this.port = listenPort(options.port, resolveSetting({}, 'web_port'));
@@ -161,6 +163,8 @@ class WebServer {
         this.haAreasCacheTtlMs = positiveNumber(options.haAreasCacheTtlMs, resolveSetting({}, 'web_ha_areas_cache_ttl_ms'));
         this.haApiTimeoutMs = positiveNumber(options.haApiTimeoutMs, resolveSetting({}, 'web_ha_api_timeout_ms'));
         this.maxDashboardDevices = positiveNumber(options.maxDashboardDevices, resolveSetting({}, 'webDashboardMaxDevices'));
+        this.headersTimeoutMs = positiveNumber(options.headersTimeoutMs, resolveSetting({}, 'webHeadersTimeoutMs'));
+        this.requestTimeoutMs = positiveNumber(options.requestTimeoutMs, resolveSetting({}, 'webRequestTimeoutMs'));
         this.logger = createLogger({ component: 'WebServer' });
         this._server = null;
 
@@ -244,6 +248,8 @@ class WebServer {
     start() {
         this._startPromise = new Promise((resolve, reject) => {
             this._server = http.createServer((req, res) => this._handleRequest(req, res));
+            this._server.headersTimeout = this.headersTimeoutMs;
+            this._server.requestTimeout = this.requestTimeoutMs;
 
             this._server.on('error', (err) => {
                 this.logger.error(`Web server error: ${err.message}`);

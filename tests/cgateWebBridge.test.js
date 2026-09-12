@@ -418,6 +418,23 @@ describe('CgateWebBridge', () => {
                 expect(bridge.mqttManager.connected).toBe(true);
                 expect(mockMqttClient.subscribe).toHaveBeenCalled();
             });
+
+            it('records a web bind failure without failing start', async () => {
+                const failed = Promise.reject(new Error('EADDRINUSE'));
+                const swallowed = failed.catch(() => {});
+                jest.spyOn(bridge.webServer, 'start').mockReturnValue(failed);
+                const publishSpy = jest.spyOn(bridge.haBridgeDiagnostics, 'publishNow');
+
+                await expect(bridge.start()).resolves.toBe(bridge);
+                await swallowed;
+
+                const web = bridge._getBridgeStatus().connections.web;
+                expect(web.listening).toBe(false);
+                expect(web.error).toBe('EADDRINUSE');
+                expect(bridge.bridgeReadiness.getLifecycleSnapshot().reason).toBe('web-bind-failed');
+                expect(bridge._getBridgeStatus().ready).toBe(false);
+                expect(publishSpy).toHaveBeenCalledWith('web-bind-failed');
+            });
         });
 
         describe('stop()', () => {
@@ -1904,6 +1921,38 @@ describe('CgateWebBridge', () => {
         it('resyncs on a broker reconnect', () => {
             bridge.mqttManager.emit('reconnect');
             expect(bridge.stateResyncCoordinator.requestResync).toHaveBeenCalledWith('mqtt-reconnect');
+        });
+    });
+
+    describe('command error and HA discovery wiring', () => {
+        let wired;
+        beforeEach(() => {
+            wired = new CgateWebBridge({ ...defaultSettings, cbusip: '127.0.0.1' });
+        });
+        afterEach(() => jest.restoreAllMocks());
+
+        it('routes command errors to the initialization service', () => {
+            const spy = jest.spyOn(wired.initializationService, 'handleCommandError').mockImplementation(() => {});
+            wired.commandResponseProcessor.onCommandError(401, '401 tree empty');
+            expect(spy).toHaveBeenCalledWith(401, '401 tree empty');
+        });
+
+        it('triggers HA discovery from the MQTT command router', () => {
+            wired.haDiscovery = { trigger: jest.fn(), queueTreeRequest: jest.fn() };
+            wired.mqttCommandRouter.emit('haDiscoveryTrigger');
+            expect(wired.haDiscovery.trigger).toHaveBeenCalledTimes(1);
+        });
+
+        it('queues a tree request from the MQTT command router', () => {
+            wired.haDiscovery = { trigger: jest.fn(), queueTreeRequest: jest.fn() };
+            wired.mqttCommandRouter.emit('treeRequest', '254');
+            expect(wired.haDiscovery.queueTreeRequest).toHaveBeenCalledWith('254');
+        });
+
+        it('ignores discovery router events when haDiscovery is missing', () => {
+            wired.haDiscovery = null;
+            expect(() => wired.mqttCommandRouter.emit('haDiscoveryTrigger')).not.toThrow();
+            expect(() => wired.mqttCommandRouter.emit('treeRequest', '254')).not.toThrow();
         });
     });
 

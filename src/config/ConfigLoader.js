@@ -2,7 +2,7 @@
 const fs = require('fs');
 const { Logger } = require('../logger');
 const EnvironmentDetector = require('./EnvironmentDetector');
-const { listKnownConfigKeys, listSettingAliases, getSchemaEntry, resolveSetting } = require('./schema');
+const { listKnownConfigKeys, listSettingAliases, listSchemaEntries, getSchemaEntry, resolveSetting } = require('./schema');
 const { DEFAULT_ADDON_LABEL_FILE, LEGACY_ADDON_LABEL_FILE, DEFAULT_ADDON_DATA_LABEL_FILE } = require('../constants');
 const { isPortInRange, isValidCgateProjectName, isValidCgateUsername, isValidCgatePassword, normalizeOptionalSecret } = require('./validationRules');
 const { applyAddonOptionMap } = require('./addonOptionMap');
@@ -586,25 +586,7 @@ class ConfigLoader {
             errors.push('C-Gate event port must be between 1 and 65535');
         }
 
-        if (configToValidate.messageinterval && (configToValidate.messageinterval < 10 || configToValidate.messageinterval > 10000)) {
-            warnings.push('Message interval should be between 10 and 10000 milliseconds');
-        }
-
-        if (configToValidate.commandMinIntervalMs && (configToValidate.commandMinIntervalMs < 1 || configToValidate.commandMinIntervalMs > 1000)) {
-            warnings.push('commandMinIntervalMs should be between 1 and 1000 milliseconds');
-        }
-
-        if (configToValidate.eventPublishDedupWindowMs && (configToValidate.eventPublishDedupWindowMs < 0 || configToValidate.eventPublishDedupWindowMs > 60000)) {
-            warnings.push('eventPublishDedupWindowMs should be between 0 and 60000 milliseconds');
-        }
-
-        if (configToValidate.eventPublishDedupMaxEntries && configToValidate.eventPublishDedupMaxEntries < 100) {
-            warnings.push('eventPublishDedupMaxEntries should be at least 100');
-        }
-
-        if (configToValidate.topicCacheMaxEntries && configToValidate.topicCacheMaxEntries < 100) {
-            warnings.push('topicCacheMaxEntries should be at least 100');
-        }
+        this._warnNumericRanges(configToValidate, warnings);
 
         // Validate C-Gate mode settings
         if (configToValidate.cgate_mode === 'managed') {
@@ -630,6 +612,31 @@ class ConfigLoader {
 
         this.logger.info('Configuration validation passed');
         return true;
+    }
+
+    /**
+     * Warn when a numeric setting sits outside the schema's warnMin/warnMax.
+     * Values are still accepted; this is an operator heads-up only.
+     * @private
+     */
+    _warnNumericRanges(config, warnings) {
+        for (const entry of listSchemaEntries()) {
+            if (entry.warnMin === undefined && entry.warnMax === undefined) continue;
+            const value = config[entry.key];
+            if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+            const below = entry.warnMin !== undefined && value < entry.warnMin;
+            const above = entry.warnMax !== undefined && value > entry.warnMax;
+            if (!below && !above) continue;
+            const unitSuffix = entry.unit === 'ms' ? ' milliseconds' : '';
+            if (entry.warnMin !== undefined && entry.warnMax !== undefined) {
+                const label = entry.key === 'messageinterval' ? 'Message interval' : entry.key;
+                warnings.push(`${label} should be between ${entry.warnMin} and ${entry.warnMax}${unitSuffix}`);
+            } else if (below) {
+                warnings.push(`${entry.key} should be at least ${entry.warnMin}`);
+            } else {
+                warnings.push(`${entry.key} should be at most ${entry.warnMax}`);
+            }
+        }
     }
 
     /**

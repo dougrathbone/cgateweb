@@ -31,6 +31,8 @@
  *   description - the plain-English explanation of what the setting does.
  *   aliases     - other names a standalone settings.js may use for this exact
  *                 setting. See ALIAS RULE below.
+ *   warnMin     - optional inclusive floor; ConfigLoader.validate warns below it.
+ *   warnMax     - optional inclusive ceiling; ConfigLoader.validate warns above it.
  *
  * ALIAS RULE
  * ----------
@@ -67,6 +69,8 @@
  * @property {string[]} [values]
  * @property {string} [reason]
  * @property {string[]} [aliases]
+ * @property {number} [warnMin]
+ * @property {number} [warnMax]
  */
 
 /**
@@ -200,7 +204,9 @@ const SETTINGS_SCHEMA = {
         exposure: 'both',
         description: 'Minimum gap between outbound C-Gate commands, so bursts do not flood C-Gate.',
         // Milliseconds on both sides - the add-on option is not one of the *_sec ones.
-        aliases: ['message_interval']
+        aliases: ['message_interval'],
+        warnMin: 10,
+        warnMax: 10000
     },
     commandMinIntervalMs: {
         key: 'commandMinIntervalMs',
@@ -209,7 +215,9 @@ const SETTINGS_SCHEMA = {
         unit: 'ms',
         exposure: 'standalone',
         description: 'Floor on the adaptive command interval.',
-        reason: TUNING_ONLY_REASON
+        reason: TUNING_ONLY_REASON,
+        warnMin: 1,
+        warnMax: 1000
     },
     commandMinIntervalFloorMs: {
         key: 'commandMinIntervalFloorMs',
@@ -498,7 +506,9 @@ const SETTINGS_SCHEMA = {
         unit: 'ms',
         exposure: 'standalone',
         description: 'Drop a publish if the identical payload went to the same topic within this window. 0 disables. Useful on noisy buses.',
-        reason: TUNING_ONLY_REASON
+        reason: TUNING_ONLY_REASON,
+        warnMin: 0,
+        warnMax: 60000
     },
     eventPublishDedupMaxEntries: {
         key: 'eventPublishDedupMaxEntries',
@@ -507,7 +517,8 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'standalone',
         description: 'Cap on the publish dedup cache.',
-        reason: TUNING_ONLY_REASON
+        reason: TUNING_ONLY_REASON,
+        warnMin: 100
     },
     topicCacheMaxEntries: {
         key: 'topicCacheMaxEntries',
@@ -516,7 +527,8 @@ const SETTINGS_SCHEMA = {
         unit: 'none',
         exposure: 'standalone',
         description: 'Cap on the computed-topic string cache.',
-        reason: TUNING_ONLY_REASON
+        reason: TUNING_ONLY_REASON,
+        warnMin: 100
     },
     eventPublishCoalesce: {
         key: 'eventPublishCoalesce',
@@ -1110,6 +1122,24 @@ const SETTINGS_SCHEMA = {
         unit: 'ms',
         exposure: 'standalone',
         description: 'SSE comment keepalive interval so proxies don\'t idle-close the stream.',
+        reason: TUNING_ONLY_REASON
+    },
+    webHeadersTimeoutMs: {
+        key: 'webHeadersTimeoutMs',
+        type: 'number',
+        default: 60000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'How long the web UI waits for request headers before closing the socket. Matches Node\'s default so behaviour is unchanged unless you raise it.',
+        reason: TUNING_ONLY_REASON
+    },
+    webRequestTimeoutMs: {
+        key: 'webRequestTimeoutMs',
+        type: 'number',
+        default: 300000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Inactivity timeout for a web UI request. Matches Node\'s default; SSE keepalives keep the event stream inside this window.',
         reason: TUNING_ONLY_REASON
     },
     eventLogMaxEntries: {
