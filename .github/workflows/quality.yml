@@ -278,8 +278,10 @@ jobs:
           echo "no build_from entry for ${ARCH}" >&2
           exit 1
         fi
-        echo "platform=${platform}" >> "$GITHUB_OUTPUT"
-        echo "build_from=${BUILD_FROM}" >> "$GITHUB_OUTPUT"
+        {
+          echo "platform=${platform}"
+          echo "build_from=${BUILD_FROM}"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Build image
       # BuildKit + BUILDPLATFORM lets the npm install stage run on the host

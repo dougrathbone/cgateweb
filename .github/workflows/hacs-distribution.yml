@@ -106,10 +106,12 @@ jobs:
           echo "no build_from entry for ${ARCH}" >&2
           exit 1
         fi
-        echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-        echo "platform=${platform}" >> "$GITHUB_OUTPUT"
-        echo "build_from=${BUILD_FROM}" >> "$GITHUB_OUTPUT"
-        echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+        {
+          echo "version=${VERSION}"
+          echo "platform=${platform}"
+          echo "build_from=${BUILD_FROM}"
+          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Build and publish image
       uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
