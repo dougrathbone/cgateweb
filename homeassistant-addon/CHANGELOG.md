@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.11] - 2026-09-12
+
+### Security
+
+- **MQTT and C-Gate download addresses no longer log passwords or query tokens.**
+
+### Changed
+
+- Internal: add-on image builds reuse GitHub Actions BuildKit cache, with drain-timeout and backpressured queue tests.
+
 ## [1.34.10] - 2026-09-11
 
 ### Fixed
