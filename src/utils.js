@@ -182,6 +182,9 @@ function redactCgateLine(line) {
 // always emits the field, and rewriting that to `***` would suggest a PIN was
 // sent when none was. An empty code is not a secret, so it is left alone.
 const MQTT_SECRET_FIELD = /("(?:code|pin)"\s*:\s*)"(?:[^"\\]|\\.)+"/gi;
+// Query keys that are typically bearer tokens, signatures, or access keys.
+// Catalogue identifiers such as p_Doc_Ref stay readable.
+const URL_QUERY_SECRET = /(?:token|secret|password|passwd|signature|access[_-]?key|^sig$|^key$|^auth$)/i;
 
 /**
  * Strip secrets from an inbound MQTT payload before it is logged.
@@ -201,6 +204,56 @@ function redactMqttPayload(payload) {
     return payload.replace(MQTT_SECRET_FIELD, '$1"***"');
 }
 
+/**
+ * Strip URL userinfo and sensitive query values before a URL is logged.
+ * Broker strings without a scheme (host:port) are returned unchanged unless
+ * they carry userinfo.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function redactUrl(value) {
+    if (typeof value !== 'string' || !value) return value;
+    let parsed;
+    let bare = false;
+    try {
+        parsed = new URL(value);
+        if (!['http:', 'https:', 'mqtt:', 'mqtts:', 'ws:', 'wss:'].includes(parsed.protocol)) {
+            throw new Error('not a network url');
+        }
+    } catch {
+        try {
+            parsed = new URL(`http://${value}`);
+            bare = true;
+        } catch {
+            return value;
+        }
+    }
+
+    const hadUserinfo = parsed.username !== '' || parsed.password !== '';
+    let queryChanged = false;
+    for (const key of [...parsed.searchParams.keys()]) {
+        if (URL_QUERY_SECRET.test(key)) {
+            parsed.searchParams.set(key, '***');
+            queryChanged = true;
+        }
+    }
+    if (!hadUserinfo && !queryChanged) return value;
+
+    if (hadUserinfo) {
+        parsed.username = parsed.username ? '***' : '';
+        parsed.password = parsed.password ? '***' : '';
+    }
+    let out = parsed.toString();
+    if (bare) {
+        out = out.replace(/^http:\/\//i, '');
+        if (!value.endsWith('/') && out.endsWith('/')) {
+            out = out.slice(0, -1);
+        }
+    }
+    return out;
+}
+
 module.exports = {
     clampSetting,
     evictOldestFifo,
@@ -210,5 +263,6 @@ module.exports = {
     cbusLevelToTemperature,
     looksLikeTlsRecord,
     redactCgateLine,
-    redactMqttPayload
+    redactMqttPayload,
+    redactUrl
 };

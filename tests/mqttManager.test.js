@@ -60,6 +60,18 @@ describe('MqttManager', () => {
             expect(mqttManager.client).toBe(mockClient);
         });
 
+        it('does not log MQTT userinfo', () => {
+            const leaky = new MqttManager({
+                mqtt: 'mqtt://alice:hunter2@broker.example:1883'
+            });
+            const loggerSpy = jest.spyOn(leaky.logger, 'info');
+            leaky.connect();
+            const lines = loggerSpy.mock.calls.map((c) => String(c[0]));
+            expect(lines.some((l) => l.includes('Connecting to MQTT Broker'))).toBe(true);
+            expect(lines.join('\n')).not.toContain('hunter2');
+            expect(lines.join('\n')).not.toContain('alice');
+        });
+
         it('trims MQTT credentials and treats whitespace-only passwords as unset', () => {
             const padded = new MqttManager({
                 mqtt: 'localhost:1883',

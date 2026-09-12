@@ -5,6 +5,7 @@ const {
     cbusLevelToTemperature,
     redactCgateLine,
     redactMqttPayload,
+    redactUrl,
     isCbusAddressComponentInRange,
     describeCbusAddressRangeError
 } = require('../src/utils');
@@ -192,6 +193,36 @@ describe('redactMqttPayload', () => {
         expect(redactMqttPayload('')).toBe('');
         expect(redactMqttPayload(undefined)).toBeUndefined();
         expect(redactMqttPayload(null)).toBeNull();
+    });
+});
+
+describe('redactUrl', () => {
+    it('hides userinfo in an mqtt URL', () => {
+        expect(redactUrl('mqtt://alice:hunter2@broker.example:1883'))
+            .toBe('mqtt://***:***@broker.example:1883');
+    });
+
+    it('hides userinfo in a scheme-less broker string', () => {
+        expect(redactUrl('alice:hunter2@broker.example:1883'))
+            .toBe('***:***@broker.example:1883');
+    });
+
+    it('hides token query values and leaves catalogue params', () => {
+        expect(redactUrl('https://example.com/cgate.zip?token=abc&p_Doc_Ref=C-Gate'))
+            .toBe('https://example.com/cgate.zip?token=***&p_Doc_Ref=C-Gate');
+        expect(redactUrl('https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2'))
+            .toBe('https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.2');
+    });
+
+    it('leaves host:port broker strings unchanged', () => {
+        expect(redactUrl('localhost:1883')).toBe('localhost:1883');
+        expect(redactUrl('127.0.0.1:1883')).toBe('127.0.0.1:1883');
+    });
+
+    it('passes through non-strings unchanged', () => {
+        expect(redactUrl('')).toBe('');
+        expect(redactUrl(undefined)).toBeUndefined();
+        expect(redactUrl(null)).toBeNull();
     });
 });
 

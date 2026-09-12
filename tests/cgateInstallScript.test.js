@@ -262,6 +262,20 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
+    describe('_cgateweb_redact_url', () => {
+        test('hides userinfo and token query values', () => {
+            const out = runHelperWithArgs('_cgateweb_redact_url', [
+                'https://user:pass@example.com/cgate.zip?token=abc&p_Doc_Ref=keep'
+            ]);
+            expect(out).toBe('https://***@example.com/cgate.zip?***');
+        });
+
+        test('leaves the built-in catalogue URL readable', () => {
+            const out = runHelperWithArgs('_cgateweb_redact_url', [DEFAULT_DOWNLOAD_URL]);
+            expect(out).toBe(DEFAULT_DOWNLOAD_URL);
+        });
+    });
+
     describe('_cgateweb_installed_version', () => {
         function withBuildInfo(contents, callback) {
             const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-build-info-'));

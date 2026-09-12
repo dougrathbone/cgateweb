@@ -3,7 +3,7 @@ const mqtt = require('mqtt');
 const { EventEmitter } = require('events');
 const { createLogger } = require('./logger');
 const { createErrorHandler } = require('./errorHandler');
-const { evictOldestFifo } = require('./utils');
+const { evictOldestFifo, redactUrl } = require('./utils');
 const { 
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_TOPIC_STATUS,
@@ -113,7 +113,7 @@ class MqttManager extends EventEmitter {
         const mqttUrl = this._buildMqttUrl();
         const connectOptions = this._buildConnectOptions();
 
-        this.logger.info(`Connecting to MQTT Broker: ${mqttUrl}`);
+        this.logger.info(`Connecting to MQTT Broker: ${redactUrl(mqttUrl)}`);
 
         this.client = mqtt.connect(mqttUrl, connectOptions);
 
@@ -301,7 +301,7 @@ class MqttManager extends EventEmitter {
         const isReconnect = this._hasConnectedOnce;
         this._hasConnectedOnce = true;
         this._authFailureLogged = false;
-        this.logger.info(`CONNECTED TO MQTT BROKER: ${this.settings.mqtt}`);
+        this.logger.info(`CONNECTED TO MQTT BROKER: ${redactUrl(this.settings.mqtt)}`);
 
         if (this._pendingPublishEvicted > 0) {
             this.logger.warn(
@@ -385,7 +385,7 @@ class MqttManager extends EventEmitter {
         this.connected = false;
         
         if (err.code === MQTT_ERROR_AUTH) {
-            const brokerUrl = this.settings.mqtt || '(not configured)';
+            const brokerUrl = redactUrl(this.settings.mqtt || '(not configured)');
             const hasUsername = !!this.settings.mqttusername;
             const isAddon = this._isAddonMode();
 
@@ -434,7 +434,7 @@ class MqttManager extends EventEmitter {
             }, 'MQTT authentication', !isAddon);
         } else {
             this.errorHandler.handle(err, {
-                brokerUrl: this.settings.mqtt,
+                brokerUrl: redactUrl(this.settings.mqtt),
                 connected: this.connected,
                 errorCode: err.code
             }, 'MQTT connection');

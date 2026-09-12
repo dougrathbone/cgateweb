@@ -99,6 +99,33 @@ _cgateweb_custom_url_without_sha256() {
     if [[ "${url}" != "${CGATEWEB_DEFAULT_DOWNLOAD_URL}" && -z "${sha}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# Hide userinfo and query values that look like tokens before a URL is logged.
+# Catalogue query params (p_Doc_Ref) stay; curl still uses the original URL.
+_cgateweb_redact_url() {
+    local url="$1"
+    local base query
+    base="${url%%\?*}"
+    base="${base%%#*}"
+    if [[ "${url}" == *"?"* ]]; then
+        query="${url#*\?}"
+        query="${query%%#*}"
+    else
+        query=""
+    fi
+    if [[ "${base}" =~ ^(https?://)[^/@]+@(.+)$ ]]; then
+        base="${BASH_REMATCH[1]}***@${BASH_REMATCH[2]}"
+    fi
+    if [[ -z "${query}" ]]; then
+        printf '%s' "${base}"
+        return
+    fi
+    if echo "${query}" | grep -qiE '(^|&)(token|sig|signature|password|passwd|auth|access[_-]?key|secret|key)='; then
+        printf '%s?***' "${base}"
+    else
+        printf '%s?%s' "${base}" "${query}"
+    fi
+}
+
 # Read C-Gate's own build metadata instead of inferring its version from the
 # archive name. Schneider packages BuildInfo.txt beside cgate.jar, and archive
 # names are not stable across download and upload sources.
@@ -1152,14 +1179,14 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
     # back to the pinned CGATEWEB_DEFAULT_DOWNLOAD_SHA256.
     DOWNLOAD_SHA256=$(_cgateweb_resolve_download_sha256 "${DOWNLOAD_URL}")
 
-    bashio::log.info "Downloading C-Gate from: ${DOWNLOAD_URL}"
+    bashio::log.info "Downloading C-Gate from: $(_cgateweb_redact_url "${DOWNLOAD_URL}")"
 
     # Validate URL scheme (allow only https, or http for local/dev)
     case "${DOWNLOAD_URL}" in
         https://*) ;;
         http://127.0.0.1*|http://localhost*) bashio::log.warning "Using insecure HTTP for local URL" ;;
         *)
-            bashio::log.error "Invalid download URL scheme: ${DOWNLOAD_URL}"
+            bashio::log.error "Invalid download URL scheme: $(_cgateweb_redact_url "${DOWNLOAD_URL}")"
             bashio::log.error "Only https:// URLs are allowed (or http://localhost for development)"
             exit 1
             ;;
@@ -1197,7 +1224,7 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
         if [[ ${CURL_EXIT} -ne 0 ]]; then
             CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
             bashio::log.error "Failed to download C-Gate (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT})"
-            bashio::log.error "URL: ${DOWNLOAD_URL}"
+            bashio::log.error "URL: $(_cgateweb_redact_url "${DOWNLOAD_URL}")"
             bashio::log.error "Error: ${CURL_ERR}"
             if [[ "${HTTP_CODE}" == "404" ]]; then
                 bashio::log.error "The download URL returned 404 — the file is no longer at that location."
