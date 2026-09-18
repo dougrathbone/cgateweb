@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.12] - 2026-09-18
+
+### Fixed
+
+- **Zones that close after a force-arm leave the bypassed-zones list.** (#118)
+- **Password entry success and failure from the alarm keypad now show in the logs.** (#116)
+
 ## [1.34.11] - 2026-09-12
 
 ### Security
