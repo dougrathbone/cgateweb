@@ -33,6 +33,12 @@ const SYNC_EXEMPT_KINDS = new Set([
 /** MQTT / Home Assistant sensor state is capped at 255 characters. */
 const BYPASSED_ZONES_STATE_MAX = 255;
 const BYPASSED_ZONES_NONE = 'none';
+const PASSWORD_ENTRY_STATUS = {
+    1: 'Password entry succeeded',
+    2: 'Password entry failed',
+    3: 'Password entry disabled',
+    4: 'Password entry enabled again'
+};
 
 /**
  * Comma-separated zone names for the bypassed-zones sensor, or "none".
@@ -564,6 +570,9 @@ class SecurityEventHandler {
             kind: 'security_password_entry',
             code: reading.code
         });
+        this.logger.info(
+            `C-Bus Security: ${PASSWORD_ENTRY_STATUS[reading.code]} (${reading.network}/${reading.application})`
+        );
         const haDiscovery = this.getHaDiscovery();
         if (haDiscovery) {
             haDiscovery.ensureSecurityPanelDiscovery(reading.network, reading.application);
