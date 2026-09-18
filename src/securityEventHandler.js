@@ -54,7 +54,18 @@ function formatBypassedZoneState(names) {
  */
 const LINE_KIND_HANDLERS = {
     zone(handler, reading) {
+        // Comfort panels automatically return an isolated zone to active
+        // protection when it seals. Clear before publishing the zone so its
+        // attributes and the dashboard list change atomically from the
+        // bridge's perspective. Status-report snapshots deliberately do not
+        // take this path: only the live zone_sealed verb signals reactivation.
+        const isolationCleared = reading.zoneState === 'sealed'
+            && handler.panelState.clearZoneIsolationForZone(reading.network, reading.zone);
         handler._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
+        if (isolationCleared) {
+            handler._publishBypassedZones(reading.network, reading.application);
+            handler._persistPanelState();
+        }
         handler._maybeRequestZoneName(reading.network, reading.application, reading.zone);
         // DEBUG, not INFO: zone changes are routine traffic and would
         // fill the log over months on a busy panel (issue #42 feedback).
@@ -166,9 +177,9 @@ const LINE_KIND_HANDLERS = {
  *
  * Zone events and status reports publish zone state; panel_trouble readings
  * and system_arm update the panel condition sensors (see securityPanelState);
- * zone_isolated adds an `isolated` attribute to the zone it names (cleared for
- * the whole network on the next disarm) and updates the panel's bypassed-zones
- * list sensor; the remaining system-state verbs
+ * zone_isolated adds an `isolated` attribute to the zone it names (cleared when
+ * that zone seals or for the whole network on the next disarm) and updates the
+ * panel's bypassed-zones list sensor; the remaining system-state verbs
  * (arm_ready, exit_delay_started, …) are decoded, logged and surfaced to the
  * Live Events stream only. Arm and disarm writes live on the MQTT command
  * router (security arm, emulate_keypad), not in this handler.
