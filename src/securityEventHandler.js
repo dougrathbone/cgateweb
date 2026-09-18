@@ -69,8 +69,7 @@ const LINE_KIND_HANDLERS = {
             && handler.panelState.clearZoneIsolationForZone(reading.network, reading.zone);
         handler._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
         if (isolationCleared) {
-            handler._publishBypassedZones(reading.network, reading.application);
-            handler._persistPanelState();
+            handler._publishAndPersistBypassedZones(reading.network, reading.application);
         }
         handler._maybeRequestZoneName(reading.network, reading.application, reading.zone);
         // DEBUG, not INFO: zone changes are routine traffic and would
@@ -470,8 +469,7 @@ class SecurityEventHandler {
         if (zone === null || zone === undefined) return;
         if (!this.panelState.setZoneIsolated(network, zone)) return;
         this._publishZoneReading(network, application, zone, this.panelState.lastZoneState(network, zone));
-        this._publishBypassedZones(network, application);
-        this._persistPanelState();
+        this._publishAndPersistBypassedZones(network, application);
     }
 
     /**
@@ -498,9 +496,8 @@ class SecurityEventHandler {
             if (zonesPublishedSeparately && zonesPublishedSeparately.has(zone)) continue;
             this._publishZoneReading(network, application, zone, zoneState);
         }
-        this._publishBypassedZones(network, application);
+        this._publishAndPersistBypassedZones(network, application);
         this.logger.info(`C-Bus Security: zone isolation cleared for ${cleared.length} zone(s) (${network}/${application})`);
-        this._persistPanelState();
     }
 
     /**
@@ -679,6 +676,18 @@ class SecurityEventHandler {
         if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
             haDiscovery.ensureSecurityPanelDiscovery(network, application);
         }
+    }
+
+    /**
+     * Publish and persist the two external views of an isolation change.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @private
+     */
+    _publishAndPersistBypassedZones(network, application) {
+        this._publishBypassedZones(network, application);
+        this._persistPanelState();
     }
 
     /**
