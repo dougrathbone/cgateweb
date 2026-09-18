@@ -274,6 +274,25 @@ class SecurityPanelState {
     }
 
     /**
+     * Drop one zone from the current bypass list.
+     *
+     * Some panels automatically restore a bypassed zone to active protection
+     * when it seals after arming. The zone_sealed event is the only indication
+     * of that transition, so callers need a per-zone counterpart to the
+     * network-wide disarm clear.
+     *
+     * @param {string|number} network
+     * @param {string|number} zone
+     * @returns {boolean} true when the zone was isolated and is now cleared.
+     */
+    clearZoneIsolationForZone(network, zone) {
+        if (network === null || network === undefined || zone === null || zone === undefined) return false;
+        const entry = this._zonesByNetwork.get(String(network));
+        if (!entry) return false;
+        return entry.isolated.delete(String(zone));
+    }
+
+    /**
      * Drop every isolation recorded for a network and report what was dropped,
      * so the caller can republish those zones' attributes.
      *

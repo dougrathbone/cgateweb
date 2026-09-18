@@ -222,6 +222,17 @@ describe('SecurityPanelState — zone isolation', () => {
         expect(state.isZoneIsolated('254', '44')).toBe(true);
     });
 
+    it('clears one isolated zone without changing the rest of the network', () => {
+        state.setZoneIsolated('254', '44');
+        state.setZoneIsolated('254', '7');
+        state.setZoneIsolated('200', '44');
+
+        expect(state.clearZoneIsolationForZone('254', '44')).toBe(true);
+        expect(state.clearZoneIsolationForZone('254', '44')).toBe(false);
+        expect(state.isolatedZoneIds('254')).toEqual(['7']);
+        expect(state.isZoneIsolated('200', '44')).toBe(true);
+    });
+
     it('clears every isolated zone on the network and reports what it cleared', () => {
         state.noteZoneState('254', '44', 'unsealed');
         state.setZoneIsolated('254', '44');
@@ -266,6 +277,8 @@ describe('SecurityPanelState — zone isolation', () => {
         }).not.toThrow();
         expect(state.setZoneIsolated('254', null)).toBe(false);
         expect(state.setZoneIsolated(null, '44')).toBe(false);
+        expect(state.clearZoneIsolationForZone('254', null)).toBe(false);
+        expect(state.clearZoneIsolationForZone(null, '44')).toBe(false);
         expect(state.clearZoneIsolation(null)).toEqual([]);
     });
 

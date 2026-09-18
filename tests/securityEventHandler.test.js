@@ -231,17 +231,43 @@ describe('SecurityEventHandler', () => {
             expect(zoneReadingsFor(deps, '58')[0]).not.toHaveProperty('isolated');
         });
 
-        it('carries isolation onto later state changes of the same zone', () => {
-            // A bypassed door closing does not un-bypass it: it stays out of the
-            // armed system until the disarm, and the attributes must say so.
+        it('removes a bypassed zone when it seals after arming', () => {
+            const deps = makeDeps({
+                getHaDiscovery: () => ({
+                    labelMap: new Map([['254/1/44', 'Front Door'], ['254/1/7', 'Kitchen Window']]),
+                    ensureSecurityZoneDiscovery: jest.fn(),
+                    ensureSecurityPanelDiscovery: jest.fn()
+                })
+            });
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/7  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+            handler.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            expect(zoneReadingsFor(deps, '44')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed' }
+            ]);
+            expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+                '254', '208', 'panel/bypassed_zones', {
+                    kind: 'security_bypassed_zones',
+                    state: 'Kitchen Window',
+                    zones: ['7'],
+                    names: ['Kitchen Window']
+                }
+            );
+        });
+
+        it('keeps isolation when a bypassed zone remains unsealed', () => {
             const deps = makeDeps();
             const handler = new SecurityEventHandler(deps);
 
             handler.handleLine(ZONE_ISOLATED_LINE);
-            handler.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            handler.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
 
             expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
-                '254', '208', '44', { kind: 'security_zone', zoneState: 'sealed', isolated: true }
+                '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed', isolated: true }
             );
         });
 
@@ -1056,15 +1082,28 @@ describe('SecurityEventHandler — zone names and password entry', () => {
         expect(applySecurityZoneName).toHaveBeenCalledWith('254', '12', 'Front Door');
     });
 
-    it('publishes password_entry codes 1-4 and ignores unknown codes', () => {
+    it('publishes and logs password_entry_status codes 1-4, ignoring unknown codes', () => {
         const deps = makeDeps();
         const handler = new SecurityEventHandler(deps);
-        handler.handleLine('security password_entry //MIDSTRM/254/208 3');
-        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
-            '254', '208', 'panel', { kind: 'security_password_entry', code: 3 }
-        );
+        const statuses = [
+            [1, 'Password entry succeeded'],
+            [2, 'Password entry failed'],
+            [3, 'Password entry disabled'],
+            [4, 'Password entry enabled again']
+        ];
+        for (const [code, description] of statuses) {
+            handler.handleLine(`security password_entry_status //MIDSTRM/254/208 ${code}`);
+            expect(deps.eventPublisher.publishReading).toHaveBeenLastCalledWith(
+                '254', '208', 'panel', { kind: 'security_password_entry', code }
+            );
+            expect(deps.logger.info).toHaveBeenLastCalledWith(
+                `C-Bus Security: ${description} (254/208)`
+            );
+        }
         deps.eventPublisher.publishReading.mockClear();
-        handler.handleLine('security password_entry //MIDSTRM/254/208 9');
+        deps.logger.info.mockClear();
+        handler.handleLine('security password_entry_status //MIDSTRM/254/208 9');
         expect(deps.eventPublisher.publishReading).not.toHaveBeenCalled();
+        expect(deps.logger.info).not.toHaveBeenCalled();
     });
 });

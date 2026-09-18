@@ -354,7 +354,7 @@ describe('securityDecoder', () => {
         });
     });
 
-    describe('zone_name and password_entry', () => {
+    describe('zone_name and password entry status', () => {
         it('decodes a zone_name reply with a padded name', () => {
             expect(securityDecoder.decodeLine('security zone_name //MIDSTRM/254/208/12 Front Door   '))
                 .toMatchObject({
@@ -371,11 +371,16 @@ describe('securityDecoder', () => {
                 .toMatchObject({ kind: 'zone_name_request_echo', zone: '12' });
         });
 
-        it('decodes password_entry codes 1-4 and fails closed otherwise', () => {
-            expect(securityDecoder.decodeLine('security password_entry //MIDSTRM/254/208 2'))
+        it('decodes the live password_entry_status verb and fails closed otherwise', () => {
+            expect(securityDecoder.decodeLine('security password_entry_status //MIDSTRM/254/208 2'))
                 .toMatchObject({ kind: 'password_entry', code: 2 });
-            expect(securityDecoder.decodeLine('security password_entry //MIDSTRM/254/208 9'))
+            expect(securityDecoder.decodeLine('security password_entry_status //MIDSTRM/254/208 9'))
                 .toMatchObject({ kind: 'password_entry', code: null });
+        });
+
+        it('retains the earlier inferred password_entry spelling for compatibility', () => {
+            expect(securityDecoder.decodeLine('security password_entry //MIDSTRM/254/208 1'))
+                .toMatchObject({ kind: 'password_entry', code: 1 });
         });
     });
 

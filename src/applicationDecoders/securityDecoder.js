@@ -28,6 +28,7 @@ const {
  *   - system_arm       → { kind:'system_arm', …, mode, modeName } (0-4; 0 = disarmed)
  *   - alarm_on / alarm_off → { kind:'alarm_on'|'alarm_off', … }
  *   - zone_isolated    → { kind:'zone_isolated', …, zone } (zone bypassed on arming)
+ *   - password_entry_status → { kind:'password_entry', …, code } (codes 1-4)
  *   - panel-wide trouble verbs → { kind:'panel_trouble', …, condition, active, detail }
  *       mains_failure/mains_restored, low_battery/low_battery_corrected,
  *       tamper_on/tamper_off, panic_activated/panic_off/panic_cleared, and the
@@ -320,8 +321,10 @@ function decodeZoneName({ network, application, zone, params, verb }) {
 }
 
 /**
- * Spec $90 password-entry codes 1–4. C-Gate verb inferred as password_entry;
- * unknown extra tokens still consume the line.
+ * Spec $90 password-entry codes 1–4. Live C-Gate uses
+ * password_entry_status; password_entry remains accepted for compatibility
+ * with the earlier inferred spelling. Unknown extra tokens still consume the
+ * line.
  * @private
  */
 function decodePasswordEntry({ network, application, params, verb }) {
@@ -446,6 +449,7 @@ const VERB_HANDLERS = Object.assign(Object.create(null), {
     request_zone_name: decodeRequestZoneName,
     zone_name: decodeZoneName,
     password_entry: decodePasswordEntry,
+    password_entry_status: decodePasswordEntry,
     arm: decodeArmEcho,
     emulate_keypad: decodeKeypadEcho,
     arm_ready: decodeArmReady,

@@ -33,6 +33,12 @@ const SYNC_EXEMPT_KINDS = new Set([
 /** MQTT / Home Assistant sensor state is capped at 255 characters. */
 const BYPASSED_ZONES_STATE_MAX = 255;
 const BYPASSED_ZONES_NONE = 'none';
+const PASSWORD_ENTRY_STATUS = {
+    1: 'Password entry succeeded',
+    2: 'Password entry failed',
+    3: 'Password entry disabled',
+    4: 'Password entry enabled again'
+};
 
 /**
  * Comma-separated zone names for the bypassed-zones sensor, or "none".
@@ -54,7 +60,17 @@ function formatBypassedZoneState(names) {
  */
 const LINE_KIND_HANDLERS = {
     zone(handler, reading) {
+        // Comfort panels automatically return an isolated zone to active
+        // protection when it seals. Clear before publishing the zone so its
+        // attributes and the dashboard list change atomically from the
+        // bridge's perspective. Status-report snapshots deliberately do not
+        // take this path: only the live zone_sealed verb signals reactivation.
+        const isolationCleared = reading.zoneState === 'sealed'
+            && handler.panelState.clearZoneIsolationForZone(reading.network, reading.zone);
         handler._publishZone(reading.network, reading.application, reading.zone, reading.zoneState);
+        if (isolationCleared) {
+            handler._publishAndPersistBypassedZones(reading.network, reading.application);
+        }
         handler._maybeRequestZoneName(reading.network, reading.application, reading.zone);
         // DEBUG, not INFO: zone changes are routine traffic and would
         // fill the log over months on a busy panel (issue #42 feedback).
@@ -166,9 +182,9 @@ const LINE_KIND_HANDLERS = {
  *
  * Zone events and status reports publish zone state; panel_trouble readings
  * and system_arm update the panel condition sensors (see securityPanelState);
- * zone_isolated adds an `isolated` attribute to the zone it names (cleared for
- * the whole network on the next disarm) and updates the panel's bypassed-zones
- * list sensor; the remaining system-state verbs
+ * zone_isolated adds an `isolated` attribute to the zone it names (cleared when
+ * that zone seals or for the whole network on the next disarm) and updates the
+ * panel's bypassed-zones list sensor; the remaining system-state verbs
  * (arm_ready, exit_delay_started, …) are decoded, logged and surfaced to the
  * Live Events stream only. Arm and disarm writes live on the MQTT command
  * router (security arm, emulate_keypad), not in this handler.
@@ -453,8 +469,7 @@ class SecurityEventHandler {
         if (zone === null || zone === undefined) return;
         if (!this.panelState.setZoneIsolated(network, zone)) return;
         this._publishZoneReading(network, application, zone, this.panelState.lastZoneState(network, zone));
-        this._publishBypassedZones(network, application);
-        this._persistPanelState();
+        this._publishAndPersistBypassedZones(network, application);
     }
 
     /**
@@ -481,9 +496,8 @@ class SecurityEventHandler {
             if (zonesPublishedSeparately && zonesPublishedSeparately.has(zone)) continue;
             this._publishZoneReading(network, application, zone, zoneState);
         }
-        this._publishBypassedZones(network, application);
+        this._publishAndPersistBypassedZones(network, application);
         this.logger.info(`C-Bus Security: zone isolation cleared for ${cleared.length} zone(s) (${network}/${application})`);
-        this._persistPanelState();
     }
 
     /**
@@ -553,6 +567,9 @@ class SecurityEventHandler {
             kind: 'security_password_entry',
             code: reading.code
         });
+        this.logger.info(
+            `C-Bus Security: ${PASSWORD_ENTRY_STATUS[reading.code]} (${reading.network}/${reading.application})`
+        );
         const haDiscovery = this.getHaDiscovery();
         if (haDiscovery) {
             haDiscovery.ensureSecurityPanelDiscovery(reading.network, reading.application);
@@ -659,6 +676,18 @@ class SecurityEventHandler {
         if (haDiscovery && typeof haDiscovery.ensureSecurityPanelDiscovery === 'function') {
             haDiscovery.ensureSecurityPanelDiscovery(network, application);
         }
+    }
+
+    /**
+     * Publish and persist the two external views of an isolation change.
+     *
+     * @param {string} network
+     * @param {string} application
+     * @private
+     */
+    _publishAndPersistBypassedZones(network, application) {
+        this._publishBypassedZones(network, application);
+        this._persistPanelState();
     }
 
     /**
