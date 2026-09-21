@@ -427,6 +427,30 @@ describe('CommandResponseProcessor', () => {
             );
         });
 
+        it('logs command-interface open and close as session events, not unhandled', () => {
+            processor._processCommandResponse('803', 'cmd17 - Host:/172.16.17.73 opened command interface from port: 56297');
+            processor._processCommandResponse('804', 'cmd15 - Host:/172.16.17.73 closed command interface from port: 12058');
+
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                'C-Gate session opened: cmd17 - Host:/172.16.17.73 opened command interface from port: 56297'
+            );
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                'C-Gate session closed: cmd15 - Host:/172.16.17.73 closed command interface from port: 12058'
+            );
+            expect(mockLogger.debug).not.toHaveBeenCalledWith(expect.stringContaining('Unhandled C-Gate response 803'));
+            expect(mockLogger.debug).not.toHaveBeenCalledWith(expect.stringContaining('Unhandled C-Gate response 804'));
+        });
+
+        it('logs a pooled 803 burst once', () => {
+            const payload = 'cmd17 - Host:/172.16.17.73 opened command interface from port: 56297';
+            processor._processCommandResponse('803', payload);
+            processor._processCommandResponse('803', payload);
+            processor._processCommandResponse('803', payload);
+
+            const sessionLogs = mockLogger.debug.mock.calls.filter((c) => String(c[0]).startsWith('C-Gate session opened:'));
+            expect(sessionLogs).toHaveLength(1);
+        });
+
         it('should log other unhandled response codes at debug level', () => {
             processor._processCommandResponse('100', 'Info response');
             

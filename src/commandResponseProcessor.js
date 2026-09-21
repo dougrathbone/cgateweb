@@ -7,7 +7,9 @@ const {
     CGATE_RESPONSE_TREE_DATA,
     CGATE_RESPONSE_TREE_END,
     CGATE_RESPONSE_SYSTEM_EVENT,
-    CGATE_RESPONSE_NETWORK_SYNC_OK
+    CGATE_RESPONSE_NETWORK_SYNC_OK,
+    CGATE_RESPONSE_SESSION_OPENED,
+    CGATE_RESPONSE_SESSION_CLOSED
 } = require('./constants');
 const { redactCgateLine } = require('./utils');
 const { resolveSetting } = require('./config/schema');
@@ -25,6 +27,9 @@ const CGATE_NETWORK_PATH = /\/\/[^/]+\/(\d+)\b/;
 // Distinct command errors tracked for repeat collapsing before the tracker is
 // pruned. Generous: one entry per group of a large network still fits.
 const MAX_TRACKED_ERROR_REPEATS = 500;
+// C-Gate broadcasts 803/804 to every EVENT e6s0c0 session, so a pool of N
+// command connections logs the same Toolkit connect N times unless collapsed.
+const SESSION_EVENT_COALESCE_MS = 1000;
 
 /**
  * Handles processing of C-Gate command responses.
@@ -84,6 +89,7 @@ class CommandResponseProcessor {
         this._errorRepeatWindowMs = Number.isFinite(repeatWindow) && repeatWindow >= 0
             ? repeatWindow
             : resolveSetting({}, 'commandErrorRepeatWindowMs');
+        this._sessionEvents = new Map();
         this.logger = logger || createLogger({
             component: 'CommandResponseProcessor',
             level: 'info',
@@ -233,6 +239,10 @@ class CommandResponseProcessor {
             case CGATE_RESPONSE_NETWORK_SYNC_OK:
                 this._processNetworkSyncComplete(statusData);
                 break;
+            case CGATE_RESPONSE_SESSION_OPENED:
+            case CGATE_RESPONSE_SESSION_CLOSED:
+                this._logSessionEvent(responseCode, statusData);
+                break;
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
@@ -311,6 +321,33 @@ class CommandResponseProcessor {
         } else if (this._haDiscovery) {
             this._haDiscovery.handleNetworkSyncComplete(pathMatch[1]);
         }
+    }
+
+    /**
+     * Command-interface open/close (803/804). Toolkit and other clients
+     * produce these as they connect; every pooled cgateweb session also
+     * receives a copy because each one is subscribed at EVENT e6s0c0.
+     * Collapse identical copies so DEBUG does not look like a failure.
+     *
+     * @param {string} responseCode
+     * @param {string} statusData
+     * @private
+     */
+    _logSessionEvent(responseCode, statusData) {
+        const key = `${responseCode}|${statusData || ''}`;
+        const now = Date.now();
+        const last = this._sessionEvents.get(key);
+        if (last !== undefined && now - last < SESSION_EVENT_COALESCE_MS) {
+            return;
+        }
+        this._sessionEvents.set(key, now);
+        if (this._sessionEvents.size > MAX_TRACKED_ERROR_REPEATS) {
+            for (const [seenKey, seenAt] of this._sessionEvents) {
+                if (now - seenAt >= SESSION_EVENT_COALESCE_MS) this._sessionEvents.delete(seenKey);
+            }
+        }
+        const action = responseCode === CGATE_RESPONSE_SESSION_OPENED ? 'opened' : 'closed';
+        this.logger.debug(`C-Gate session ${action}: ${this._safeStatusData(statusData)}`);
     }
 
     /**
