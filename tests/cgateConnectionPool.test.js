@@ -12,9 +12,6 @@ jest.mock('net', () => ({
     createConnection: jest.fn()
 }));
 
-// Mock timers
-jest.useFakeTimers();
-
 /**
  * Creates a mock CgateConnection that emits 'connect' asynchronously.
  * Pass { failConnect: true } to emit 'error' instead.
@@ -51,6 +48,9 @@ describe('CgateConnectionPool', () => {
     let randomSpy;
 
     beforeEach(() => {
+        // Per-test timers, not module-scope: a leftover useFakeTimers() here
+        // used to leak into later files that need real clocks (labelLoader watch).
+        jest.useFakeTimers();
         jest.clearAllMocks();
         jest.clearAllTimers();
         randomSpy = jest.spyOn(Math, 'random').mockReturnValue(0.5);
@@ -82,6 +82,7 @@ describe('CgateConnectionPool', () => {
         if (pool.isStarted) {
             await pool.stop();
         }
+        jest.useRealTimers();
     });
 
     describe('Constructor', () => {

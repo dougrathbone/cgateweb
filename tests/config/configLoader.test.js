@@ -601,7 +601,12 @@ describe('ConfigLoader', () => {
             ha_discovery_enabled: false
         };
 
+        let originalResolve;
+        let originalCache;
+
         beforeEach(() => {
+            originalResolve = require.resolve;
+            originalCache = require.cache;
             mockEnvironmentDetector.detect.mockReturnValue({
                 type: 'standalone',
                 isAddon: false,
@@ -609,6 +614,11 @@ describe('ConfigLoader', () => {
                 settingsPath: mockSettingsPath,
                 workingDirectory: process.cwd()
             });
+        });
+
+        afterEach(() => {
+            require.resolve = originalResolve;
+            require.cache = originalCache;
         });
 
         test('should load standalone configuration from settings.js', () => {
