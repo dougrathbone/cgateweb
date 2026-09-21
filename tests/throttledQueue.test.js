@@ -241,9 +241,10 @@ describe('ThrottledQueue', () => {
     });
 
     describe('Queue size limits', () => {
-        it('should default to maxSize of 1000', () => {
+        it('should default to the schema maxQueueSize', () => {
+            const { resolveSetting } = require('../src/config/schema');
             const queue = new ThrottledQueue(jest.fn(), 100);
-            expect(queue.maxSize).toBe(1000);
+            expect(queue.maxSize).toBe(resolveSetting({}, 'maxQueueSize'));
         });
 
         it('should accept custom maxSize', () => {

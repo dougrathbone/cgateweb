@@ -9,7 +9,7 @@ class ThrottledQueue {
      * @param {number} intervalMs - Minimum interval between processing items
      * @param {string} name - Queue name for logging
      * @param {Object} [options] - Additional options
-     * @param {number} [options.maxSize=1000] - Maximum queue size (0 = unlimited)
+     * @param {number} [options.maxSize] - Maximum queue size (0 = unlimited; default: schema maxQueueSize)
      * @param {Function} [options.getIntervalMs] - Dynamic interval override; returns the delay before processing the next item
      * @param {Function} [options.canProcessFn] - Gate checked before each item; processing retries when it returns false
      * @param {number} [options.retryWhenBlockedMs] - Delay before retrying when canProcessFn blocks processing
@@ -47,7 +47,7 @@ class ThrottledQueue {
         this._active = false;
         this._length = 0;
         this._name = name;
-        this._maxSize = options.maxSize !== undefined ? options.maxSize : 1000;
+        this._maxSize = options.maxSize !== undefined ? options.maxSize : resolveSetting({}, 'maxQueueSize');
         this._getIntervalMs = typeof options.getIntervalMs === 'function' ? options.getIntervalMs : null;
         this._canProcessFn = typeof options.canProcessFn === 'function' ? options.canProcessFn : null;
         const retryMinMs = options.retryWhenBlockedMinMs !== undefined
