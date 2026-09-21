@@ -55,6 +55,8 @@ const CGATE_RESPONSE_TREE_END = '344';       // End of TREEXML response
 const CGATE_RESPONSE_TREE_DATA = '347';      // TREEXML data line
 const CGATE_RESPONSE_SYSTEM_EVENT = '742';   // Async object/network event (e.g. "Network created")
 const CGATE_RESPONSE_NETWORK_SYNC_OK = '762'; // Async "Network sync ok" event — network finished synchronising
+const CGATE_RESPONSE_SESSION_OPENED = '803'; // Async: a command client opened a session
+const CGATE_RESPONSE_SESSION_CLOSED = '804'; // Async: a command client closed a session
 
 // === MQTT System ===
 const MQTT_TOPIC_PREFIX_CBUS = 'cbus';
@@ -273,6 +275,8 @@ module.exports = {
     CGATE_RESPONSE_TREE_DATA,
     CGATE_RESPONSE_SYSTEM_EVENT,
     CGATE_RESPONSE_NETWORK_SYNC_OK,
+    CGATE_RESPONSE_SESSION_OPENED,
+    CGATE_RESPONSE_SESSION_CLOSED,
     
     // MQTT System
     MQTT_TOPIC_PREFIX_CBUS,

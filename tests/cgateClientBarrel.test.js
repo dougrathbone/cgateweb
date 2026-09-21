@@ -156,6 +156,8 @@ describe('cgate-client public surface', () => {
         'CGATE_RESPONSE_TREE_DATA',
         'CGATE_RESPONSE_SYSTEM_EVENT',
         'CGATE_RESPONSE_NETWORK_SYNC_OK',
+        'CGATE_RESPONSE_SESSION_OPENED',
+        'CGATE_RESPONSE_SESSION_CLOSED',
         'NEWLINE',
         'EVENT_REGEX',
         'CGATE_EVENT_NETWORK_SYNC_REGEX'
