@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.13] - 2026-09-21
+
+### Fixed
+
+- **Blocked alarm arm attempts now show as arming until the panel confirms its mode.** (#115)
+
+### Security
+
+- **The MQTT client rejects malformed broker packets that could stop the bridge.**
+
 ## [1.34.12] - 2026-09-18
 
 ### Fixed

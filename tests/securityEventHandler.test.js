@@ -575,15 +575,14 @@ describe('SecurityEventHandler', () => {
             expect(alarmReadings(deps).map(c => c[3].alarmState)).toEqual(['armed_away', 'disarmed']);
         });
 
-        it('publishes disarmed with the blocking zone on arm_not_ready', () => {
-            // Not 'pending': a refused arm is a disarmed panel with a complaint.
-            // 'pending' is reserved for the entry delay, where Home Assistant's
-            // meaning of it (the siren is imminent) actually applies.
+        it('publishes arming with the blocking zone on arm_not_ready', () => {
+            // The panel is busy with an outbound arm attempt. 'pending' remains
+            // reserved for the inbound entry delay before the siren.
             const deps = makeDeps();
             const handler = new SecurityEventHandler(deps);
             handler.handleLine('# security arm_not_ready //MIDSTRM/254/208/44  #sourceunit=18 OID=');
             expect(alarmReadings(deps)[0][3]).toEqual(
-                { kind: 'security_alarm', alarmState: 'disarmed', blockingZone: '44' });
+                { kind: 'security_alarm', alarmState: 'arming', blockingZone: '44' });
         });
 
         it('publishes pending on entry_delay_started - the siren is counting down', () => {

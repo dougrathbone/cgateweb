@@ -365,21 +365,18 @@ describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
             .toEqual({ state: 'armed_home', blockingZone: null, armMode: 3 });
     });
 
-    // arm_not_ready deliberately does NOT map to 'pending' any more. A refused
-    // arm is a disarmed panel with a complaint; 'pending' in Home Assistant
-    // means an entry delay is counting down to the siren, and automations keyed
-    // on it (sirens, notifications, camera captures) would fire because someone
-    // tried to arm with a window open. entry_delay_started owns 'pending'; the
-    // open zone still reaches HA on the attributes topic, unchanged.
-    it('arm_not_ready stays disarmed and names the blocking zone, re-publishing when the zone changes', () => {
+    // arm_not_ready is an outbound arm attempt blocked on an open zone, so it
+    // maps to HA's 'arming'. 'pending' remains reserved for an entry delay
+    // counting down to the siren.
+    it('arm_not_ready stays arming and names the blocking zone, re-publishing when the zone changes', () => {
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' })))
-            .toEqual({ state: 'disarmed', blockingZone: '44', armMode: null });
+            .toEqual({ state: 'arming', blockingZone: '44', armMode: null });
         // Same zone again: deduped
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }))).toBeNull();
         // A different blocking zone: the state has not changed but the
         // attributes payload has, so it still publishes.
         expect(state.applyAlarmReading(reading('arm_not_ready', { zone: '45' })))
-            .toEqual({ state: 'disarmed', blockingZone: '45', armMode: null });
+            .toEqual({ state: 'arming', blockingZone: '45', armMode: null });
     });
 
     it('arm_not_ready never downgrades an armed panel, for the same reason arm_ready does not', () => {
@@ -432,13 +429,13 @@ describe('SecurityPanelState — alarm panel state (applyAlarmReading)', () => {
                 .toEqual({ state: 'disarmed', blockingZone: null, armMode: null });
         });
 
-        it('still clears the blocking zone once it seals', () => {
-            // The arm attempt was refused, so the panel sits disarmed with the
-            // blocker named; arm_ready says it is now clear, and the attributes
-            // payload has to lose the zone or it advertises a stale blocker.
+        it('clears the blocking zone but remains arming once it seals', () => {
+            // system_arm is authoritative for the final armed mode. arm_ready
+            // only says the blocker is gone, so the card remains busy while
+            // removing the stale blocking-zone attribute.
             state.applyAlarmReading(reading('arm_not_ready', { zone: '44' }));
             expect(state.applyAlarmReading(reading('arm_ready')))
-                .toEqual({ state: 'disarmed', blockingZone: null, armMode: null });
+                .toEqual({ state: 'arming', blockingZone: null, armMode: null });
         });
 
         it('is ignored during an entry delay, which it must not cut short', () => {
