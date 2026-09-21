@@ -746,9 +746,9 @@ Alongside the zone sensors, cgateweb publishes one `alarm_control_panel` entity 
 - `cbus/read/{network}/208/panel/state` — the HA alarm state: `disarmed`, `armed_away`, `armed_home`, `armed_night`, `armed_vacation`, `arming`, `pending`, `triggered`
 - `cbus/read/{network}/208/panel/attributes` — JSON attributes; while the panel refuses to arm, the blocking zone appears as `blocking_zone`
 
-The state machine follows the panel's broadcasts: `system_arm` sets the armed mode (C-Bus day/stay mode 3 maps to `armed_home`), `exit_delay_started` shows `arming`, `entry_delay_started` shows `pending`, `arm_not_ready` stays `disarmed` and names the blocking zone in the attributes, `arm_ready` returns to `disarmed`, `alarm_on` shows `triggered` and `alarm_off` reverts to the armed state the panel was in.
+The state machine follows the panel's broadcasts: `system_arm` sets the armed mode (C-Bus day/stay mode 3 maps to `armed_home`), `exit_delay_started` and `arm_not_ready` show `arming`, `entry_delay_started` shows `pending`, `arm_not_ready` also names the blocking zone in the attributes, `arm_ready` clears that blocker while the panel remains `arming` until `system_arm` confirms the mode, `alarm_on` shows `triggered` and `alarm_off` reverts to the armed state the panel was in.
 
-`pending` means an entry delay is running — someone opened a delay zone while the alarm was armed and the siren follows unless it is disarmed in time. That is the state worth automating on. It is **not** used for a refused arm: a panel that will not arm because a window is open is still disarmed, and saying otherwise would fire intruder automations at whoever was trying to arm it.
+`pending` means an entry delay is running — someone opened a delay zone while the alarm was armed and the siren follows unless it is disarmed in time. A blocked outbound arm uses `arming` instead, so Home Assistant shows that the panel is busy and keeps Disarm available without firing intrusion automations that watch `pending`.
 
 With `cbus_security_control_enabled: true` (off by default) the entity advertises the arm actions and Home Assistant's **arm** buttons work, writing to `cbus/write/{network}/208/panel/arm`: `ARM_AWAY` → `away`, `ARM_NIGHT` → `night`, `ARM_HOME` → `day` (day/stay), `ARM_VACATION` → `vacation`. These are C-Gate's own arm-mode keywords (C-Gate manual §4.5.177); the numeric mode values in the C-Bus application spec are not accepted by the command interface and are rejected with `405 Parameter out of range`. The panel confirms with a `system_arm` broadcast, so the displayed state always comes from the panel itself.
 
@@ -756,7 +756,7 @@ With `cbus_security_control_enabled: true` (off by default) the entity advertise
 
 #### Bypassing open zones
 
-When arming is refused because a zone is open (`arm_not_ready` names it in the attributes and the panel stays `disarmed`), the physical keypad's `#` key bypasses the open zones and lets the arm continue.
+When arming is blocked because a zone is open (`arm_not_ready` names it in the attributes and the panel stays `arming`), the physical keypad's `#` key bypasses the open zones and lets the arm continue.
 
 This is a **third** opt-in, `cbus_security_bypass_enabled: true`, on top of `cbus_security_control_enabled`. It is separate from arming because it makes a different promise: an alarm armed past an open door reports **armed** to you and to Home Assistant, while that door is not actually covered. Turning on arming should not quietly hand out "arm anyway" as well.
 
