@@ -1,8 +1,20 @@
 // @ts-check
 const fs = require('fs');
 const { createLogger } = require('./logger');
-const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
+const {
+    MQTT_RETAINED_STATE_OPTIONS,
+    HA_COMPONENT_SENSOR,
+    HA_COMPONENT_BINARY_SENSOR,
+    HA_DEVICE_VIA,
+    HA_DEVICE_MANUFACTURER
+} = require('./constants');
 const { resolveClampedSetting } = require('./config/schema');
+const {
+    buildOriginBlock,
+    buildAvailabilityBlock,
+    buildComponentDiscoveryPayload,
+    buildStandaloneDiscoveryPayload
+} = require('./haDiscoveryPayloads');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -75,37 +87,66 @@ class HaBridgeDiagnostics {
             { key: 'mqtt_connected', component: HA_COMPONENT_BINARY_SENSOR, name: 'MQTT Connected', icon: 'mdi:lan-connect' },
             { key: 'event_connected', component: HA_COMPONENT_BINARY_SENSOR, name: 'Event Connection', icon: 'mdi:lan-connect' },
             { key: 'command_pool_healthy', component: HA_COMPONENT_SENSOR, name: 'Healthy Command Connections', icon: 'mdi:pool' },
-            { key: 'command_queue_depth', component: HA_COMPONENT_SENSOR, name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out' },
-            { key: 'reconnect_indicator', component: HA_COMPONENT_SENSOR, name: 'Reconnect Indicator', icon: 'mdi:restart-alert' },
+            { key: 'command_queue_depth', component: HA_COMPONENT_SENSOR, name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out', enabledByDefault: false },
+            { key: 'reconnect_indicator', component: HA_COMPONENT_SENSOR, name: 'Reconnect Indicator', icon: 'mdi:restart-alert', enabledByDefault: false },
             { key: 'cgate_version', component: HA_COMPONENT_SENSOR, name: 'C-Gate Version', icon: 'mdi:tag-outline' },
             { key: 'web_listening', component: HA_COMPONENT_BINARY_SENSOR, name: 'Web UI Listening', icon: 'mdi:web' }
         ];
 
+        const components = {};
+        const legacyTopics = [];
+        const migrateLegacyTopics = !this._discoveryPublished;
+        const bridgeDevice = {
+            identifiers: [HA_DEVICE_VIA],
+            name: 'cgateweb Bridge',
+            manufacturer: HA_DEVICE_MANUFACTURER,
+            model: 'Bridge Diagnostics'
+        };
         for (const entity of diagnostics) {
-            const topic = `${this.settings.ha_discovery_prefix}/${entity.component}/cgateweb_bridge_${entity.key}/config`;
+            const uniqueId = `cgateweb_bridge_${entity.key}`;
+            const topic = `${this.settings.ha_discovery_prefix}/${entity.component}/${uniqueId}/config`;
             const stateTopic = `cbus/read/bridge/diagnostics/${entity.key}/state`;
-            const payload = {
+            const spec = {
+                component: entity.component,
                 name: entity.name,
-                unique_id: `cgateweb_bridge_${entity.key}`,
-                ...entityIdFields(entity.component, `cgateweb_bridge_${entity.key}`),
-                state_topic: stateTopic,
-                availability_topic: MQTT_TOPIC_STATUS,
-                payload_available: 'Online',
-                payload_not_available: 'Offline',
-                entity_category: 'diagnostic',
-                icon: entity.icon,
-                ...(entity.component === HA_COMPONENT_BINARY_SENSOR && {
-                    payload_on: 'ON',
-                    payload_off: 'OFF'
-                }),
-                device: {
-                    identifiers: [HA_DEVICE_VIA],
-                    name: 'cgateweb Bridge',
-                    manufacturer: 'Clipsal C-Bus via cgateweb',
-                    model: 'Bridge Diagnostics'
+                uniqueId,
+                entityId: uniqueId,
+                fields: {
+                    state_topic: stateTopic,
+                    entity_category: 'diagnostic',
+                    ...(entity.enabledByDefault === false && { enabled_by_default: false }),
+                    icon: entity.icon,
+                    ...(entity.component === HA_COMPONENT_BINARY_SENSOR && {
+                        payload_on: 'ON',
+                        payload_off: 'OFF'
+                    })
                 }
             };
-            this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+            components[uniqueId] = buildComponentDiscoveryPayload(spec);
+            legacyTopics.push(topic);
+            if (migrateLegacyTopics) {
+                this._publish(
+                    topic,
+                    JSON.stringify(buildStandaloneDiscoveryPayload(spec, bridgeDevice)),
+                    MQTT_RETAINED_STATE_OPTIONS
+                );
+                this._publish(topic, JSON.stringify({ migrate_discovery: true }), MQTT_RETAINED_STATE_OPTIONS);
+            }
+        }
+
+        const deviceTopic = `${this.settings.ha_discovery_prefix}/device/${HA_DEVICE_VIA}/config`;
+        this._publish(deviceTopic, JSON.stringify({
+            device: bridgeDevice,
+            origin: buildOriginBlock(),
+            components,
+            ...buildAvailabilityBlock(),
+            qos: 0
+        }), MQTT_RETAINED_STATE_OPTIONS);
+
+        if (migrateLegacyTopics) {
+            for (const topic of legacyTopics) {
+                this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+            }
         }
     }
 

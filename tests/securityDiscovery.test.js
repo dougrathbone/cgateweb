@@ -1,5 +1,6 @@
 const HaDiscovery = require('../src/haDiscovery');
 const { securityZoneLabelKey, parseSecurityZoneLabelKey } = require('../src/securityZoneLabels');
+const { isFullDiscoveryPayload } = require('./helpers/discovery');
 
 describe('HaDiscovery — app 208 security zones', () => {
     let publishFn;
@@ -266,7 +267,7 @@ describe('HaDiscovery — app 208 security zones', () => {
 
         function panelPayloads() {
             return publishFn.mock.calls
-                .filter(c => c[0].includes('_208_panel_'))
+                .filter(c => c[0].includes('_208_panel_') && isFullDiscoveryPayload(c[1]))
                 .map(c => ({ topic: c[0], payload: c[1] ? JSON.parse(c[1]) : null }));
         }
 
@@ -325,7 +326,9 @@ describe('HaDiscovery — app 208 security zones', () => {
         it('retracts every condition and skips an excluded panel', () => {
             d.exclude.add('254/208/panel');
             expect(d.ensureSecurityPanelDiscovery('254', '208')).toBe(false);
-            const retracted = panelPayloads().filter(p => p.payload === null);
+            const retracted = publishFn.mock.calls.filter(
+                c => c[0].includes('_208_panel_') && c[1] === ''
+            );
             expect(retracted).toHaveLength(CONDITIONS.length);
         });
 

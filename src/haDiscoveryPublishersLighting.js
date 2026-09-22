@@ -89,6 +89,12 @@ class _HaDiscoveryPublishersLighting {
      */
     _finishTreeEntity;
 
+    /** @type {{ specs: Object[] }|null} */
+    _deviceDiscoveryCollection;
+
+    /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */
+    _withDeviceDiscovery;
+
     /**
      * Read/write topic bases (implemented in haDiscoveryPublishers).
      * @type {(networkId: string|number, appId: string|number, address: string|number) => { readBase: string, writeBase: string }}
@@ -420,6 +426,15 @@ class _HaDiscoveryPublishersLighting {
     }
 
     _createDiscovery(networkId, appId, groupId, groupLabel, config) {
+        if (config.isTrigger && !this._deviceDiscoveryCollection) {
+            this._withDeviceDiscovery(
+                `cgateweb_${networkId}_${appId}_${groupId}`,
+                'tree',
+                () => this._createDiscovery(networkId, appId, groupId, groupLabel, config)
+            );
+            return;
+        }
+
         const { exclude } = this._labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
 

@@ -121,6 +121,16 @@ function findDiscoveryPayload(publishFn, topic) {
 }
 
 /**
+ * Whether a retained publish is a complete entity config rather than a
+ * migration marker or retained-message clear.
+ * @param {*} payload
+ * @returns {boolean}
+ */
+function isFullDiscoveryPayload(payload) {
+    return typeof payload === 'string' && payload.includes('"unique_id"');
+}
+
+/**
  * Raw retained payload string for a lighting-app group under network 254 / app 56.
  * @param {jest.Mock} publish
  * @param {string} component
@@ -166,6 +176,7 @@ module.exports = {
     makeDiscovery,
     findDiscoveryCall,
     findDiscoveryPayload,
+    isFullDiscoveryPayload,
     rawPayload,
     payloadFor,
     publishTree

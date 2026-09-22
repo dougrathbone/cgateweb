@@ -170,6 +170,11 @@ class HaDiscovery {
         // connectivity sensors vanish whenever a tree refresh runs after they
         // were announced. Tracked here so the cleanup can skip them.
         this._eventDrivenDiscoveryTopics = new Set();
+
+        // Session state for bundled Home Assistant device discovery.
+        this._deviceDiscoveryCollection = null;
+        this._deviceDiscoveryComponents = new Map();
+        this._deviceDiscoveryMigratedTopics = new Set();
     }
 
     /**

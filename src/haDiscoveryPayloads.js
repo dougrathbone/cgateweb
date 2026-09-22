@@ -14,7 +14,11 @@ const {
     HA_DEVICE_MANUFACTURER,
     HA_ORIGIN_NAME,
     HA_ORIGIN_SW_VERSION,
-    HA_ORIGIN_SUPPORT_URL
+    HA_ORIGIN_SUPPORT_URL,
+    MQTT_TOPIC_STATUS,
+    MQTT_PAYLOAD_STATUS_ONLINE,
+    MQTT_PAYLOAD_STATUS_OFFLINE,
+    entityIdFields
 } = require('./constants');
 
 /**
@@ -52,4 +56,54 @@ function buildDeviceBlock({ identifiers, name, model, area }) {
     };
 }
 
-module.exports = { buildOriginBlock, buildDeviceBlock };
+/**
+ * Shared bridge availability fields for entity and device discovery.
+ * @returns {{availability_topic: string, payload_available: string, payload_not_available: string}}
+ */
+function buildAvailabilityBlock() {
+    return {
+        availability_topic: MQTT_TOPIC_STATUS,
+        payload_available: MQTT_PAYLOAD_STATUS_ONLINE,
+        payload_not_available: MQTT_PAYLOAD_STATUS_OFFLINE
+    };
+}
+
+/**
+ * Component entry used inside a device-discovery `components` map.
+ * @param {Object} spec
+ * @returns {Object}
+ */
+function buildComponentDiscoveryPayload(spec) {
+    return {
+        platform: spec.component,
+        name: spec.name,
+        unique_id: spec.uniqueId,
+        ...(spec.entityId && entityIdFields(spec.component, spec.entityId)),
+        ...spec.fields
+    };
+}
+
+/**
+ * Standalone entity-discovery payload used before and during migration.
+ * @param {Object} spec
+ * @param {Object} device
+ * @returns {Object}
+ */
+function buildStandaloneDiscoveryPayload(spec, device) {
+    const { platform: _platform, ...component } = buildComponentDiscoveryPayload(spec);
+    return {
+        ...component,
+        qos: 0,
+        ...buildAvailabilityBlock(),
+        device,
+        origin: buildOriginBlock()
+    };
+}
+
+module.exports = {
+    buildOriginBlock,
+    buildDeviceBlock,
+    buildAvailabilityBlock,
+    buildComponentDiscoveryPayload,
+    buildStandaloneDiscoveryPayload
+};

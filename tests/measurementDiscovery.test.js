@@ -1,5 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
-const { findDiscoveryPayload } = require('./helpers/discovery');
+const { findDiscoveryPayload, isFullDiscoveryPayload } = require('./helpers/discovery');
 const { decodeChannelData } = require('../src/applicationDecoders/measurementDecoder');
 
 describe('HaDiscovery — app 228 measurement sensors', () => {
@@ -29,7 +29,9 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(payload.unit_of_measurement).toBe('W');
         expect(payload.state_topic).toBe('cbus/read/254/228/0/0/value');
         expect(payload.unique_id).toBe('cgateweb_254_228_0_0');
-        expect(payload.device.name).toBe('CBus Measurement 254/228/0/0');
+        expect(payload.name).toBe('CBus Measurement 254/228/0/0');
+        expect(payload.device.name).toBe('C-Bus Measurement 254/228/0');
+        expect(payload.device.identifiers).toEqual(['cgateweb_254_228_0']);
     });
 
     // Home Assistant rejects device_class energy alongside state_class
@@ -70,15 +72,33 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(false);
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '1', reading)).toBe(true);
-        const configCalls = publishFn.mock.calls.filter(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config');
+        const configCalls = publishFn.mock.calls.filter(
+            c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config'
+                && isFullDiscoveryPayload(c[1])
+        );
         expect(configCalls).toHaveLength(1);
+
+        const channel0 = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_0/config');
+        const channel1 = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_1/config');
+        expect(channel0.device.identifiers).toEqual(channel1.device.identifiers);
+        expect(channel0.unique_id).not.toBe(channel1.unique_id);
+
+        const deviceCalls = publishFn.mock.calls.filter(
+            c => c[0] === 'homeassistant/device/cgateweb_254_228_0/config'
+        );
+        const bundled = JSON.parse(deviceCalls[deviceCalls.length - 1][1]);
+        expect(Object.keys(bundled.components)).toEqual([
+            'cgateweb_254_228_0_0',
+            'cgateweb_254_228_0_1'
+        ]);
+        expect(bundled.components.cgateweb_254_228_0_0.platform).toBe('sensor');
     });
 
     it('does not collide across different devices sharing the same channel number', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
         expect(d.ensureMeasurementDiscovery('254', '228', '1', '0', reading)).toBe(true);
         const uniqueIds = publishFn.mock.calls
-            .filter(c => c[0].startsWith('homeassistant/sensor/'))
+            .filter(c => c[0].startsWith('homeassistant/sensor/') && isFullDiscoveryPayload(c[1]))
             .map(c => JSON.parse(c[1]).unique_id);
         expect(new Set(uniqueIds).size).toBe(uniqueIds.length);
     });
@@ -98,7 +118,8 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         );
         labelled.ensureMeasurementDiscovery('254', '228', '0', '0', reading);
         const payload = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_0/config');
-        expect(payload.device.name).toBe('Solar Inverter Power');
+        expect(payload.name).toBe('Solar Inverter Power');
+        expect(payload.device.name).toBe('C-Bus Measurement 254/228/0');
     });
 
     it('clears a previously published entity when the channel is excluded', () => {

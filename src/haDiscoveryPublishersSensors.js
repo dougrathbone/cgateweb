@@ -39,6 +39,8 @@ const TEMPERATURE_ENTITY = {
 const MEASUREMENT_ENTITY = {
     component: HA_COMPONENT_SENSOR,
     model: 'C-Bus Measurement Sensor',
+    deviceId: (networkId, appId, device) => `cgateweb_${networkId}_${appId}_${device}`,
+    deviceName: (networkId, appId, device) => `C-Bus Measurement ${networkId}/${appId}/${device}`,
     fallbackLabel: (networkId, appId, device, channel) =>
         `CBus Measurement ${networkId}/${appId}/${device}/${channel}`,
     fields: (networkId, appId, device, channel, reading) => ({
@@ -92,6 +94,12 @@ class _HaDiscoveryPublishersSensors {
      * @type {(spec: Object) => void}
      */
     _finishEventDrivenEntity;
+
+    /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */
+    _withDeviceDiscovery;
+
+    /** @type {(deviceId: string, uniqueId: string, fallback?: Object) => void} */
+    _retractDeviceDiscoveryComponent;
 
     /**
      * @type {(topic: string) => void}
@@ -151,8 +159,19 @@ class _HaDiscoveryPublishersSensors {
                         this._clockTopic(this._clockUniqueId(String(network), String(appId), variant.id))
                     );
                 }
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/device/cgateweb_network_${network}/${HA_DISCOVERY_SUFFIX}`
+                );
             },
-            create: () => this._createClockDiscovery(String(network), String(appId))
+            create: () => {
+                const networkId = String(network);
+                const applicationId = String(appId);
+                this._withDeviceDiscovery(
+                    `cgateweb_network_${networkId}`,
+                    'event',
+                    () => this._createClockDiscovery(networkId, applicationId)
+                );
+            }
         });
     }
 
@@ -201,6 +220,7 @@ class _HaDiscoveryPublishersSensors {
                     // No device_class and no unit_of_measurement, deliberately —
                     // see the note on ensureClockDiscovery.
                     entity_category: 'diagnostic',
+                    enabled_by_default: false,
                     icon: variant.icon
                 },
                 deviceIdentifiers: [`cgateweb_network_${networkId}`],
@@ -283,14 +303,30 @@ class _HaDiscoveryPublishersSensors {
             || device === null || device === undefined || channel === null || channel === undefined) return false;
 
         const key = `${network}/${appId}/${device}/${channel}`;
+        const deviceId = MEASUREMENT_ENTITY.deviceId(network, appId, device);
+        const uniqueId = `${deviceId}_${channel}`;
         return this._ensureEventDrivenEntity({
             key,
             seen: this._measurementSeen,
             describe: `measurement channel ${key}`,
-            retract: () => this._retractEventDrivenConfig(
-                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_${device}_${channel}/${HA_DISCOVERY_SUFFIX}`
-            ),
-            create: () => this._createMeasurementDiscovery(String(network), String(appId), String(device), String(channel), reading)
+            retract: () => {
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`
+                );
+                this._retractDeviceDiscoveryComponent(deviceId, uniqueId, {
+                    component: HA_COMPONENT_SENSOR,
+                    deviceIdentifiers: [deviceId],
+                    deviceName: MEASUREMENT_ENTITY.deviceName(network, appId, device),
+                    model: MEASUREMENT_ENTITY.model
+                });
+            },
+            create: () => this._withDeviceDiscovery(
+                deviceId,
+                'event',
+                () => this._createMeasurementDiscovery(
+                    String(network), String(appId), String(device), String(channel), reading
+                )
+            )
         });
     }
 
@@ -304,7 +340,7 @@ class _HaDiscoveryPublishersSensors {
     _createMeasurementDiscovery(networkId, appId, device, channel, reading) {
         const groupId = `${device}_${channel}`;
         const labelKey = `${networkId}/${appId}/${device}/${channel}`;
-        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+        const { finalLabel, uniqueId, entityId, discoveryTopic } = this._resolveEntityIdentity({
             networkId, appId, groupId, labelKey,
             component: MEASUREMENT_ENTITY.component,
             fallbackLabel: MEASUREMENT_ENTITY.fallbackLabel(networkId, appId, device, channel)
@@ -313,11 +349,14 @@ class _HaDiscoveryPublishersSensors {
         this._finishEventDrivenEntity({
             discoveryTopic, uniqueId, entityId,
             component: MEASUREMENT_ENTITY.component,
+            // A measurement device can expose several channels (power, energy,
+            // voltage, current, ...). Keep the channel label on the entity, but
+            // attach every channel from the same source device to one HA device.
+            name: finalLabel,
             fields: MEASUREMENT_ENTITY.fields(networkId, appId, device, channel, reading),
-            deviceIdentifiers: [uniqueId],
-            deviceName: finalLabel,
+            deviceIdentifiers: [MEASUREMENT_ENTITY.deviceId(networkId, appId, device)],
+            deviceName: MEASUREMENT_ENTITY.deviceName(networkId, appId, device),
             model: MEASUREMENT_ENTITY.model,
-            area,
             logInfo: `Measurement sensor entity published: ${labelKey} (${finalLabel})`
         });
     }

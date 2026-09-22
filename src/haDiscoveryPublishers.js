@@ -1,6 +1,12 @@
 // @ts-check
 const { getDiscoveryTypeForApp } = require('./haDiscoveryConfigs');
-const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
+const {
+    buildOriginBlock,
+    buildDeviceBlock,
+    buildAvailabilityBlock,
+    buildComponentDiscoveryPayload,
+    buildStandaloneDiscoveryPayload
+} = require('./haDiscoveryPayloads');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_PREFIX_WRITE,
@@ -9,8 +15,7 @@ const {
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_BINARY_SENSOR,
     HA_DISCOVERY_SUFFIX,
-    DEFAULT_CBUS_APP_LIGHTING,
-    entityIdFields
+    DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
 
 class _HaDiscoveryPublishers {
@@ -27,6 +32,18 @@ class _HaDiscoveryPublishers {
 
     /** @type {(topic: string, payload: string, options: Object) => void} */
     _publish;
+
+    /** @type {(topic: string, payload: string, options: Object) => void} */
+    _rawPublish;
+
+    /** @type {{ specs: Object[] }|null} */
+    _deviceDiscoveryCollection;
+
+    /** @type {Map<string, Map<string, Object>>} */
+    _deviceDiscoveryComponents;
+
+    /** @type {Set<string>} */
+    _deviceDiscoveryMigratedTopics;
 
     /** @type {number} */
     discoveryCount;
@@ -316,20 +333,164 @@ class _HaDiscoveryPublishers {
         discoveryTopic, uniqueId, entityId, component, name = null, fields,
         deviceIdentifiers, deviceName, model, area
     }) {
-        this._publish(discoveryTopic, JSON.stringify({
-            name,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(component, entityId)),
-            ...fields,
-            qos: 0,
-            device: buildDeviceBlock({
+        const spec = {
+            discoveryTopic, uniqueId, entityId, component, name, fields,
+            deviceIdentifiers, deviceName, model, area
+        };
+        if (this._deviceDiscoveryCollection) {
+            this._deviceDiscoveryCollection.specs.push(spec);
+            return;
+        }
+
+        this._publish(discoveryTopic, JSON.stringify(
+            buildStandaloneDiscoveryPayload(spec, buildDeviceBlock({
                 identifiers: deviceIdentifiers,
                 name: deviceName,
                 model,
                 area
+            }))
+        ), MQTT_RETAINED_STATE_OPTIONS);
+    }
+
+    /**
+     * Collect a known multi-entity device and publish it through Home
+     * Assistant's device-discovery topic. Existing component topics receive
+     * the migration marker first, preserving registry customisations and
+     * unique IDs, then are cleared after the bundled config is published.
+     *
+     * @param {string} deviceId
+     * @param {'tree'|'event'} mode
+     * @param {() => void} createComponents
+     * @private
+     */
+    _withDeviceDiscovery(deviceId, mode, createComponents) {
+        // Helpers invoked by an outer device creation participate in that
+        // collection instead of trying to open a nested bundle.
+        if (this._deviceDiscoveryCollection) {
+            createComponents();
+            return;
+        }
+
+        const collection = { specs: [] };
+        this._deviceDiscoveryCollection = collection;
+        try {
+            createComponents();
+        } finally {
+            this._deviceDiscoveryCollection = null;
+        }
+        if (collection.specs.length === 0) return;
+
+        let knownComponents = this._deviceDiscoveryComponents.get(deviceId);
+        if (!knownComponents) {
+            knownComponents = new Map();
+            this._deviceDiscoveryComponents.set(deviceId, knownComponents);
+        }
+        for (const spec of collection.specs) {
+            knownComponents.set(spec.uniqueId, spec);
+        }
+
+        const migrationSpecs = collection.specs.filter(
+            spec => !this._deviceDiscoveryMigratedTopics.has(spec.discoveryTopic)
+        );
+        const migrationTopics = new Set(migrationSpecs.map(spec => spec.discoveryTopic));
+        for (const spec of migrationSpecs) {
+            // Refresh the legacy config before marking it for migration. This
+            // is safe even when the broker lost retained messages: HA first
+            // sees the stable unique ID and device context.
+            this._rawPublish(spec.discoveryTopic, JSON.stringify(
+                buildStandaloneDiscoveryPayload(spec, buildDeviceBlock({
+                    identifiers: spec.deviceIdentifiers,
+                    name: spec.deviceName,
+                    model: spec.model,
+                    area: spec.area
+                }))
+            ), MQTT_RETAINED_STATE_OPTIONS);
+            // Publish directly so the short-lived migration marker is never
+            // saved in the replay cache.
+            this._rawPublish(
+                spec.discoveryTopic,
+                JSON.stringify({ migrate_discovery: true }),
+                MQTT_RETAINED_STATE_OPTIONS
+            );
+        }
+
+        const deviceTopic = this._publishDeviceDiscoveryConfig(deviceId, knownComponents);
+
+        for (const spec of collection.specs) {
+            if (migrationTopics.has(spec.discoveryTopic)) {
+                this._publish(spec.discoveryTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+                this._deviceDiscoveryMigratedTopics.add(spec.discoveryTopic);
+            }
+        }
+
+        this._publishedTopics.add(deviceTopic);
+        if (mode === 'event') this._eventDrivenDiscoveryTopics.add(deviceTopic);
+        if (mode === 'tree' && this._currentRunTopics) this._currentRunTopics.add(deviceTopic);
+    }
+
+    /**
+     * @param {string} deviceId
+     * @param {Map<string, Object>} specs
+     * @returns {string} device discovery topic
+     * @private
+     */
+    _publishDeviceDiscoveryConfig(deviceId, specs) {
+        const [primary] = specs.values();
+        const components = {};
+        for (const spec of specs.values()) {
+            components[spec.uniqueId] = buildComponentDiscoveryPayload(spec);
+        }
+        const deviceTopic = `${this.settings.ha_discovery_prefix}/device/${deviceId}/${HA_DISCOVERY_SUFFIX}`;
+        this._publish(deviceTopic, JSON.stringify({
+            device: buildDeviceBlock({
+                identifiers: primary.deviceIdentifiers,
+                name: primary.deviceName,
+                model: primary.model,
+                area: primary.area
             }),
-            origin: buildOriginBlock()
+            origin: buildOriginBlock(),
+            components,
+            qos: 0,
+            ...buildAvailabilityBlock()
         }), MQTT_RETAINED_STATE_OPTIONS);
+        return deviceTopic;
+    }
+
+    /**
+     * Remove one component from a bundled device discovery payload.
+     *
+     * @param {string} deviceId
+     * @param {string} uniqueId
+     * @param {{ component: string, deviceIdentifiers: string[], deviceName: string, model: string }} [fallback]
+     * @private
+     */
+    _retractDeviceDiscoveryComponent(deviceId, uniqueId, fallback) {
+        const specs = this._deviceDiscoveryComponents.get(deviceId);
+        const deviceTopic = `${this.settings.ha_discovery_prefix}/device/${deviceId}/${HA_DISCOVERY_SUFFIX}`;
+        if (!specs || !specs.delete(uniqueId)) {
+            if (!fallback) return;
+            this._rawPublish(deviceTopic, JSON.stringify({
+                device: buildDeviceBlock({
+                    identifiers: fallback.deviceIdentifiers,
+                    name: fallback.deviceName,
+                    model: fallback.model
+                }),
+                origin: buildOriginBlock(),
+                components: {
+                    [uniqueId]: { platform: fallback.component }
+                },
+                ...buildAvailabilityBlock()
+            }), MQTT_RETAINED_STATE_OPTIONS);
+            return;
+        }
+        if (specs.size === 0) {
+            this._publish(deviceTopic, '', MQTT_RETAINED_STATE_OPTIONS);
+            this._deviceDiscoveryComponents.delete(deviceId);
+            this._publishedTopics.delete(deviceTopic);
+            this._eventDrivenDiscoveryTopics.delete(deviceTopic);
+            return;
+        }
+        this._publishDeviceDiscoveryConfig(deviceId, specs);
     }
 
     /**
@@ -341,8 +502,9 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _finishTreeEntity(spec) {
+        const collecting = !!this._deviceDiscoveryCollection;
         this._publishDiscoveryPayload(spec);
-        if (this._currentRunTopics) this._currentRunTopics.add(spec.discoveryTopic);
+        if (!collecting && this._currentRunTopics) this._currentRunTopics.add(spec.discoveryTopic);
         this.discoveryCount++;
     }
 
@@ -369,12 +531,15 @@ class _HaDiscoveryPublishers {
         discoveryTopic, uniqueId, entityId, component, name = null, fields,
         deviceIdentifiers, deviceName, model, area, logInfo
     }) {
+        const collecting = !!this._deviceDiscoveryCollection;
         this._publishDiscoveryPayload({
             discoveryTopic, uniqueId, entityId, component, name, fields,
             deviceIdentifiers, deviceName, model, area
         });
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        if (!collecting) {
+            this._publishedTopics.add(discoveryTopic);
+            this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        }
         this.discoveryCount++;
         if (logInfo) this.logger.info(logInfo);
     }

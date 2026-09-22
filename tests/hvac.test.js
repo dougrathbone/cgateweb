@@ -15,6 +15,7 @@ const HaDiscovery = require('../src/haDiscovery');
 const MqttCommandRouter = require('../src/mqttCommandRouter');
 const ConfigLoader = require('../src/config/ConfigLoader');
 const EnvironmentDetector = require('../src/config/EnvironmentDetector');
+const { isFullDiscoveryPayload } = require('./helpers/discovery');
 
 jest.mock('fs');
 jest.mock('../src/config/EnvironmentDetector');
@@ -508,7 +509,9 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
     test('publishes only once per unit (idempotent across repeated events)', () => {
         expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(true);
         expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(false);
-        const climateCalls = mockPublishFn.mock.calls.filter(c => c[0].includes('/climate/'));
+        const climateCalls = mockPublishFn.mock.calls.filter(
+            c => c[0].includes('/climate/') && isFullDiscoveryPayload(c[1])
+        );
         expect(climateCalls).toHaveLength(1);
     });
 
@@ -552,9 +555,10 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         // The publish list and the retract list are derived from the same
         // tables; this is the assertion that keeps them that way.
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
-        const published = mockPublishFn.mock.calls
-            .filter(c => c[0].includes('cgateweb_254_172_201'))
-            .map(c => c[0])
+        const published = [...new Set(mockPublishFn.mock.calls
+            .filter(c => c[0].includes('cgateweb_254_172_201')
+                && (c[0].includes('/device/') || isFullDiscoveryPayload(c[1])))
+            .map(c => c[0]))]
             .sort();
 
         mockPublishFn.mockClear();
@@ -615,10 +619,12 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         // §25.6.6 bit 3 is defined as Closed/Open, which is what 'opening' means.
         expect(damper.device_class).toBe('opening');
         expect(damper.entity_category).toBe('diagnostic');
+        expect(damper.enabled_by_default).toBe(false);
 
         const busy = companionPayload(mockPublishFn.mock.calls, 'binary_sensor', 'busy');
         expect(busy.state_topic).toBe('cbus/read/254/172/201/busy');
         expect(busy.entity_category).toBe('diagnostic');
+        expect(busy.enabled_by_default).toBe(false);
         // No device_class: 'running' would contradict hvac_action, and nothing
         // else in HA means "busy". Omitting beats guessing.
         expect(busy.device_class).toBeUndefined();
@@ -648,6 +654,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.unique_id).toBe(`cgateweb_254_172_201_${suffix}`);
         expect(payload.state_topic).toBe(`cbus/read/254/172/201/${topicSuffix}`);
         expect(payload.entity_category).toBe('diagnostic');
+        expect(payload.enabled_by_default).toBe(false);
         // All of these are readouts; none gets a command topic.
         expect(payload.command_topic).toBeUndefined();
     });
@@ -685,7 +692,8 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
             .find(c => c[0] === 'homeassistant/climate/cgateweb_254_172_202/config')[1]);
 
         const companions = mockPublishFn.mock.calls
-            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_202_/.test(c[0]))
+            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_202_/.test(c[0])
+                && isFullDiscoveryPayload(c[1]))
             .map(c => JSON.parse(c[1]));
 
         expect(companions).toHaveLength(13); // 4 binary_sensors + 9 sensors
@@ -701,7 +709,8 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(haDiscovery.settings.cbus_aircon_control_enabled).toBeUndefined();
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         const companions = mockPublishFn.mock.calls
-            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_201_/.test(c[0]));
+            .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_201_/.test(c[0])
+                && isFullDiscoveryPayload(c[1]));
         expect(companions).toHaveLength(13);
     });
 
