@@ -806,10 +806,34 @@ async function runTests() {
         let formatErrors = 0;
 
         for (const [topic, payload] of discoveryMessages) {
-            // Required fields present in every discovery payload
+            // A migration marker tells HA the entity is moving to a bundled
+            // device config; it carries no entity fields of its own.
+            if (payload.migrate_discovery === true) {
+                continue;
+            }
+
+            const hasDevice = payload.device && typeof payload.device === 'object';
+
+            // Bundled device discovery (homeassistant/device/<id>/config) puts
+            // the entity fields inside `components` rather than at the top level.
+            if (payload.components && typeof payload.components === 'object') {
+                const badComponents = Object.entries(payload.components)
+                    .filter(([, component]) => !('unique_id' in component) || !('name' in component));
+
+                if (!hasDevice || badComponents.length > 0) {
+                    fail(`Device discovery payload malformed on ${topic}  →  device:${hasDevice} bad components:${badComponents.map(([key]) => key).join(',') || 'none'}`);
+                    formatErrors++;
+                    failed++;
+                    continue;
+                }
+
+                info(`  device ${topic}: ${Object.keys(payload.components).length} component(s)`);
+                continue;
+            }
+
+            // Required fields present in every single-entity discovery payload
             const hasUniqueId = 'unique_id' in payload;
             const hasName    = 'name' in payload;   // value may be null — that is valid
-            const hasDevice  = payload.device && typeof payload.device === 'object';
 
             if (!hasUniqueId || !hasName || !hasDevice) {
                 fail(`Discovery payload missing required fields on ${topic}  →  unique_id:${hasUniqueId} name:${hasName} device:${hasDevice}`);
