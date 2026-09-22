@@ -15,6 +15,7 @@ const HaDiscovery = require('../src/haDiscovery');
 const MqttCommandRouter = require('../src/mqttCommandRouter');
 const ConfigLoader = require('../src/config/ConfigLoader');
 const EnvironmentDetector = require('../src/config/EnvironmentDetector');
+const { isFullDiscoveryPayload } = require('./helpers/discovery');
 
 jest.mock('fs');
 jest.mock('../src/config/EnvironmentDetector');
@@ -509,7 +510,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(true);
         expect(haDiscovery.ensureNativeAirconDiscovery('254', '172', '201')).toBe(false);
         const climateCalls = mockPublishFn.mock.calls.filter(
-            c => c[0].includes('/climate/') && c[1].includes('"unique_id"')
+            c => c[0].includes('/climate/') && isFullDiscoveryPayload(c[1])
         );
         expect(climateCalls).toHaveLength(1);
     });
@@ -556,7 +557,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         const published = [...new Set(mockPublishFn.mock.calls
             .filter(c => c[0].includes('cgateweb_254_172_201')
-                && (c[0].includes('/device/') || c[1].includes('"unique_id"')))
+                && (c[0].includes('/device/') || isFullDiscoveryPayload(c[1])))
             .map(c => c[0]))]
             .sort();
 
@@ -692,7 +693,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
 
         const companions = mockPublishFn.mock.calls
             .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_202_/.test(c[0])
-                && c[1].includes('"unique_id"'))
+                && isFullDiscoveryPayload(c[1]))
             .map(c => JSON.parse(c[1]));
 
         expect(companions).toHaveLength(13); // 4 binary_sensors + 9 sensors
@@ -709,7 +710,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         haDiscovery.ensureNativeAirconDiscovery('254', '172', '201');
         const companions = mockPublishFn.mock.calls
             .filter(c => /\/(sensor|binary_sensor)\/cgateweb_254_172_201_/.test(c[0])
-                && c[1].includes('"unique_id"'));
+                && isFullDiscoveryPayload(c[1]));
         expect(companions).toHaveLength(13);
     });
 

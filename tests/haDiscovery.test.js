@@ -10,6 +10,7 @@ const {
     FULL_GROUPS_TREE_NET254,
     makeDiscovery,
     findDiscoveryPayload,
+    isFullDiscoveryPayload,
     payloadFor,
     rawPayload,
     publishTree
@@ -406,10 +407,10 @@ describe('HaDiscovery', () => {
 
             // There are 4 groups in app 203 — expect 4 event + 4 button entities
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             expect(eventCalls.length).toBe(4);
             expect(buttonCalls.length).toBe(4);
@@ -2616,13 +2617,13 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             const sceneCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/scene/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/scene/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             // 2 trigger groups → 2 event + 2 button + 2 scene entities
             expect(eventCalls.length).toBe(2);
@@ -2637,16 +2638,16 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const sceneCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/scene/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/scene/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             expect(sceneCalls.length).toBe(0);
 
             // But event and button entities should still be published
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
             expect(eventCalls.length).toBe(2);
             expect(buttonCalls.length).toBe(2);

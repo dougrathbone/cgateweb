@@ -1,17 +1,21 @@
 // @ts-check
 const { getDiscoveryTypeForApp } = require('./haDiscoveryConfigs');
-const { buildOriginBlock, buildDeviceBlock } = require('./haDiscoveryPayloads');
+const {
+    buildOriginBlock,
+    buildDeviceBlock,
+    buildAvailabilityBlock,
+    buildComponentDiscoveryPayload,
+    buildStandaloneDiscoveryPayload
+} = require('./haDiscoveryPayloads');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
-    MQTT_TOPIC_STATUS,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_BINARY_SENSOR,
     HA_DISCOVERY_SUFFIX,
-    DEFAULT_CBUS_APP_LIGHTING,
-    entityIdFields
+    DEFAULT_CBUS_APP_LIGHTING
 } = require('./constants');
 
 class _HaDiscoveryPublishers {
@@ -32,7 +36,7 @@ class _HaDiscoveryPublishers {
     /** @type {(topic: string, payload: string, options: Object) => void} */
     _rawPublish;
 
-    /** @type {{ deviceId: string, mode: 'tree'|'event', specs: Object[] }|null} */
+    /** @type {{ specs: Object[] }|null} */
     _deviceDiscoveryCollection;
 
     /** @type {Map<string, Map<string, Object>>} */
@@ -338,23 +342,14 @@ class _HaDiscoveryPublishers {
             return;
         }
 
-        this._publish(discoveryTopic, JSON.stringify({
-            name,
-            unique_id: uniqueId,
-            ...(entityId && entityIdFields(component, entityId)),
-            ...fields,
-            qos: 0,
-            availability_topic: MQTT_TOPIC_STATUS,
-            payload_available: 'Online',
-            payload_not_available: 'Offline',
-            device: buildDeviceBlock({
+        this._publish(discoveryTopic, JSON.stringify(
+            buildStandaloneDiscoveryPayload(spec, buildDeviceBlock({
                 identifiers: deviceIdentifiers,
                 name: deviceName,
                 model,
                 area
-            }),
-            origin: buildOriginBlock()
-        }), MQTT_RETAINED_STATE_OPTIONS);
+            }))
+        ), MQTT_RETAINED_STATE_OPTIONS);
     }
 
     /**
@@ -376,7 +371,7 @@ class _HaDiscoveryPublishers {
             return;
         }
 
-        const collection = { deviceId, mode, specs: [] };
+        const collection = { specs: [] };
         this._deviceDiscoveryCollection = collection;
         try {
             createComponents();
@@ -397,46 +392,35 @@ class _HaDiscoveryPublishers {
         const migrationSpecs = collection.specs.filter(
             spec => !this._deviceDiscoveryMigratedTopics.has(spec.discoveryTopic)
         );
+        const migrationTopics = new Set(migrationSpecs.map(spec => spec.discoveryTopic));
         for (const spec of migrationSpecs) {
-                // Refresh the legacy config before marking it for migration.
-                // This is safe even when the broker lost retained messages:
-                // HA first sees the stable unique ID and device context.
-                this._rawPublish(spec.discoveryTopic, JSON.stringify({
-                    name: spec.name,
-                    unique_id: spec.uniqueId,
-                    ...(spec.entityId && entityIdFields(spec.component, spec.entityId)),
-                    ...spec.fields,
-                    qos: 0,
-                    availability_topic: MQTT_TOPIC_STATUS,
-                    payload_available: 'Online',
-                    payload_not_available: 'Offline',
-                    device: buildDeviceBlock({
-                        identifiers: spec.deviceIdentifiers,
-                        name: spec.deviceName,
-                        model: spec.model,
-                        area: spec.area
-                    }),
-                    origin: buildOriginBlock()
-                }), MQTT_RETAINED_STATE_OPTIONS);
-                // Publish directly so the short-lived migration marker is
-                // never saved in the replay cache.
-                this._rawPublish(
-                    spec.discoveryTopic,
-                    JSON.stringify({ migrate_discovery: true }),
-                    MQTT_RETAINED_STATE_OPTIONS
-                );
+            // Refresh the legacy config before marking it for migration. This
+            // is safe even when the broker lost retained messages: HA first
+            // sees the stable unique ID and device context.
+            this._rawPublish(spec.discoveryTopic, JSON.stringify(
+                buildStandaloneDiscoveryPayload(spec, buildDeviceBlock({
+                    identifiers: spec.deviceIdentifiers,
+                    name: spec.deviceName,
+                    model: spec.model,
+                    area: spec.area
+                }))
+            ), MQTT_RETAINED_STATE_OPTIONS);
+            // Publish directly so the short-lived migration marker is never
+            // saved in the replay cache.
+            this._rawPublish(
+                spec.discoveryTopic,
+                JSON.stringify({ migrate_discovery: true }),
+                MQTT_RETAINED_STATE_OPTIONS
+            );
         }
 
         const deviceTopic = this._publishDeviceDiscoveryConfig(deviceId, knownComponents);
 
         for (const spec of collection.specs) {
-            if (migrationSpecs.includes(spec)) {
+            if (migrationTopics.has(spec.discoveryTopic)) {
                 this._publish(spec.discoveryTopic, '', MQTT_RETAINED_STATE_OPTIONS);
                 this._deviceDiscoveryMigratedTopics.add(spec.discoveryTopic);
             }
-            this._publishedTopics.delete(spec.discoveryTopic);
-            this._eventDrivenDiscoveryTopics.delete(spec.discoveryTopic);
-            if (this._currentRunTopics) this._currentRunTopics.delete(spec.discoveryTopic);
         }
 
         this._publishedTopics.add(deviceTopic);
@@ -454,13 +438,7 @@ class _HaDiscoveryPublishers {
         const [primary] = specs.values();
         const components = {};
         for (const spec of specs.values()) {
-            components[spec.uniqueId] = {
-                platform: spec.component,
-                name: spec.name,
-                unique_id: spec.uniqueId,
-                ...(spec.entityId && entityIdFields(spec.component, spec.entityId)),
-                ...spec.fields
-            };
+            components[spec.uniqueId] = buildComponentDiscoveryPayload(spec);
         }
         const deviceTopic = `${this.settings.ha_discovery_prefix}/device/${deviceId}/${HA_DISCOVERY_SUFFIX}`;
         this._publish(deviceTopic, JSON.stringify({
@@ -473,9 +451,7 @@ class _HaDiscoveryPublishers {
             origin: buildOriginBlock(),
             components,
             qos: 0,
-            availability_topic: MQTT_TOPIC_STATUS,
-            payload_available: 'Online',
-            payload_not_available: 'Offline'
+            ...buildAvailabilityBlock()
         }), MQTT_RETAINED_STATE_OPTIONS);
         return deviceTopic;
     }
@@ -503,9 +479,7 @@ class _HaDiscoveryPublishers {
                 components: {
                     [uniqueId]: { platform: fallback.component }
                 },
-                availability_topic: MQTT_TOPIC_STATUS,
-                payload_available: 'Online',
-                payload_not_available: 'Offline'
+                ...buildAvailabilityBlock()
             }), MQTT_RETAINED_STATE_OPTIONS);
             return;
         }
@@ -528,8 +502,9 @@ class _HaDiscoveryPublishers {
      * @private
      */
     _finishTreeEntity(spec) {
+        const collecting = !!this._deviceDiscoveryCollection;
         this._publishDiscoveryPayload(spec);
-        if (this._currentRunTopics) this._currentRunTopics.add(spec.discoveryTopic);
+        if (!collecting && this._currentRunTopics) this._currentRunTopics.add(spec.discoveryTopic);
         this.discoveryCount++;
     }
 
@@ -556,12 +531,15 @@ class _HaDiscoveryPublishers {
         discoveryTopic, uniqueId, entityId, component, name = null, fields,
         deviceIdentifiers, deviceName, model, area, logInfo
     }) {
+        const collecting = !!this._deviceDiscoveryCollection;
         this._publishDiscoveryPayload({
             discoveryTopic, uniqueId, entityId, component, name, fields,
             deviceIdentifiers, deviceName, model, area
         });
-        this._publishedTopics.add(discoveryTopic);
-        this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        if (!collecting) {
+            this._publishedTopics.add(discoveryTopic);
+            this._eventDrivenDiscoveryTopics.add(discoveryTopic);
+        }
         this.discoveryCount++;
         if (logInfo) this.logger.info(logInfo);
     }

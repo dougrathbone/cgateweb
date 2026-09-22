@@ -1,5 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
-const { findDiscoveryPayload } = require('./helpers/discovery');
+const { findDiscoveryPayload, isFullDiscoveryPayload } = require('./helpers/discovery');
 
 const DATE_TOPIC = 'homeassistant/sensor/cgateweb_254_223_clock_date/config';
 const TIME_TOPIC = 'homeassistant/sensor/cgateweb_254_223_clock_time/config';
@@ -81,13 +81,13 @@ describe('HaDiscovery — app 223 network clock sensors', () => {
         expect(d.ensureClockDiscovery('254', '223')).toBe(true);
         expect(d.ensureClockDiscovery('254', '223')).toBe(false);
         expect(publishFn.mock.calls.filter(
-            c => c[0] === DATE_TOPIC && c[1].includes('"unique_id"')
+            c => c[0] === DATE_TOPIC && isFullDiscoveryPayload(c[1])
         )).toHaveLength(1);
 
         expect(d.ensureClockDiscovery('1', '223')).toBe(true);
         expect(publishFn.mock.calls
             .filter(c => c[0] === 'homeassistant/sensor/cgateweb_1_223_clock_date/config'
-                && c[1].includes('"unique_id"'))).toHaveLength(1);
+                && isFullDiscoveryPayload(c[1]))).toHaveLength(1);
     });
 
     it('does nothing when discovery is disabled', () => {

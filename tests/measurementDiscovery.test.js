@@ -1,5 +1,5 @@
 const HaDiscovery = require('../src/haDiscovery');
-const { findDiscoveryPayload } = require('./helpers/discovery');
+const { findDiscoveryPayload, isFullDiscoveryPayload } = require('./helpers/discovery');
 const { decodeChannelData } = require('../src/applicationDecoders/measurementDecoder');
 
 describe('HaDiscovery — app 228 measurement sensors', () => {
@@ -74,7 +74,7 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '1', reading)).toBe(true);
         const configCalls = publishFn.mock.calls.filter(
             c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config'
-                && c[1].includes('"unique_id"')
+                && isFullDiscoveryPayload(c[1])
         );
         expect(configCalls).toHaveLength(1);
 
@@ -98,7 +98,7 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
         expect(d.ensureMeasurementDiscovery('254', '228', '1', '0', reading)).toBe(true);
         const uniqueIds = publishFn.mock.calls
-            .filter(c => c[0].startsWith('homeassistant/sensor/') && c[1].includes('"unique_id"'))
+            .filter(c => c[0].startsWith('homeassistant/sensor/') && isFullDiscoveryPayload(c[1]))
             .map(c => JSON.parse(c[1]).unique_id);
         expect(new Set(uniqueIds).size).toBe(uniqueIds.length);
     });

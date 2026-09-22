@@ -171,9 +171,7 @@ class HaDiscovery {
         // were announced. Tracked here so the cleanup can skip them.
         this._eventDrivenDiscoveryTopics = new Set();
 
-        // Temporary collector used while publishing a known multi-entity
-        // device. The publisher mixin turns the collected component payloads
-        // into one Home Assistant MQTT device-discovery message.
+        // Session state for bundled Home Assistant device discovery.
         this._deviceDiscoveryCollection = null;
         this._deviceDiscoveryComponents = new Map();
         this._deviceDiscoveryMigratedTopics = new Set();

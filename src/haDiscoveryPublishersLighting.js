@@ -89,7 +89,7 @@ class _HaDiscoveryPublishersLighting {
      */
     _finishTreeEntity;
 
-    /** @type {{ deviceId: string, mode: 'tree'|'event', specs: Object[] }|null} */
+    /** @type {{ specs: Object[] }|null} */
     _deviceDiscoveryCollection;
 
     /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */

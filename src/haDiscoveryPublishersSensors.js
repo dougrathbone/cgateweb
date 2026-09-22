@@ -39,6 +39,8 @@ const TEMPERATURE_ENTITY = {
 const MEASUREMENT_ENTITY = {
     component: HA_COMPONENT_SENSOR,
     model: 'C-Bus Measurement Sensor',
+    deviceId: (networkId, appId, device) => `cgateweb_${networkId}_${appId}_${device}`,
+    deviceName: (networkId, appId, device) => `C-Bus Measurement ${networkId}/${appId}/${device}`,
     fallbackLabel: (networkId, appId, device, channel) =>
         `CBus Measurement ${networkId}/${appId}/${device}/${channel}`,
     fields: (networkId, appId, device, channel, reading) => ({
@@ -301,7 +303,7 @@ class _HaDiscoveryPublishersSensors {
             || device === null || device === undefined || channel === null || channel === undefined) return false;
 
         const key = `${network}/${appId}/${device}/${channel}`;
-        const deviceId = `cgateweb_${network}_${appId}_${device}`;
+        const deviceId = MEASUREMENT_ENTITY.deviceId(network, appId, device);
         const uniqueId = `${deviceId}_${channel}`;
         return this._ensureEventDrivenEntity({
             key,
@@ -314,7 +316,7 @@ class _HaDiscoveryPublishersSensors {
                 this._retractDeviceDiscoveryComponent(deviceId, uniqueId, {
                     component: HA_COMPONENT_SENSOR,
                     deviceIdentifiers: [deviceId],
-                    deviceName: `C-Bus Measurement ${network}/${appId}/${device}`,
+                    deviceName: MEASUREMENT_ENTITY.deviceName(network, appId, device),
                     model: MEASUREMENT_ENTITY.model
                 });
             },
@@ -352,8 +354,8 @@ class _HaDiscoveryPublishersSensors {
             // attach every channel from the same source device to one HA device.
             name: finalLabel,
             fields: MEASUREMENT_ENTITY.fields(networkId, appId, device, channel, reading),
-            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_${device}`],
-            deviceName: `C-Bus Measurement ${networkId}/${appId}/${device}`,
+            deviceIdentifiers: [MEASUREMENT_ENTITY.deviceId(networkId, appId, device)],
+            deviceName: MEASUREMENT_ENTITY.deviceName(networkId, appId, device),
             model: MEASUREMENT_ENTITY.model,
             logInfo: `Measurement sensor entity published: ${labelKey} (${finalLabel})`
         });
