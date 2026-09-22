@@ -305,7 +305,7 @@ class _HaDiscoveryPublishersSensors {
     _createMeasurementDiscovery(networkId, appId, device, channel, reading) {
         const groupId = `${device}_${channel}`;
         const labelKey = `${networkId}/${appId}/${device}/${channel}`;
-        const { finalLabel, uniqueId, entityId, area, discoveryTopic } = this._resolveEntityIdentity({
+        const { finalLabel, uniqueId, entityId, discoveryTopic } = this._resolveEntityIdentity({
             networkId, appId, groupId, labelKey,
             component: MEASUREMENT_ENTITY.component,
             fallbackLabel: MEASUREMENT_ENTITY.fallbackLabel(networkId, appId, device, channel)
@@ -314,11 +314,14 @@ class _HaDiscoveryPublishersSensors {
         this._finishEventDrivenEntity({
             discoveryTopic, uniqueId, entityId,
             component: MEASUREMENT_ENTITY.component,
+            // A measurement device can expose several channels (power, energy,
+            // voltage, current, ...). Keep the channel label on the entity, but
+            // attach every channel from the same source device to one HA device.
+            name: finalLabel,
             fields: MEASUREMENT_ENTITY.fields(networkId, appId, device, channel, reading),
-            deviceIdentifiers: [uniqueId],
-            deviceName: finalLabel,
+            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_${device}`],
+            deviceName: `C-Bus Measurement ${networkId}/${appId}/${device}`,
             model: MEASUREMENT_ENTITY.model,
-            area,
             logInfo: `Measurement sensor entity published: ${labelKey} (${finalLabel})`
         });
     }
