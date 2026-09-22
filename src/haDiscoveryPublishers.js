@@ -6,6 +6,7 @@ const {
     MQTT_TOPIC_PREFIX_WRITE,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_TOPIC_STATUS,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_BINARY_SENSOR,
     HA_DISCOVERY_SUFFIX,
@@ -322,6 +323,9 @@ class _HaDiscoveryPublishers {
             ...(entityId && entityIdFields(component, entityId)),
             ...fields,
             qos: 0,
+            availability_topic: MQTT_TOPIC_STATUS,
+            payload_available: 'Online',
+            payload_not_available: 'Offline',
             device: buildDeviceBlock({
                 identifiers: deviceIdentifiers,
                 name: deviceName,

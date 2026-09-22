@@ -285,6 +285,9 @@ describe('HaDiscovery', () => {
             publishTree(haDiscovery);
             const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/cover/cgateweb_254_203_15/config');
             expect(payload).toBeDefined();
+            expect(payload.availability_topic).toBe('hello/cgateweb');
+            expect(payload.payload_available).toBe('Online');
+            expect(payload.payload_not_available).toBe('Offline');
             expect(payload.device_class).toBe('shutter');
             expect(payload.position_topic).toBe('cbus/read/254/203/15/position');
             expect(payload.set_position_topic).toBe('cbus/write/254/203/15/position');
