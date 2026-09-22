@@ -219,6 +219,9 @@ class _HaDiscoveryPublishersAircon {
      */
     _finishTreeEntity;
 
+    /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */
+    _withDeviceDiscovery;
+
     /**
      * Read/write topic bases (implemented in haDiscoveryPublishers).
      * @type {(networkId: string|number, appId: string|number, address: string|number) => { readBase: string, writeBase: string }}
@@ -281,7 +284,16 @@ class _HaDiscoveryPublishersAircon {
                     this._retractEventDrivenConfig(topic);
                 }
             },
-            create: () => this._createNativeAirconDiscovery(String(network), String(appId), String(sourceUnit))
+            create: () => {
+                const networkId = String(network);
+                const applicationId = String(appId);
+                const unitId = String(sourceUnit);
+                this._withDeviceDiscovery(
+                    `cgateweb_${networkId}_${applicationId}_${unitId}`,
+                    'event',
+                    () => this._createNativeAirconDiscovery(networkId, applicationId, unitId)
+                );
+            }
         });
     }
 
@@ -364,6 +376,7 @@ class _HaDiscoveryPublishersAircon {
         const base = `cgateweb_${network}_${appId}_${sourceUnit}`;
         const prefix = this.settings.ha_discovery_prefix;
         return [
+            `${prefix}/device/${base}/${HA_DISCOVERY_SUFFIX}`,
             `${prefix}/${HA_COMPONENT_CLIMATE}/${base}/${HA_DISCOVERY_SUFFIX}`,
             ...NATIVE_AIRCON_BINARY_SENSORS.map(def =>
                 `${prefix}/${HA_COMPONENT_BINARY_SENSOR}/${base}_${def.suffix}/${HA_DISCOVERY_SUFFIX}`),

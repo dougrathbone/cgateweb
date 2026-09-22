@@ -33,7 +33,9 @@ describe('HaBridgeDiagnostics', () => {
     test('publishes discovery and state on first publishNow call', () => {
         diagnostics.publishNow('test');
 
-        expect(publishFn).toHaveBeenCalledTimes(19); // 9 discovery + 9 state + 1 consolidated stats
+        // 9 legacy configs + 9 migration markers + 1 device config + 9 legacy
+        // clears + 9 states + 1 consolidated stats.
+        expect(publishFn).toHaveBeenCalledTimes(38);
         expect(publishFn).toHaveBeenCalledWith(
             'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
             expect.any(String),
@@ -84,9 +86,9 @@ describe('HaBridgeDiagnostics', () => {
 
         diagnostics.republishDiscovery();
 
-        expect(publishFn).toHaveBeenCalledTimes(9); // 9 discovery configs only
+        expect(publishFn).toHaveBeenCalledTimes(1); // bundled device config only
         expect(publishFn).toHaveBeenCalledWith(
-            'homeassistant/binary_sensor/cgateweb_bridge_ready/config',
+            'homeassistant/device/cgateweb_bridge/config',
             expect.any(String),
             { retain: true, qos: 0 }
         );
@@ -111,6 +113,27 @@ describe('HaBridgeDiagnostics', () => {
         );
         disabled.republishDiscovery();
         expect(publishFn).not.toHaveBeenCalled();
+    });
+
+    test('migrates bridge diagnostics into one device discovery payload', () => {
+        diagnostics.publishNow('test');
+
+        const deviceCall = publishFn.mock.calls.find(
+            c => c[0] === 'homeassistant/device/cgateweb_bridge/config'
+        );
+        expect(deviceCall).toBeDefined();
+        const payload = JSON.parse(deviceCall[1]);
+        expect(Object.keys(payload.components)).toHaveLength(9);
+        expect(payload.components.cgateweb_bridge_ready.platform).toBe('binary_sensor');
+        expect(payload.components.cgateweb_bridge_ready.unique_id).toBe('cgateweb_bridge_ready');
+        expect(payload.device.identifiers).toEqual(['cgateweb_bridge']);
+        expect(payload.availability_topic).toBe('hello/cgateweb');
+
+        const readyTopicCalls = publishFn.mock.calls.filter(
+            c => c[0] === 'homeassistant/binary_sensor/cgateweb_bridge_ready/config'
+        );
+        expect(JSON.parse(readyTopicCalls[1][1])).toEqual({ migrate_discovery: true });
+        expect(readyTopicCalls[2][1]).toBe('');
     });
 
     test('does not publish when disabled', () => {

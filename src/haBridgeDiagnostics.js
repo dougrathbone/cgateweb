@@ -3,6 +3,7 @@ const fs = require('fs');
 const { createLogger } = require('./logger');
 const { MQTT_TOPIC_STATUS, MQTT_RETAINED_STATE_OPTIONS, entityIdFields, HA_COMPONENT_SENSOR, HA_COMPONENT_BINARY_SENSOR, HA_DEVICE_VIA } = require('./constants');
 const { resolveClampedSetting } = require('./config/schema');
+const { buildOriginBlock } = require('./haDiscoveryPayloads');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
 
@@ -81,32 +82,67 @@ class HaBridgeDiagnostics {
             { key: 'web_listening', component: HA_COMPONENT_BINARY_SENSOR, name: 'Web UI Listening', icon: 'mdi:web' }
         ];
 
+        const components = {};
+        const legacyTopics = [];
+        const migrateLegacyTopics = !this._discoveryPublished;
         for (const entity of diagnostics) {
-            const topic = `${this.settings.ha_discovery_prefix}/${entity.component}/cgateweb_bridge_${entity.key}/config`;
+            const uniqueId = `cgateweb_bridge_${entity.key}`;
+            const topic = `${this.settings.ha_discovery_prefix}/${entity.component}/${uniqueId}/config`;
             const stateTopic = `cbus/read/bridge/diagnostics/${entity.key}/state`;
-            const payload = {
+            components[uniqueId] = {
+                platform: entity.component,
                 name: entity.name,
-                unique_id: `cgateweb_bridge_${entity.key}`,
-                ...entityIdFields(entity.component, `cgateweb_bridge_${entity.key}`),
+                unique_id: uniqueId,
+                ...entityIdFields(entity.component, uniqueId),
                 state_topic: stateTopic,
-                availability_topic: MQTT_TOPIC_STATUS,
-                payload_available: 'Online',
-                payload_not_available: 'Offline',
                 entity_category: 'diagnostic',
                 ...(entity.enabledByDefault === false && { enabled_by_default: false }),
                 icon: entity.icon,
                 ...(entity.component === HA_COMPONENT_BINARY_SENSOR && {
                     payload_on: 'ON',
                     payload_off: 'OFF'
-                }),
-                device: {
-                    identifiers: [HA_DEVICE_VIA],
-                    name: 'cgateweb Bridge',
-                    manufacturer: 'Clipsal C-Bus via cgateweb',
-                    model: 'Bridge Diagnostics'
-                }
+                })
             };
-            this._publish(topic, JSON.stringify(payload), MQTT_RETAINED_STATE_OPTIONS);
+            legacyTopics.push(topic);
+            if (migrateLegacyTopics) {
+                this._publish(topic, JSON.stringify({
+                    ...components[uniqueId],
+                    platform: undefined,
+                    availability_topic: MQTT_TOPIC_STATUS,
+                    payload_available: 'Online',
+                    payload_not_available: 'Offline',
+                    device: {
+                        identifiers: [HA_DEVICE_VIA],
+                        name: 'cgateweb Bridge',
+                        manufacturer: 'Clipsal C-Bus via cgateweb',
+                        model: 'Bridge Diagnostics'
+                    },
+                    origin: buildOriginBlock()
+                }), MQTT_RETAINED_STATE_OPTIONS);
+                this._publish(topic, JSON.stringify({ migrate_discovery: true }), MQTT_RETAINED_STATE_OPTIONS);
+            }
+        }
+
+        const deviceTopic = `${this.settings.ha_discovery_prefix}/device/${HA_DEVICE_VIA}/config`;
+        this._publish(deviceTopic, JSON.stringify({
+            device: {
+                identifiers: [HA_DEVICE_VIA],
+                name: 'cgateweb Bridge',
+                manufacturer: 'Clipsal C-Bus via cgateweb',
+                model: 'Bridge Diagnostics'
+            },
+            origin: buildOriginBlock(),
+            components,
+            availability_topic: MQTT_TOPIC_STATUS,
+            payload_available: 'Online',
+            payload_not_available: 'Offline',
+            qos: 0
+        }), MQTT_RETAINED_STATE_OPTIONS);
+
+        if (migrateLegacyTopics) {
+            for (const topic of legacyTopics) {
+                this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+            }
         }
     }
 

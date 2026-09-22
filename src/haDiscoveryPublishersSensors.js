@@ -93,6 +93,12 @@ class _HaDiscoveryPublishersSensors {
      */
     _finishEventDrivenEntity;
 
+    /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */
+    _withDeviceDiscovery;
+
+    /** @type {(deviceId: string, uniqueId: string, fallback?: Object) => void} */
+    _retractDeviceDiscoveryComponent;
+
     /**
      * @type {(topic: string) => void}
      */
@@ -151,8 +157,19 @@ class _HaDiscoveryPublishersSensors {
                         this._clockTopic(this._clockUniqueId(String(network), String(appId), variant.id))
                     );
                 }
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/device/cgateweb_network_${network}/${HA_DISCOVERY_SUFFIX}`
+                );
             },
-            create: () => this._createClockDiscovery(String(network), String(appId))
+            create: () => {
+                const networkId = String(network);
+                const applicationId = String(appId);
+                this._withDeviceDiscovery(
+                    `cgateweb_network_${networkId}`,
+                    'event',
+                    () => this._createClockDiscovery(networkId, applicationId)
+                );
+            }
         });
     }
 
@@ -284,14 +301,30 @@ class _HaDiscoveryPublishersSensors {
             || device === null || device === undefined || channel === null || channel === undefined) return false;
 
         const key = `${network}/${appId}/${device}/${channel}`;
+        const deviceId = `cgateweb_${network}_${appId}_${device}`;
+        const uniqueId = `${deviceId}_${channel}`;
         return this._ensureEventDrivenEntity({
             key,
             seen: this._measurementSeen,
             describe: `measurement channel ${key}`,
-            retract: () => this._retractEventDrivenConfig(
-                `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_${device}_${channel}/${HA_DISCOVERY_SUFFIX}`
-            ),
-            create: () => this._createMeasurementDiscovery(String(network), String(appId), String(device), String(channel), reading)
+            retract: () => {
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`
+                );
+                this._retractDeviceDiscoveryComponent(deviceId, uniqueId, {
+                    component: HA_COMPONENT_SENSOR,
+                    deviceIdentifiers: [deviceId],
+                    deviceName: `C-Bus Measurement ${network}/${appId}/${device}`,
+                    model: MEASUREMENT_ENTITY.model
+                });
+            },
+            create: () => this._withDeviceDiscovery(
+                deviceId,
+                'event',
+                () => this._createMeasurementDiscovery(
+                    String(network), String(appId), String(device), String(channel), reading
+                )
+            )
         });
     }
 

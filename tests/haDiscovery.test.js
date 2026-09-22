@@ -370,6 +370,34 @@ describe('HaDiscovery', () => {
             expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
         });
 
+        it('migrates trigger entities into one device discovery payload', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            publishTree(haDiscovery);
+
+            const deviceCall = mockPublishFn.mock.calls.find(
+                c => c[0] === 'testhomeassistant/device/cgateweb_254_203_15/config'
+            );
+            expect(deviceCall).toBeDefined();
+            const payload = JSON.parse(deviceCall[1]);
+            expect(Object.keys(payload.components)).toEqual([
+                'cgateweb_254_203_15',
+                'cgateweb_254_203_15_btn',
+                'cgateweb_254_203_15_scene'
+            ]);
+            expect(payload.components.cgateweb_254_203_15.platform).toBe('event');
+            expect(payload.components.cgateweb_254_203_15_btn.platform).toBe('button');
+            expect(payload.components.cgateweb_254_203_15_scene.platform).toBe('scene');
+            expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
+
+            const legacyCalls = mockPublishFn.mock.calls.filter(
+                c => c[0] === 'testhomeassistant/event/cgateweb_254_203_15/config'
+            );
+            expect(JSON.parse(legacyCalls[1][1])).toEqual({ migrate_discovery: true });
+            expect(legacyCalls[2][1]).toBe('');
+        });
+
         it('should publish both event and button entities for each trigger group', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
@@ -378,10 +406,10 @@ describe('HaDiscovery', () => {
 
             // There are 4 groups in app 203 — expect 4 event + 4 button entities
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             expect(eventCalls.length).toBe(4);
             expect(buttonCalls.length).toBe(4);
@@ -2156,7 +2184,7 @@ describe('HaDiscovery', () => {
 
             haDiscovery.ensureNativeAirconDiscovery('254', '172', '56');
             haDiscovery.ensureNetworkConnectivityDiscovery('254');
-            const climateTopic = 'testhomeassistant/climate/cgateweb_254_172_56/config';
+            const climateTopic = 'testhomeassistant/device/cgateweb_254_172_56/config';
             const cniTopic = 'testhomeassistant/binary_sensor/cgateweb_254_cni/config';
             expect(haDiscovery._publishedTopics.has(climateTopic)).toBe(true);
             expect(haDiscovery._publishedTopics.has(cniTopic)).toBe(true);
@@ -2213,12 +2241,8 @@ describe('HaDiscovery', () => {
             mockSettings.ha_discovery_scene_enabled = true;
             publishTree(haDiscovery);
 
-            const btnTopic = 'testhomeassistant/button/cgateweb_254_203_15_btn/config';
-            const sceneTopic = 'testhomeassistant/scene/cgateweb_254_203_15_scene/config';
-            const eventTopic = 'testhomeassistant/event/cgateweb_254_203_15/config';
-            expect(haDiscovery._publishedTopics.has(btnTopic)).toBe(true);
-            expect(haDiscovery._publishedTopics.has(sceneTopic)).toBe(true);
-            expect(haDiscovery._publishedTopics.has(eventTopic)).toBe(true);
+            const deviceTopic = 'testhomeassistant/device/cgateweb_254_203_15/config';
+            expect(haDiscovery._publishedTopics.has(deviceTopic)).toBe(true);
 
             haDiscovery.updateLabels({
                 labels: new Map(),
@@ -2229,11 +2253,9 @@ describe('HaDiscovery', () => {
             mockPublishFn.mockClear();
             publishTree(haDiscovery);
 
-            for (const topic of [btnTopic, sceneTopic, eventTopic]) {
-                const cleanup = mockPublishFn.mock.calls.find(c => c[0] === topic && c[1] === '');
-                expect(cleanup).toBeDefined();
-                expect(haDiscovery._publishedTopics.has(topic)).toBe(false);
-            }
+            const cleanup = mockPublishFn.mock.calls.find(c => c[0] === deviceTopic && c[1] === '');
+            expect(cleanup).toBeDefined();
+            expect(haDiscovery._publishedTopics.has(deviceTopic)).toBe(false);
         });
 
         it('should clear the old light topic when a device changes type from light to cover across runs', () => {
@@ -2594,13 +2616,13 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             const sceneCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/scene/') && c[0].endsWith('/config')
+                c => c[0].includes('/scene/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             // 2 trigger groups → 2 event + 2 button + 2 scene entities
             expect(eventCalls.length).toBe(2);
@@ -2615,16 +2637,16 @@ describe('HaDiscovery', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const sceneCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/scene/') && c[0].endsWith('/config')
+                c => c[0].includes('/scene/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             expect(sceneCalls.length).toBe(0);
 
             // But event and button entities should still be published
             const eventCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/event/') && c[0].endsWith('/config')
+                c => c[0].includes('/event/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             const buttonCalls = mockPublishFn.mock.calls.filter(
-                c => c[0].includes('/button/') && c[0].endsWith('/config')
+                c => c[0].includes('/button/') && c[0].endsWith('/config') && c[1].includes('"unique_id"')
             );
             expect(eventCalls.length).toBe(2);
             expect(buttonCalls.length).toBe(2);
@@ -3223,9 +3245,8 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d.ensureSecurityPanelDiscovery('254', '208');
         publishFn.mockClear();
 
-        // 2 zones × (zone + loop-fault) + 9 panel conditions + 1 alarm
-        // + 1 password-entry + 1 bypassed-zones
-        expect(d.republishDiscoveryConfigs()).toBe(16);
+        // 2 zones × (zone + loop-fault), plus one bundled panel device config.
+        expect(d.republishDiscoveryConfigs()).toBe(5);
     });
 
     it('does not replay a retracted config', () => {

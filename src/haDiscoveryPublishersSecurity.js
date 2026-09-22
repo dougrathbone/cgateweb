@@ -83,6 +83,9 @@ class _HaDiscoveryPublishersSecurity {
      */
     _finishEventDrivenEntity;
 
+    /** @type {(deviceId: string, mode: 'tree'|'event', createComponents: () => void) => void} */
+    _withDeviceDiscovery;
+
     /**
      * Event-driven discovery for C-Bus Security (app 208) zones. Called
      * whenever a zone event or status report mentions a zone; announces the
@@ -210,8 +213,19 @@ class _HaDiscoveryPublishersSecurity {
                 this._retractEventDrivenConfig(
                     `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_SENSOR}/cgateweb_${network}_${appId}_bypassed_zones/${HA_DISCOVERY_SUFFIX}`
                 );
+                this._retractEventDrivenConfig(
+                    `${this.settings.ha_discovery_prefix}/device/cgateweb_${network}_${appId}_panel/${HA_DISCOVERY_SUFFIX}`
+                );
             },
-            create: () => this._createSecurityPanelDiscovery(String(network), String(appId))
+            create: () => {
+                const networkId = String(network);
+                const applicationId = String(appId);
+                this._withDeviceDiscovery(
+                    `cgateweb_${networkId}_${applicationId}_panel`,
+                    'event',
+                    () => this._createSecurityPanelDiscovery(networkId, applicationId)
+                );
+            }
         });
     }
 

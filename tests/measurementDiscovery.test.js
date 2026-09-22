@@ -72,20 +72,33 @@ describe('HaDiscovery — app 228 measurement sensors', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(false);
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '1', reading)).toBe(true);
-        const configCalls = publishFn.mock.calls.filter(c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config');
+        const configCalls = publishFn.mock.calls.filter(
+            c => c[0] === 'homeassistant/sensor/cgateweb_254_228_0_0/config'
+                && c[1].includes('"unique_id"')
+        );
         expect(configCalls).toHaveLength(1);
 
         const channel0 = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_0/config');
         const channel1 = findDiscoveryPayload(publishFn, 'homeassistant/sensor/cgateweb_254_228_0_1/config');
         expect(channel0.device.identifiers).toEqual(channel1.device.identifiers);
         expect(channel0.unique_id).not.toBe(channel1.unique_id);
+
+        const deviceCalls = publishFn.mock.calls.filter(
+            c => c[0] === 'homeassistant/device/cgateweb_254_228_0/config'
+        );
+        const bundled = JSON.parse(deviceCalls[deviceCalls.length - 1][1]);
+        expect(Object.keys(bundled.components)).toEqual([
+            'cgateweb_254_228_0_0',
+            'cgateweb_254_228_0_1'
+        ]);
+        expect(bundled.components.cgateweb_254_228_0_0.platform).toBe('sensor');
     });
 
     it('does not collide across different devices sharing the same channel number', () => {
         expect(d.ensureMeasurementDiscovery('254', '228', '0', '0', reading)).toBe(true);
         expect(d.ensureMeasurementDiscovery('254', '228', '1', '0', reading)).toBe(true);
         const uniqueIds = publishFn.mock.calls
-            .filter(c => c[0].startsWith('homeassistant/sensor/'))
+            .filter(c => c[0].startsWith('homeassistant/sensor/') && c[1].includes('"unique_id"'))
             .map(c => JSON.parse(c[1]).unique_id);
         expect(new Set(uniqueIds).size).toBe(uniqueIds.length);
     });

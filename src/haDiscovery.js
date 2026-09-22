@@ -170,6 +170,13 @@ class HaDiscovery {
         // connectivity sensors vanish whenever a tree refresh runs after they
         // were announced. Tracked here so the cleanup can skip them.
         this._eventDrivenDiscoveryTopics = new Set();
+
+        // Temporary collector used while publishing a known multi-entity
+        // device. The publisher mixin turns the collected component payloads
+        // into one Home Assistant MQTT device-discovery message.
+        this._deviceDiscoveryCollection = null;
+        this._deviceDiscoveryComponents = new Map();
+        this._deviceDiscoveryMigratedTopics = new Set();
     }
 
     /**
