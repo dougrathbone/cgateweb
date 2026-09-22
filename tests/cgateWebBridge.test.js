@@ -1040,6 +1040,20 @@ describe('CgateWebBridge', () => {
                 securitySpy.mockRestore();
             });
 
+            it('restarts polls a pre-sync 401 stopped on that network (#122)', () => {
+                const resumeSpy = jest.spyOn(bridge.initializationService, 'resumeStoppedPolls');
+                bridge.haDiscovery = {
+                    handleNetworkSyncComplete: jest.fn(),
+                    syncUnlistedGroupDiscovery: jest.fn(),
+                    republishDiscoveryConfigs: jest.fn(() => 0)
+                };
+
+                bridge._processEventLine('20260718-123456.789 762 //TestProject/254 Network sync ok');
+
+                expect(resumeSpy).toHaveBeenCalledWith('254');
+                resumeSpy.mockRestore();
+            });
+
             it('runs all post-sync effects on the command-port 762 path', () => {
                 // Command-port async event: CommandResponseProcessor invokes the
                 // wired onNetworkSyncComplete callback with the network id; it
