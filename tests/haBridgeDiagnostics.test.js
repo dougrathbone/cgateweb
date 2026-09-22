@@ -65,6 +65,19 @@ describe('HaBridgeDiagnostics', () => {
         );
     });
 
+    test('defaults noisy operational diagnostics to disabled', () => {
+        diagnostics.publishNow('test');
+
+        for (const key of ['command_queue_depth', 'reconnect_indicator']) {
+            const call = publishFn.mock.calls.find(c => c[0].includes(`cgateweb_bridge_${key}/config`));
+            expect(call).toBeDefined();
+            expect(JSON.parse(call[1]).enabled_by_default).toBe(false);
+        }
+
+        const ready = publishFn.mock.calls.find(c => c[0].includes('cgateweb_bridge_ready/config'));
+        expect(JSON.parse(ready[1]).enabled_by_default).toBeUndefined();
+    });
+
     test('republishes discovery on broker reconnect (republishDiscovery)', () => {
         diagnostics.publishNow('first');
         publishFn.mockClear();

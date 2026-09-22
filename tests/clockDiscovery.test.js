@@ -44,6 +44,8 @@ describe('HaDiscovery — app 223 network clock sensors', () => {
         d.ensureClockDiscovery('254', '223');
         expect(payloadAt(DATE_TOPIC).entity_category).toBe('diagnostic');
         expect(payloadAt(TIME_TOPIC).entity_category).toBe('diagnostic');
+        expect(payloadAt(DATE_TOPIC).enabled_by_default).toBe(false);
+        expect(payloadAt(TIME_TOPIC).enabled_by_default).toBe(false);
     });
 
     // The deliberate omission. HA's timestamp device_class demands an ISO 8601

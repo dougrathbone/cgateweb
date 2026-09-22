@@ -399,6 +399,7 @@ class _HaDiscoveryPublishersAircon {
                 fields: {
                     ...(def.deviceClass && { device_class: def.deviceClass }),
                     ...(def.entityCategory && { entity_category: def.entityCategory }),
+                    ...(def.entityCategory === 'diagnostic' && { enabled_by_default: false }),
                     state_topic: `${readBase}/${def.topicSuffix}`,
                     payload_on: MQTT_STATE_ON,
                     payload_off: MQTT_STATE_OFF
@@ -419,6 +420,7 @@ class _HaDiscoveryPublishersAircon {
                 name: def.name,
                 fields: {
                     entity_category: 'diagnostic',
+                    enabled_by_default: false,
                     state_topic: `${readBase}/${def.topicSuffix}`,
                     ...(def.unit && { unit_of_measurement: def.unit }),
                     ...(def.stateClass && { state_class: def.stateClass })

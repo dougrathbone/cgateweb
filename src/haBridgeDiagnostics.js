@@ -75,8 +75,8 @@ class HaBridgeDiagnostics {
             { key: 'mqtt_connected', component: HA_COMPONENT_BINARY_SENSOR, name: 'MQTT Connected', icon: 'mdi:lan-connect' },
             { key: 'event_connected', component: HA_COMPONENT_BINARY_SENSOR, name: 'Event Connection', icon: 'mdi:lan-connect' },
             { key: 'command_pool_healthy', component: HA_COMPONENT_SENSOR, name: 'Healthy Command Connections', icon: 'mdi:pool' },
-            { key: 'command_queue_depth', component: HA_COMPONENT_SENSOR, name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out' },
-            { key: 'reconnect_indicator', component: HA_COMPONENT_SENSOR, name: 'Reconnect Indicator', icon: 'mdi:restart-alert' },
+            { key: 'command_queue_depth', component: HA_COMPONENT_SENSOR, name: 'Command Queue Depth', icon: 'mdi:queue-first-in-last-out', enabledByDefault: false },
+            { key: 'reconnect_indicator', component: HA_COMPONENT_SENSOR, name: 'Reconnect Indicator', icon: 'mdi:restart-alert', enabledByDefault: false },
             { key: 'cgate_version', component: HA_COMPONENT_SENSOR, name: 'C-Gate Version', icon: 'mdi:tag-outline' },
             { key: 'web_listening', component: HA_COMPONENT_BINARY_SENSOR, name: 'Web UI Listening', icon: 'mdi:web' }
         ];
@@ -93,6 +93,7 @@ class HaBridgeDiagnostics {
                 payload_available: 'Online',
                 payload_not_available: 'Offline',
                 entity_category: 'diagnostic',
+                ...(entity.enabledByDefault === false && { enabled_by_default: false }),
                 icon: entity.icon,
                 ...(entity.component === HA_COMPONENT_BINARY_SENSOR && {
                     payload_on: 'ON',

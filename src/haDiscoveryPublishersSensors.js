@@ -201,6 +201,7 @@ class _HaDiscoveryPublishersSensors {
                     // No device_class and no unit_of_measurement, deliberately —
                     // see the note on ensureClockDiscovery.
                     entity_category: 'diagnostic',
+                    enabled_by_default: false,
                     icon: variant.icon
                 },
                 deviceIdentifiers: [`cgateweb_network_${networkId}`],

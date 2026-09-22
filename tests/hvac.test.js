@@ -615,10 +615,12 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         // §25.6.6 bit 3 is defined as Closed/Open, which is what 'opening' means.
         expect(damper.device_class).toBe('opening');
         expect(damper.entity_category).toBe('diagnostic');
+        expect(damper.enabled_by_default).toBe(false);
 
         const busy = companionPayload(mockPublishFn.mock.calls, 'binary_sensor', 'busy');
         expect(busy.state_topic).toBe('cbus/read/254/172/201/busy');
         expect(busy.entity_category).toBe('diagnostic');
+        expect(busy.enabled_by_default).toBe(false);
         // No device_class: 'running' would contradict hvac_action, and nothing
         // else in HA means "busy". Omitting beats guessing.
         expect(busy.device_class).toBeUndefined();
@@ -648,6 +650,7 @@ describe('HaDiscovery — native Air Conditioning (172) event-driven discovery',
         expect(payload.unique_id).toBe(`cgateweb_254_172_201_${suffix}`);
         expect(payload.state_topic).toBe(`cbus/read/254/172/201/${topicSuffix}`);
         expect(payload.entity_category).toBe('diagnostic');
+        expect(payload.enabled_by_default).toBe(false);
         // All of these are readouts; none gets a command topic.
         expect(payload.command_topic).toBeUndefined();
     });

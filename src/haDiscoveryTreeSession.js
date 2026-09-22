@@ -339,6 +339,7 @@ class _HaDiscoveryTreeSession {
             payload_available: 'Online',
             payload_not_available: 'Offline',
             entity_category: 'diagnostic',
+            enabled_by_default: false,
             icon: 'mdi:radar',
             device: {
                 identifiers: [HA_DEVICE_VIA],

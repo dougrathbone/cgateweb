@@ -290,6 +290,7 @@ describe('HA Discovery e2e (real processor + real haDiscovery)', () => {
         expect(payload.unique_id).toBe('cgateweb_discovery_254');
         expect(payload.state_topic).toBe('cbus/read/254///discovery_status');
         expect(payload.entity_category).toBe('diagnostic');
+        expect(payload.enabled_by_default).toBe(false);
         expect(payload.availability_topic).toBe('hello/cgateweb');
         expect(payload.payload_available).toBe('Online');
         expect(payload.payload_not_available).toBe('Offline');
