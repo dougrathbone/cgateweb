@@ -68,6 +68,10 @@ class BridgeInitializationService {
         this._cniMonitorTimer = null;
         this._onLabelsChanged = null;
         this._perAppTimers = new Map();
+        // network/app pairs whose poll a 401 stopped, kept so a network that
+        // was merely still syncing can have its poll restored once C-Gate says
+        // it has finished. @type {Set<string>}
+        this._pollsStoppedAsNotFound = new Set();
     }
 
     /**
@@ -270,6 +274,9 @@ class BridgeInitializationService {
             clearInterval(handle);
         }
         this._perAppTimers.clear();
+        // A fresh schedule supersedes whatever an earlier session's 401s
+        // retired; those pairs have live timers again.
+        this._pollsStoppedAsNotFound.clear();
 
         for (const netapp of getallNetworks) {
             const appId = netapp.split('/')[1];
@@ -574,8 +581,42 @@ class BridgeInitializationService {
         if (this._perAppTimers.has(netapp)) {
             clearInterval(this._perAppTimers.get(netapp));
             this._perAppTimers.delete(netapp);
-            this.logger.warn(`Stopped periodic poll for ${netapp}: app not found on C-Bus system (401). Remove it from your configuration to suppress this message.`);
+            this._pollsStoppedAsNotFound.add(netapp);
+            this.logger.warn(`Stopped periodic poll for ${netapp}: app not found on C-Bus system (401). If the network is still syncing this resumes once C-Gate reports it synced; otherwise remove it from your configuration to suppress this message.`);
         }
+    }
+
+    /**
+     * Restart any per-app poll a 401 stopped on this network.
+     *
+     * The startup getall races C-Gate loading the project: until the network
+     * has synced, C-Gate answers "401 Object not found" for every group on it,
+     * which looked exactly like an app that does not exist and retired the
+     * poll for the rest of the session. A network that reports sync complete
+     * (C-Gate 762) has since produced the groups, so the earlier 401 said
+     * nothing about whether the app is real — re-arm and let the next poll
+     * decide. A genuinely absent app 401s again and stops again, once per
+     * sync rather than on a loop.
+     *
+     * @param {string|number} networkId
+     * @returns {string[]} the network/app pairs whose poll was restarted
+     */
+    resumeStoppedPolls(networkId) {
+        const id = String(networkId).match(/\d+/)?.[0];
+        if (!id) return [];
+        const resumed = [];
+        for (const netapp of [...this._pollsStoppedAsNotFound]) {
+            if (!netapp.startsWith(`${id}/`)) continue;
+            this._pollsStoppedAsNotFound.delete(netapp);
+            const intervalMs = this._getIntervalForApp(netapp.split('/')[1]);
+            if (!intervalMs) continue;
+            this._scheduleGetallForApp(netapp, intervalMs);
+            resumed.push(netapp);
+        }
+        if (resumed.length > 0) {
+            this.logger.info(`Network ${id} has synced, so the periodic poll stopped by a 401 during startup is running again for: ${resumed.join(', ')}`);
+        }
+        return resumed;
     }
 
     stop() {
@@ -588,6 +629,7 @@ class BridgeInitializationService {
             clearInterval(handle);
         }
         this._perAppTimers.clear();
+        this._pollsStoppedAsNotFound.clear();
 
         if (this._cniMonitorTimer) {
             clearInterval(this._cniMonitorTimer);

@@ -483,7 +483,9 @@ You don't. C-Gate already listens on its SSL ports inside the container. Since 1
 
 You do **not** need to edit any XML, and you do **not** need to put anything extra in `/share/cgate/tag/` beyond the project `.db` you already have there. Both are dead ends that cost earlier reporters time.
 
-**If Toolkit connects but shows only "topology" and reports "No Catalog Available":** Toolkit is talking to C-Gate but your project has no synchronised units for it to show. Check that the project's network connection method matches how it is really connected in managed mode (for a USB interface, the serial/COM interface rather than a CNI), then sync the network. The add-on's own log is a quick way to tell which side the problem is on: if its TreeXML fetch reports units, C-Gate knows your hardware and the issue is Toolkit-side; if the tree comes back empty, the project never synced.
+**If Toolkit connects but shows only "topology" and reports "No Catalog Available":** up to 1.34.13 this was the add-on's fault, not yours. It started C-Gate with `-s`, which makes C-Gate report `ServerMode=yes`; Toolkit reads that and loads the unit catalogue from its own machine instead of from the C-Gate it just connected to, then fails. Update the add-on and restart it — `get cgate ServerMode` should now answer `no` (#122).
+
+If it persists on a current version, the project genuinely has no synchronised units for Toolkit to show. Check that the project's network connection method matches how it is really connected in managed mode (for a USB interface, the serial/COM interface rather than a CNI), then sync the network. The add-on's own log is a quick way to tell which side the problem is on: if its TreeXML fetch reports units, C-Gate knows your hardware and the issue is Toolkit-side; if the tree comes back empty, the project never synced.
 
 > **Remember what mapping this port means.** C-Gate has no authentication beyond the address list, and `program` sits above `admin` in its access levels, so it also permits shutting C-Gate down. Map to a single specific address, never a subnet, and never expose it to the internet.
 

@@ -1019,6 +1019,75 @@ describe('BridgeInitializationService', () => {
         });
     });
 
+    // Issue #122: the startup getall races C-Gate loading the project, so an
+    // app that does exist answers 401 until its network has synced. Retiring
+    // the poll on that 401 left a fully working install with no periodic state
+    // refresh for the rest of the session.
+    describe('resumeStoppedPolls', () => {
+        async function serviceWithStoppedPoll(overrides = {}) {
+            const { bridge, commandQueueAdd } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254],
+                ...overrides
+            });
+            const svc = makeService(bridge);
+            await svc.handleAllConnected();
+            svc.handleCommandError('401', 'Bad object or device ID: //HOME/254/56/* (Object not found)');
+            expect(svc._perAppTimers.has('254/56')).toBe(false);
+            return { svc, commandQueueAdd };
+        }
+
+        it('restarts a poll the pre-sync 401 stopped once the network syncs', async () => {
+            const { svc, commandQueueAdd } = await serviceWithStoppedPoll();
+
+            expect(svc.resumeStoppedPolls('254')).toEqual(['254/56']);
+
+            jest.advanceTimersByTime(3600 * 1000);
+            expect(commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'))).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('leaves other networks alone', async () => {
+            const { svc } = await serviceWithStoppedPoll();
+
+            expect(svc.resumeStoppedPolls('1')).toEqual([]);
+            expect(svc._perAppTimers.has('254/56')).toBe(false);
+            svc.stop();
+        });
+
+        it('resumes only once, so an app that really is absent stops for good', async () => {
+            const { svc } = await serviceWithStoppedPoll();
+            svc.resumeStoppedPolls('254');
+
+            // The resumed poll 401s again: the app genuinely does not exist.
+            svc.handleCommandError('401', 'Bad object or device ID: //HOME/254/56/* (Object not found)');
+            svc.resumeStoppedPolls('254');
+            svc.handleCommandError('401', 'Bad object or device ID: //HOME/254/56/* (Object not found)');
+
+            expect(svc.resumeStoppedPolls('254')).toEqual(['254/56']);
+            svc.stop();
+        });
+
+        it('accepts the //PROJECT/254 form C-Gate uses in its sync event', async () => {
+            const { svc } = await serviceWithStoppedPoll();
+
+            expect(svc.resumeStoppedPolls('//HOME/254')).toEqual(['254/56']);
+            svc.stop();
+        });
+
+        it('does not resurrect a poll for an app whose interval is now zero', async () => {
+            const { svc, commandQueueAdd } = await serviceWithStoppedPoll();
+            svc.settings.getallperiod = 0;
+
+            expect(svc.resumeStoppedPolls('254')).toEqual([]);
+
+            jest.advanceTimersByTime(3600 * 1000);
+            expect(commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'))).toHaveLength(0);
+            svc.stop();
+        });
+    });
+
     describe('stop', () => {
         it('clears periodic interval on stop', async () => {
             const { bridge } = makeBridge({ getallonstart: false, getallperiod: 3600, getall_networks: [254] });

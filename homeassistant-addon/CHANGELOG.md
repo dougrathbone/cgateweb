@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.14] - 2026-09-22
+
+### Fixed
+
+- **C-Bus Toolkit can load the unit catalogue from the managed C-Gate again.** Restart the add-on if Toolkit showed "No Catalog Available". (#122)
+- **A state poll that a startup error stopped now resumes once the network finishes syncing.** (#122)
+- **Toolkit connects and disconnects are logged as session events instead of unhandled responses.**
+- **The command queue size limit comes from the configuration schema instead of a hardcoded value.**
+
+### Changed
+
+- **Discovered entities show as unavailable in Home Assistant while the bridge is offline.** (#128)
+- **Optional diagnostic entities are off by default.** Turn them back on with the bridge diagnostics and stale device detection options.
+- **Measurement channels appear under the device that reports them.**
+
 ## [1.34.13] - 2026-09-21
 
 ### Fixed

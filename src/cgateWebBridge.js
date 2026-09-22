@@ -728,6 +728,8 @@ class CgateWebBridge {
      *     (one post-762 pair per network per session)
      *   - lighting level resync: any startup getall that ran before the sync
      *     missed state (issue #44); debounced inside the coordinator
+     *   - periodic polls a pre-sync 401 retired: before the network synced,
+     *     C-Gate answered "Object not found" for apps that do exist (#122)
      *
      * @param {string} networkId
      * @private
@@ -741,6 +743,7 @@ class CgateWebBridge {
         if (this.haDiscovery) {
             this.haDiscovery.handleNetworkSyncComplete(networkId);
         }
+        this.initializationService.resumeStoppedPolls(networkId);
         this.securityEventHandler.requestStatusSync(networkId, 'sync');
         this.stateResyncCoordinator.requestResync('network-sync');
     }

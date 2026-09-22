@@ -11,7 +11,10 @@ if [[ "${CGATE_MODE}" != "managed" ]]; then
     exec sleep infinity
 fi
 
-CGATE_DIR="/data/cgate"
+# Overridable so the unit tests can run this script against a temp dir instead
+# of the real /data/cgate, the same seam cgate-install.sh uses. Unset in
+# production, so it always resolves to /data/cgate there.
+CGATE_DIR="${CGATE_DIR:-/data/cgate}"
 CGATE_JAR="${CGATE_DIR}/cgate.jar"
 
 if [[ ! -f "${CGATE_JAR}" ]]; then
@@ -29,6 +32,14 @@ bashio::log.info "  Event port: ${CGATE_EVENT_PORT}"
 
 cd "${CGATE_DIR}" || exit 1
 
+# No -s / --servermode. Its only server-side effect is a "Shutdown is not
+# recommended" warning before C-Gate shuts down anyway, but it also makes
+# C-Gate answer `get cgate ServerMode` with yes — and C-Bus Toolkit reads that
+# to decide where the unit catalogue comes from. With ServerMode=yes Toolkit
+# loads the catalogue locally instead of fetching it from this C-Gate, fails,
+# and shows "No Catalog Available" with no networks, even though C-Gate has the
+# project fully synced (#122). C-Gate stays up without it: s6 runs it with
+# stdin closed and the console reaching EOF does not stop the server.
 exec java \
     -Djava.awt.headless=true \
     -Djava.net.preferIPv4Stack=true \
@@ -36,5 +47,4 @@ exec java \
     -XX:TieredStopAtLevel=1 \
     -Xmx256m \
     -Xms64m \
-    -jar "${CGATE_JAR}" \
-    -s
+    -jar "${CGATE_JAR}"
