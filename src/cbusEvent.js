@@ -41,6 +41,7 @@ class CBusEvent {
         this._address = null;
         this._level = null;
         this._levelRaw = null; // Raw level value for tests
+        this._rampTimeMs = null; // Ramp duration in ms; null when absent, 0 when zero
         this._network = null;
         this._application = null;
         this._group = null;
@@ -106,6 +107,13 @@ class CBusEvent {
             this._levelRaw = this._extractLeadingInt(match[4]);
             this._level = this._levelRaw;
 
+            // Duration token immediately after the level (EVENT_REGEX does not
+            // capture it — leave address/level groups unchanged).
+            if (match[4] !== undefined && match[4] !== null) {
+                this._tryParseDurationAfter(match[0].length);
+            }
+            this._applyRamptimeKey();
+
             // Parse address into components
             if (!this._applyAddress(this._address)) {
                 this._logger.debug(`Missing address in C-Bus event: ${redactCgateLine(this._rawEvent)}`);
@@ -161,6 +169,11 @@ class CBusEvent {
                     // Plain integer level (e.g. "lighting ramp 254/56/4 128")
                     this._levelRaw = parseInt(levelToken, 10);
                     this._level = this._levelRaw;
+                    // Optional duration after the level ("255 4", "255 4s", "128 500ms").
+                    // Do not steal the level: the first digit token stays the level.
+                    if (fourthSpace !== -1) {
+                        this._tryParseDurationAfter(fourthSpace + 1);
+                    }
                 } else {
                     // Non-integer token (e.g. UUID in 730 events); prefer level=N key-value
                     // Search for ' level=' (space-prefixed) to avoid matching inside other keys
@@ -177,7 +190,75 @@ class CBusEvent {
             }
         }
 
+        this._applyRamptimeKey();
         return true;
+    }
+
+    /**
+     * Parse a duration token after the level. Bare integers and "Ns" are
+     * seconds; "Nms" is milliseconds. Returns null when the token is not a
+     * duration (so metadata like "#sourceunit=..." is never consumed).
+     *
+     * @param {string} token
+     * @returns {number|null} Duration in milliseconds, or null if not a duration
+     * @private
+     */
+    _parseDurationToken(token) {
+        if (!token) return null;
+        const msMatch = /^(\d+)ms$/i.exec(token);
+        if (msMatch) {
+            return parseInt(msMatch[1], 10);
+        }
+        const secMatch = /^(\d+)s$/i.exec(token);
+        if (secMatch) {
+            return parseInt(secMatch[1], 10) * 1000;
+        }
+        if (this._isDigits(token)) {
+            // Bare integer is seconds (C-Gate convention); 0 stays 0.
+            return parseInt(token, 10) * 1000;
+        }
+        return null;
+    }
+
+    /**
+     * Look for a duration token starting at `startIndex` (before any `#`
+     * metadata). Sets `_rampTimeMs` when a valid duration is found.
+     *
+     * @param {number} startIndex
+     * @private
+     */
+    _tryParseDurationAfter(startIndex) {
+        let i = startIndex;
+        while (i < this._rawEvent.length && this._rawEvent.charCodeAt(i) === 32) {
+            i += 1;
+        }
+        if (i >= this._rawEvent.length || this._rawEvent.charCodeAt(i) === 35) {
+            return;
+        }
+        let end = i;
+        while (end < this._rawEvent.length) {
+            const code = this._rawEvent.charCodeAt(end);
+            if (code === 32 || code === 35) break;
+            end += 1;
+        }
+        const ms = this._parseDurationToken(this._rawEvent.slice(i, end));
+        if (ms !== null) {
+            this._rampTimeMs = ms;
+        }
+    }
+
+    /**
+     * Apply a `ramptime=N` key (seconds) from anywhere in the raw line,
+     * including 730 events. Overrides any duration token already parsed.
+     * @private
+     */
+    _applyRamptimeKey() {
+        const idx = this._rawEvent.indexOf('ramptime=');
+        if (idx === -1) return;
+        const n = this._extractLeadingInt(this._rawEvent.slice(idx + 9));
+        if (n !== null) {
+            this._rampTimeMs = n * 1000;
+        }
     }
 
     _extractAddress(addressToken) {
@@ -415,6 +496,20 @@ class CBusEvent {
      */
     getLevel() {
         return this._level;
+    }
+
+    /**
+     * Ramp duration in milliseconds, when present on the event.
+     *
+     * Returns null when no duration was in the line (snap / unknown).
+     * Returns 0 when the duration is explicitly zero (immediate snap to target).
+     * Parsed from a token after the level ("4", "4s", "500ms") or from
+     * `ramptime=N` (seconds) anywhere in the raw line.
+     *
+     * @returns {number|null}
+     */
+    getRampTimeMs() {
+        return this._rampTimeMs;
     }
 
     /**

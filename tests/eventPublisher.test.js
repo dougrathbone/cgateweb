@@ -40,6 +40,11 @@ describe('EventPublisher', () => {
 
     afterEach(() => {
         jest.clearAllMocks();
+        if (eventPublisher) {
+            eventPublisher.shutdown();
+        }
+        jest.clearAllTimers();
+        jest.useRealTimers();
     });
 
     describe('publishEvent', () => {
@@ -117,6 +122,53 @@ describe('EventPublisher', () => {
                     expect.stringContaining(`C-Bus Status (Test): 254/56/16 ${debugSuffix}`)
                 );
             }
+        });
+
+        describe('lighting ramp interpolation (issue #129)', () => {
+            const levelPayloads = () => mockPublishFn.mock.calls
+                .filter((c) => c[0].endsWith('/level'))
+                .map((c) => c[1]);
+
+            it('does not jump to 100% on a positive-duration dim-up ramp', () => {
+                jest.useFakeTimers();
+
+                // Establish last published raw level 102 (~40%).
+                eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 102'), '(Test)');
+                mockPublishFn.mockClear();
+
+                eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 255 4'), '(Test)');
+
+                const immediateLevels = levelPayloads();
+                expect(immediateLevels).toContain('40');
+                expect(immediateLevels).not.toContain('100');
+
+                jest.advanceTimersByTime(4000);
+
+                const allLevels = levelPayloads().map(Number);
+                expect(allLevels[allLevels.length - 1]).toBe(100);
+                const mid = allLevels.filter((p) => p > 40 && p < 100);
+                expect(mid.length).toBeGreaterThan(0);
+                for (let i = 1; i < allLevels.length; i += 1) {
+                    expect(allLevels[i]).toBeGreaterThanOrEqual(allLevels[i - 1]);
+                }
+            });
+
+            it('still snaps immediately when ramp has no duration', () => {
+                eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/16 128'), '(Test)');
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/56/16/level', '50', mockMqttOptions
+                );
+            });
+
+            it('still publishes 100 for a bare lighting on', () => {
+                eventPublisher.publishEvent(new CBusEvent('lighting on 254/56/16'), '(Test)');
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/56/16/level', '100', mockMqttOptions
+                );
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/56/16/state', 'ON', mockMqttOptions
+                );
+            });
         });
 
         it.each([
