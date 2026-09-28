@@ -69,6 +69,11 @@ class HaDiscovery {
         this.treeNetwork = null;
         this.discoveryCount = 0;
         this.labelStats = { custom: 0, treexml: 0, fallback: 0 };
+        // Optional: (networkId) => void. Fired when a discovery run finishes
+        // with at least one entity so the bridge can resume polls a pre-sync
+        // 401 stopped even when C-Gate never emits event 762 (issue #122).
+        /** @type {((networkId: string|number) => void)|null} */
+        this.onNetworkDiscovered = null;
         this.logger = createLogger({ component: 'HaDiscovery' });
         // Tracks all discovery config topics published in this session so that
         // stale retained messages can be cleared when devices are excluded or change type.
@@ -771,6 +776,12 @@ class HaDiscovery {
             );
         } else {
             this.logger.info(`HA Discovery completed for network ${networkId}. Published ${this.discoveryCount} entities (took ${duration}ms). Labels: ${custom} custom, ${treexml} from TREEXML, ${fallback} fallback`);
+            // Entities mean the network is addressable. Resume any getall poll
+            // a startup 401 retired — discovery succeeding is strong evidence
+            // the network has loaded even when no 762 sync event arrives.
+            if (typeof this.onNetworkDiscovered === 'function') {
+                this.onNetworkDiscovered(networkId);
+            }
         }
     }
 
