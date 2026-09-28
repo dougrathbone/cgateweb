@@ -136,6 +136,47 @@ describe('HaBridgeDiagnostics', () => {
         expect(readyTopicCalls[2][1]).toBe('');
     });
 
+    test('skips legacy bridge diagnostics migration on restart when persisted', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-bridge-mig-'));
+        const labelFile = path.join(dir, 'labels.json');
+        fs.writeFileSync(labelFile, '{}');
+
+        const settingsWithLabel = { ...settings, cbus_label_file: labelFile };
+        const firstPublish = jest.fn();
+        const first = new HaBridgeDiagnostics(settingsWithLabel, firstPublish, getStatusFn);
+        first.publishNow('first');
+
+        const storePath = path.join(dir, 'device-discovery-migrated.json');
+        expect(fs.existsSync(storePath)).toBe(true);
+        expect(JSON.parse(fs.readFileSync(storePath, 'utf8')).bridgeDiagnostics).toBe(true);
+
+        const secondPublish = jest.fn();
+        const second = new HaBridgeDiagnostics(settingsWithLabel, secondPublish, getStatusFn);
+        second.publishNow('restart');
+
+        const deviceCalls = secondPublish.mock.calls.filter(
+            c => c[0] === 'homeassistant/device/cgateweb_bridge/config'
+        );
+        expect(deviceCalls).toHaveLength(1);
+        expect(JSON.parse(deviceCalls[0][1]).components.cgateweb_bridge_ready.unique_id)
+            .toBe('cgateweb_bridge_ready');
+
+        const legacyReadyCalls = secondPublish.mock.calls.filter(
+            c => c[0] === 'homeassistant/binary_sensor/cgateweb_bridge_ready/config'
+        );
+        expect(legacyReadyCalls).toHaveLength(0);
+
+        const migrateMarkers = secondPublish.mock.calls.filter(
+            c => typeof c[1] === 'string' && c[1].includes('"migrate_discovery"')
+        );
+        expect(migrateMarkers).toHaveLength(0);
+
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
     test('does not publish when disabled', () => {
         diagnostics = new HaBridgeDiagnostics(
             { ...settings, ha_bridge_diagnostics_enabled: false },
