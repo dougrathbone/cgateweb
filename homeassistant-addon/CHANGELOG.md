@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.15] - 2026-09-28
+
+### Fixed
+
+- **Restarting the add-on no longer logs duplicate MQTT unique id errors.** (#133)
+- **Clock date and time appear at startup again.** (#131)
+- **Holding dim up no longer jumps the light to full brightness.** (#129)
+- **A lighting poll stopped during startup now resumes when device discovery finishes.** (#122)
+
 ## [1.34.14] - 2026-09-22
 
 ### Fixed
