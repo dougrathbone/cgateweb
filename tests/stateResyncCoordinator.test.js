@@ -31,7 +31,8 @@ describe('StateResyncCoordinator', () => {
                 return pairs;
             }),
             sendSecurityStatusRequests: jest.fn(),
-            sendClockRefreshRequests: jest.fn()
+            sendClockRefreshRequests: jest.fn(),
+            ensureClockDiscoveryForMonitoredNetworks: jest.fn()
         };
         logger = { debug: jest.fn(), info: jest.fn(), warn: jest.fn() };
         coordinator = new StateResyncCoordinator({
@@ -145,6 +146,21 @@ describe('StateResyncCoordinator', () => {
             coordinator.requestResync('ha-birth');
             jest.advanceTimersByTime(5000);
             expect(initializationService.sendClockRefreshRequests).toHaveBeenCalledWith({ priority: 'bulk' });
+        });
+
+        // TreeXML never lists app 223; a broker reconnect must republish the
+        // network clock device rather than waiting for the next broadcast (#131).
+        it('publishes clock discovery when haDiscovery is available', () => {
+            coordinator.requestResync('mqtt-reconnect');
+            jest.advanceTimersByTime(5000);
+            expect(initializationService.ensureClockDiscoveryForMonitoredNetworks).toHaveBeenCalledTimes(1);
+        });
+
+        it('skips clock discovery publish when haDiscovery is missing', () => {
+            haDiscovery = null;
+            coordinator.requestResync('ha-birth');
+            jest.advanceTimersByTime(5000);
+            expect(initializationService.ensureClockDiscoveryForMonitoredNetworks).not.toHaveBeenCalled();
         });
     });
 
