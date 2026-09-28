@@ -1,12 +1,14 @@
 // @ts-check
 const fs = require('fs');
+const path = require('path');
 const { createLogger } = require('./logger');
 const {
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_SENSOR,
     HA_COMPONENT_BINARY_SENSOR,
     HA_DEVICE_VIA,
-    HA_DEVICE_MANUFACTURER
+    HA_DEVICE_MANUFACTURER,
+    HA_DISCOVERY_SUFFIX
 } = require('./constants');
 const { resolveClampedSetting } = require('./config/schema');
 const {
@@ -17,6 +19,7 @@ const {
 } = require('./haDiscoveryPayloads');
 
 const CGATE_VERSION_FILE = '/data/cgate/.version';
+const CONFIG_TOPIC_SUFFIX = `/${HA_DISCOVERY_SUFFIX}`;
 
 class HaBridgeDiagnostics {
     constructor(settings, publishFn, getStatusFn, logger = null) {
@@ -26,6 +29,11 @@ class HaBridgeDiagnostics {
         this.logger = logger || createLogger({ component: 'HaBridgeDiagnostics' });
         this._intervalId = null;
         this._discoveryPublished = false;
+        // Survives restarts via device-discovery-migrated.json next to the
+        // label file (#133). Session _discoveryPublished still gates once-per-
+        // process discovery; this flag only skips the legacy migrate loop.
+        this._bridgeDiagnosticsMigrated = false;
+        this._loadDeviceDiscoveryMigratedStore();
     }
 
     start() {
@@ -80,6 +88,66 @@ class HaBridgeDiagnostics {
         }
     }
 
+    /**
+     * Path of the shared device-discovery migration store, or null when no
+     * label file is configured.
+     * @returns {string|null}
+     * @private
+     */
+    _deviceDiscoveryMigratedStorePath() {
+        const labelFile = this.settings && this.settings.cbus_label_file;
+        if (!labelFile || typeof labelFile !== 'string') return null;
+        return path.join(path.dirname(labelFile), 'device-discovery-migrated.json');
+    }
+
+    /**
+     * @private
+     */
+    _loadDeviceDiscoveryMigratedStore() {
+        const filePath = this._deviceDiscoveryMigratedStorePath();
+        if (!filePath) return;
+        try {
+            const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+            if (parsed.bridgeDiagnostics === true) {
+                this._bridgeDiagnosticsMigrated = true;
+            }
+        } catch (err) {
+            if (err.code !== 'ENOENT') {
+                this.logger.warn(`Could not read device discovery migration store (${err.message}); starting empty`);
+            }
+        }
+    }
+
+    /**
+     * Persist the bridgeDiagnostics flag. Preserves topics written by
+     * HaDiscovery in the same file.
+     * @private
+     */
+    _persistDeviceDiscoveryMigratedStore() {
+        const filePath = this._deviceDiscoveryMigratedStorePath();
+        if (!filePath) return;
+        try {
+            let topics = [];
+            try {
+                const existing = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+                if (existing && Array.isArray(existing.topics)) {
+                    topics = existing.topics.filter(
+                        (t) => typeof t === 'string' && t.endsWith(CONFIG_TOPIC_SUFFIX)
+                    );
+                }
+            } catch (err) {
+                if (err.code !== 'ENOENT') throw err;
+            }
+            fs.writeFileSync(filePath, JSON.stringify({
+                topics,
+                bridgeDiagnostics: this._bridgeDiagnosticsMigrated
+            }, null, 2));
+        } catch (err) {
+            this.logger.warn(`Could not write device discovery migration store (${err.message})`);
+        }
+    }
+
     _publishDiscovery() {
         const diagnostics = [
             { key: 'ready', component: HA_COMPONENT_BINARY_SENSOR, name: 'Bridge Ready', icon: 'mdi:check-network-outline' },
@@ -95,7 +163,7 @@ class HaBridgeDiagnostics {
 
         const components = {};
         const legacyTopics = [];
-        const migrateLegacyTopics = !this._discoveryPublished;
+        const migrateLegacyTopics = !this._bridgeDiagnosticsMigrated;
         const bridgeDevice = {
             identifiers: [HA_DEVICE_VIA],
             name: 'cgateweb Bridge',
@@ -147,6 +215,8 @@ class HaBridgeDiagnostics {
             for (const topic of legacyTopics) {
                 this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
             }
+            this._bridgeDiagnosticsMigrated = true;
+            this._persistDeviceDiscoveryMigratedStore();
         }
     }
 

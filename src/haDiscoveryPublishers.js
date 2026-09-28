@@ -45,6 +45,9 @@ class _HaDiscoveryPublishers {
     /** @type {Set<string>} */
     _deviceDiscoveryMigratedTopics;
 
+    /** @type {() => void} */
+    _persistDeviceDiscoveryMigratedStore;
+
     /** @type {number} */
     discoveryCount;
 
@@ -416,12 +419,15 @@ class _HaDiscoveryPublishers {
 
         const deviceTopic = this._publishDeviceDiscoveryConfig(deviceId, knownComponents);
 
+        let newlyMigrated = false;
         for (const spec of collection.specs) {
             if (migrationTopics.has(spec.discoveryTopic)) {
                 this._publish(spec.discoveryTopic, '', MQTT_RETAINED_STATE_OPTIONS);
                 this._deviceDiscoveryMigratedTopics.add(spec.discoveryTopic);
+                newlyMigrated = true;
             }
         }
+        if (newlyMigrated) this._persistDeviceDiscoveryMigratedStore();
 
         this._publishedTopics.add(deviceTopic);
         if (mode === 'event') this._eventDrivenDiscoveryTopics.add(deviceTopic);
