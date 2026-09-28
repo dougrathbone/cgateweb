@@ -422,6 +422,57 @@ describe('CBusEvent — getSourceUnit (issue #35)', () => {
     });
 });
 
+describe('CBusEvent getRampTimeMs (issue #129)', () => {
+    const CBusEvent = require('../src/cbusEvent');
+
+    it('parses bare-second duration after the target level', () => {
+        const event = new CBusEvent('lighting ramp 254/56/193 255 4');
+        expect(event.isValid()).toBe(true);
+        expect(event.getLevel()).toBe(255);
+        expect(event.getRampTimeMs()).toBe(4000);
+    });
+
+    it('parses an explicit seconds suffix', () => {
+        const event = new CBusEvent('lighting ramp 254/56/193 255 4s');
+        expect(event.getLevel()).toBe(255);
+        expect(event.getRampTimeMs()).toBe(4000);
+    });
+
+    it('parses a milliseconds suffix', () => {
+        const event = new CBusEvent('lighting ramp 254/56/193 128 500ms');
+        expect(event.getLevel()).toBe(128);
+        expect(event.getRampTimeMs()).toBe(500);
+    });
+
+    it('keeps level and source unit when duration is 0', () => {
+        const event = new CBusEvent('lighting ramp //HOME/254/56/246 4 0 #sourceunit=19');
+        expect(event.isValid()).toBe(true);
+        expect(event.getLevel()).toBe(4);
+        expect(event.getRampTimeMs()).toBe(0);
+        expect(event.getSourceUnit()).toBe('19');
+    });
+
+    it('returns null ramp time when no duration token is present', () => {
+        const event = new CBusEvent('lighting ramp 254/56/16 128');
+        expect(event.getLevel()).toBe(128);
+        expect(event.getRampTimeMs()).toBeNull();
+    });
+
+    it('parses ramptime=N seconds from a 730 line without changing level', () => {
+        const raw = '20260401-161000.000 730 //HOME/254/56/3 00000000-0000-0000-0000-000000000000 new level=128 sourceunit=2 ramptime=10';
+        const event = new CBusEvent(raw);
+        expect(event.isValid()).toBe(true);
+        expect(event.getLevel()).toBe(128);
+        expect(event.getRampTimeMs()).toBe(10000);
+    });
+
+    it('returns null ramp time for a bare lighting on', () => {
+        const event = new CBusEvent('lighting on 254/56/16');
+        expect(event.getLevel()).toBeNull();
+        expect(event.getRampTimeMs()).toBeNull();
+    });
+});
+
 // A hostile or spoofed C-Gate is in scope: it is unauthenticated plaintext TCP
 // on the LAN and the bridge does not validate the peer. Addresses from events
 // drive event-driven HA discovery, whose seen-sets have no eviction, so an
