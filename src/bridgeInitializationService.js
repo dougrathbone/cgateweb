@@ -6,7 +6,10 @@ const {
     CGATE_CMD_GET,
     CGATE_PARAM_LEVEL,
     NEWLINE,
-    DEFAULT_CBUS_APP_LIGHTING
+    DEFAULT_CBUS_APP_LIGHTING,
+    DEFAULT_CBUS_APP_CLOCK,
+    HA_DISCOVERY_SUFFIX,
+    HA_DISCOVERY_PREFIX_DEFAULT
 } = require('./constants');
 const { buildClockRequestRefresh } = require('./clockCommand');
 
@@ -162,6 +165,12 @@ class BridgeInitializationService {
         if (this.settings.ha_discovery_enabled) {
             this._getHaDiscovery().trigger(this._getDiscoveredNetworks() || null);
         }
+
+        // Clock sensors are event-driven and never appear in TreeXML, so tree
+        // discovery alone leaves homeassistant/device/cgateweb_network_*/config
+        // empty after a broker wipe. Publish them now that HaDiscovery exists
+        // rather than waiting for the next (often hours-away) date/time broadcast.
+        this.ensureClockDiscoveryForMonitoredNetworks();
 
         this._logStartupSummary();
 
@@ -560,6 +569,36 @@ class BridgeInitializationService {
             );
         }
         this.logger.info(`Requested C-Bus clock refresh for networks: ${networks.join(', ')}`);
+    }
+
+    /**
+     * Publish HA Discovery for the network clock sensors on every monitored
+     * network. TreeXML never lists app 223, so without this the device topic
+     * stays empty until a live date/time broadcast arrives (issue #131).
+     *
+     * Idempotent via HaDiscovery._clockSeen. If the payload cache has lost the
+     * device topic (long-lived process after a broker wipe), the seen key is
+     * cleared first so ensureClockDiscovery can republish.
+     */
+    ensureClockDiscoveryForMonitoredNetworks() {
+        if (!this.settings.cbus_clock_enabled) return;
+        if (!this.settings.ha_discovery_enabled) return;
+        const haDiscovery = this._getHaDiscovery();
+        if (!haDiscovery || typeof haDiscovery.ensureClockDiscovery !== 'function') return;
+
+        const networks = this._resolveMonitorNetworkIds();
+        if (networks.length === 0) return;
+
+        const prefix = this.settings.ha_discovery_prefix || HA_DISCOVERY_PREFIX_DEFAULT;
+        for (const network of networks) {
+            if (haDiscovery._clockSeen && haDiscovery._publishedConfigPayloads) {
+                const deviceTopic = `${prefix}/device/cgateweb_network_${network}/${HA_DISCOVERY_SUFFIX}`;
+                if (!haDiscovery._publishedConfigPayloads.has(deviceTopic)) {
+                    haDiscovery._clockSeen.delete(`${network}/${DEFAULT_CBUS_APP_CLOCK}/clock`);
+                }
+            }
+            haDiscovery.ensureClockDiscovery(network, DEFAULT_CBUS_APP_CLOCK);
+        }
     }
 
     /**
