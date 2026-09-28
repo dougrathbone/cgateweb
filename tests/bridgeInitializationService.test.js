@@ -120,6 +120,8 @@ function createHaDiscoveryMock(extra = {}) {
         // Called by StateResyncCoordinator when a debounced resync fires.
         syncUnlistedGroupDiscovery: jest.fn(),
         republishDiscoveryConfigs: jest.fn(() => 0),
+        // Clock sensors are not in TreeXML; published at connect/resync (#131).
+        ensureClockDiscovery: jest.fn(() => true),
         ...extra
     };
 }
@@ -227,6 +229,64 @@ describe('BridgeInitializationService', () => {
                 'clock request_refresh //HOME/254/223\n',
                 { priority: 'bulk' }
             );
+        });
+    });
+
+    describe('ensureClockDiscoveryForMonitoredNetworks', () => {
+        it('publishes clock discovery for each monitored network when enabled', () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_enabled: true,
+                ha_discovery_networks: [254, 1]
+            });
+            bridge.haDiscovery = createHaDiscoveryMock();
+            const svc = makeService(bridge);
+            svc.ensureClockDiscoveryForMonitoredNetworks();
+            expect(bridge.haDiscovery.ensureClockDiscovery).toHaveBeenCalledTimes(2);
+            expect(bridge.haDiscovery.ensureClockDiscovery).toHaveBeenCalledWith('254', '223');
+            expect(bridge.haDiscovery.ensureClockDiscovery).toHaveBeenCalledWith('1', '223');
+        });
+
+        it('does nothing when the clock feature is off', () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: false,
+                ha_discovery_enabled: true,
+                ha_discovery_networks: [254]
+            });
+            bridge.haDiscovery = createHaDiscoveryMock();
+            const svc = makeService(bridge);
+            svc.ensureClockDiscoveryForMonitoredNetworks();
+            expect(bridge.haDiscovery.ensureClockDiscovery).not.toHaveBeenCalled();
+        });
+
+        it('does nothing when HA discovery is disabled', () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_enabled: false,
+                ha_discovery_networks: [254]
+            });
+            bridge.haDiscovery = createHaDiscoveryMock();
+            const svc = makeService(bridge);
+            svc.ensureClockDiscoveryForMonitoredNetworks();
+            expect(bridge.haDiscovery.ensureClockDiscovery).not.toHaveBeenCalled();
+        });
+
+        it('clears the clock seen key when the device topic is absent from the payload cache', () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_enabled: true,
+                ha_discovery_prefix: 'homeassistant',
+                ha_discovery_networks: [254]
+            });
+            const clockSeen = new Set(['254/223/clock']);
+            bridge.haDiscovery = createHaDiscoveryMock({
+                _clockSeen: clockSeen,
+                _publishedConfigPayloads: new Map()
+            });
+            const svc = makeService(bridge);
+            svc.ensureClockDiscoveryForMonitoredNetworks();
+            expect(clockSeen.has('254/223/clock')).toBe(false);
+            expect(bridge.haDiscovery.ensureClockDiscovery).toHaveBeenCalledWith('254', '223');
         });
     });
 
@@ -597,6 +657,30 @@ describe('BridgeInitializationService', () => {
             expect(bridge.labelLoader.on).toHaveBeenCalledWith('labels-changed', expect.any(Function));
             expect(bridge.labelLoader.watch).toHaveBeenCalled();
             expect(bridge.haDiscovery.trigger).toHaveBeenCalled();
+        });
+
+        // Clock is not in TreeXML, so connect must publish discovery itself
+        // rather than waiting for a live date/time broadcast (issue #131).
+        it('publishes network clock discovery when cbus_clock_enabled and HA discovery are on', async () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: true,
+                ha_discovery_enabled: true,
+                ha_discovery_networks: [254]
+            });
+            const svc = makeService(bridge);
+            await svc.handleAllConnected();
+            expect(bridge.haDiscovery.ensureClockDiscovery).toHaveBeenCalledWith('254', '223');
+        });
+
+        it('does not publish clock discovery when cbus_clock_enabled is false', async () => {
+            const { bridge } = makeBridge({
+                cbus_clock_enabled: false,
+                ha_discovery_enabled: true,
+                ha_discovery_networks: [254]
+            });
+            const svc = makeService(bridge);
+            await svc.handleAllConnected();
+            expect(bridge.haDiscovery.ensureClockDiscovery).not.toHaveBeenCalled();
         });
 
         it('does not re-create HaDiscovery on subsequent calls', async () => {
