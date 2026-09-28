@@ -270,6 +270,44 @@ describe('HaDiscovery', () => {
             expect(warned).toBe(true);
         });
 
+        // Issue #122: when C-Gate never emits 762, discovery with entities is
+        // the signal that the network has loaded and a pre-sync 401 poll stop
+        // should be undone. The 0-entity path must not fire that signal.
+        describe('onNetworkDiscovered callback (#122)', () => {
+            it('calls the callback once with the network id when entities are published', () => {
+                const onNetworkDiscovered = jest.fn();
+                haDiscovery.onNetworkDiscovered = onNetworkDiscovered;
+
+                publishTree(haDiscovery);
+
+                expect(haDiscovery.discoveryCount).toBeGreaterThan(0);
+                expect(onNetworkDiscovered).toHaveBeenCalledTimes(1);
+                expect(onNetworkDiscovered).toHaveBeenCalledWith('254');
+            });
+
+            it('does not call the callback when discovery publishes 0 entities', () => {
+                const onNetworkDiscovered = jest.fn();
+                haDiscovery.onNetworkDiscovered = onNetworkDiscovered;
+                const treeNoGroups = {
+                    Network: {
+                        Unit: [
+                            { Type: 'DIMDN8', Application: '56, 255', Groups: '' }
+                        ]
+                    }
+                };
+
+                haDiscovery._publishDiscoveryFromTree('254', treeNoGroups);
+
+                expect(haDiscovery.discoveryCount).toBe(0);
+                expect(onNetworkDiscovered).not.toHaveBeenCalled();
+            });
+
+            it('is a no-op when the callback is unset', () => {
+                expect(haDiscovery.onNetworkDiscovered).toBeNull();
+                expect(() => publishTree(haDiscovery)).not.toThrow();
+            });
+        });
+
         it.each([
             ['LIGHTING', 'testhomeassistant/light/cgateweb_254_56_10/config', '"name":"Kitchen Light"'],
             ['COVER', 'testhomeassistant/cover/cgateweb_254_203_15/config', '"name":"Blind 1"'],

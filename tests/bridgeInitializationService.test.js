@@ -1170,6 +1170,37 @@ describe('BridgeInitializationService', () => {
             expect(commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'))).toHaveLength(0);
             svc.stop();
         });
+
+        it('resumes a stopped poll when HaDiscovery finishes with entities and no 762 arrives', async () => {
+            // Real boots often never emit 762; discovery completing with entities
+            // is the alternate resume path wired onto onNetworkDiscovered.
+            const { bridge, commandQueueAdd } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254]
+            });
+            const svc = makeService(bridge);
+            await svc.handleAllConnected();
+
+            expect(typeof bridge.haDiscovery.onNetworkDiscovered).toBe('function');
+
+            svc.handleCommandError('401', 'Bad object or device ID: //HOME/254/56/* (Object not found)');
+            expect(svc._perAppTimers.has('254/56')).toBe(false);
+
+            // Discovery completion (not a 762) drives the resume.
+            bridge.haDiscovery.onNetworkDiscovered('254');
+
+            expect(svc._perAppTimers.has('254/56')).toBe(true);
+            jest.advanceTimersByTime(3600 * 1000);
+            expect(commandQueueAdd.mock.calls.filter(c => c[0].includes('/254/56/*'))).toHaveLength(1);
+
+            // A second discovery completion must not schedule a duplicate timer.
+            const timerBefore = svc._perAppTimers.get('254/56');
+            bridge.haDiscovery.onNetworkDiscovered('254');
+            expect(svc._perAppTimers.get('254/56')).toBe(timerBefore);
+
+            svc.stop();
+        });
     });
 
     describe('stop', () => {

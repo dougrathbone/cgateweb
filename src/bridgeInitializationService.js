@@ -144,6 +144,9 @@ class BridgeInitializationService {
                 (command) => this.commandQueue.add(command, { priority: 'bulk' }),
                 this.labelLoader.getLabelData()
             );
+            // Discovery with entities proves the network loaded even when C-Gate
+            // never emits 762; resume any poll a pre-sync 401 stopped (#122).
+            haDiscovery.onNetworkDiscovered = (networkId) => this.resumeStoppedPolls(networkId);
             // Apply at the same moment it became non-null before: this wires the
             // command response processor and makes the bridge's live haDiscovery
             // accessors return the instance for the remainder of init.
