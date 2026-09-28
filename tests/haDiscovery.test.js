@@ -437,6 +437,69 @@ describe('HaDiscovery', () => {
             expect(legacyCalls[2][1]).toBe('');
         });
 
+        it('skips legacy device-discovery migration on restart when topics are persisted', () => {
+            const fs = require('fs');
+            const os = require('os');
+            const path = require('path');
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-device-mig-'));
+            const labelFile = path.join(dir, 'labels.json');
+            fs.writeFileSync(labelFile, '{}');
+
+            const settings = {
+                ...mockSettings,
+                ha_discovery_trigger_app_id: '203',
+                ha_discovery_cover_app_id: null,
+                cbus_label_file: labelFile
+            };
+
+            const firstPublish = jest.fn();
+            const first = new HaDiscovery(settings, firstPublish, jest.fn());
+            publishTree(first);
+            first.stop();
+
+            const storePath = path.join(dir, 'device-discovery-migrated.json');
+            expect(fs.existsSync(storePath)).toBe(true);
+            const store = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+            expect(store.topics).toEqual(expect.arrayContaining([
+                'testhomeassistant/event/cgateweb_254_203_15/config',
+                'testhomeassistant/button/cgateweb_254_203_15_btn/config',
+                'testhomeassistant/scene/cgateweb_254_203_15_scene/config'
+            ]));
+            expect(store.bridgeDiagnostics).toBe(false);
+
+            const secondPublish = jest.fn();
+            const second = new HaDiscovery(settings, secondPublish, jest.fn());
+            publishTree(second);
+            second.stop();
+
+            const deviceCalls = secondPublish.mock.calls.filter(
+                c => c[0] === 'testhomeassistant/device/cgateweb_254_203_15/config'
+            );
+            expect(deviceCalls.length).toBeGreaterThanOrEqual(1);
+            expect(JSON.parse(deviceCalls[0][1]).components.cgateweb_254_203_15.unique_id)
+                .toBe('cgateweb_254_203_15');
+
+            const legacyEventCalls = secondPublish.mock.calls.filter(
+                c => c[0] === 'testhomeassistant/event/cgateweb_254_203_15/config'
+            );
+            expect(legacyEventCalls).toHaveLength(0);
+
+            const migrateMarkers = secondPublish.mock.calls.filter(
+                c => typeof c[1] === 'string' && c[1].includes('"migrate_discovery"')
+            );
+            expect(migrateMarkers).toHaveLength(0);
+
+            const standaloneLegacy = secondPublish.mock.calls.filter(
+                c => typeof c[0] === 'string'
+                    && (c[0].includes('/event/') || c[0].includes('/button/') || c[0].includes('/scene/'))
+                    && c[0].endsWith('/config')
+                    && isFullDiscoveryPayload(c[1])
+            );
+            expect(standaloneLegacy).toHaveLength(0);
+
+            fs.rmSync(dir, { recursive: true, force: true });
+        });
+
         it('should publish both event and button entities for each trigger group', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
