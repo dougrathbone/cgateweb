@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.16] - 2026-09-29
+
+### Fixed
+
+- **A USB PC Interface stuck opening is closed and reopened, and startup polls wait until it is running.** (#122)
+
 ## [1.34.15] - 2026-09-28
 
 ### Fixed
