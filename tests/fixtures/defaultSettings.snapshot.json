@@ -1,6 +1,7 @@
 {
   "airconSetpointDebounceMs": 3000,
   "autoDiscoverNetworks": true,
+  "busCommandHoldTimeoutMs": 5000,
   "cbusRawEventLogApps": [],
   "cbus_aircon_app_id": null,
   "cbus_aircon_control_enabled": false,
@@ -124,6 +125,10 @@
   "securityDisarmAttemptWindowMs": 600000,
   "securityDisarmMaxAttempts": 10,
   "securityDisarmMaxTrackedKeys": 256,
+  "serialHandshakeEnabled": true,
+  "serialHandshakeMaxAttempts": 3,
+  "serialHandshakeReopenDelayMs": 2000,
+  "serialHandshakeRetryAfterMs": 45000,
   "serialRecoveryEnabled": true,
   "serialRecoveryInitialDelayMs": 5000,
   "serialRecoveryMaxAttempts": 3,
