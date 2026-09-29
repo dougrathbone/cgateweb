@@ -1,0 +1,24 @@
+#!/usr/bin/with-contenv bashio
+# Keep managed C-Gate's private file logs bounded between add-on restarts.
+set -euo pipefail
+
+CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+if [[ "${CGATE_MODE}" != "managed" ]]; then
+    exec sleep infinity
+fi
+
+CGATE_DIR="${CGATE_DIR:-/data/cgate}"
+CGATEWEB_LOG_PRUNE_INTERVAL_SECONDS="${CGATEWEB_LOG_PRUNE_INTERVAL_SECONDS:-900}"
+CGATE_LOG_MAX_MB=$(bashio::config 'cgate_log_max_mb' '500')
+[[ "${CGATE_LOG_MAX_MB}" =~ ^[0-9]+$ ]] || CGATE_LOG_MAX_MB=500
+CGATEWEB_LOG_MAX_BYTES=$((CGATE_LOG_MAX_MB * 1048576))
+
+# Source the install script in library mode so startup and runtime retention
+# use exactly the same path allowlist and deletion rules.
+export CGATEWEB_INSTALL_SOURCE_ONLY=1
+# shellcheck disable=SC1090
+source "${CGATEWEB_INSTALL_SCRIPT:-/etc/cont-init.d/cgate-install.sh}"
+
+while sleep "${CGATEWEB_LOG_PRUNE_INTERVAL_SECONDS}"; do
+    _cgateweb_prune_cgate_logs "${CGATE_DIR}" "${CGATEWEB_LOG_MAX_BYTES}"
+done

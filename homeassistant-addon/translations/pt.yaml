@@ -62,6 +62,12 @@ configuration:
       projeto e a configuração são preservadas); no modo de carregamento pode
       antes colocar um zip mais recente em /share/cgate. Desative isto após a
       atualização.
+  cgate_log_max_mb:
+    name: Tamanho máximo dos registos do C-Gate
+    description: >-
+      Tamanho total máximo em MiB dos ficheiros de registo do C-Gate gerido. Os
+      ficheiros fechados mais antigos são removidos a cada 15 minutos.
+      Predefinição: 500.
   cgate_serial_device:
     name: Dispositivo PCI série (beta)
     description: >-

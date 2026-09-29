@@ -33,11 +33,13 @@ CGATEWEB_DEFAULT_PAYLOAD_SHA256="b135a367f435b63ec0a08e5cde0b96735da23c8a48f3f48
 
 # Managed C-Gate log retention (#81). C-Gate writes unbounded files under
 # /data/cgate/logs/ and rotated event-file segments; without a cap a busy
-# network can fill the host SD card. Pruned on every boot before C-Gate starts.
+# network can fill the host SD card. Pruned on every boot before C-Gate starts
+# and periodically by the cgate-log-pruner service while it remains running.
 CGATEWEB_LOG_MAX_BYTES="${CGATEWEB_LOG_MAX_BYTES:-524288000}"   # 500 MiB
 CGATEWEB_LOG_MAX_AGE_DAYS="${CGATEWEB_LOG_MAX_AGE_DAYS:-7}"
 CGATEWEB_EVENT_FILE_SPLIT_SIZE="${CGATEWEB_EVENT_FILE_SPLIT_SIZE:-5000000}"  # 5 MiB (C-Gate default)
 CGATEWEB_EVENT_FILE_SPLIT_COUNT="${CGATEWEB_EVENT_FILE_SPLIT_COUNT:-50}"   # ~250 MiB of event segments
+CGATEWEB_PROC_ROOT="${CGATEWEB_PROC_ROOT:-/proc}"
 
 # The identity-aware serial resolver (issue #28) and the file it publishes its
 # answer to. Both are overridable so the unit tests can run the repo copy of
@@ -370,10 +372,23 @@ _cgateweb_stat_mtime() {
     stat -c '%Y' "$1" 2>/dev/null || stat -f '%m' "$1" 2>/dev/null || echo 0
 }
 
-# Return 0 when a file under the managed C-Gate install may be pruned.
-# Only log directories and rotated event-file segments are eligible — never
-# Projects/, config/, or the live event.log C-Gate is writing.
-_cgateweb_prune_cgate_logs_is_prunable() {
+# Return 0 when a running process currently has the file open. Runtime pruning
+# must not unlink an active C-Gate log: the JVM would keep writing to the
+# unlinked inode, so the disk space would remain consumed but become invisible
+# to later retention passes. Startup pruning normally finds no open files.
+_cgateweb_log_file_is_open() {
+    local file="$1" fd target
+    for fd in "${CGATEWEB_PROC_ROOT}"/[0-9]*/fd/*; do
+        [[ -e "${fd}" || -L "${fd}" ]] || continue
+        target=$(readlink -f "${fd}" 2>/dev/null || true)
+        [[ "${target}" == "${file}" ]] && return 0
+    done
+    return 1
+}
+
+# Return 0 for files that count toward managed C-Gate's log budget. Only log
+# directories and event-file segments are in scope — never Projects/ or config/.
+_cgateweb_prune_cgate_logs_is_in_scope() {
     local cgate_dir="$1" file="$2"
     case "${file}" in
         "${cgate_dir}/logs"/*|"${cgate_dir}/log"/*) return 0 ;;
@@ -387,9 +402,18 @@ _cgateweb_prune_cgate_logs_is_prunable() {
     esac
 }
 
+# Return 0 when an in-scope file can safely be deleted. An open file still
+# counts toward the cap, but remains until C-Gate closes or rotates it.
+_cgateweb_prune_cgate_logs_is_prunable() {
+    local cgate_dir="$1" file="$2"
+    _cgateweb_prune_cgate_logs_is_in_scope "${cgate_dir}" "${file}" || return 1
+    _cgateweb_log_file_is_open "${file}" && return 1
+    return 0
+}
+
 # Prune C-Gate log files under the managed install directory. Runs on every
-# boot before C-Gate starts so a reinstall is not the only way to reclaim
-# space (#81). Echoes a one-line summary when anything was removed.
+# boot and periodically while C-Gate is running so a long-lived add-on cannot
+# grow unchecked (#81). Echoes a one-line summary when anything was removed.
 _cgateweb_prune_cgate_logs() {
     local cgate_dir="$1"
     local max_bytes="${2:-${CGATEWEB_LOG_MAX_BYTES}}"
@@ -400,7 +424,7 @@ _cgateweb_prune_cgate_logs() {
     [[ -d "${cgate_dir}" ]] || return 0
 
     while IFS= read -r -d '' file; do
-        _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
+        _cgateweb_prune_cgate_logs_is_in_scope "${cgate_dir}" "${file}" || continue
         candidates+=("${file}")
     done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
         -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
@@ -411,6 +435,7 @@ _cgateweb_prune_cgate_logs() {
 
     for file in "${candidates[@]}"; do
         [[ -f "${file}" ]] || continue
+        _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
         if find "${file}" -mtime +"${max_age_days}" -print -quit 2>/dev/null | grep -q .; then
             age_bytes=$(_cgateweb_stat_size "${file}")
             rm -f "${file}" && deleted_age=$((deleted_age + 1)) && reclaimed=$((reclaimed + age_bytes))
@@ -420,7 +445,7 @@ _cgateweb_prune_cgate_logs() {
     # Rebuild the candidate list after age pruning.
     candidates=()
     while IFS= read -r -d '' file; do
-        _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
+        _cgateweb_prune_cgate_logs_is_in_scope "${cgate_dir}" "${file}" || continue
         candidates+=("${file}")
     done < <(find "${cgate_dir}" \( -path "${cgate_dir}/logs/*" -o -path "${cgate_dir}/log/*" \
         -o -name 'event.*.log' -o -name 'event-*' \) -type f -print0 2>/dev/null)
@@ -446,6 +471,7 @@ _cgateweb_prune_cgate_logs() {
         for i in "${!candidates[@]}"; do
             file="${candidates[$i]}"
             [[ -f "${file}" ]] || continue
+            _cgateweb_prune_cgate_logs_is_prunable "${cgate_dir}" "${file}" || continue
             mtime=$(_cgateweb_stat_mtime "${file}")
             if [[ ${mtime} -lt ${oldest_mtime} ]]; then
                 oldest_mtime=${mtime}
@@ -1127,6 +1153,21 @@ if [[ "${CGATE_MODE}" != "managed" ]]; then
     bashio::log.info "C-Gate mode is '${CGATE_MODE}', skipping C-Gate installation"
     exit 0
 fi
+
+# Keep the existing 500 MiB default but let managed-mode users choose a lower
+# or higher ceiling. The Supervisor schema validates this as an integer; the
+# fallback also keeps direct/test execution safe.
+CGATE_LOG_MAX_MB=$(bashio::config 'cgate_log_max_mb' '500')
+[[ "${CGATE_LOG_MAX_MB}" =~ ^[0-9]+$ ]] || CGATE_LOG_MAX_MB=500
+CGATEWEB_LOG_MAX_BYTES=$((CGATE_LOG_MAX_MB * 1048576))
+
+# Reserve at most half of the overall budget for C-Gate's native event-file
+# rotation. At the default this preserves the historical 50 x 5 MiB setting;
+# smaller user caps reduce the native segment count so the periodic pruner does
+# not spend its time fighting a larger built-in retention target.
+CGATEWEB_EVENT_FILE_SPLIT_COUNT=$((CGATEWEB_LOG_MAX_BYTES / CGATEWEB_EVENT_FILE_SPLIT_SIZE / 2))
+[[ ${CGATEWEB_EVENT_FILE_SPLIT_COUNT} -lt 2 ]] && CGATEWEB_EVENT_FILE_SPLIT_COUNT=2
+[[ ${CGATEWEB_EVENT_FILE_SPLIT_COUNT} -gt 50 ]] && CGATEWEB_EVENT_FILE_SPLIT_COUNT=50
 
 # Overridable so tests can point the whole install flow at a temp dir instead
 # of the real /data/cgate, the same test-seam pattern used by

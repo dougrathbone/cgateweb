@@ -63,6 +63,12 @@ configuration:
       Projekt-Datenbanken und Konfiguration bleiben erhalten); im Upload-Modus
       können Sie stattdessen eine neuere zip in /share/cgate ablegen. Schalten
       Sie dies nach dem Upgrade wieder aus.
+  cgate_log_max_mb:
+    name: Maximale C-Gate-Protokollgröße
+    description: >-
+      Maximale Gesamtgröße in MiB für Protokolldateien des verwalteten C-Gate.
+      Die ältesten geschlossenen Dateien werden alle 15 Minuten entfernt.
+      Standard: 500.
   cgate_serial_device:
     name: Serielles PCI-Gerät (Beta)
     description: >-

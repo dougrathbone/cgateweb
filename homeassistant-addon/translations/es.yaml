@@ -63,6 +63,12 @@ configuration:
       fuente de instalación en el próximo inicio (sus bases de datos de proyecto
       y la configuración se conservan); en modo de carga puede colocar un zip
       más reciente en /share/cgate. Desactívelo después de la actualización.
+  cgate_log_max_mb:
+    name: Tamaño máximo del registro de C-Gate
+    description: >-
+      Tamaño total máximo en MiB de los archivos de registro de C-Gate
+      gestionado. Los archivos cerrados más antiguos se eliminan cada 15
+      minutos. Predeterminado: 500.
   cgate_serial_device:
     name: Dispositivo PCI serie (beta)
     description: >-

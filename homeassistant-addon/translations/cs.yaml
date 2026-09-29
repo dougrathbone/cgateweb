@@ -61,6 +61,12 @@ configuration:
       přeinstalovat/aktualizovat C-Gate ze zdroje instalace (databáze projektu a
       konfigurace zůstanou zachovány); v režimu nahrávání můžete místo toho
       umístit novější zip do /share/cgate. Po aktualizaci ji opět vypněte.
+  cgate_log_max_mb:
+    name: Maximální velikost protokolů C-Gate
+    description: >-
+      Maximální celková velikost souborů protokolu spravovaného C-Gate v MiB.
+      Nejstarší zavřené soubory se odstraňují každých 15 minut. Výchozí hodnota:
+      500.
   cgate_serial_device:
     name: Sériové PCI zařízení (beta)
     description: >-

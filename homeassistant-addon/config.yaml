@@ -1,5 +1,5 @@
 name: "C-Gate Web Bridge"
-version: "1.34.15"
+version: "1.35.0"
 slug: cgateweb
 description: "Bridge between Clipsal C-Bus systems and MQTT/Home Assistant"
 url: "https://github.com/dougrathbone/cgateweb"
@@ -132,6 +132,7 @@ schema:
   # ── C-Gate Managed Mode ──
   cgate_install_source: "list(download|upload)?"
   cgate_download_url: "str?"
+  cgate_log_max_mb: "int(50,10000)?"
   cgate_download_sha256: "str?"
   cgate_force_reinstall: "bool?"
   # USB-serial PCI passthrough (beta, issue #28): opt-in. The device schema

@@ -47,6 +47,10 @@ configuration:
       관리 모드에서만 사용됩니다. C-Gate는 설치된 후 일반적으로 그대로 유지됩니다. 이 옵션을 켜면 다음 시작 시 설치 소스에서
       C-Gate를 다시 설치/업그레이드합니다(프로젝트 데이터베이스와 구성은 유지됩니다). 업로드 모드에서는 대신 최신 zip을
       /share/cgate에 넣을 수 있습니다. 업그레이드 후에는 다시 꺼 주세요.
+  cgate_log_max_mb:
+    name: 최대 C-Gate 로그 크기
+    description: "관리형 C-Gate 파일 로그의 최대 총크기(MiB)입니다. 닫힌 로그 파일 중 가장 오래된 파일을 15분마다 삭제합니다. 기본값:
+      500."
   cgate_serial_device:
     name: 시리얼 PCI 장치(베타)
     description: >-

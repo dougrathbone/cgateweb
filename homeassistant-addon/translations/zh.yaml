@@ -38,6 +38,9 @@ configuration:
     description: >-
       仅在托管模式下使用。C-Gate 安装后通常保持不变。启用此选项可在下次启动时从安装源重新安装/升级
       C-Gate（您的项目数据库和配置会被保留）；在上传模式下，您也可以将较新的 zip 放入 /share/cgate。升级完成后请将其关闭。
+  cgate_log_max_mb:
+    name: C-Gate 日志最大大小
+    description: 托管 C-Gate 文件日志的最大总大小（MiB）。每 15 分钟删除最旧的已关闭日志文件。默认值：500。
   cgate_serial_device:
     name: 串口 PCI 设备（Beta）
     description: >-

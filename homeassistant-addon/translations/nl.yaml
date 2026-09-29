@@ -61,6 +61,12 @@ configuration:
       projectdatabases en configuratie blijven behouden); in upload-modus kunt u
       in plaats daarvan een nieuwere zip in /share/cgate plaatsen. Schakel dit
       na de upgrade weer uit.
+  cgate_log_max_mb:
+    name: Maximale grootte van C-Gate-logboeken
+    description: >-
+      Maximale totale grootte in MiB voor logbestanden van beheerde C-Gate. De
+      oudste gesloten bestanden worden elke 15 minuten verwijderd. Standaard:
+      500.
   cgate_serial_device:
     name: Serieel PCI-apparaat (beta)
     description: >-
