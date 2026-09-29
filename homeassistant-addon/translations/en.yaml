@@ -59,6 +59,11 @@ configuration:
       the next start (your project DBs and config are preserved). In upload mode
       you can instead just drop a newer zip into /share/cgate and it upgrades
       automatically. Turn this back off after the upgrade.
+  cgate_log_max_mb:
+    name: Maximum C-Gate Log Size
+    description: >-
+      Maximum total size in MiB for managed C-Gate file logs. The oldest closed
+      log files are removed every 15 minutes. Default: 500.
   cgate_serial_device:
     name: Serial PCI Device (Beta)
     description: >-

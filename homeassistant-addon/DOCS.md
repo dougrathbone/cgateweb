@@ -58,6 +58,7 @@ These settings only apply when `cgate_mode` is set to `managed`.
 | `cgate_download_url` | string | (empty) | Override the default download URL for C-Gate. Leave empty to use the official Clipsal URL. |
 | `cgate_download_sha256` | string | (empty) | Optional SHA256 of the C-Gate zip. When set, download and upload installs fail on mismatch. Downloads from the built-in default URL are verified against a checksum pinned in the install script; setting this overrides that pin (the escape hatch if Clipsal re-releases the zip). Required for a custom `cgate_download_url`; uploads without it proceed with a log warning and no integrity check. |
 | `cgate_force_reinstall` | boolean | `false` | Reinstall/upgrade C-Gate from the install source on the next start. Once C-Gate is installed it is normally kept as is across restarts; turn this on to replace it (for example to move to a newer C-Gate version). Your project DBs and config are preserved. Turn it back off after the upgrade, or C-Gate reinstalls on every boot. |
+| `cgate_log_max_mb` | integer | `500` | Maximum total size in MiB for managed C-Gate file logs. The add-on checks every 15 minutes and removes the oldest closed log files first. |
 | `cgate_serial_device` | device | (empty) | **BETA — opt-in, field-tested with 5500PC and 5500PCU.** Dropdown of the serial devices detected on the HA host. Prefer a `/dev/serial/by-id/...` alias over a bare `/dev/ttyUSB0`: it survives replugging into another USB port. Hidden optional field; leave empty to disable. See "USB-serial PCI support" below. |
 | `cgate_external_clients` | list of objects | `[]` | Addresses allowed to connect to the managed C-Gate (for tools such as C-Bus Toolkit), each with an `address` and a `level` of `monitor`, `operate` or `program`. Empty means the add-on itself only. **C-Gate has no authentication on its ports** — see "Letting external clients reach managed C-Gate" below before using this. |
 
@@ -97,6 +98,16 @@ On every start the add-on:
 - prunes files under `logs/` (and legacy `log/`) older than 7 days
 - if log files still exceed 500 MiB total, deletes the oldest segments until
   under that cap
+
+While the add-on remains running, it repeats the size and age cleanup every
+15 minutes. Set the optional `cgate_log_max_mb` value (50–10000, default 500)
+to choose the maximum retained C-Gate file-log size. Files C-Gate is actively
+writing are never deleted; its native rotation closes them before cleanup.
+
+This is separate from the add-on log shown by Home Assistant. cgateweb writes
+that log to stdout/stderr so Supervisor manages it. `/data` is already the
+standard persistent add-on volume, so mapping another host folder does not
+provide Home Assistant log rotation and is not required.
 
 Your project databases and `config/` are never touched. The active `event.log`
 is kept; only older rotated segments are eligible for pruning.

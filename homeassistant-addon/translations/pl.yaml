@@ -61,6 +61,11 @@ configuration:
       danych projektu i konfiguracja zostają zachowane); w trybie przesyłania
       możesz zamiast tego umieścić nowszy zip w /share/cgate. Wyłącz ją po
       aktualizacji.
+  cgate_log_max_mb:
+    name: Maksymalny rozmiar dzienników C-Gate
+    description: >-
+      Maksymalny łączny rozmiar plików dziennika zarządzanego C-Gate w MiB.
+      Najstarsze zamknięte pliki są usuwane co 15 minut. Domyślnie: 500.
   cgate_serial_device:
     name: Urządzenie PCI szeregowe (beta)
     description: >-

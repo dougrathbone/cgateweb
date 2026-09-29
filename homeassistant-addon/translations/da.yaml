@@ -61,6 +61,11 @@ configuration:
       (dine projektdatabaser og konfiguration bevares); i upload-tilstand kan du
       i stedet lægge en nyere zip i /share/cgate. Slå det fra igen efter
       opgraderingen.
+  cgate_log_max_mb:
+    name: Maksimal størrelse på C-Gate-logfiler
+    description: >-
+      Maksimal samlet størrelse i MiB for administrerede C-Gate-logfiler. De
+      ældste lukkede filer fjernes hvert 15. minut. Standard: 500.
   cgate_serial_device:
     name: Seriel PCI-enhed (beta)
     description: >-

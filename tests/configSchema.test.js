@@ -228,6 +228,7 @@ describe('settings schema — aliases', () => {
         cover_ramp_duration_sec: 'Seconds; cover_ramp_duration_ms is milliseconds.',
         cgate_download_sha256: 'Add-on container script only; no runtime setting reads it.',
         cgate_force_reinstall: 'Add-on container script only; no runtime setting reads it.',
+        cgate_log_max_mb: 'Add-on container scripts only; no runtime setting reads it.',
         cgate_external_clients: 'Add-on container script only; no runtime setting reads it.'
     };
 

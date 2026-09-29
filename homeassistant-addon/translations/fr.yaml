@@ -67,6 +67,12 @@ configuration:
       données de projet et la configuration sont conservées) ; en mode upload,
       vous pouvez aussi déposer un zip plus récent dans /share/cgate.
       Désactivez-la après la mise à jour.
+  cgate_log_max_mb:
+    name: Taille maximale des journaux C-Gate
+    description: >-
+      Taille totale maximale en Mio des fichiers journaux du C-Gate géré. Les
+      plus anciens fichiers fermés sont supprimés toutes les 15 minutes. Par
+      défaut : 500.
   cgate_serial_device:
     name: Périphérique PCI série (bêta)
     description: >-

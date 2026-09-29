@@ -64,6 +64,11 @@ configuration:
       avvio (i database del progetto e la configurazione vengono conservati); in
       modalità upload puoi invece inserire uno zip più recente in /share/cgate.
       Disattivala dopo l'aggiornamento.
+  cgate_log_max_mb:
+    name: Dimensione massima dei log C-Gate
+    description: >-
+      Dimensione totale massima in MiB dei file di log di C-Gate gestito. I file
+      chiusi meno recenti vengono rimossi ogni 15 minuti. Predefinito: 500.
   cgate_serial_device:
     name: Dispositivo PCI seriale (beta)
     description: >-

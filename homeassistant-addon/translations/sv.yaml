@@ -60,6 +60,11 @@ configuration:
       från installationskällan vid nästa start (dina projektdatabaser och
       konfiguration bevaras); i uppladdningsläge kan du i stället lägga en nyare
       zip i /share/cgate. Stäng av detta efter uppgraderingen.
+  cgate_log_max_mb:
+    name: Maximal storlek för C-Gate-loggar
+    description: >-
+      Maximal total storlek i MiB för hanterade C-Gate-loggfiler. De äldsta
+      stängda filerna tas bort var 15:e minut. Standard: 500.
   cgate_serial_device:
     name: Seriell PCI-enhet (beta)
     description: >-

@@ -892,6 +892,85 @@ configuration:
         (бази даних проєкту та конфігурація зберігаються); у режимі завантаження
         можна натомість покласти новіший zip у /share/cgate. Вимкніть його після
         оновлення.
+  cgate_log_max_mb:
+    name:
+      en: Maximum C-Gate Log Size
+      de: Maximale C-Gate-Protokollgröße
+      es: Tamaño máximo del registro de C-Gate
+      fr: Taille maximale des journaux C-Gate
+      it: Dimensione massima dei log C-Gate
+      nl: Maximale grootte van C-Gate-logboeken
+      pt: Tamanho máximo dos registos do C-Gate
+      ru: Максимальный размер журналов C-Gate
+      zh: C-Gate 日志最大大小
+      ja: C-Gate ログの最大サイズ
+      ko: 최대 C-Gate 로그 크기
+      pl: Maksymalny rozmiar dzienników C-Gate
+      sv: Maximal storlek för C-Gate-loggar
+      no: Maksimal størrelse på C-Gate-logger
+      da: Maksimal størrelse på C-Gate-logfiler
+      cs: Maximální velikost protokolů C-Gate
+      uk: Максимальний розмір журналів C-Gate
+    description:
+      en: >-
+        Maximum total size in MiB for managed C-Gate file logs. The oldest
+        closed log files are removed every 15 minutes. Default: 500.
+      de: >-
+        Maximale Gesamtgröße in MiB für Protokolldateien des verwalteten C-Gate.
+        Die ältesten geschlossenen Dateien werden alle 15 Minuten entfernt.
+        Standard: 500.
+      es: >-
+        Tamaño total máximo en MiB de los archivos de registro de C-Gate
+        gestionado. Los archivos cerrados más antiguos se eliminan cada 15
+        minutos. Predeterminado: 500.
+      fr: >-
+        Taille totale maximale en Mio des fichiers journaux du C-Gate géré. Les
+        plus anciens fichiers fermés sont supprimés toutes les 15 minutes. Par
+        défaut : 500.
+      it: >-
+        Dimensione totale massima in MiB dei file di log di C-Gate gestito. I
+        file chiusi meno recenti vengono rimossi ogni 15 minuti. Predefinito:
+        500.
+      nl: >-
+        Maximale totale grootte in MiB voor logbestanden van beheerde C-Gate. De
+        oudste gesloten bestanden worden elke 15 minuten verwijderd. Standaard:
+        500.
+      pt: >-
+        Tamanho total máximo em MiB dos ficheiros de registo do C-Gate gerido.
+        Os ficheiros fechados mais antigos são removidos a cada 15 minutos.
+        Predefinição: 500.
+      ru: >-
+        Максимальный общий размер файлов журналов управляемого C-Gate в МиБ.
+        Самые старые закрытые файлы удаляются каждые 15 минут. По умолчанию:
+        500.
+      zh: >-
+        托管 C-Gate 文件日志的最大总大小（MiB）。每 15 分钟删除最旧的已关闭日志文件。默认值：500。
+      ja: >-
+        マネージド C-Gate のログファイルの合計上限（MiB）です。閉じられた古いログファイルを 15
+        分ごとに削除します。既定値：500。
+      ko: >-
+        관리형 C-Gate 파일 로그의 최대 총크기(MiB)입니다. 닫힌 로그 파일 중 가장 오래된 파일을 15분마다
+        삭제합니다. 기본값: 500.
+      pl: >-
+        Maksymalny łączny rozmiar plików dziennika zarządzanego C-Gate w MiB.
+        Najstarsze zamknięte pliki są usuwane co 15 minut. Domyślnie: 500.
+      sv: >-
+        Maximal total storlek i MiB för hanterade C-Gate-loggfiler. De äldsta
+        stängda filerna tas bort var 15:e minut. Standard: 500.
+      no: >-
+        Maksimal samlet størrelse i MiB for administrerte C-Gate-loggfiler. De
+        eldste lukkede filene fjernes hvert 15. minutt. Standard: 500.
+      da: >-
+        Maksimal samlet størrelse i MiB for administrerede C-Gate-logfiler. De
+        ældste lukkede filer fjernes hvert 15. minut. Standard: 500.
+      cs: >-
+        Maximální celková velikost souborů protokolu spravovaného C-Gate v MiB.
+        Nejstarší zavřené soubory se odstraňují každých 15 minut. Výchozí
+        hodnota: 500.
+      uk: >-
+        Максимальний загальний розмір файлів журналів керованого C-Gate у МіБ.
+        Найстаріші закриті файли видаляються кожні 15 хвилин. Типове значення:
+        500.
   cgate_serial_device:
     name:
       en: Serial PCI Device (Beta)

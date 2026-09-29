@@ -603,6 +603,38 @@ describeBash('cgate-install.sh helpers', () => {
             expect(r.remaining).toEqual(['event.log']);
         });
 
+        test('does not unlink a log file that a process has open', () => {
+            const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-prune-open-'));
+            const cgateDir = path.join(dir, 'cgate');
+            const procRoot = path.join(dir, 'proc');
+            const logFile = path.join(cgateDir, 'logs', 'active.log');
+            const closedLogFile = path.join(cgateDir, 'logs', 'closed.log');
+            fs.mkdirSync(path.dirname(logFile), { recursive: true });
+            fs.mkdirSync(path.join(procRoot, '123', 'fd'), { recursive: true });
+            fs.writeFileSync(logFile, 'x'.repeat(5000));
+            fs.writeFileSync(closedLogFile, 'x'.repeat(5000));
+            fs.symlinkSync(logFile, path.join(procRoot, '123', 'fd', '4'));
+
+            const env = {
+                ...process.env,
+                CGATEWEB_INSTALL_SOURCE_ONLY: '1',
+                CGW_INSTALL_SCRIPT: SCRIPT,
+                CGATEWEB_SERIAL_DEVICE_LIB: SERIAL_DEVICE_LIB,
+                CGATEWEB_PROC_ROOT: procRoot,
+                CGW_ARG_0: cgateDir
+            };
+            const script = `
+                set -u
+                ${BASHIO_STUB_WITH_LOGS}
+                source "$CGW_INSTALL_SCRIPT"
+                _cgateweb_prune_cgate_logs "$CGW_ARG_0" 100 0
+            `;
+            execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+            expect(fs.existsSync(logFile)).toBe(true);
+            expect(fs.existsSync(closedLogFile)).toBe(false);
+            fs.rmSync(dir, { recursive: true, force: true });
+        });
+
         test('does not touch project databases or config', () => {
             const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-prune-safe-'));
             const cgateDir = path.join(dir, 'cgate');
