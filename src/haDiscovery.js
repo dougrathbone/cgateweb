@@ -9,7 +9,8 @@ const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_SENSOR,
-    HA_DISCOVERY_SUFFIX
+    HA_DISCOVERY_SUFFIX,
+    DISCOVERY_STATE_OK
 } = require('./constants');
 
 // Discovery config topics end in this; used to recognise them in the _publish
@@ -74,6 +75,11 @@ class HaDiscovery {
         // 401 stopped even when C-Gate never emits event 762 (issue #122).
         /** @type {((networkId: string|number) => void)|null} */
         this.onNetworkDiscovered = null;
+        // Optional: (networkId) => boolean. True while the network's CNI/PCI
+        // is known not to be running, so empty trees wait for it instead of
+        // spending the retry budget (issue #122).
+        /** @type {((networkId: string) => boolean)|null} */
+        this.isNetworkInterfaceDown = null;
         this.logger = createLogger({ component: 'HaDiscovery' });
         // Tracks all discovery config topics published in this session so that
         // stale retained messages can be cleared when devices are excluded or change type.
@@ -597,6 +603,27 @@ class HaDiscovery {
         this.logger.info(`Network ${networkKey} reported sync complete (C-Gate event 762); refreshing HA Discovery`);
         // The completed sync supersedes any pending empty-Groups re-fetch;
         // the fresh TREEXML re-evaluates completeness from a clean budget.
+        this._clearTreeResyncState(networkKey);
+        this.queueTreeRequest(networkKey);
+    }
+
+    /**
+     * The network's interface has just reached running after being down. If
+     * discovery has not succeeded for it (still retrying, or paused after
+     * empty trees), start again with a fresh retry budget. A network already
+     * discovered is left alone so a flapping CNI does not re-fetch its tree on
+     * every recovery; the 762 that follows a real resync covers that case.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     */
+    handleNetworkInterfaceUp(networkId) {
+        if (!this.settings.ha_discovery_enabled) return;
+        const networkKey = String(networkId);
+        const configured = resolveSetting(this.settings, 'ha_discovery_networks');
+        if (configured.length > 0 && !configured.map(String).includes(networkKey)) return;
+        const entry = this._networkDiscoveryEntities.get(networkKey);
+        if (entry && entry.status === DISCOVERY_STATE_OK) return;
+        this.logger.info(`Network ${networkKey} interface is running; refreshing HA Discovery`);
+        this._clearTreeState(networkKey);
         this._clearTreeResyncState(networkKey);
         this.queueTreeRequest(networkKey);
     }

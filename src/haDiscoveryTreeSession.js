@@ -92,6 +92,9 @@ class _HaDiscoveryTreeSession {
     /** @type {number} */
     _treeResyncMaxDelayMs;
 
+    /** @type {((networkId: string) => boolean)|null} */
+    isNetworkInterfaceDown;
+
     queueTreeRequest(networkId) {
         const normalizedNetwork = String(networkId);
         const state = this._getOrCreateTreeState(normalizedNetwork);
@@ -224,6 +227,28 @@ class _HaDiscoveryTreeSession {
         );
 
         this._clearTimer(state, 'retryHandle');
+        state.retryHandle = this._setTimer(delay, () => {
+            state.retryHandle = null;
+            this.queueTreeRequest(networkId);
+        });
+    }
+
+    /**
+     * An empty tree from a network whose interface is known not to be
+     * running says nothing about whether discovery will work, so it does not
+     * count toward the pause. Keep checking at the slowest retry interval;
+     * handleNetworkInterfaceUp fetches straight away once the interface runs.
+     * @param {string} networkId
+     */
+    _deferTreeUntilInterfaceUp(networkId) {
+        const state = this._getOrCreateTreeState(networkId);
+        this._clearTimer(state, 'watchdogHandle');
+        this._clearTimer(state, 'retryHandle');
+        const delay = this._treeRetryMaxDelayMs;
+        this.logger.info(
+            `HA Discovery: tree for network ${networkId} is empty while its C-Bus interface is down; ` +
+            `checking again in ${Math.round(delay / 1000)}s without counting it as a failed attempt.`
+        );
         state.retryHandle = this._setTimer(delay, () => {
             state.retryHandle = null;
             this.queueTreeRequest(networkId);
@@ -622,6 +647,10 @@ class _HaDiscoveryTreeSession {
             // treats a management-only tree as "still syncing" too.
             const networkData = findNetworkData(networkForTree, result);
             if (!networkData || !networkHasDeviceData(networkData)) {
+                if (typeof this.isNetworkInterfaceDown === 'function' && this.isNetworkInterfaceDown(networkForTree)) {
+                    this._deferTreeUntilInterfaceUp(networkForTree);
+                    return;
+                }
                 this.logger.info(
                     `TreeXML for network ${networkForTree} contained no device data yet ` +
                     `(only network-management units present — network still syncing?); scheduling a retry.`
