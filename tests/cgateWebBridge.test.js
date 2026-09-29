@@ -302,6 +302,28 @@ describe('CgateWebBridge', () => {
             upSpy.mockRestore();
         });
 
+        it('routes merged interface readings to serial handshake recovery (issue #122)', () => {
+            const spy = jest.spyOn(bridge.serialHandshakeRecovery, 'handleReading');
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'opening' });
+            bridge._handleNetworkInterfaceReading('254', { state: 'new' });
+            expect(spy).toHaveBeenLastCalledWith('254', expect.objectContaining({ interfaceState: 'opening', state: 'new' }));
+            spy.mockRestore();
+        });
+
+        it('refreshes discovery only when an interface that was down reaches running (issue #122)', () => {
+            const handleNetworkInterfaceUp = jest.fn();
+            bridge.haDiscovery = { handleNetworkInterfaceUp, ensureNetworkConnectivityDiscovery: jest.fn() };
+
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
+            expect(handleNetworkInterfaceUp).not.toHaveBeenCalled();
+
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'opening' });
+            bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
+            expect(handleNetworkInterfaceUp).toHaveBeenCalledTimes(1);
+            expect(handleNetworkInterfaceUp).toHaveBeenCalledWith('254');
+            bridge.haDiscovery = null;
+        });
+
         it('is inert without a configured serial device', () => {
             // Every CNI install: no cgate_serial_device, so a genuine network
             // dropout must never reach the recovery script.
@@ -518,6 +540,12 @@ describe('CgateWebBridge', () => {
                 const addSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
 
                 bridge._handleAllConnected();
+
+                // Held until the interface reports running (#122).
+                expect(addSpy).not.toHaveBeenCalledWith(
+                    expect.stringContaining('GET //TestProject/254/56/* level'), expect.anything()
+                );
+                bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
 
                 // Startup passes no queue options, so this getall keeps default
                 // (normal) priority; the resync path is the one that uses 'bulk'.

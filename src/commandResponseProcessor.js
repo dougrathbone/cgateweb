@@ -49,12 +49,13 @@ class CommandResponseProcessor {
      * @param {Function} [options.onCommandError] - Callback for C-Gate command error responses
      * @param {Function} [options.onNetworkState] - Callback for network-level interface/state readings: (networkId, reading) => void
      * @param {Function} [options.onNetworkSyncComplete] - Callback for C-Gate 762 network-sync-complete events: (networkId) => void
+     * @param {Function} [options.onNetworkCreated] - Callback for C-Gate 742 "Network created" events: (networkId) => void
      * @param {Function} [options.getNetworkInterfaceState] - Last CNI/PCI reading for a network: (networkId) => ({online, interfaceState}|null)
      * @param {number} [options.maxPendingTreeMessages] - Cap on TREEXML fragments buffered before HA Discovery is ready
      * @param {number} [options.errorRepeatWindowMs] - Window in which an identical command error is counted instead of logged again
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, getNetworkInterfaceState, maxPendingTreeMessages, errorRepeatWindowMs, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, onNetworkCreated, getNetworkInterfaceState, maxPendingTreeMessages, errorRepeatWindowMs, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
@@ -73,6 +74,9 @@ class CommandResponseProcessor {
         // so the bridge can refresh entity levels with the tree now fully
         // populated. Signature: (networkId).
         this.onNetworkSyncComplete = onNetworkSyncComplete || null;
+        // Called when C-Gate reports a network created (742), which is when it
+        // starts opening the interface. Signature: (networkId).
+        this.onNetworkCreated = onNetworkCreated || null;
         // Reads the CNI/PCI state the interface monitor last polled, so an
         // error on a network whose C-Bus link is down can say so.
         this.getNetworkInterfaceState = typeof getNetworkInterfaceState === 'function'
@@ -280,10 +284,12 @@ class CommandResponseProcessor {
             this.logger.debug(`C-Gate system event 742 (${lifecycle[1]}, but no network id parsed): ${this._safeStatusData(data)}`);
             return;
         }
+        const networkId = pathMatch[1];
+        const created = /created/i.test(lifecycle[1]);
+        if (created && this.onNetworkCreated) this.onNetworkCreated(networkId);
         if (!this._haDiscovery) return;
 
-        const networkId = pathMatch[1];
-        if (/created/i.test(lifecycle[1])) {
+        if (created) {
             this._haDiscovery.handleNetworkCreated(networkId);
         } else {
             this._haDiscovery.handleNetworkRemoved(networkId);
@@ -564,6 +570,8 @@ class CommandResponseProcessor {
      * @private
      */
     _reportEmptyApplication(statusData) {
+        // The network itself is not loaded yet; nothing is known about the app.
+        if (/\(Network not found\)/i.test(statusData || '')) return false;
         const match = /\/\/[^/\s]+\/(\d+)\/(\d+)\/\*/.exec(statusData || '');
         if (!match) return false;
 

@@ -238,6 +238,24 @@ describe('CommandResponseProcessor', () => {
             expect(mockHaDiscovery.handleNetworkCreated).toHaveBeenCalledWith('254');
         });
 
+        it('should report Network created to onNetworkCreated, even before HA discovery exists', () => {
+            const onNetworkCreated = jest.fn();
+            processor.onNetworkCreated = onNetworkCreated;
+            processor.haDiscovery = null;
+            processor._processCommandResponse(
+                '742',
+                '//1PINOTAG/254 ebef1fc0-82f7-103d-87d5-d4e749aa320b Network created type=serial address=ttyUSB0'
+            );
+            expect(onNetworkCreated).toHaveBeenCalledWith('254');
+        });
+
+        it('should not report Network removed to onNetworkCreated', () => {
+            const onNetworkCreated = jest.fn();
+            processor.onNetworkCreated = onNetworkCreated;
+            processor._processCommandResponse('742', '//PROJECT/254 uuid Network removed');
+            expect(onNetworkCreated).not.toHaveBeenCalled();
+        });
+
         it('should ignore 742 events that are not Network created', () => {
             processor._processCommandResponse(
                 '742',
@@ -823,6 +841,17 @@ describe('CommandResponseProcessor', () => {
                 // application, and the operator should still see it.
                 processor()._processCommandErrorResponse('401', 'Bad object or device ID: //MIDSTRM/254/56/99 (Object not found)');
                 expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('C-Gate Command Error 401'));
+            });
+
+            // #122: C-Gate had not loaded network 254 yet. That says nothing
+            // about whether lighting has groups.
+            it('does not call a network-not-found wildcard an empty application', () => {
+                const NOT_LOADED = 'Bad object or device ID: //1PINOTAG/254/56/* (Network not found)';
+                const onCommandError = jest.fn();
+                processor(onCommandError)._processCommandErrorResponse('401', NOT_LOADED);
+                expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('has no groups'));
+                expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Network not found'));
+                expect(onCommandError).toHaveBeenCalledWith('401', NOT_LOADED);
             });
         });
 

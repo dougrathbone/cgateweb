@@ -120,6 +120,8 @@ class CgateWebBridge {
     /** @type {*} */
     serialDeviceRecovery;
     /** @type {*} */
+    serialHandshakeRecovery;
+    /** @type {*} */
     cniNotificationManager;
     /** @type {*} */
     commandResponseProcessor;
@@ -203,6 +205,10 @@ class CgateWebBridge {
             getSecurityEventHandler: () => this.securityEventHandler,
             applyDiscoveredNetworks: (networks) => { this.discoveredNetworks = networks; },
             applyHaDiscovery: (haDiscovery) => {
+                if (haDiscovery) {
+                    haDiscovery.isNetworkInterfaceDown = (networkId) =>
+                        this.networkInterfaceMonitor.getNetwork(networkId)?.online === false;
+                }
                 this.haDiscovery = haDiscovery;
                 this.commandResponseProcessor.haDiscovery = haDiscovery;
             },
@@ -210,6 +216,9 @@ class CgateWebBridge {
         });
         this.commandResponseProcessor.onCommandError = (code, statusData) => {
             this.initializationService.handleCommandError(code, statusData);
+        };
+        this.commandResponseProcessor.onNetworkCreated = (networkId) => {
+            this.initializationService.handleNetworkCreated(networkId);
         };
         this._setupEventHandlers();
     }
@@ -386,6 +395,7 @@ class CgateWebBridge {
         this.mqttManager.removeAllListeners();
 
         this.initializationService.stop();
+        this.serialHandshakeRecovery.stop();
         this.stateResyncCoordinator.dispose();
         this._clearNetworkSyncTimers();
         this.haBridgeDiagnostics.stop();
@@ -883,7 +893,20 @@ class CgateWebBridge {
      * (optionally) raises/clears an HA notification on transitions.
      */
     _handleNetworkInterfaceReading(networkId, reading) {
-        return this.cniNotificationManager.handleReading(networkId, reading);
+        const before = this.networkInterfaceMonitor.getNetwork(networkId);
+        const wasDown = !!before && before.online === false;
+        const result = this.cniNotificationManager.handleReading(networkId, reading);
+        const snapshot = this.networkInterfaceMonitor.getNetwork(networkId);
+        if (this.initializationService) {
+            this.initializationService.handleNetworkInterfaceReading(networkId, snapshot);
+        }
+        this.serialHandshakeRecovery.handleReading(networkId, snapshot);
+        // A network that opened late may have exhausted or paused discovery
+        // on empty trees while it was down; fetch it now it can answer.
+        if (wasDown && snapshot && snapshot.online === true && this.haDiscovery) {
+            this.haDiscovery.handleNetworkInterfaceUp(networkId);
+        }
+        return result;
     }
 
     _getBridgeStatus() {

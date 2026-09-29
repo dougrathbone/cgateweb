@@ -13,6 +13,10 @@ const {
 } = require('./constants');
 const { buildClockRequestRefresh } = require('./clockCommand');
 
+const INTERFACE_RUNNING = 'running';
+// One 742 arrives per pooled command connection; poll the interface once.
+const NETWORK_CREATED_COALESCE_MS = 2000;
+
 /**
  * Drives post-connection initialization (auto-discovery, initial/periodic
  * getall, CNI monitoring, HA Discovery setup) without reaching into and
@@ -75,6 +79,11 @@ class BridgeInitializationService {
         // was merely still syncing can have its poll restored once C-Gate says
         // it has finished. @type {Set<string>}
         this._pollsStoppedAsNotFound = new Set();
+        // networkId -> startup bus commands held until its interface is running.
+        /** @type {Map<string, {getallPairs: string[], fallbackHandle: NodeJS.Timeout|null}>} */
+        this._startupHolds = new Map();
+        /** @type {Map<string, number>} */
+        this._networkCreatedPolledAt = new Map();
     }
 
     /**
@@ -119,8 +128,9 @@ class BridgeInitializationService {
         }
 
         const getallNetworks = this._resolveGetallNetworks();
+        const holdNetworks = this._startupHoldNetworks();
 
-        if (getallNetworks.length > 0 && this.settings.getallonstart) {
+        if (holdNetworks.length === 0 && getallNetworks.length > 0 && this.settings.getallonstart) {
             this._log(`Getting all initial values for networks: ${getallNetworks.join(', ')}...`);
             this.sendGetallLevels(getallNetworks);
         }
@@ -129,13 +139,19 @@ class BridgeInitializationService {
             this._scheduleAllGetalls(getallNetworks);
         }
 
-        // Security panels don't answer lighting-style getall (spec §5.9), so
-        // the security app syncs zone state via dedicated status requests.
-        this.sendSecurityStatusRequests();
-        this.sendClockRefreshRequests();
+        if (holdNetworks.length === 0) {
+            // Security panels don't answer lighting-style getall (spec §5.9), so
+            // the security app syncs zone state via dedicated status requests.
+            this.sendSecurityStatusRequests();
+            this.sendClockRefreshRequests();
+        }
 
         // Monitor CNI/PCI connectivity per network (independent of getall).
         this._startNetworkInterfaceMonitoring();
+
+        if (holdNetworks.length > 0) {
+            this._holdStartupBusCommands(holdNetworks, getallNetworks);
+        }
 
         if (!this._getHaDiscovery()) {
             const haDiscovery = new HaDiscovery(
@@ -455,6 +471,132 @@ class BridgeInitializationService {
         this._log(`Monitoring C-Bus network interface (CNI) state for [${networkIds.join(', ')}] every ${intervalMs / 1000}s.`);
     }
 
+    /**
+     * Networks whose startup bus commands should wait for the interface.
+     * Empty when interface monitoring or the hold is off, which keeps the old
+     * send-at-connect behaviour.
+     * @returns {string[]}
+     * @private
+     */
+    _startupHoldNetworks() {
+        const intervalMs = this.settings.cniMonitorIntervalMs;
+        if (!intervalMs || intervalMs <= 0) return [];
+        if (!(resolveSetting(this.settings, 'busCommandHoldTimeoutMs') > 0)) return [];
+        return this._resolveMonitorNetworkIds();
+    }
+
+    /**
+     * Hold each network's startup level getall, security status request and
+     * clock refresh until its interface reports running. A PC Interface that
+     * is still opening answers every group read with 408, and a getall walks
+     * every group on the network (issue #122).
+     *
+     * @param {string[]} networkIds
+     * @param {string[]} getallNetworks - network/app pairs for the startup getall
+     * @private
+     */
+    _holdStartupBusCommands(networkIds, getallNetworks) {
+        this._clearStartupHolds();
+        const timeoutMs = resolveSetting(this.settings, 'busCommandHoldTimeoutMs');
+        for (const id of networkIds) {
+            this._startupHolds.set(id, {
+                getallPairs: getallNetworks.filter((netapp) => netapp.startsWith(`${id}/`)),
+                fallbackHandle: null
+            });
+            this._armStartupHoldFallback(id, timeoutMs);
+        }
+        this.logger.info(
+            `Holding startup level, security and clock requests for network(s) ${networkIds.join(', ')} ` +
+            `until the C-Bus interface reports running (sent after ${Math.round(timeoutMs / 1000)}s if C-Gate gives no interface reading).`
+        );
+    }
+
+    /**
+     * @param {string} networkId
+     * @param {number} timeoutMs
+     * @private
+     */
+    _armStartupHoldFallback(networkId, timeoutMs) {
+        const hold = this._startupHolds.get(networkId);
+        if (!hold) return;
+        if (hold.fallbackHandle) clearTimeout(hold.fallbackHandle);
+        hold.fallbackHandle = setTimeout(() => {
+            hold.fallbackHandle = null;
+            this.logger.info(`No interface reading for network ${networkId} within ${Math.round(timeoutMs / 1000)}s; sending its startup requests anyway.`);
+            this._releaseStartupBusCommands(networkId);
+        }, timeoutMs);
+        hold.fallbackHandle.unref?.();
+    }
+
+    /**
+     * Send the startup bus commands held for one network, once.
+     * @param {string} networkId
+     * @private
+     */
+    _releaseStartupBusCommands(networkId) {
+        const hold = this._startupHolds.get(networkId);
+        if (!hold) return;
+        if (hold.fallbackHandle) clearTimeout(hold.fallbackHandle);
+        this._startupHolds.delete(networkId);
+
+        if (hold.getallPairs.length > 0 && this.settings.getallonstart) {
+            this._log(`Getting all initial values for networks: ${hold.getallPairs.join(', ')}...`);
+            this.sendGetallLevels(hold.getallPairs);
+        }
+        this.sendSecurityStatusRequests('connect', networkId);
+        this.sendClockRefreshRequests({ network: networkId });
+    }
+
+    /** @private */
+    _clearStartupHolds() {
+        for (const hold of this._startupHolds.values()) {
+            if (hold.fallbackHandle) clearTimeout(hold.fallbackHandle);
+        }
+        this._startupHolds.clear();
+    }
+
+    /**
+     * Every InterfaceState/State reading, after NetworkInterfaceMonitor has
+     * merged it. Running releases the held startup commands; any other
+     * interface state proves C-Gate answers the query, so the no-reading
+     * fallback is cancelled and the commands wait for running.
+     *
+     * @param {string|number} networkId
+     * @param {{interfaceState: ?string}|null} snapshot
+     */
+    handleNetworkInterfaceReading(networkId, snapshot) {
+        const id = String(networkId);
+        const hold = this._startupHolds.get(id);
+        if (!hold || !snapshot || !snapshot.interfaceState) return;
+        if (snapshot.interfaceState === INTERFACE_RUNNING) {
+            this.logger.info(`C-Bus network ${id} interface is running; sending its startup level, security and clock requests.`);
+            this._releaseStartupBusCommands(id);
+            return;
+        }
+        if (hold.fallbackHandle) {
+            clearTimeout(hold.fallbackHandle);
+            hold.fallbackHandle = null;
+            this.logger.info(`C-Bus network ${id} interface is ${snapshot.interfaceState}; startup requests wait until it is running.`);
+        }
+    }
+
+    /**
+     * C-Gate 742 "Network created": the interface is only now being opened,
+     * and the 30s monitor would miss the whole handshake, so read it now.
+     * @param {string|number} networkId
+     */
+    handleNetworkCreated(networkId) {
+        const intervalMs = this.settings.cniMonitorIntervalMs;
+        if (!intervalMs || intervalMs <= 0) return;
+        const id = String(networkId);
+        if (!this._resolveMonitorNetworkIds().includes(id)) return;
+        const now = Date.now();
+        const last = this._networkCreatedPolledAt.get(id);
+        if (last !== undefined && now - last < NETWORK_CREATED_COALESCE_MS) return;
+        this._networkCreatedPolledAt.set(id, now);
+        this._pollNetworkInterfaceStates([id]);
+    }
+
     _resolveGetallNetworks() {
         const settings = this.settings;
 
@@ -539,7 +681,11 @@ class BridgeInitializationService {
         return pairs;
     }
 
-    sendSecurityStatusRequests(trigger = 'connect') {
+    /**
+     * @param {string} [trigger]
+     * @param {string|number|null} [onlyNetwork] - limit to this one network
+     */
+    sendSecurityStatusRequests(trigger = 'connect', onlyNetwork = null) {
         const appId = this.settings.cbus_security_app_id;
         if (!appId || String(appId) === '0') return;
         const networks = this.settings.ha_discovery_networks;
@@ -547,6 +693,7 @@ class BridgeInitializationService {
         const handler = this._getSecurityEventHandler ? this._getSecurityEventHandler() : null;
         if (!handler) return;
         for (const network of networks) {
+            if (onlyNetwork !== null && String(network) !== String(onlyNetwork)) continue;
             handler.requestStatusSync(network, trigger);
         }
     }
@@ -554,10 +701,13 @@ class BridgeInitializationService {
     /**
      * Ask the network clock to rebroadcast date and time after connect.
      * Read-only: this never sets the C-Bus clock.
+     * @param {{priority?: string, network?: string}} [options] - network limits it to one network
      */
     sendClockRefreshRequests(options = {}) {
         if (!this.settings.cbus_clock_enabled) return;
-        const networks = this._resolveMonitorNetworkIds();
+        const { network: onlyNetwork, ...queueOptions } = options;
+        let networks = this._resolveMonitorNetworkIds();
+        if (onlyNetwork !== undefined) networks = networks.filter((n) => n === String(onlyNetwork));
         if (networks.length === 0) return;
         for (const network of networks) {
             this.commandQueue.add(
@@ -565,7 +715,7 @@ class BridgeInitializationService {
                     cbusname: this.settings.cbusname,
                     network
                 }) + NEWLINE,
-                options
+                queueOptions
             );
         }
         this.logger.info(`Requested C-Bus clock refresh for networks: ${networks.join(', ')}`);
@@ -615,6 +765,12 @@ class BridgeInitializationService {
         }
 
         if (code !== '401') return;
+        // "Network not found" says C-Gate has not loaded the network yet, not
+        // that the application is missing, so it must not retire the poll.
+        if (statusData && /\(Network not found\)/i.test(statusData)) {
+            this._extendStartupHoldForMissingNetwork(statusData);
+            return;
+        }
         // Extract network/app path from statusData like:
         // "Bad object or device ID: //CLIPSAL/254/203/* (Object not found)"
         const match = statusData && statusData.match(/\/\/[^/]+\/(\d+\/\d+)\/\*/);
@@ -626,6 +782,22 @@ class BridgeInitializationService {
             this._pollsStoppedAsNotFound.add(netapp);
             this.logger.warn(`Stopped periodic poll for ${netapp}: app not found on C-Bus system (401). If the network is still syncing this resumes once C-Gate reports it synced; otherwise remove it from your configuration to suppress this message.`);
         }
+    }
+
+    /**
+     * The startup interface query can reach C-Gate before it has loaded the
+     * project, and comes back "Network not found" instead of a reading.
+     * Restart the no-reading fallback so the held commands wait for the 742
+     * and the reading that follows rather than going out into a missing network.
+     * @param {string} statusData
+     * @private
+     */
+    _extendStartupHoldForMissingNetwork(statusData) {
+        const match = statusData.match(/\/\/[^/\s]+\/(\d+)/);
+        if (!match) return;
+        const hold = this._startupHolds.get(match[1]);
+        if (!hold || !hold.fallbackHandle) return;
+        this._armStartupHoldFallback(match[1], resolveSetting(this.settings, 'busCommandHoldTimeoutMs'));
     }
 
     /**
@@ -672,6 +844,8 @@ class BridgeInitializationService {
         }
         this._perAppTimers.clear();
         this._pollsStoppedAsNotFound.clear();
+        this._clearStartupHolds();
+        this._networkCreatedPolledAt.clear();
 
         if (this._cniMonitorTimer) {
             clearInterval(this._cniMonitorTimer);

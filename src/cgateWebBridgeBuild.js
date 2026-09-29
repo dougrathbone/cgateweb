@@ -23,6 +23,7 @@ const { NetworkInterfaceMonitor } = require('./networkInterfaceMonitor');
 const { AirconControlRegistry } = require('./airconControlRegistry');
 const CniNotificationManager = require('./cniNotificationManager');
 const SerialDeviceRecovery = require('./serialDeviceRecovery');
+const SerialHandshakeRecovery = require('./serialHandshakeRecovery');
 const BridgeReadiness = require('./bridgeReadiness');
 const { MQTT_RETAINED_STATE_OPTIONS } = require('./constants');
 const { resolveSetting } = require('./config/schema');
@@ -297,6 +298,14 @@ class _CgateWebBridgeBuild {
         this.serialDeviceRecovery = new SerialDeviceRecovery({
             settings: this.settings,
             logger: this.logger
+        });
+
+        // Reopens a USB PC Interface network stuck at InterfaceState=opening
+        // (issue #122). Same managed + cgate_serial_device gate as above.
+        this.serialHandshakeRecovery = new SerialHandshakeRecovery({
+            settings: this.settings,
+            logger: this.logger,
+            sendCommand: (command) => this.cgateCommandQueue.add(command)
         });
 
         // CNI online/offline state machine: publishes connectivity state and
