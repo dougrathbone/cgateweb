@@ -1552,6 +1552,85 @@ describe('HaDiscovery', () => {
         });
     });
 
+    // Issue #122: a PC Interface stuck opening returns empty trees for minutes.
+    // Those must not spend the retry budget, and the tree is fetched again
+    // the moment the interface runs.
+    describe('empty trees while the C-Bus interface is down', () => {
+        const statuses = () => mockPublishFn.mock.calls
+            .filter(c => c[0] === 'cbus/read/254///discovery_status')
+            .map(c => c[1]);
+        const emptyTree = () => {
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network></Network>');
+            haDiscovery.handleTreeEnd('end');
+        };
+
+        beforeEach(() => {
+            jest.useFakeTimers();
+            mockSettings.ha_discovery_networks = ['254'];
+        });
+
+        afterEach(() => {
+            haDiscovery.stop();
+            jest.useRealTimers();
+        });
+
+        it('keeps checking without pausing while the interface is down', () => {
+            haDiscovery.isNetworkInterfaceDown = () => true;
+            haDiscovery.trigger();
+
+            for (let i = 0; i < 20; i++) {
+                emptyTree();
+                jest.advanceTimersByTime(haDiscovery._treeRetryMaxDelayMs);
+            }
+
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(21);
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(0);
+            expect(statuses()).not.toContain('paused');
+        });
+
+        it('counts empty trees as before when the interface is not known to be down', () => {
+            haDiscovery.isNetworkInterfaceDown = () => false;
+            haDiscovery.trigger();
+            emptyTree();
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+        });
+
+        it('restarts a paused network with a fresh budget once the interface runs', () => {
+            haDiscovery.trigger();
+            for (let i = 0; i <= haDiscovery._maxTreeRetryAttempts; i++) {
+                emptyTree();
+                jest.runOnlyPendingTimers();
+            }
+            expect(statuses()[statuses().length - 1]).toBe('paused');
+
+            mockSendCommandFn.mockClear();
+            haDiscovery.handleNetworkInterfaceUp('254');
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+            expect(statuses()[statuses().length - 1]).toBe('ok');
+        });
+
+        it('leaves an already discovered network alone when the interface comes back', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData(TREEXML_NET254);
+            haDiscovery.handleTreeEnd('end');
+            mockSendCommandFn.mockClear();
+
+            haDiscovery.handleNetworkInterfaceUp('254');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
+        it('ignores networks outside ha_discovery_networks', () => {
+            haDiscovery.handleNetworkInterfaceUp('1');
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+    });
+
     describe('TreeXML empty-Groups resync (issue #25)', () => {
         beforeEach(() => {
             jest.useFakeTimers();

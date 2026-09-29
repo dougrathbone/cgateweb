@@ -1235,6 +1235,15 @@ const SETTINGS_SCHEMA = {
         description: 'How often to poll each C-Bus network\'s CNI/PCI interface state so a dropout between C-Gate and the C-Bus network surfaces on the status page. Set to 0 to disable. Default 30s.',
         reason: TUNING_ONLY_REASON
     },
+    busCommandHoldTimeoutMs: {
+        key: 'busCommandHoldTimeoutMs',
+        type: 'number',
+        default: 5000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'At connect, the startup level getall, security status request and clock refresh for a network wait until its interface reports running. If no interface reading arrives within this window they are sent anyway. Set to 0 to send them immediately.',
+        reason: 'A PC Interface still opening answers every group read with 408 (issue #122). The fallback keeps installs whose C-Gate never answers the interface query on the old behaviour; a reading that says the interface is not running keeps the commands held until it is.'
+    },
     cni_offline_notification: {
         key: 'cni_offline_notification',
         type: 'boolean',
@@ -1318,6 +1327,42 @@ const SETTINGS_SCHEMA = {
         exposure: 'standalone',
         description: 'Cap on the recovery helper\'s run time.',
         reason: 'The helper runs synchronously from inside C-Gate response processing, so for its whole duration MQTT keepalive and LWT, the connection-pool health checks and every timer are stalled behind it - the timeout is the only thing bounding that stall. A real run costs 2-5s (node startup, the resolver, sql.js per project database, the signal), so this is a few times the expected cost rather than the minute it used to be: long enough for a slow disk, short enough that a wedged helper does not look like a dead bridge. Clamped to a 1s floor, since 0 would mean "no timeout" to execFileSync and block indefinitely.'
+    },
+    serialHandshakeEnabled: {
+        key: 'serialHandshakeEnabled',
+        type: 'boolean',
+        default: true,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Close and reopen a USB PC Interface network that stays at InterfaceState=opening (issue #122). Only engages in managed mode with cgate_serial_device set.',
+        reason: 'The device path is present and unchanged, so renumber recovery does nothing and restarting the add-on repeats the same failed handshake. Reopening the network retries the handshake without restarting C-Gate.'
+    },
+    serialHandshakeRetryAfterMs: {
+        key: 'serialHandshakeRetryAfterMs',
+        type: 'number',
+        default: 45000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'How long a serial network may stay at InterfaceState=opening before it is closed and reopened. Later attempts back off from this value.',
+        reason: 'A healthy PC Interface finishes opening within about 10 seconds, so 45 seconds is a clear failure without reopening a slow but working handshake.'
+    },
+    serialHandshakeMaxAttempts: {
+        key: 'serialHandshakeMaxAttempts',
+        type: 'number',
+        default: 3,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Close/open attempts per stuck handshake before giving up and logging that the PC Interface never finished opening.',
+        reason: TUNING_ONLY_REASON
+    },
+    serialHandshakeReopenDelayMs: {
+        key: 'serialHandshakeReopenDelayMs',
+        type: 'number',
+        default: 2000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Gap between closing a stuck serial network and opening it again.',
+        reason: 'Pooled connections run commands in parallel, so an open sent straight after the close could reach C-Gate first.'
     },
 
     // --- Web diagnostics / Supervisor calls ----------------------------------

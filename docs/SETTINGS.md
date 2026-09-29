@@ -323,6 +323,7 @@ Temperature Broadcast (app 25) reads are always decoded. Writes use `cbus/write/
 | `stale_device_threshold_hours` | `stale_device_threshold_hours` | integer (hours) | `24` | How long without an event before a device counts as stale. Floor of 1 hour. |
 | `stale_device_check_interval_sec` | `stale_device_check_interval_sec` | integer (**seconds**) | `3600` | How often the check runs. Same unit on both sides. Floor of 60 s. |
 | `cniMonitorIntervalMs` | *standalone only* | integer (ms) | `30000` | How often each network's CNI/PCI interface state is polled so a C-Gate-to-C-Bus dropout surfaces on the status page. `0` disables. |
+| `busCommandHoldTimeoutMs` | *standalone only* | integer (ms) | `5000` | At connect, each network's startup level getall, security status request and clock refresh wait until its interface reports `running`. With no interface reading inside this window they are sent anyway; a reading that says the interface is not running keeps them held. `0` sends them immediately. |
 | `cni_offline_notification` | `cni_offline_notification` | boolean | `false` | Raise a Home Assistant persistent notification when a CNI/PCI goes offline, dismissed on recovery. Requires the add-on environment (`SUPERVISOR_TOKEN`); inert standalone. |
 | `haNotifierTimeoutMs` | *standalone only* | integer (ms) | `5000` | Timeout for Home Assistant persistent-notification create/dismiss calls via the Supervisor Core API proxy. |
 
@@ -478,6 +479,10 @@ Managed mode runs C-Gate inside the add-on container. None of this applies to a 
 | `serialRecoveryMaxDelayMs` | *standalone only* | integer (ms) | `300000` (5 min) | Backoff ceiling, so a flapping interface cannot become a C-Gate restart loop. |
 | `serialRecoveryStableWindowMs` | *standalone only* | integer (ms) | `900000` (15 min) | How long the interface must stay up before the next outage counts as new trouble and gets a fresh attempt budget. |
 | `serialRecoveryTimeoutMs` | *standalone only* | integer (ms) | `15000` | Cap on the recovery helper's run time. The helper runs **synchronously** inside C-Gate response processing, so for its whole duration MQTT keepalive, pool health checks and every timer are stalled behind it. A real run costs 2-5 s. Clamped to a 1 s floor — `0` would mean "no timeout" and block indefinitely. |
+| `serialHandshakeEnabled` | *standalone only* | boolean | `true` | Close and reopen a USB PC Interface network that stays at `InterfaceState=opening`. Managed mode with `cgate_serial_device` set only; C-Gate is not restarted. |
+| `serialHandshakeRetryAfterMs` | *standalone only* | integer (ms) | `45000` | How long a serial network may stay opening before it is reopened. Later attempts back off from this value. |
+| `serialHandshakeMaxAttempts` | *standalone only* | integer | `3` | Reopen attempts per stuck handshake before giving up. Floor of 1. |
+| `serialHandshakeReopenDelayMs` | *standalone only* | integer (ms) | `2000` | Gap between closing a stuck serial network and opening it again. |
 
 The `serialRecovery*` settings are marked standalone-only because no add-on option exposes them, but they only do anything in the add-on's managed mode. They are runtime-tunable escape hatches rather than user-facing options.
 

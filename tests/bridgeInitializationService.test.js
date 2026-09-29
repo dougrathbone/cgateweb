@@ -1043,6 +1043,22 @@ describe('BridgeInitializationService', () => {
             svc.stop();
         });
 
+        it('keeps polling when the 401 says the network is not loaded yet (#122)', async () => {
+            const { bridge } = makeBridge({
+                getallonstart: false,
+                getallperiod: 3600,
+                getall_networks: [254]
+            });
+            const svc = makeService(bridge);
+            await svc.handleAllConnected();
+
+            svc.handleCommandError('401', 'Bad object or device ID: //1PINOTAG/254/56/* (Network not found)');
+
+            expect(svc._perAppTimers.has('254/56')).toBe(true);
+            expect(svc._pollsStoppedAsNotFound.size).toBe(0);
+            svc.stop();
+        });
+
         it('does not cancel timers for non-401 error codes', async () => {
             const { bridge } = makeBridge({
                 getallonstart: false,
@@ -1199,6 +1215,148 @@ describe('BridgeInitializationService', () => {
             bridge.haDiscovery.onNetworkDiscovered('254');
             expect(svc._perAppTimers.get('254/56')).toBe(timerBefore);
 
+            svc.stop();
+        });
+    });
+
+    // Issue #122: a USB PC Interface still opening answers every group read
+    // with 408, so the startup bus traffic waits for InterfaceState=running.
+    describe('startup bus command hold', () => {
+        const HOLD = {
+            cniMonitorIntervalMs: 30000,
+            getall_networks: [254],
+            getallonstart: true,
+            cbus_clock_enabled: true,
+            cbus_security_app_id: '208',
+            ha_discovery_networks: [254]
+        };
+
+        function setup(overrides = {}) {
+            const made = makeBridge({ ...HOLD, ...overrides });
+            const requestStatusSync = jest.fn();
+            made.bridge.__deps.getSecurityEventHandler = () => ({ requestStatusSync });
+            const svc = makeService(made.bridge);
+            const sent = (fragment) => made.commandQueueAdd.mock.calls.filter(([cmd]) => cmd.includes(fragment));
+            return { ...made, svc, requestStatusSync, sent };
+        }
+
+        it('sends only the interface query at connect, then the held commands once running', async () => {
+            const { svc, requestStatusSync, sent } = setup();
+            await svc.handleAllConnected();
+
+            expect(sent('InterfaceState')).toHaveLength(1);
+            expect(sent('/254/56/* level')).toHaveLength(0);
+            expect(sent('clock request_refresh')).toHaveLength(0);
+            expect(requestStatusSync).not.toHaveBeenCalled();
+
+            svc.handleNetworkInterfaceReading('254', { interfaceState: 'running', state: 'ok' });
+
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            expect(sent('clock request_refresh //HOME/254/')).toHaveLength(1);
+            expect(requestStatusSync).toHaveBeenCalledWith(254, 'connect');
+
+            svc.handleNetworkInterfaceReading('254', { interfaceState: 'running', state: 'ok' });
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('sends the held commands after the fallback when no interface reading arrives', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+
+            jest.advanceTimersByTime(4999);
+            expect(sent('/254/56/* level')).toHaveLength(0);
+            jest.advanceTimersByTime(1);
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('keeps them held while the interface reports opening', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+
+            svc.handleNetworkInterfaceReading('254', { interfaceState: 'opening', state: 'new' });
+            jest.advanceTimersByTime(10 * 60 * 1000);
+            expect(sent('/254/56/* level')).toHaveLength(0);
+
+            svc.handleNetworkInterfaceReading('254', { interfaceState: 'running', state: 'sync' });
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('ignores a State-only reading', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+
+            svc.handleNetworkInterfaceReading('254', { interfaceState: null, state: 'new' });
+            jest.advanceTimersByTime(5000);
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('restarts the fallback when the interface query finds no network yet', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+
+            jest.advanceTimersByTime(4000);
+            svc.handleCommandError('401', 'Bad object or device ID: //HOME/254 (Network not found)');
+            jest.advanceTimersByTime(4000);
+            expect(sent('/254/56/* level')).toHaveLength(0);
+            jest.advanceTimersByTime(1000);
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('sends at connect as before when interface monitoring is off', async () => {
+            const { svc, sent } = setup({ cniMonitorIntervalMs: 0 });
+            await svc.handleAllConnected();
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('sends at connect as before when the hold is set to 0', async () => {
+            const { svc, sent } = setup({ busCommandHoldTimeoutMs: 0 });
+            await svc.handleAllConnected();
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            svc.stop();
+        });
+
+        it('holds each network separately', async () => {
+            const { svc, sent } = setup({ getall_networks: [254, 1], ha_discovery_networks: [254, 1] });
+            await svc.handleAllConnected();
+
+            svc.handleNetworkInterfaceReading('1', { interfaceState: 'opening', state: 'new' });
+            svc.handleNetworkInterfaceReading('254', { interfaceState: 'running', state: 'ok' });
+
+            expect(sent('/254/56/* level')).toHaveLength(1);
+            expect(sent('//HOME/1/56/* level')).toHaveLength(0);
+            svc.stop();
+        });
+
+        it('does not fire the fallback after stop', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+            svc.stop();
+            jest.advanceTimersByTime(10000);
+            expect(sent('/254/56/* level')).toHaveLength(0);
+        });
+
+        it('reads the interface as soon as C-Gate creates the network, once per burst', async () => {
+            const { svc, sent } = setup();
+            await svc.handleAllConnected();
+            expect(sent('InterfaceState')).toHaveLength(1);
+
+            svc.handleNetworkCreated('254');
+            svc.handleNetworkCreated('254');
+            svc.handleNetworkCreated('254');
+            expect(sent('InterfaceState')).toHaveLength(2);
+
+            svc.handleNetworkCreated('99');
+            expect(sent('//HOME/99 InterfaceState')).toHaveLength(0);
+
+            jest.advanceTimersByTime(2000);
+            svc.handleNetworkCreated('254');
+            expect(sent('InterfaceState')).toHaveLength(3);
             svc.stop();
         });
     });
