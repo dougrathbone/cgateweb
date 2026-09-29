@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.34.16] - 2026-09-29
+
+### Fixed
+
+- **A USB PC Interface stuck while opening is now closed and reopened automatically.** (#122)
+- **Startup waits for the C-Bus interface before polling, avoiding repeated command failures.** (#122)
+- **Discovery keeps retrying while the C-Bus interface is unavailable.** (#122)
+- **Managed C-Gate file logs stay bounded between add-on restarts.** Set the maximum C-Gate log size option to change the 500 MiB default. (#122)
+
 ## [1.34.15] - 2026-09-28
 
 ### Fixed
