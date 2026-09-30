@@ -19,14 +19,21 @@ const SCRIPT = addonPath('etc', 'services.d', 'cgate', 'run');
 function makeStubBin(root) {
     const bin = path.join(root, 'bin');
     fs.mkdirSync(bin, { recursive: true });
-    fs.writeFileSync(path.join(bin, 'java'), '#!/bin/sh\necho "JAVA $*"\n');
+    fs.writeFileSync(path.join(bin, 'java'), `#!/bin/sh
+case "$1" in
+    --add-opens=*)
+        [ "\${CGW_TEST_JAVA_SUPPORTS_MODULES:-0}" = "1" ] || exit 1
+        ;;
+esac
+echo "JAVA $*"
+`);
     fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\necho "SLEEP $*"\n');
     fs.chmodSync(path.join(bin, 'java'), 0o755);
     fs.chmodSync(path.join(bin, 'sleep'), 0o755);
     return bin;
 }
 
-function runService({ mode = 'managed', installJar = true } = {}) {
+function runService({ mode = 'managed', installJar = true, supportsModules = true } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-service-run-'));
     const cgateDir = path.join(root, 'cgate');
     fs.mkdirSync(cgateDir, { recursive: true });
@@ -39,7 +46,8 @@ function runService({ mode = 'managed', installJar = true } = {}) {
         // Passed through the environment rather than interpolated into the
         // command text, so the absolute path is never part of the command.
         CGW_SERVICE_SCRIPT: SCRIPT,
-        CGW_TEST_cgate_mode: mode
+        CGW_TEST_cgate_mode: mode,
+        CGW_TEST_JAVA_SUPPORTS_MODULES: supportsModules ? '1' : '0'
     };
 
     try {
@@ -70,6 +78,25 @@ describeBash('services.d/cgate/run', () => {
         const out = runService();
 
         expect(out).toMatch(/JAVA .*-Djava\.awt\.headless=true/);
+        expect(out).toMatch(/JAVA .*-jar \S+cgate\.jar/);
+    });
+
+    // C-Gate 3.3.x uses this JDK-internal serializer for Toolkit's database
+    // and unit-catalogue response. Java 17 blocks it without this module open,
+    // leaving Toolkit connected but reporting "No Catalog Available" (#122).
+    test('opens the Java XML serializer module for Toolkit catalogue requests', () => {
+        const out = runService();
+
+        expect(out).toContain(
+            '--add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED'
+        );
+    });
+
+    test('does not pass the unsupported module option to Java 8', () => {
+        const out = runService({ supportsModules: false });
+
+        expect(out).toContain('JAVA ');
+        expect(out).not.toContain('--add-opens');
         expect(out).toMatch(/JAVA .*-jar \S+cgate\.jar/);
     });
 
