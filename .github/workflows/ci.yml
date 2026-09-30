@@ -167,9 +167,12 @@ jobs:
       max-parallel: 1
       matrix:
         cgate:
+          # Wrapper re-zipped 2026-09-09 (timestamps only). The nested
+          # cgate-3.3.1_1836.zip is still 2a6877ec27c34202ab61af9916410b573be7019b5a7eb5c057150a9b1f85754a.
+          # ci-assets below keeps the July wrapper; do not copy this hash there.
           - version: "3.3.1"
             url: "https://download.se.com/files?p_Doc_Ref=C-Gate_3_Linux_Package_V3.3.1"
-            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
+            sha256: "ac9b5e1918eb9f4e7bfc397addbe419c394182a304b1e7e53fdef3262bb1badb"
           # The default leg reads URL + pinned sha256 out of cgate-install.sh
           # so the install script stays the single source of truth.
           - version: "default (install-script pin)"
@@ -295,6 +298,9 @@ jobs:
       fail-fast: false
       matrix:
         cgate:
+          # July 2026 wrappers on the ci-assets release. Schneider's live
+          # zips were re-timestamped on 2026-09-09; these hashes stay put
+          # until the hosted files are replaced.
           - version: "3.3.1"
             url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
             sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"

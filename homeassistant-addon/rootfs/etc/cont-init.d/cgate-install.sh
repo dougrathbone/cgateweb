@@ -15,14 +15,15 @@ CGATEWEB_DEFAULT_DOWNLOAD_URL="https://download.se.com/files?p_Doc_Ref=C-Gate_3_
 # against this; a user-set cgate_download_sha256 overrides it — the escape
 # hatch if Schneider re-releases the zip and this pin goes stale.
 #
-# Re-pinned 2026-07-27: Schneider repackaged the outer zip on 2026-07-24, which
-# broke every new managed-mode install because the download no longer matched.
-# The inner payload is byte-for-byte the same C-Gate — still cgate-3.3.2_1855.zip
-# — and the bundled release-notes PDF came back named "C-Gate 3 Release Notes
-# (3).pdf", a browser download-collision suffix, so this was a manual re-zip
-# rather than a new C-Gate build. Expect it to recur — which is why the payload
-# pin below exists, so a recurrence no longer waits on an add-on release.
-CGATEWEB_DEFAULT_DOWNLOAD_SHA256="1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+# Re-pinned 2026-09-30: Schneider re-zipped the outer package on 2026-09-09.
+# Entry timestamps moved from 2026-07-24 09:01 to 2026-09-09 05:08; the PDF and
+# cgate-3.3.2_1855.zip bytes (size and CRC) are unchanged, so the payload pin
+# below still matches and installs that shipped the July wrapper pin kept
+# working. The wrapper pin is the exact-file canary the scheduled download
+# check watches, so it has to move with Schneider or that check stays red.
+# The July 2026 re-zip is why the payload pin exists: a timestamp-only
+# repackage must not wait on an add-on release before fresh installs succeed.
+CGATEWEB_DEFAULT_DOWNLOAD_SHA256="8dfb6f9f6d65b4a0242df8a247259a99b781206bf0792167e063a99686617b26"
 # sha256 of the payload *inside* that wrapper (cgate-3.3.2_1855.zip). A re-zip
 # of the wrapper changes the checksum above but not this one, so accepting a
 # match on either means the next repackage does not break fresh installs while

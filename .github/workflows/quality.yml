@@ -403,9 +403,11 @@ jobs:
       fail-fast: false
       matrix:
         cgate:
-          # Both legs verify the download against the same sha256 pins the
-          # add-on uses in production (a custom URL requires the sha, which
-          # also keeps the pins honest if ci-assets is ever re-uploaded).
+          # These are the July 2026 wrappers hosted on the ci-assets release, not
+          # the live Schneider files. Schneider re-zipped both on 2026-09-09
+          # (timestamps only; payloads unchanged). The install-script pin and
+          # the scheduled Schneider check follow the live wrappers; these pins
+          # stay on the hosted files until ci-assets is re-uploaded.
           - version: "3.3.1"
             url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
             sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
