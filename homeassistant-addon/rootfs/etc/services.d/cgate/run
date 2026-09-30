@@ -40,7 +40,23 @@ cd "${CGATE_DIR}" || exit 1
 # and shows "No Catalog Available" with no networks, even though C-Gate has the
 # project fully synced (#122). C-Gate stays up without it: s6 runs it with
 # stdin closed and the console reaching EOF does not stop the server.
+#
+# C-Gate 3.3.x serializes Toolkit's database/catalogue response through the
+# JDK-internal XMLSerializer. Java 17's module boundary blocks that access
+# unless it is opened explicitly, so Toolkit's secure command session succeeds
+# but its catalogue load fails with the same generic "No Catalog Available"
+# error. Keep this before -jar so the JVM, rather than C-Gate, consumes it.
+#
+# Some 32-bit add-on bases only provide Java 8, which predates the module
+# system and rejects --add-opens as an unknown option. Probe the runtime: Java
+# 9+ accepts this version-only invocation, while Java 8 needs no workaround.
+JAVA_MODULE_ARGS=()
+if java --add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED -version >/dev/null 2>&1; then
+    JAVA_MODULE_ARGS+=(--add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED)
+fi
+
 exec java \
+    "${JAVA_MODULE_ARGS[@]}" \
     -Djava.awt.headless=true \
     -Djava.net.preferIPv4Stack=true \
     -XX:+UseSerialGC \
