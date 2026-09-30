@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.35.1] - 2026-09-30
+
+### Fixed
+
+- **C-Bus Toolkit can load the unit catalogue from managed C-Gate again.** Restart the add-on if Toolkit reports No Catalog Available. (#122)
+
 ## [1.35.0] - 2026-09-29
 
 ### Fixed
