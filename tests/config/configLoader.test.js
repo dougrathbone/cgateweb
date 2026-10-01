@@ -1042,6 +1042,9 @@ describe('ConfigLoader', () => {
                 expect.stringContaining('MQTT auto-detection from Supervisor API failed')
             );
             expect(warnSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Restart the Mosquitto broker add-on first')
+            );
+            expect(warnSpy).toHaveBeenCalledWith(
                 expect.stringContaining('mqtt_username/mqtt_password')
             );
         });

@@ -467,10 +467,14 @@ class ConfigLoader {
             const hasDefaultBroker = DEFAULT_MQTT_VALUES.includes(settings.mqtt);
             const missingCredentials = !settings.mqttusername || !settings.mqttpassword;
             if (hasDefaultBroker && missingCredentials) {
+                const recoveryAdvice = String(settings.mqtt || '').includes('core-mosquitto')
+                    ? 'Restart the Mosquitto broker add-on first; cgateweb will retry automatically. '
+                    : '';
                 this.logger.warn(
                     'MQTT auto-detection from Supervisor API failed and no MQTT credentials are configured. ' +
                     `MQTT broker "${redactUrl(settings.mqtt || '(not set)')}" may require authentication. ` +
-                    'Set mqtt_username/mqtt_password in addon options if connection fails.'
+                    recoveryAdvice +
+                    'Set mqtt_username/mqtt_password in addon options if connection still fails.'
                 );
             }
             return settings;
