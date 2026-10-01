@@ -418,12 +418,17 @@ class MqttManager extends EventEmitter {
                 if (!hasUsername) {
                     this.logger.error('  No MQTT credentials were configured.');
                     if (usesInternalBroker) {
-                        this.logger.error('  The internal Mosquitto credentials may be temporarily unavailable after');
-                        this.logger.error('  Home Assistant Supervisor or Mosquitto restarts.');
+                        this.logger.error('  The internal Mosquitto broker is in use.');
+                        this.logger.error('  After a Home Assistant Supervisor or Mosquitto restart, its credentials');
+                        this.logger.error('  can be temporarily unavailable.');
                         this.logger.error('  To recover:');
                         this.logger.error('    1. Restart the Mosquitto broker add-on');
                         this.logger.error('    2. Wait for it to finish starting — this bridge will retry automatically');
-                        this.logger.error('    3. If this continues, set mqtt_username and mqtt_password here');
+                        this.logger.error('  If it still fails, set credentials:');
+                        this.logger.error('    1. Go to Settings > Add-ons > C-Gate Web Bridge > Configuration');
+                        this.logger.error('    2. Set mqtt_username and mqtt_password');
+                        this.logger.error('    3. Use the same credentials as your Mosquitto broker addon');
+                        this.logger.error('    4. Save and wait — the bridge will retry without a full restart');
                     } else if (isAddon) {
                         this.logger.error('  To fix this in Home Assistant:');
                         this.logger.error('    1. Go to Settings > Add-ons > C-Gate Web Bridge > Configuration');

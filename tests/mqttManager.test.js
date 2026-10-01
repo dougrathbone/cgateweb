@@ -671,6 +671,7 @@ describe('MqttManager', () => {
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT AUTHENTICATION FAILED'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Restart the Mosquitto broker add-on'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('retry automatically'));
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Settings > Add-ons'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('mqtt_username'));
                     expect(errorHandlerSpy).toHaveBeenCalledWith(
                         authError,
@@ -691,6 +692,31 @@ describe('MqttManager', () => {
                     } else {
                         process.env.SUPERVISOR_TOKEN = originalEnv;
                     }
+                }
+            });
+
+            it('tells an internal broker with rejected credentials to restart Mosquitto', () => {
+                mqttManager.settings = {
+                    mqtt: 'core-mosquitto:1883',
+                    mqttusername: 'homeassistant',
+                    mqttpassword: 'secret',
+                    _environment: { type: 'addon' }
+                };
+                const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
+                const originalExit = process.exit;
+                process.exit = jest.fn();
+                mqttManager.on('error', () => {});
+
+                try {
+                    const authError = new Error('Connection refused: Not authorized');
+                    authError.code = 5;
+                    mockClient.emit('error', authError);
+
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('broker rejected them'));
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('restart the Mosquitto broker add-on'));
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('keep retrying automatically'));
+                } finally {
+                    process.exit = originalExit;
                 }
             });
 

@@ -864,6 +864,9 @@ These settings control the pool of TCP connections used to send commands to C-Ga
 3. Check add-on logs for specific error messages
 4. Ensure network configuration allows connections to required ports
 
+### MQTT authentication failed with the internal broker
+When MQTT is left on the Mosquitto add-on, credentials are detected from Home Assistant. After a Supervisor or Mosquitto restart that detection can fail, and the log asks for a username and password. Restart the Mosquitto broker add-on and wait: cgateweb retries on its own. Set `mqtt_username` and `mqtt_password` only if the failure continues.
+
 ### No devices discovered
 1. Verify `ha_discovery_enabled` is `true`
 2. Check `ha_discovery_networks` includes your C-Bus network IDs (default is `[254]` -- see "Finding Your C-Bus Network ID" above if your network uses a different number)
