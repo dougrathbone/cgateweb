@@ -669,11 +669,15 @@ describe('MqttManager', () => {
                     mockClient.emit('error', authError);
 
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('MQTT AUTHENTICATION FAILED'));
-                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Settings > Add-ons'));
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Restart the Mosquitto broker add-on'));
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('retry automatically'));
                     expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('mqtt_username'));
                     expect(errorHandlerSpy).toHaveBeenCalledWith(
                         authError,
-                        expect.objectContaining({ addonMode: true }),
+                        expect.objectContaining({
+                            addonMode: true,
+                            internalBroker: true
+                        }),
                         'MQTT authentication',
                         false
                     );
@@ -687,6 +691,28 @@ describe('MqttManager', () => {
                     } else {
                         process.env.SUPERVISOR_TOKEN = originalEnv;
                     }
+                }
+            });
+
+            it('keeps credential guidance for an external broker in addon mode', () => {
+                mqttManager.settings = {
+                    mqtt: 'mqtt.example.com:1883',
+                    _environment: { type: 'addon' }
+                };
+                const loggerSpy = jest.spyOn(mqttManager.logger, 'error');
+                const originalExit = process.exit;
+                process.exit = jest.fn();
+                mqttManager.on('error', () => {});
+
+                try {
+                    const authError = new Error('Connection refused: Not authorized');
+                    authError.code = 5;
+                    mockClient.emit('error', authError);
+
+                    expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Settings > Add-ons'));
+                    expect(loggerSpy).not.toHaveBeenCalledWith(expect.stringContaining('Restart the Mosquitto broker add-on'));
+                } finally {
+                    process.exit = originalExit;
                 }
             });
 
