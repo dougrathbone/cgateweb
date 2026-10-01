@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.35.2] - 2026-10-01
+
+### Fixed
+
+- **An internal MQTT login failure now says to restart the Mosquitto add-on first.** Set a username and password only if it still cannot connect. (#143)
+
 ## [1.35.1] - 2026-09-30
 
 ### Fixed
