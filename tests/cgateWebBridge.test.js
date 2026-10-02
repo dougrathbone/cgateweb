@@ -875,6 +875,32 @@ describe('CgateWebBridge', () => {
                 expect(processSpy).toHaveBeenCalledWith(testData, expect.any(Function));
                 processSpy.mockRestore();
             });
+
+            it('logs a thrown event line and still publishes the next line in the chunk', () => {
+                const errorSpy = jest.spyOn(bridge, 'error');
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+                const original = bridge._processEventLine.bind(bridge);
+                jest.spyOn(bridge, '_processEventLine').mockImplementation((line) => {
+                    if (String(line).includes('BOOM')) throw new Error('boom');
+                    return original(line);
+                });
+
+                expect(() => bridge._handleEventData(Buffer.from(
+                    'lighting BOOM //TestProject/254/56/1\nlighting on //TestProject/254/56/2\n'
+                ))).not.toThrow();
+
+                expect(errorSpy).toHaveBeenCalledWith(
+                    'Error processing event data line: boom',
+                    expect.objectContaining({ line: expect.stringContaining('BOOM') })
+                );
+                const groups = publishEventSpy.mock.calls.map((call) => call[0].getGroup());
+                expect(groups).toContain('2');
+                expect(groups).not.toContain('1');
+
+                errorSpy.mockRestore();
+                publishEventSpy.mockRestore();
+                bridge._processEventLine.mockRestore();
+            });
         });
 
         describe('_processEventLine()', () => {
