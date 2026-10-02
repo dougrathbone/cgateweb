@@ -20,10 +20,18 @@ function makeMonitor() {
                 : reading.interfaceState === 'closed'
                     ? false
                     : null;
-            const prev = states.has(networkId) ? states.get(networkId) : undefined;
-            const changed = prev !== online;
-            states.set(networkId, online);
-            return { changed, online, interfaceState: reading.interfaceState };
+            const prev = states.get(networkId);
+            const prevOnline = prev ? prev.online : null;
+            const changed = prevOnline !== online;
+            const hasBeenOnline = (prev && prev.hasBeenOnline) || online === true;
+            states.set(networkId, { online, hasBeenOnline });
+            return {
+                changed,
+                online,
+                interfaceState: reading.interfaceState,
+                dropped: online === false && prevOnline === true,
+                recovered: online === true && prevOnline === false && !!(prev && prev.hasBeenOnline)
+            };
         }),
         getSnapshot: jest.fn(() => [])
     };
@@ -74,9 +82,18 @@ describe('CniNotificationManager', () => {
         expect(onCall[1]).toBe('ON');
     });
 
+    it('does not raise an HA notification for the first closed reading', () => {
+        const deps = makeDeps();
+        const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'closed' });
+        expect(haNotifier.createPersistentNotification).not.toHaveBeenCalled();
+        expect(haNotifier.dismissPersistentNotification).not.toHaveBeenCalled();
+    });
+
     it('raises an HA notification once when a network goes offline', () => {
         const deps = makeDeps();
         const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'running' });
         mgr.handleReading('254', { interfaceState: 'closed' });
         expect(haNotifier.createPersistentNotification).toHaveBeenCalledTimes(1);
         expect(haNotifier.createPersistentNotification.mock.calls[0][0]).toMatchObject({
@@ -90,17 +107,19 @@ describe('CniNotificationManager', () => {
         // Two consecutive 'closed' readings => changed:true then changed:false.
         const deps = makeDeps();
         const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'running' });
         mgr.handleReading('254', { interfaceState: 'closed' });
         mgr.handleReading('254', { interfaceState: 'closed' });
         // The result.changed gate must suppress everything past the first reading.
         expect(haNotifier.createPersistentNotification).toHaveBeenCalledTimes(1);
         const stateCalls = deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state');
-        expect(stateCalls).toHaveLength(1);
+        expect(stateCalls.map((call) => call[1])).toEqual(['ON', 'OFF']);
     });
 
     it('dismisses the notification when the network comes back online', () => {
         const deps = makeDeps();
         const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'running' });
         mgr.handleReading('254', { interfaceState: 'closed' });
         mgr.handleReading('254', { interfaceState: 'running' });
         expect(haNotifier.dismissPersistentNotification).toHaveBeenCalledTimes(1);
@@ -112,6 +131,7 @@ describe('CniNotificationManager', () => {
     it('does not notify when cni_offline_notification is disabled', () => {
         const deps = makeDeps({ settings: { cni_offline_notification: false } });
         const mgr = new CniNotificationManager(deps);
+        mgr.handleReading('254', { interfaceState: 'running' });
         mgr.handleReading('254', { interfaceState: 'closed' });
         expect(haNotifier.createPersistentNotification).not.toHaveBeenCalled();
     });
@@ -120,7 +140,10 @@ describe('CniNotificationManager', () => {
         delete process.env.SUPERVISOR_TOKEN;
         const deps = makeDeps();
         const mgr = new CniNotificationManager(deps);
-        expect(() => mgr.handleReading('254', { interfaceState: 'closed' })).not.toThrow();
+        expect(() => {
+            mgr.handleReading('254', { interfaceState: 'running' });
+            mgr.handleReading('254', { interfaceState: 'closed' });
+        }).not.toThrow();
         expect(haNotifier.createPersistentNotification).not.toHaveBeenCalled();
     });
 
@@ -188,11 +211,12 @@ describe('CniNotificationManager', () => {
             const serialDeviceRecovery = makeRecovery();
             const deps = makeDeps({ serialDeviceRecovery });
             const mgr = new CniNotificationManager(deps);
+            mgr.handleReading('254', { interfaceState: 'running' });
             mgr.handleReading('254', { interfaceState: 'closed' });
             mgr.handleReading('254', { interfaceState: 'closed' });
             expect(haNotifier.createPersistentNotification).toHaveBeenCalledTimes(1);
-            expect(deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state'))
-                .toHaveLength(1);
+            expect(deps.mqttManager.publish.mock.calls.filter(c => c[0] === 'cbus/read/254/cni/state')
+                .map((call) => call[1])).toEqual(['ON', 'OFF']);
         });
 
         it('hands an interface that stays up back only on the transition', () => {

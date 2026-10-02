@@ -35,15 +35,18 @@ class NetworkInterfaceMonitor {
      *
      * @param {string|number} networkId
      * @param {{interfaceState?: string, state?: string}} reading
-     * @returns {{online: ?boolean, changed: boolean, interfaceState: ?string}}
+     * @returns {{online: ?boolean, changed: boolean, dropped: boolean, recovered: boolean, interfaceState: ?string}}
      *          changed=true when the online verdict flipped (incl. first
-     *          definite reading), so callers can publish/notify on transitions.
+     *          definite reading), so callers can publish the sensor.
+     *          dropped/recovered are only the transitions after the interface
+     *          has actually been running. The first closed reading at startup
+     *          is not an outage.
      */
     update(networkId, reading = {}) {
         const id = String(networkId);
         const ts = this._now();
         const prev = this._networks.get(id) || {
-            interfaceState: null, state: null, online: null, since: ts, lastChecked: ts
+            interfaceState: null, state: null, online: null, hasBeenOnline: false, since: ts, lastChecked: ts
         };
         const next = { ...prev, lastChecked: ts };
 
@@ -58,23 +61,29 @@ class NetworkInterfaceMonitor {
         // State reading, leave the previous online verdict untouched.
         const online = next.interfaceState === null ? prev.online : (next.interfaceState === RUNNING_STATE);
         const wasOnline = prev.online;
+        // A startup reading of closed/opening has never been running. Calling
+        // that a dropped link raises a Home Assistant "network offline"
+        // notification for the few seconds a USB interface takes to open.
+        const dropped = online === false && wasOnline === true;
+        const recovered = online === true && wasOnline === false && prev.hasBeenOnline === true;
         next.online = online;
+        next.hasBeenOnline = prev.hasBeenOnline === true || online === true;
         const changed = online !== wasOnline;
 
         if (changed) {
             next.since = ts;
-            if (online === false) {
+            if (dropped) {
                 this.logger.warn(
                     `C-Bus network ${id} interface DOWN (InterfaceState=${next.interfaceState}) — ` +
                     'the CNI/PCI link between C-Gate and the C-Bus network has dropped.'
                 );
-            } else if (online === true && wasOnline === false) {
+            } else if (recovered) {
                 this.logger.info(`C-Bus network ${id} interface restored (InterfaceState=${next.interfaceState}).`);
             }
         }
 
         this._networks.set(id, next);
-        return { online, changed, interfaceState: next.interfaceState };
+        return { online, changed, dropped, recovered, interfaceState: next.interfaceState };
     }
 
     /**

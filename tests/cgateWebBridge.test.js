@@ -361,8 +361,15 @@ describe('CgateWebBridge', () => {
                 }
             });
 
+            it('does not notify when the interface is closed before it has ever been running', () => {
+                bridge.settings.cni_offline_notification = true;
+                bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' });
+                expect(notifySpy).not.toHaveBeenCalled();
+            });
+
             it('raises a single HA notification through the real bridge on an offline reading', () => {
                 bridge.settings.cni_offline_notification = true;
+                bridge._handleNetworkInterfaceReading('254', { interfaceState: 'running' });
                 bridge._handleNetworkInterfaceReading('254', { interfaceState: 'closed' });
                 expect(notifySpy).toHaveBeenCalledTimes(1);
                 const arg = notifySpy.mock.calls[0][0];
