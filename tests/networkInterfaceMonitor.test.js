@@ -25,11 +25,20 @@ describe('NetworkInterfaceMonitor', () => {
         expect(monitor.hasOutage()).toBe(false);
     });
 
+    it('does not treat the first closed reading as a dropped link', () => {
+        const result = monitor.update('254', { interfaceState: 'closed' });
+        expect(result).toMatchObject({ online: false, changed: true, dropped: false, recovered: false });
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(monitor.hasOutage()).toBe(true);
+    });
+
     it('marks a network offline and logs a warning when the CNI drops', () => {
         monitor.update('254', { interfaceState: 'running' });
         clock = 2000;
-        monitor.update('254', { interfaceState: 'closed' });
+        const result = monitor.update('254', { interfaceState: 'closed' });
         const snap = monitor.getSnapshot();
+        expect(result.dropped).toBe(true);
         expect(snap[0]).toMatchObject({ network: '254', interfaceState: 'closed', online: false });
         expect(snap[0].since).toBe(2000); // transition timestamp updated
         expect(logger.warn).toHaveBeenCalledTimes(1);
@@ -45,17 +54,28 @@ describe('NetworkInterfaceMonitor', () => {
         }
     });
 
+    it('does not call the first open a restoration', () => {
+        monitor.update('254', { interfaceState: 'closed' });
+        monitor.update('254', { interfaceState: 'running' });
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(logger.info).not.toHaveBeenCalled();
+        expect(monitor.getSnapshot()[0].online).toBe(true);
+    });
+
     it('logs a recovery info message on offline→online transition', () => {
+        monitor.update('254', { interfaceState: 'running' });
         monitor.update('254', { interfaceState: 'closed' });
         expect(logger.warn).toHaveBeenCalledTimes(1);
         clock = 3000;
-        monitor.update('254', { interfaceState: 'running' });
+        const result = monitor.update('254', { interfaceState: 'running' });
+        expect(result.recovered).toBe(true);
         expect(logger.info).toHaveBeenCalledTimes(1);
         expect(logger.info.mock.calls[0][0]).toMatch(/restored/i);
         expect(monitor.getSnapshot()[0].online).toBe(true);
     });
 
     it('does not re-log when state is unchanged across polls', () => {
+        monitor.update('254', { interfaceState: 'running' });
         monitor.update('254', { interfaceState: 'closed' });
         monitor.update('254', { interfaceState: 'closed' });
         monitor.update('254', { interfaceState: 'closed' });
@@ -78,11 +98,11 @@ describe('NetworkInterfaceMonitor', () => {
     });
 
     it('returns the online verdict and a changed flag for transitions', () => {
-        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: true, interfaceState: 'running' });
-        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: false, interfaceState: 'running' });
-        expect(monitor.update('254', { interfaceState: 'closed' })).toEqual({ online: false, changed: true, interfaceState: 'closed' });
+        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: true, dropped: false, recovered: false, interfaceState: 'running' });
+        expect(monitor.update('254', { interfaceState: 'running' })).toEqual({ online: true, changed: false, dropped: false, recovered: false, interfaceState: 'running' });
+        expect(monitor.update('254', { interfaceState: 'closed' })).toEqual({ online: false, changed: true, dropped: true, recovered: false, interfaceState: 'closed' });
         // State-only reading doesn't change the InterfaceState-derived verdict
-        expect(monitor.update('254', { state: 'sync' })).toEqual({ online: false, changed: false, interfaceState: 'closed' });
+        expect(monitor.update('254', { state: 'sync' })).toEqual({ online: false, changed: false, dropped: false, recovered: false, interfaceState: 'closed' });
     });
 
     it('tracks multiple networks independently', () => {

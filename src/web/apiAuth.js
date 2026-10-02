@@ -21,6 +21,28 @@ function normalizeApiKey(raw) {
 }
 
 /**
+ * Compare a presented secret with the configured one without revealing the
+ * configured length. timingSafeEqual throws on unequal buffers, and returning
+ * before that call is a faster path an attacker can time to learn the length.
+ * The compare is always the configured length; a different presented length
+ * fails as part of the same result.
+ *
+ * @param {string|string[]} provided
+ * @param {string} expected
+ * @returns {boolean}
+ */
+function secretsMatch(provided, expected) {
+    const providedBuf = Buffer.from(String(provided));
+    const expectedBuf = Buffer.from(expected);
+    const length = expectedBuf.length;
+    const padded = Buffer.alloc(length);
+    providedBuf.copy(padded, 0, 0, Math.min(providedBuf.length, length));
+    const sameLength = providedBuf.length === length;
+    const sameBytes = crypto.timingSafeEqual(padded, expectedBuf);
+    return sameLength && sameBytes;
+}
+
+/**
  * API route classification and authorization: API key / bearer checks and
  * Home Assistant ingress request detection.
  */
@@ -100,14 +122,7 @@ class ApiAuth {
         const bearer = rawAuth.startsWith('Bearer ') ? rawAuth.slice('Bearer '.length).trim() : null;
         const headerKey = req.headers['x-api-key'];
         const provided = bearer || headerKey || '';
-
-        // Constant-time compare to remove the timing oracle that === would expose.
-        // timingSafeEqual requires equal-length buffers, so reject mismatched
-        // lengths up-front (also done in constant time relative to the secret).
-        const providedBuf = Buffer.from(String(provided));
-        const expectedBuf = Buffer.from(this.apiKey);
-        if (providedBuf.length !== expectedBuf.length) return false;
-        return crypto.timingSafeEqual(providedBuf, expectedBuf);
+        return secretsMatch(provided, this.apiKey);
     }
 
     /**

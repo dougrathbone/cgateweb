@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.35.3] - 2026-10-02
+
+### Fixed
+
+- **Startup no longer reports the C-Bus network offline while a USB interface is opening.**
+- **One bad C-Gate event no longer drops the events that follow it.**
+
+### Security
+
+- **Checking the web API key no longer reveals the key's length.**
+
 ## [1.35.2] - 2026-10-01
 
 ### Fixed

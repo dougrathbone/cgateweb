@@ -73,10 +73,13 @@ class CniNotificationManager {
             }
         }
 
-        if (result.changed && this.settings.cni_offline_notification) {
-            if (result.online === false) {
+        // dropped/recovered are set only after the interface has been running.
+        // The first closed reading while a USB interface is still opening is
+        // not an outage, so it must not raise "network offline".
+        if (this.settings.cni_offline_notification) {
+            if (result.dropped) {
                 this._notifyCniOffline(networkId, result.interfaceState);
-            } else {
+            } else if (result.recovered) {
                 this._dismissCniNotification(networkId);
             }
         }
