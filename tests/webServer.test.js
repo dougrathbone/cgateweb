@@ -628,7 +628,8 @@ describe('WebServer', () => {
             expect(s._apiAuth.isAuthorized(mkReq({ authorization: 'Bearer secret-key' }))).toBe(true);
             expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'secret-key' }))).toBe(true);
             expect(s._apiAuth.isAuthorized(mkReq({ authorization: 'Bearer nope' }))).toBe(false);
-            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'short' }))).toBe(false); // length-mismatch path
+            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'short' }))).toBe(false);
+            expect(s._apiAuth.isAuthorized(mkReq({ 'x-api-key': 'secret-key-extra' }))).toBe(false);
             expect(s._apiAuth.isAuthorized(mkReq({}))).toBe(false);
         });
 
