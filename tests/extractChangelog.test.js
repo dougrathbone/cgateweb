@@ -77,7 +77,7 @@ describe('insertChangelogVersion', () => {
 
     it('inserts the new heading above the current top version', () => {
         const next = insertChangelogVersion(md, '1.27.1', '2026-09-11');
-        expect(next).toContain('## [1.27.1] - 2026-09-11');
+        expect(next).toContain('## [1.27.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.27.1) - 2026-09-11');
         expect(next.indexOf('## [1.27.1]')).toBeLessThan(next.indexOf('## [1.27.0]'));
         expect(next).toContain('## [1.27.0] - 2026-08-21');
         expect(extractChangelogSection(next, '1.27.1')).not.toContain('First item.');
