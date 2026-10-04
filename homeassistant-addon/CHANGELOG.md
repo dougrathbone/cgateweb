@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.com/dougrathbone).
 
+## [1.36.0] - 2026-10-04
+
+### Fixed
+
+- **Upload mode installs the newest C-Gate zip when several are in the share folder.**
+- **A congested C-Gate command is no longer sent twice.**
+- **A label edit made outside the web UI is picked up again.**
+- **The built-in C-Gate download checksum matches the package Schneider is serving.**
+
 ## [1.35.3] - 2026-10-02
 
 ### Fixed
