@@ -113,7 +113,7 @@ jobs:
         RELEVANT=$(echo "${CHANGED}" | grep -vE \
           -e '^docs/' \
           -e '^[^/]+\.md$' \
-          -e '^homeassistant-addon/(DOCS|README|CHANGELOG|repository-README)\.md$' \
+          -e '^homeassistant-addon/(DOCS|README|CHANGELOG|CHANGELOG-archive|repository-README)\.md$' \
           -e '^\.github/ISSUE_TEMPLATE/' \
           -e '^\.github/(FUNDING\.yml|CODEOWNERS|PULL_REQUEST_TEMPLATE\.md)$' \
           || true)

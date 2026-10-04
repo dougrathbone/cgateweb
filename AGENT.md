@@ -38,21 +38,17 @@
 **Replies to users (GitHub issues, PR comments, PR reviews)**: Very concise. Plain text - no markdown, no bold, no bullets-as-decoration. Hyphens, never em dashes. Lead with the finding or the answer; cut the narration of how you got there. Ask for the one artefact you need rather than listing everything the user could send. Say plainly when a previous diagnosis of yours was wrong.
 
 ## Changelog Format
-`homeassistant-addon/CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) and is written for the person upgrading, not the developer. Every release entry MUST follow these rules:
+`homeassistant-addon/CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) and is written for the person upgrading, not the developer. Releases before 1.22.0 stay in `homeassistant-addon/CHANGELOG-archive.md` and are not rewritten. `npm run validate:changelog` enforces this.
 
-1. Keep the skeleton: `## [x.y.z] - date` headers, sections in the order Added / Fixed / Changed / Removed / Security. Skip empty sections.
-2. Lead each bullet with the user-visible outcome in plain words (bold the headline phrase), followed by at most one or two sentences of context or action required. One bullet per change; merge tiny related changes.
-3. **No code formatting (no backticks) anywhere.** Refer to options, topics, files, and commands in plain words: "the Air Conditioning control option", "the source_unit topic", "your settings file", "the project database in the share folder". Where a literal name is unavoidable, write it as plain text without backticks — but prefer description over literal names.
-4. **No internal implementation detail**: no function names, repo file paths, bit layouts, C-Gate response codes, spec section numbers, or commit mechanics. Translate mechanism into user-visible behavior.
-5. Issue references stay, in the form "(#28)" at the end of the bullet's first sentence.
-6. Internal-only changes (refactors, CI, test work, dependency bumps) go in a single short "Internal:" bullet, or are omitted if invisible to users.
-7. **Very concise. This is the rule that keeps getting broken.** One sentence per bullet. A second short sentence ONLY when the reader must do something (delete a log, clear a topic, change a setting). Never a third, never a second paragraph, never a nested block. Summarise the functionality change, not the details of it: what the user can now do, or what behaves differently. The how and the why (root cause, diagnosis story, fix mechanics, spec or schema numbers) belong in the issue or the commit message.
-   Before committing a changelog entry, re-read it and delete every clause that explains, justifies, or narrates. If a bullet runs past about 30 words, it is wrong.
-8. Compress caveats to a few words ("Alpha: tested on one panel; arm/disarm not included yet") and drop provenance ("reported by a user", "found in CI") unless it changes what the reader should do.
+1. Headings are `## [x.y.z](https://github.com/dougrathbone/cgateweb/releases/tag/vx.y.z) - YYYY-MM-DD`, newest first. Use the add-on repository release URL only when the source repository has no GitHub release. A version that never reached the add-on repository has no requirement for a release link and starts with `**This version was not published.**` Name the later version that includes the changes, or say there was nothing user-facing and which version to install.
+2. Sections, in this order, skipping empty ones: Breaking changes, Action required, Added, Fixed, Changed, Removed, Security.
+3. Put upgrade steps and incompatible behaviour in Breaking changes or Action required, not further down the version.
+4. Lead each bullet with the user-visible outcome in bold. One sentence. A second short sentence only when the reader must do something, or to distinguish a repeated symptom. When the same symptom was fixed before, name the earlier version and whether this is a new cause or a regression.
+5. No backticks and no internal notes. Refer to options, topics, files, and commands in plain words. A release with nothing the user can see is one Changed bullet: "Maintenance release; no user-facing changes."
+6. Issue references are full source-repository links at the end of the bullet, never a bare number.
+7. About 30 words per bullet. The checker rejects anything past 40. No placeholders, empty sections, or third sentence. The how and the why belong in the issue or the commit.
 
-Every release entry from 1.22.0 onward has been rewritten to this standard - match the density you see there, not the older entries further down the file.
-
-Good: "**Key switches and bus couplers are now recognised for unit-type classification.** With unit-type classification on, a group driven only by one becomes a binary sensor instead of a light. (#37)"
+Good: "**Key switches and bus couplers are now recognised.** With unit-type classification on, a group driven only by one becomes a binary sensor instead of a light. ([#37](https://github.com/dougrathbone/cgateweb/issues/37))"
 Bad: "**Key-input switches and bus couplers are now recognised for unit-type classification** (#37). With "Set entity type from C-Bus unit type" on, a group driven only by a key-input wall switch (`KEY1`, `KEYB2`, `KEYB4`, `KEYGL5`, `KEYE1`–`KEYE4`) or a bus coupler (`BCN4B`) now becomes a `binary_sensor` instead of keeping the default light type and logging "unit types not recognised". Both families are input-only hardware that drives no load. Reported from a live showroom install."
 
 ## Home Assistant Add-on Development

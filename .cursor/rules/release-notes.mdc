@@ -8,8 +8,13 @@ alwaysApply: false
 
 When writing or updating CHANGELOG.md or any release notes:
 
-- **Never use "Unreleased" sections** in a versioned release. Every entry must be under a concrete version heading (e.g., `## [1.2.0] - 2026-02-22`).
+- **Never use "Unreleased" sections** in a versioned release. Every entry must be under a concrete version heading with a `YYYY-MM-DD` date. A published version also links to its GitHub release (e.g., `## [1.2.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.2.0) - 2026-02-22`).
 - **Never use placeholder text** like "TBD", "Coming soon", "To be determined", or "TODO" in release entries.
 - **Never include empty sections** (e.g., `### Added` with no bullet points beneath it).
+- Section order is Breaking changes, Action required, Added, Fixed, Changed, Removed, Security. Put upgrade steps in the first two, not further down.
+- Issue numbers are full source-repository links. No backticks and no internal-only bullets. A version with nothing user-facing says "Maintenance release; no user-facing changes."
+- A version that never reached the add-on repository says so in the first line and names the later version that included the changes.
+- When the same symptom is fixed again, name the earlier version and whether this is a new cause or a regression.
+- Releases before 1.22.0 stay in `homeassistant-addon/CHANGELOG-archive.md`.
 - When bumping a version, move any accumulated unreleased notes into the new version heading immediately — do not leave an `[Unreleased]` section alongside the new version.
-- Every version entry must have a date in `YYYY-MM-DD` format.
+- Run `npm run validate:changelog` before committing changelog edits.

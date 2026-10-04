@@ -61,7 +61,8 @@ function insertChangelogVersion(markdown, version, date) {
     if (firstHeading === -1) {
         throw new Error('extract-changelog: no existing version heading to insert above');
     }
-    return `${markdown.slice(0, firstHeading)}## [${version}] - ${date}\n\n${markdown.slice(firstHeading)}`;
+    const releaseUrl = `https://github.com/dougrathbone/cgateweb/releases/tag/v${version}`;
+    return `${markdown.slice(0, firstHeading)}## [${version}](${releaseUrl}) - ${date}\n\n${markdown.slice(firstHeading)}`;
 }
 
 function main() {
