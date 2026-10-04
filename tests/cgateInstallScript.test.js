@@ -414,6 +414,34 @@ describeBash('cgate-install.sh helpers', () => {
                 fs.rmSync(dir, { recursive: true, force: true });
             }
         });
+
+        test('treats the newest zip as the one that would be installed', () => {
+            const { dir, shareDir, marker } = makeShareAndMarker({ zipMtime: 1000, markerMtime: 3000 });
+            const newer = path.join(shareDir, 'cgate-older-name.zip');
+            fs.writeFileSync(newer, 'y');
+            fs.utimesSync(newer, 4000, 4000);
+            try {
+                // The original zip is older than the marker. An unordered find
+                // could select it and skip the upgrade. The newer file must win.
+                expect(runHelperWithArgs('_cgateweb_select_upload_zip', [shareDir])).toBe(newer);
+                expect(runHelperWithArgs('_cgateweb_upload_zip_is_newer', [shareDir, marker])).toBe('1');
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('breaks an equal mtime by name so the choice stays put', () => {
+            const { dir, shareDir } = makeShareAndMarker({ zipMtime: 2000, markerMtime: null });
+            const earlier = path.join(shareDir, 'a.zip');
+            fs.writeFileSync(earlier, 'a');
+            fs.utimesSync(earlier, 2000, 2000);
+            const chosen = path.join(shareDir, 'cgate-3.7.1_2222.zip');
+            try {
+                expect(runHelperWithArgs('_cgateweb_select_upload_zip', [shareDir])).toBe(chosen);
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
     });
 
     describe('_cgateweb_apply_cgate_config', () => {

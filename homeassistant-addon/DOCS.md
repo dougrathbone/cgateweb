@@ -77,7 +77,8 @@ left in place across restarts (only its config is refreshed each boot). To move
 to a different C-Gate version:
 
 - **Upload mode**: drop the newer `.zip` into `/share/cgate/` and restart. The
-  add-on notices the newer zip and reinstalls automatically.
+  add-on notices the newer zip and reinstalls automatically. When several zips
+  are in that folder, the newest file is the one that is installed.
 - **Either mode**: turn on `cgate_force_reinstall`, restart to reinstall from the
   install source, then turn it back off.
 
