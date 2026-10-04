@@ -557,7 +557,8 @@ configuration:
     description:
       en: >-
         Only used in managed mode. "download" fetches C-Gate automatically.
-        "upload" looks for a zip file you place in /share/cgate/.
+        "upload" looks for a zip file you place in /share/cgate/. Leave this
+        unset and a zip already in that folder is used instead of the download.
       de: >-
         Nur im Managed-Modus verwendet. "download" lädt C-Gate automatisch
         herunter. "upload" sucht nach einer ZIP-Datei, die Sie in /share/cgate/
@@ -789,9 +790,12 @@ configuration:
       en: >-
         Only used in managed mode. Once C-Gate is installed it is normally kept
         as is. Turn this on to reinstall/upgrade C-Gate from the install source
-        on the next start (your project DBs and config are preserved). In upload
-        mode you can instead just drop a newer zip into /share/cgate and it
-        upgrades automatically. Turn this back off after the upgrade.
+        on the next start (your project DBs and config are preserved). If
+        install source is unset, a zip in /share/cgate is used; otherwise the
+        built-in download is. In upload mode you can instead just drop a newer
+        zip into /share/cgate and it upgrades automatically. Turn this back off
+        after the upgrade. Current Toolkit needs C-Gate 3.8.0, which is not the
+        built-in download.
       de: >-
         Nur im Managed-Modus. Einmal installiert, bleibt C-Gate normalerweise
         unverändert. Aktivieren Sie dies, um C-Gate beim nächsten Start aus der

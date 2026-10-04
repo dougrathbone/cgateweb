@@ -542,6 +542,60 @@ _cgateweb_upload_zip_is_newer() {
     if [[ ! -e "${marker}" || "${zip}" -nt "${marker}" ]]; then printf '1'; else printf '0'; fi
 }
 
+# Echo download or upload. An explicit setting always wins. When the option
+# is unset, a zip already in the share directory is installed: a force
+# reinstall with neither radio selected used to download 3.3.2 and ignore
+# the zip the user had placed there (#122).
+_cgateweb_resolve_install_source() {
+    local share_dir="${1:-/share/cgate}"
+    local raw
+    raw=$(bashio::config 'cgate_install_source')
+    case "${raw}" in
+        download|upload)
+            printf '%s' "${raw}"
+            ;;
+        ""|null)
+            if [[ -n "$(_cgateweb_select_upload_zip "${share_dir}")" ]]; then
+                bashio::log.info "cgate_install_source is not set and a C-Gate zip is in ${share_dir}; installing that zip. Set cgate_install_source to download to fetch the built-in package instead."
+                printf 'upload'
+            else
+                printf 'download'
+            fi
+            ;;
+        *)
+            bashio::log.warning "cgate_install_source '${raw}' is not download or upload; using download."
+            printf 'download'
+            ;;
+    esac
+}
+
+# Echo 1 when this C-Gate is too old for current Toolkit to open a network.
+# Toolkit reads OriginateInProject. 3.3.2 answers 402 and the network stays
+# Closed. 3.8.0 answers the parameter. Empty or unknown versions do not warn.
+_cgateweb_toolkit_needs_newer_cgate() {
+    local raw="${1:-}"
+    local major minor
+    raw="${raw%%_*}"
+    raw="${raw//$'\n'/}"
+    raw="${raw//$'\r'/}"
+    if [[ -z "${raw}" || "${raw}" == "unknown" ]]; then
+        printf '0'
+        return
+    fi
+    if [[ ! "${raw}" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+        printf '0'
+        return
+    fi
+    IFS=. read -r major minor _ <<< "${raw}"
+    major=${major:-0}
+    minor=${minor:-0}
+    if (( major < 3 || (major == 3 && minor < 8) )); then
+        printf '1'
+    else
+        printf '0'
+    fi
+}
+
 # The dead end both serial-resolution paths share: the configured device is
 # not there and nothing could stand in for it. Says where to find the real
 # path rather than just naming the one that failed.
@@ -1193,7 +1247,7 @@ CGATEWEB_EVENT_FILE_SPLIT_COUNT=$((CGATEWEB_LOG_MAX_BYTES / CGATEWEB_EVENT_FILE_
 # resolves to /data/cgate there.
 CGATE_DIR="${CGATE_DIR:-/data/cgate}"
 CGATE_JAR="${CGATE_DIR}/cgate.jar"
-INSTALL_SOURCE=$(bashio::config 'cgate_install_source' 'download')
+INSTALL_SOURCE=$(_cgateweb_resolve_install_source "/share/cgate")
 DOWNLOAD_SHA256=$(_cgateweb_resolve_download_sha256)
 WORK_DIR=$(mktemp -d /tmp/cgate-install.XXXXXX)
 
@@ -1497,6 +1551,10 @@ fi  # end NEED_INSTALL
 # Refresh the diagnostic version on every boot so existing managed installs
 # whose marker says "unknown" are repaired without forcing a reinstall.
 _cgateweb_record_installed_version "${CGATE_DIR}" "${CGATE_VERSION:-}"
+recorded_cgate_version=$(tr -d '\r' < "${CGATE_DIR}/.version" 2>/dev/null || true)
+if [[ "$(_cgateweb_toolkit_needs_newer_cgate "${recorded_cgate_version}")" == "1" ]]; then
+    bashio::log.warning "Installed C-Gate ${recorded_cgate_version} is older than 3.8.0. Current C-Bus Toolkit leaves the network Closed on this C-Gate because OriginateInProject is not supported. Download C-Gate 3.8.0 from Clipsal, put the zip in /share/cgate/, and restart. Leave cgate_install_source unset, or set it to upload."
+fi
 
 # Configure access.txt. Runs on every boot, not only when the file is absent,
 # so the grammar fix and any configured external clients reach existing installs.
