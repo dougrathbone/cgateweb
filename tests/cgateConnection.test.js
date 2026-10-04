@@ -229,27 +229,52 @@ describe('CgateConnection', () => {
             expect(connection.isWritable).toBe(false);
         });
 
-        it('should wait for drain in sendWithBackpressure', async () => {
-            mockSocket.write
-                .mockReturnValueOnce(false)
-                .mockReturnValueOnce(true);
+        it('does not write a command again after the socket drains', async () => {
+            mockSocket.write.mockReturnValueOnce(false);
 
             const sendPromise = connection.sendWithBackpressure('test command');
             mockSocket.emit('drain');
             const ok = await sendPromise;
 
             expect(ok).toBe(true);
-            expect(mockSocket.write).toHaveBeenCalledTimes(2);
+            expect(mockSocket.write).toHaveBeenCalledTimes(1);
+            expect(mockSocket.write).toHaveBeenCalledWith('test command');
         });
 
-        it('returns false when drain wait times out', async () => {
+        it('writes once after drain when the socket was already congested', async () => {
+            connection.isWritable = false;
+            mockSocket.write.mockReturnValue(true);
+
+            const sendPromise = connection.sendWithBackpressure('test command');
+            expect(mockSocket.write).not.toHaveBeenCalled();
+            mockSocket.emit('drain');
+            const ok = await sendPromise;
+
+            expect(ok).toBe(true);
+            expect(mockSocket.write).toHaveBeenCalledTimes(1);
+        });
+
+        it('treats a queued command as sent when drain times out', async () => {
             jest.useFakeTimers();
             try {
                 mockSocket.write.mockReturnValue(false);
                 const sendPromise = connection.sendWithBackpressure('test command');
                 await jest.advanceTimersByTimeAsync(5000);
-                await expect(sendPromise).resolves.toBe(false);
+                await expect(sendPromise).resolves.toBe(true);
                 expect(mockSocket.write).toHaveBeenCalledTimes(1);
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('returns false when a congested socket does not drain in time', async () => {
+            jest.useFakeTimers();
+            try {
+                connection.isWritable = false;
+                const sendPromise = connection.sendWithBackpressure('test command');
+                await jest.advanceTimersByTimeAsync(5000);
+                await expect(sendPromise).resolves.toBe(false);
+                expect(mockSocket.write).not.toHaveBeenCalled();
             } finally {
                 jest.useRealTimers();
             }

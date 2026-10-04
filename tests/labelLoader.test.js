@@ -610,6 +610,21 @@ describe('LabelLoader', () => {
             expect(onChanged).not.toHaveBeenCalled();
         });
 
+        it('reloads when the watcher does not name the file', () => {
+            const handler = jest.fn();
+            loader.on('labels-changed', handler);
+            fs.writeFileSync(labelFile, JSON.stringify({
+                version: 1,
+                labels: { '254/56/10': 'From unnamed event' }
+            }));
+
+            watchListener('change', null);
+            jest.advanceTimersByTime(DEBOUNCE_MS);
+
+            expect(handler).toHaveBeenCalledTimes(1);
+            expect(handler.mock.calls[0][0].labels.get('254/56/10')).toBe('From unnamed event');
+        });
+
         it('logs watcher error events without throwing', () => {
             expect(() => mockWatcher.emit('error', new Error('watch failed'))).not.toThrow();
             expect(console.warn).toHaveBeenCalled();

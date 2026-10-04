@@ -192,7 +192,11 @@ class LabelLoader extends EventEmitter {
 
         try {
             this._watcher = fs.watch(dir, (eventType, filename) => {
-                if (filename !== basename) return;
+                // Linux often delivers the event with no filename. That is
+                // still a change in this directory, so reload and let the
+                // content check drop it when the label file itself did not
+                // change. A named event for a different file is ignored.
+                if (filename !== undefined && filename !== null && filename !== basename) return;
                 // Ignore events caused by our own save() within the grace period
                 if (Date.now() - this._lastSaveTime < this._selfWriteGraceMs) return;
 

@@ -136,19 +136,38 @@ class CgateConnection extends EventEmitter {
     }
 
     async sendWithBackpressure(data) {
-        const writableNow = this.send(data);
-        if (writableNow) {
-            return true;
-        }
-        if (!this.connected || !this.socket || this.socket.destroyed) {
+        if (!this.socket || this.socket.destroyed || !this.connected) {
             return false;
         }
 
-        const drained = await this._waitForDrain();
-        if (!drained || !this.connected || !this.socket || this.socket.destroyed) {
+        // Nothing has been written for this call. Wait until the previous
+        // write drains, then send once.
+        if (!this.isWritable) {
+            const drained = await this._waitForDrain();
+            if (!drained || !this.connected || !this.socket || this.socket.destroyed) {
+                return false;
+            }
+            return this.send(data);
+        }
+
+        const accepted = this.send(data);
+        if (accepted) {
+            return true;
+        }
+        // socket.write() returns false when the kernel buffer is full, but the
+        // bytes are already queued and isWritable is now false. A thrown write
+        // leaves isWritable true and queues nothing. Writing again after drain,
+        // or reporting failure so the pool tries another connection, sends the
+        // same C-Gate command twice.
+        if (this.isWritable || !this.connected || !this.socket || this.socket.destroyed) {
             return false;
         }
-        return this.send(data);
+
+        await this._waitForDrain();
+        if (!this.connected || !this.socket || this.socket.destroyed) {
+            return false;
+        }
+        return true;
     }
 
     _handleConnect() {
