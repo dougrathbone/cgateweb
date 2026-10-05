@@ -499,6 +499,8 @@ You do **not** need to edit any XML, and you do **not** need to put anything ext
 
 If it persists on a current version, the project genuinely has no synchronised units for Toolkit to show. Check that the project's network connection method matches how it is really connected in managed mode (for a USB interface, the serial/COM interface rather than a CNI), then sync the network. The add-on's own log is a quick way to tell which side the problem is on: if its TreeXML fetch reports units, C-Gate knows your hardware and the issue is Toolkit-side; if the tree comes back empty, the project never synced.
 
+**If the network stays Closed after you click Open Network:** current C-Bus Toolkit needs C-Gate 3.8.0. The add-on's built-in download is 3.3.2, which answers `OriginateInProject` with 402 and Toolkit leaves the network Closed even though the interface is running and Home Assistant can control it. Download C-Gate 3.8.0 from Clipsal, place the zip in `/share/cgate/`, and restart. If C-Gate install source is left unset, a zip in that folder is what gets installed. Set it to upload if you previously chose download. Turn on Force C-Gate Reinstall for one restart if C-Gate is already installed, then turn it off again (#122).
+
 > **Remember what mapping this port means.** C-Gate has no authentication beyond the address list, and `program` sits above `admin` in its access levels, so it also permits shutting C-Gate down. Map to a single specific address, never a subnet, and never expose it to the internet.
 
 ## Finding Your C-Bus Network ID

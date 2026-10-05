@@ -430,6 +430,35 @@ describeBash('cgate-install.sh helpers', () => {
             }
         });
 
+        test('uses an uploaded zip when install source is unset', () => {
+            const { dir, shareDir } = makeShareAndMarker({ zipMtime: 1000, markerMtime: null });
+            try {
+                expect(runHelperWithArgs('_cgateweb_resolve_install_source', [shareDir], {})).toBe('upload');
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('downloads when install source is unset and no zip is present', () => {
+            const { dir, shareDir } = makeShareAndMarker({ zipMtime: null, markerMtime: null });
+            try {
+                expect(runHelperWithArgs('_cgateweb_resolve_install_source', [shareDir], {})).toBe('download');
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
+        test('keeps an explicit download even when a zip is present', () => {
+            const { dir, shareDir } = makeShareAndMarker({ zipMtime: 1000, markerMtime: null });
+            try {
+                expect(runHelperWithArgs('_cgateweb_resolve_install_source', [shareDir], {
+                    cgate_install_source: 'download'
+                })).toBe('download');
+            } finally {
+                fs.rmSync(dir, { recursive: true, force: true });
+            }
+        });
+
         test('breaks an equal mtime by name so the choice stays put', () => {
             const { dir, shareDir } = makeShareAndMarker({ zipMtime: 2000, markerMtime: null });
             const earlier = path.join(shareDir, 'a.zip');
@@ -441,6 +470,20 @@ describeBash('cgate-install.sh helpers', () => {
             } finally {
                 fs.rmSync(dir, { recursive: true, force: true });
             }
+        });
+    });
+
+    describe('_cgateweb_toolkit_needs_newer_cgate', () => {
+        test.each([
+            ['3.3.2_1855', '1'],
+            ['3.7.1', '1'],
+            ['3.8.0', '0'],
+            ['3.8.0_1', '0'],
+            ['4.0', '0'],
+            ['unknown', '0'],
+            ['', '0']
+        ])('%s -> %s', (version, expected) => {
+            expect(runHelperWithArgs('_cgateweb_toolkit_needs_newer_cgate', [version])).toBe(expected);
         });
     });
 
