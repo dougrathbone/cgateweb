@@ -370,6 +370,29 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('keeps the last cover position when terminateramp has no level', () => {
+            eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/203/5 128'), '(Evt)');
+            mockPublishFn.mockClear();
+
+            eventPublisher.publishEvent(new CBusEvent('lighting terminateramp 254/203/5'), '(Evt)');
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '50',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'cbus/read/254/203/5/position',
+                '0',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/203/5/state',
+                'ON',
+                mockMqttOptions
+            );
+        });
+
         it('cancels an interpolated cover ramp when a real C-Gate event arrives', () => {
             const coverRampTracker = { cancelRamp: jest.fn() };
             const publisher = new EventPublisher({

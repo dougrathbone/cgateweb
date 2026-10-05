@@ -235,6 +235,34 @@ class EventPublisher {
         const addressKey = `${network}/${application}/${group}`;
         const rampTimeMs = typeof event.getRampTimeMs === 'function' ? event.getRampTimeMs() : null;
         const isSpecialEntity = isPirSensor || isTrigger || isCover || Boolean(isHvac) || Boolean(isTiltApp);
+
+        // terminateramp carries no level. Keep the last published position for
+        // lights and covers. A missing level must not become fully closed.
+        if (action === 'terminateramp' && rawLevel === null && (isCover || !isSpecialEntity)) {
+            if (this.lightRampTracker.isRamping(addressKey)) {
+                this.lightRampTracker.cancelRamp(addressKey);
+            }
+            if (this._lastPublishedRawLevels.has(addressKey)) {
+                const lastLevel = /** @type {number} */ (this._lastPublishedRawLevels.get(addressKey));
+                if (this.onEventLog) {
+                    this.onEventLog({
+                        ts: Date.now(),
+                        network: network,
+                        app: application,
+                        group: group,
+                        level: lastLevel,
+                        type: 'update'
+                    });
+                }
+                this._publishLightingLevel(topics, lastLevel, source, network, application, group);
+                if (isCover) {
+                    const levelPercent = Math.round(lastLevel / CGATE_LEVEL_MAX * 100);
+                    this._publishIfNeeded(topics.position, levelPercent.toString(), this.mqttOptions);
+                }
+            }
+            return;
+        }
+
         // Positive-duration lighting ramps: publish interpolated levels so HA
         // tracks the real rising/falling brightness instead of jumping to the
         // target (issue #129 — eDLT dim-up hold).
@@ -286,26 +314,6 @@ class EventPublisher {
             // in-progress lighting ramp, then publishes with today's rules.
             if (this.lightRampTracker.isRamping(addressKey)) {
                 this.lightRampTracker.cancelRamp(addressKey);
-            }
-
-            // terminateramp with no level: leave the last interpolated value;
-            // republish once so retained broker state matches.
-            if (action === 'terminateramp' && rawLevel === null) {
-                if (this._lastPublishedRawLevels.has(addressKey)) {
-                    const lastLevel = /** @type {number} */ (this._lastPublishedRawLevels.get(addressKey));
-                    if (this.onEventLog) {
-                        this.onEventLog({
-                            ts: Date.now(),
-                            network: network,
-                            app: application,
-                            group: group,
-                            level: lastLevel,
-                            type: 'update'
-                        });
-                    }
-                    this._publishLightingLevel(topics, lastLevel, source, network, application, group);
-                }
-                return;
             }
         }
         
