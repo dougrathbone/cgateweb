@@ -836,6 +836,20 @@ describe('HaDiscovery', () => {
             expect(haDiscovery._treeRequestState.get('254').attempts).toBe(2);
         });
 
+        it('retries a tree that another network interrupts mid-stream', () => {
+            haDiscovery.queueTreeRequest('254');
+            haDiscovery.queueTreeRequest('250');
+            haDiscovery.handleTreeStart('start');
+            haDiscovery.handleTreeData('<Network>partial');
+            expect(haDiscovery.activeTreeSession.network).toBe('254');
+
+            haDiscovery.handleTreeStart('start');
+
+            expect(haDiscovery.activeTreeSession.network).toBe('250');
+            expect(haDiscovery._treeRequestState.get('254').attempts).toBe(1);
+            expect(haDiscovery._treeRequestState.get('254').retryHandle).toBeTruthy();
+        });
+
         it('does not send a duplicate TREEXML while one is already in flight (avoids "unknown" network)', () => {
             // Both the initial trigger() and a "Network created" event fire for
             // the same network at startup. The second must not send a second

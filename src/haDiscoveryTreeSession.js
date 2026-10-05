@@ -407,8 +407,23 @@ class _HaDiscoveryTreeSession {
     }
 
     handleTreeStart(_statusData) {
-        if (this.activeTreeSession && this.activeTreeSession.bufferParts.length > 0) {
-            this.logger.warn(`Received a new TreeXML start before previous tree completed; dropping incomplete tree for network ${this.activeTreeSession.network}`);
+        // A second network's tree can start while the first is still streaming.
+        // The first was already taken off pendingTreeNetworks, so discarding
+        // the session here used to lose that network until the next restart.
+        const incoming = this.pendingTreeNetworks.length > 0
+            ? String(this.pendingTreeNetworks[0])
+            : (this.treeNetwork || 'unknown');
+        if (this.activeTreeSession) {
+            const dropped = this.activeTreeSession.network;
+            const abandoned = this.activeTreeSession.bufferParts.length > 0
+                || (dropped && dropped !== 'unknown' && dropped !== incoming);
+            if (abandoned && dropped && dropped !== 'unknown') {
+                this.logger.warn(`Received a new TreeXML start before previous tree completed; retrying incomplete tree for network ${dropped}`);
+                this.activeTreeSession = null;
+                this.treeBufferParts = [];
+                this._clearTreeStreamDeadline();
+                this._handleTreeRequestFailure(dropped, 'superseded by another tree');
+            }
         }
 
         const nextNetwork = this.pendingTreeNetworks.shift() || this.treeNetwork || 'unknown';
