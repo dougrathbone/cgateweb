@@ -102,6 +102,8 @@ jobs:
       run: npm run validate:translations
     - name: Validate schema <-> translation parity
       run: npm run validate:schema-i18n
+    - name: Validate changelog
+      run: npm run validate:changelog
     - name: Typecheck (tsc --noEmit)
       run: npm run typecheck
 

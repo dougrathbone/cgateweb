@@ -75,12 +75,13 @@
     "generate:translations": "node tools/generate-translations.js",
     "validate:translations": "node tools/validate-translations.js",
     "validate:schema-i18n": "node tools/validate-schema-i18n.js",
+    "validate:changelog": "node tools/validate-changelog.js",
     "changelog:insert": "node tools/extract-changelog.js --insert",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --max-warnings 0",
     "lint:fix": "eslint src/ tests/ tools/ index.js install-service.js uninstall-service.js --fix",
     "validate-settings": "node tools/validate-settings.js",
-    "pretest": "npm run validate:addon-config && npm run validate:translations && npm run validate:schema-i18n"
+    "pretest": "npm run validate:addon-config && npm run validate:translations && npm run validate:schema-i18n && npm run validate:changelog"
   },
   "jest": {
     "testPathIgnorePatterns": [

@@ -915,4 +915,4 @@ For issues, feature requests, and contributions:
 
 ## Version History
 
-See CHANGELOG.md for detailed version history and changes.
+See CHANGELOG.md for the current version history. Releases before 1.22.0 are in CHANGELOG-archive.md.

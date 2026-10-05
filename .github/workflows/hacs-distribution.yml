@@ -252,6 +252,7 @@ jobs:
         cp homeassistant-addon/run.sh distribution/cgateweb/
         cp homeassistant-addon/DOCS.md distribution/cgateweb/
         cp homeassistant-addon/CHANGELOG.md distribution/cgateweb/
+        cp homeassistant-addon/CHANGELOG-archive.md distribution/cgateweb/
         cp homeassistant-addon/README.md distribution/cgateweb/
         cp homeassistant-addon/icon.png distribution/cgateweb/
         cp homeassistant-addon/logo.png distribution/cgateweb/
