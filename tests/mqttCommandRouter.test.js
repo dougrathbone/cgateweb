@@ -145,7 +145,33 @@ describe('MqttCommandRouter', () => {
             warnSpy.mockRestore();
         });
 
-        it('still arms normally when bypass is disabled', () => {
+            it('stops arm and bypass commands after the same limit as disarm', () => {
+                router.settings.securityDisarmMaxAttempts = 2;
+                router.settings.securityDisarmAttemptWindowMs = 600000;
+                router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
+                router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
+                mockQueue.add.mockClear();
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+
+                router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_HOME');
+                router.routeMessage('cbus/write/254/208/panel/bypass', 'PRESS');
+
+                expect(mockQueue.add).not.toHaveBeenCalled();
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('too many panel commands'));
+                warnSpy.mockRestore();
+            });
+
+            it('does not count arm commands against the disarm limit', () => {
+                router.settings.cbus_security_disarm_enabled = true;
+                router.settings.securityDisarmMaxAttempts = 1;
+                router.settings.securityDisarmAttemptWindowMs = 600000;
+                router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
+                mockQueue.add.mockClear();
+                router.routeMessage('cbus/write/254/208/panel/arm', JSON.stringify({ action: 'DISARM', code: '1234' }));
+                expect(mockQueue.add).toHaveBeenCalled();
+            });
+
+            it('still arms normally when bypass is disabled', () => {
             router.settings.cbus_security_bypass_enabled = false;
             router.routeMessage('cbus/write/254/208/panel/arm', 'ARM_AWAY');
             expect(mockQueue.add).toHaveBeenCalledWith('security arm //TestProject/254/208 away\n');
