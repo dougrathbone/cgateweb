@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.36.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.36.1) - 2026-10-05
+
+### Fixed
+
+- **An unset C-Gate install source now uses a zip already in the share folder.** Place C-Gate 3.8.0 there if Toolkit leaves the network Closed. ([#122](https://github.com/dougrathbone/cgateweb/issues/122))
+
 ## [1.36.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.36.0) - 2026-10-04
 
 ### Fixed
