@@ -967,11 +967,19 @@ class CgateWebBridge {
     // Hot-reloads settings that can be applied without reconnecting.
     // Connection settings (mqtt host, cbus ip, ports) require a full restart.
     reloadSettings(newSettings) {
-        const reloadableKeys = ['log_level', 'messageinterval', 'commandMinIntervalMs', 'getallperiod', 'getall_app_periods'];
-        const changed = reloadableKeys.filter(k => newSettings[k] !== this.settings[k]);
+        const reloadableKeys = [
+            'log_level', 'messageinterval', 'commandMinIntervalMs', 'getallperiod', 'getall_app_periods',
+            'getall_networks', 'ha_discovery_networks',
+            'securityDisarmMaxAttempts', 'securityDisarmAttemptWindowMs', 'securityDisarmMaxTrackedKeys'
+        ];
+        const changed = reloadableKeys.filter(k =>
+            Object.prototype.hasOwnProperty.call(newSettings, k) && newSettings[k] !== this.settings[k]
+        );
 
         for (const k of reloadableKeys) {
-            this.settings[k] = newSettings[k];
+            if (Object.prototype.hasOwnProperty.call(newSettings, k)) {
+                this.settings[k] = newSettings[k];
+            }
         }
 
         if (newSettings.log_level) {
