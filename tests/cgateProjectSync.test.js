@@ -149,6 +149,63 @@ describeBash('cgate-project-sync.sh', () => {
             expect(out).not.toMatch(/^WARNING:.*NOT synced/m);
         });
 
+        // #122: after a 3.3.2 -> 3.8.0 reinstall C-Gate came up with no
+        // networks from the copy it had kept, and loaded fine from the share.
+        describe('after a C-Gate version change', () => {
+            function markPending() {
+                const marker = path.join(dirs.dataCgate, '.project-resync-pending');
+                fs.writeFileSync(marker, '3.3.2_1855\n');
+                return marker;
+            }
+
+            test('loads the share copy even though C-Gate\'s copy is newer', () => {
+                const { dest } = setUpSkippedProject();
+                markPending();
+                runSync({ ...dirs, configObject: { cgate_mode: 'managed' } });
+                expect(fs.readFileSync(dest, 'utf8')).toBe('share-copy');
+            });
+
+            test('keeps C-Gate\'s previous copy beside it', () => {
+                const { dest } = setUpSkippedProject();
+                markPending();
+                runSync({ ...dirs, configObject: { cgate_mode: 'managed' } });
+                expect(fs.readFileSync(`${dest}.before-cgate-upgrade`, 'utf8')).toBe('cgate-has-written-to-this');
+            });
+
+            test('says what it replaced and where the old copy went', () => {
+                const { dest } = setUpSkippedProject();
+                markPending();
+                const out = runSync({ ...dirs, configObject: { cgate_mode: 'managed' }, withLogs: true });
+                expect(out).toMatch(/^WARNING:.*JUBILEE/m);
+                expect(out).toContain(`${dest}.before-cgate-upgrade`);
+                expect(out).not.toMatch(/NOT synced/);
+            });
+
+            test('only happens once', () => {
+                const { dest } = setUpSkippedProject();
+                const marker = markPending();
+                runSync({ ...dirs, configObject: { cgate_mode: 'managed' } });
+                expect(fs.existsSync(marker)).toBe(false);
+
+                fs.writeFileSync(dest, 'cgate-wrote-after-upgrade');
+                const later = new Date(Date.now() + 120_000);
+                fs.utimesSync(dest, later, later);
+                runSync({ ...dirs, configObject: { cgate_mode: 'managed' } });
+                expect(fs.readFileSync(dest, 'utf8')).toBe('cgate-wrote-after-upgrade');
+            });
+
+            test('keeps C-Gate\'s copy when the share has no copy of that project', () => {
+                const dest = projectDbPath(dirs.projectsDir, 'JUBILEE');
+                fs.mkdirSync(path.dirname(dest), { recursive: true });
+                fs.writeFileSync(dest, 'cgate-only');
+                const marker = markPending();
+                const out = runSync({ ...dirs, configObject: { cgate_mode: 'managed' }, withLogs: true });
+                expect(fs.readFileSync(dest, 'utf8')).toBe('cgate-only');
+                expect(fs.existsSync(marker)).toBe(false);
+                expect(out).toMatch(/kept/i);
+            });
+        });
+
         test('a newer share copy is still synced over the top', () => {
             const { src, dest } = setUpSkippedProject();
             const newer = new Date(Date.now() + 60_000);

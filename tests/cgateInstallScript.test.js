@@ -487,6 +487,27 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
+    describe('_cgateweb_mark_project_resync', () => {
+        let dir;
+        beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgw-resync-')); });
+        afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+        const marker = () => path.join(dir, '.project-resync-pending');
+
+        test('marks the project for reload when the version changed', () => {
+            runHelperWithArgs('_cgateweb_mark_project_resync', [dir, '3.3.2_1855', '3.8.0_2348']);
+            expect(fs.readFileSync(marker(), 'utf8').trim()).toBe('3.3.2_1855');
+        });
+
+        test.each([
+            ['same version', '3.3.2_1855', '3.3.2_1855'],
+            ['fresh install', '', '3.8.0_2348'],
+            ['new version unknown', '3.3.2_1855', '']
+        ])('does not mark on %s', (_label, previous, current) => {
+            runHelperWithArgs('_cgateweb_mark_project_resync', [dir, previous, current]);
+            expect(fs.existsSync(marker())).toBe(false);
+        });
+    });
+
     describe('_cgateweb_apply_cgate_config', () => {
         const BASE_CONFIG = [
             '#### project.default:',

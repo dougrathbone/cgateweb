@@ -101,6 +101,35 @@ _cgateweb_warn_wrong_share_location() {
     bashio::log.warning "Move your project files to ${SHARE_TAG_DIR} (accessible via the Samba, SSH, or File Editor add-ons' top-level 'share' folder) and restart."
 }
 
+# Left by cgate-install.sh when a reinstall changed the C-Gate version. C-Gate
+# 3.8.0 came up with no networks from the project 3.3.2 had last written, and
+# loaded the share copy fine (#122), so on this one boot the share copy wins
+# even though C-Gate's copy is newer. Holds the previous version.
+RESYNC_MARKER="${DATA_CGATE_DIR}/.project-resync-pending"
+RESYNC=0
+RESYNC_FROM=""
+if [[ -f "${RESYNC_MARKER}" ]]; then
+    RESYNC=1
+    RESYNC_FROM=$(tr -d '\r\n' < "${RESYNC_MARKER}" 2>/dev/null || true)
+fi
+
+# Name every project the reload could not replace, then clear the marker so it
+# happens once. Called on every exit path below.
+_cgateweb_finish_resync() {
+    [[ "${RESYNC}" -eq 1 ]] || return 0
+    shopt -s nullglob
+    local db name
+    for db in "${PROJECTS_DIR}"/*/*.db; do
+        name=$(basename "${db}")
+        if [[ ! -e "${SHARE_TAG_DIR}/${name}" ]]; then
+            bashio::log.warning "C-Gate was upgraded from ${RESYNC_FROM:-an earlier version}, and there is no ${name} in ${SHARE_TAG_DIR}/, so C-Gate's existing copy was kept."
+            bashio::log.warning "If C-Gate shows no networks, put your project's ${name} in ${SHARE_TAG_DIR}/ and restart the add-on."
+        fi
+    done
+    shopt -u nullglob
+    rm -f "${RESYNC_MARKER}"
+}
+
 if [[ ! -d "${SHARE_TAG_DIR}" ]]; then
     if [[ -d "${CONFIG_SHARE_TAG_DIR}" || -d "${CONFIG_SHARE_CGATE_DIR}" ]]; then
         _cgateweb_warn_wrong_share_location
@@ -109,6 +138,7 @@ if [[ ! -d "${SHARE_TAG_DIR}" ]]; then
     else
         _cgateweb_warn_no_project
     fi
+    _cgateweb_finish_resync
     exit 0
 fi
 
@@ -130,6 +160,15 @@ for src in "${SHARE_TAG_DIR}"/*.db; do
             SYNCED=$((SYNCED + 1))
         else
             bashio::log.warning "Failed to sync project: ${name}"
+        fi
+    elif [[ "${RESYNC}" -eq 1 ]]; then
+        backup="${dest}.before-cgate-upgrade"
+        if cp -p "${dest}" "${backup}" && cp -p "${src}" "${dest}"; then
+            bashio::log.warning "C-Gate was upgraded from ${RESYNC_FROM:-an earlier version}, so project '${project}' was reloaded from ${src}."
+            bashio::log.warning "C-Gate's previous copy is saved as ${backup}. Changes made in Toolkit since you last copied the project to the share are in that file."
+            SYNCED=$((SYNCED + 1))
+        else
+            bashio::log.warning "Failed to reload project after the C-Gate upgrade: ${name}"
         fi
     else
         SKIPPED=$((SKIPPED + 1))
@@ -179,6 +218,7 @@ elif [[ ${SKIPPED} -gt 0 ]]; then
     bashio::log.info "C-Gate is running ${PROJECTS_DIR}/<PROJECT>/<PROJECT>.db, NOT the file in ${SHARE_TAG_DIR}."
     bashio::log.info "To make your share copy win, give it a newer timestamp (re-copy it, or 'touch' it) and restart. That overwrites what C-Gate has written."
 fi
+_cgateweb_finish_resync
 
 # ALPHA (issue #28): point the project's serial interface at the configured
 # USB-serial PCI. Two cases, both leaving the network at InterfaceState=closed

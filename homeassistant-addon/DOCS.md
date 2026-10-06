@@ -83,7 +83,11 @@ to a different C-Gate version:
   install source, then turn it back off.
 
 Both paths preserve your project databases (`Projects/`) and C-Gate config
-across the reinstall.
+across the reinstall. When the reinstall changes the C-Gate version, the first
+boot afterwards reloads each project from `/share/cgate/tag/` if a copy is
+there, because a newer C-Gate can start with no networks from the copy the old
+one wrote. C-Gate's previous copy is kept as
+`Projects/<NAME>/<NAME>.db.before-cgate-upgrade`.
 
 #### Managed C-Gate disk usage
 

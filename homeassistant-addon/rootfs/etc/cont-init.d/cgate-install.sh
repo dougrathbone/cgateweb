@@ -189,6 +189,19 @@ _cgateweb_record_installed_version() {
     fi
 }
 
+# Ask cgate-project-sync.sh to reload the project from /share/cgate/tag on this
+# boot. A reinstall keeps the project C-Gate last wrote, and C-Gate 3.8.0 came
+# up with no networks from a copy 3.3.2 had written, then loaded the share copy
+# fine (#122). The marker holds the previous version for the log line.
+_cgateweb_mark_project_resync() {
+    local cgate_dir="$1"
+    local previous="${2:-}"
+    local current="${3:-}"
+    [[ -z "${previous}" || -z "${current}" || "${current}" == "unknown" ]] && return 0
+    [[ "${previous}" == "${current}" ]] && return 0
+    printf '%s\n' "${previous}" > "${cgate_dir}/.project-resync-pending"
+}
+
 # The payload pin only applies where the script's own default checksum does:
 # the built-in URL with no user override. Someone who pins their own checksum
 # gets exactly the file they asked for, never a fallback to ours.
@@ -1267,6 +1280,7 @@ trap cleanup EXIT
 # on /data, leaving a user stuck on 3.3.2 unable to move to 3.7.1.
 NEED_INSTALL=0
 REINSTALL=0
+PREVIOUS_CGATE_VERSION=$(tr -d '\r\n' < "${CGATE_DIR}/.version" 2>/dev/null || true)
 if [[ ! -f "${CGATE_JAR}" ]]; then
     NEED_INSTALL=1
     bashio::log.info "C-Gate not found, installing from source: ${INSTALL_SOURCE}"
@@ -1554,6 +1568,9 @@ fi  # end NEED_INSTALL
 # whose marker says "unknown" are repaired without forcing a reinstall.
 _cgateweb_record_installed_version "${CGATE_DIR}" "${CGATE_VERSION:-}"
 recorded_cgate_version=$(tr -d '\r' < "${CGATE_DIR}/.version" 2>/dev/null || true)
+if [[ "${REINSTALL}" == "1" ]]; then
+    _cgateweb_mark_project_resync "${CGATE_DIR}" "${PREVIOUS_CGATE_VERSION}" "${recorded_cgate_version//$'\n'/}"
+fi
 if [[ "$(_cgateweb_cgate_below_recommended "${recorded_cgate_version}")" == "1" ]]; then
     bashio::log.warning "Installed C-Gate ${recorded_cgate_version} is older than 3.8.0; some features may be unsupported. To upgrade, download C-Gate 3.8.0 from Clipsal, put the zip in /share/cgate/, leave C-Gate install source unset or set it to upload, and restart the add-on."
 fi
