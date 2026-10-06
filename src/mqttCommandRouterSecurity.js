@@ -95,6 +95,47 @@ class _MqttCommandRouterSecurity {
     }
 
     /**
+     * Same window as disarm, but a separate counter. Arm and bypass are not
+     * PIN guesses, and counting them against the disarm budget would lock a
+     * household out of the keypad after a few ordinary arm commands.
+     *
+     * @returns {RateLimiter}
+     * @private
+     */
+    _getPanelCommandLimiter() {
+        const maxRequests = resolveSetting(this.settings, 'securityDisarmMaxAttempts');
+        const windowMs = resolveSetting(this.settings, 'securityDisarmAttemptWindowMs');
+        const maxTrackedSources = resolveSetting(this.settings, 'securityDisarmMaxTrackedKeys');
+        if (!this._panelCommandLimiter
+            || this._panelCommandLimiter.maxRequests !== maxRequests
+            || this._panelCommandLimiter.windowMs !== windowMs
+            || this._panelCommandLimiter.maxTrackedSources !== maxTrackedSources) {
+            this._panelCommandLimiter = new RateLimiter({
+                windowMs,
+                maxRequests,
+                maxTrackedSources
+            });
+        }
+        return this._panelCommandLimiter;
+    }
+
+    /**
+     * @param {string} network
+     * @param {string} application
+     * @param {string} topic
+     * @param {string} action
+     * @returns {boolean} true when the command must not be sent
+     * @private
+     */
+    _panelCommandLimited(network, application, topic, action) {
+        if (this._getPanelCommandLimiter().isLimitedByKey(`${network}/${application}`)) {
+            this.logger.warn(`Security ${action} on ${topic} rejected: too many panel commands for ${network}/${application}; refusing further arm and bypass commands for now.`);
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Handles security panel arm/disarm (cbus/write/{net}/{app}/panel/arm).
      * Gated on cbus_security_control_enabled; disarm additionally on
      * cbus_security_disarm_enabled. The panel confirms with a system_arm (or
@@ -147,6 +188,9 @@ class _MqttCommandRouterSecurity {
             return;
         }
 
+        if (this._panelCommandLimited(network, application, topic, action)) {
+            return;
+        }
         const cmd = buildSecurityArmCommand({ cbusname: this.cbusname, network, application, mode });
         this._queueCommand(cmd + NEWLINE);
         this.logger.info(`Security arm: ${network}/${application} -> ${mode} (${action})`);
@@ -206,6 +250,9 @@ class _MqttCommandRouterSecurity {
     _sendBypassKeypress(network, application, topic) {
         if (!this.settings.cbus_security_bypass_enabled) {
             this.logger.warn(`Security zone bypass is disabled (set cbus_security_bypass_enabled to allow arming past open zones); ignoring command on ${topic}`);
+            return false;
+        }
+        if (this._panelCommandLimited(network, application, topic, 'bypass')) {
             return false;
         }
         const cmd = buildSecurityEmulateKeypadCommand({

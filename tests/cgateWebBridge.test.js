@@ -2119,6 +2119,22 @@ describe('CgateWebBridge', () => {
             expect(rescheduleSpy).toHaveBeenCalled();
         });
 
+        it('applies a changed network list and disarm limit on reload', () => {
+            const rescheduleSpy = jest.spyOn(bridge.initializationService, '_scheduleAllGetalls');
+            bridge.reloadSettings({
+                ...defaultSettings,
+                getallperiod: 300,
+                getall_networks: [10, 20],
+                ha_discovery_networks: [10],
+                securityDisarmMaxAttempts: 4
+            });
+            expect(bridge.settings.getall_networks).toEqual([10, 20]);
+            expect(bridge.settings.ha_discovery_networks).toEqual([10]);
+            expect(bridge.settings.securityDisarmMaxAttempts).toBe(4);
+            expect(rescheduleSpy).toHaveBeenCalledWith(['10/56', '20/56']);
+            expect(bridge.mqttCommandRouter.settings.securityDisarmMaxAttempts).toBe(4);
+        });
+
         it('forces label reload and pushes the snapshot into HA discovery', () => {
             const loadSpy = jest.spyOn(bridge.labelLoader, 'load');
             const labelData = { labels: new Map() };
