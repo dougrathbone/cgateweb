@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.37.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.37.1) - 2026-10-07
+
+### Fixed
+
+- **Upgrading C-Gate now reloads your project from the share folder, so networks are found again.** The project C-Gate had been running is kept beside it as a backup. ([#122](https://github.com/dougrathbone/cgateweb/issues/122))
+
 ## [1.37.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.37.0) - 2026-10-07
 
 ### Added
