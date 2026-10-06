@@ -473,7 +473,7 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
-    describe('_cgateweb_toolkit_needs_newer_cgate', () => {
+    describe('_cgateweb_cgate_below_recommended', () => {
         test.each([
             ['3.3.2_1855', '1'],
             ['3.7.1', '1'],
@@ -483,7 +483,7 @@ describeBash('cgate-install.sh helpers', () => {
             ['unknown', '0'],
             ['', '0']
         ])('%s -> %s', (version, expected) => {
-            expect(runHelperWithArgs('_cgateweb_toolkit_needs_newer_cgate', [version])).toBe(expected);
+            expect(runHelperWithArgs('_cgateweb_cgate_below_recommended', [version])).toBe(expected);
         });
     });
 

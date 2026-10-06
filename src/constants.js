@@ -49,6 +49,7 @@ const CGATE_CMD_LOGIN = 'LOGIN';
 const CGATE_PARAM_LEVEL = 'level';
 
 // C-Gate Response Codes (similar to HTTP status codes)
+const CGATE_RESPONSE_SERVICE_READY = '201';  // Connection greeting (e.g., "201 Service ready: ... C-Gate Version: v3.3.2 (build 1855)")
 const CGATE_RESPONSE_OBJECT_STATUS = '300';  // Device status response (e.g., "300 //PROJECT/254/56/1: level=255")
 const CGATE_RESPONSE_TREE_START = '343';     // Start of TREEXML response
 const CGATE_RESPONSE_TREE_END = '344';       // End of TREEXML response
@@ -269,6 +270,7 @@ module.exports = {
     CGATE_PARAM_LEVEL,
     
     // C-Gate Response Codes
+    CGATE_RESPONSE_SERVICE_READY,
     CGATE_RESPONSE_OBJECT_STATUS,
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_END,

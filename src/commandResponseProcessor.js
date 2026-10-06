@@ -2,6 +2,7 @@
 const CBusEvent = require('./cbusEvent');
 const { createLogger } = require('./logger');
 const {
+    CGATE_RESPONSE_SERVICE_READY,
     CGATE_RESPONSE_OBJECT_STATUS,
     CGATE_RESPONSE_TREE_START,
     CGATE_RESPONSE_TREE_DATA,
@@ -51,11 +52,12 @@ class CommandResponseProcessor {
      * @param {Function} [options.onNetworkSyncComplete] - Callback for C-Gate 762 network-sync-complete events: (networkId) => void
      * @param {Function} [options.onNetworkCreated] - Callback for C-Gate 742 "Network created" events: (networkId) => void
      * @param {Function} [options.getNetworkInterfaceState] - Last CNI/PCI reading for a network: (networkId) => ({online, interfaceState}|null)
+     * @param {Function} [options.onGreeting] - Callback for the 201 connection greeting, which carries the C-Gate version: (statusData) => void
      * @param {number} [options.maxPendingTreeMessages] - Cap on TREEXML fragments buffered before HA Discovery is ready
      * @param {number} [options.errorRepeatWindowMs] - Window in which an identical command error is counted instead of logged again
      * @param {Object} [options.logger] - Logger instance (optional)
      */
-    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, onNetworkCreated, getNetworkInterfaceState, maxPendingTreeMessages, errorRepeatWindowMs, logger }) {
+    constructor({ eventPublisher, haDiscovery, onObjectStatus, onCommandError, onNetworkState, onNetworkSyncComplete, onNetworkCreated, getNetworkInterfaceState, onGreeting, maxPendingTreeMessages, errorRepeatWindowMs, logger }) {
         this.eventPublisher = eventPublisher;
         this._haDiscovery = haDiscovery || null;
         this._pendingTreeMessages = [];
@@ -82,6 +84,7 @@ class CommandResponseProcessor {
         this.getNetworkInterfaceState = typeof getNetworkInterfaceState === 'function'
             ? getNetworkInterfaceState
             : null;
+        this.onGreeting = typeof onGreeting === 'function' ? onGreeting : null;
         // network/app pairs already reported as having no groups, so the
         // explanation is logged once rather than on every poll (#51).
         this._emptyApplicationsSeen = new Set();
@@ -250,8 +253,11 @@ class CommandResponseProcessor {
             default:
                 if (responseCode.startsWith('4') || responseCode.startsWith('5')) {
                     this._processCommandErrorResponse(responseCode, statusData);
-                } else if (responseCode === '200' || responseCode === '201') {
+                } else if (responseCode === '200' || responseCode === CGATE_RESPONSE_SERVICE_READY) {
                     this.logger.debug(`C-Gate info ${responseCode}: ${this._safeStatusData(statusData)}`);
+                    if (responseCode === CGATE_RESPONSE_SERVICE_READY && this.onGreeting) {
+                        this.onGreeting(statusData);
+                    }
                 } else {
                     this.logger.debug(`Unhandled C-Gate response ${responseCode}: ${this._safeStatusData(statusData)}`);
                 }

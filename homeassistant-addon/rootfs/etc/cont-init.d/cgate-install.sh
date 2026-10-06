@@ -569,10 +569,12 @@ _cgateweb_resolve_install_source() {
     esac
 }
 
-# Echo 1 when this C-Gate is too old for current Toolkit to open a network.
-# Toolkit reads OriginateInProject. 3.3.2 answers 402 and the network stays
-# Closed. 3.8.0 answers the parameter. Empty or unknown versions do not warn.
-_cgateweb_toolkit_needs_newer_cgate() {
+# Echo 1 when this C-Gate is older than 3.8.0. Older releases lack parameters
+# newer clients rely on: current Toolkit reads OriginateInProject, 3.3.2
+# answers 402 and the network stays Closed (#122). The bridge logs the same
+# warning from C-Gate's greeting in both modes (src/cgateVersion.js). Empty or
+# unknown versions do not warn.
+_cgateweb_cgate_below_recommended() {
     local raw="${1:-}"
     local major minor
     raw="${raw%%_*}"
@@ -1552,8 +1554,8 @@ fi  # end NEED_INSTALL
 # whose marker says "unknown" are repaired without forcing a reinstall.
 _cgateweb_record_installed_version "${CGATE_DIR}" "${CGATE_VERSION:-}"
 recorded_cgate_version=$(tr -d '\r' < "${CGATE_DIR}/.version" 2>/dev/null || true)
-if [[ "$(_cgateweb_toolkit_needs_newer_cgate "${recorded_cgate_version}")" == "1" ]]; then
-    bashio::log.warning "Installed C-Gate ${recorded_cgate_version} is older than 3.8.0. Current C-Bus Toolkit leaves the network Closed on this C-Gate because OriginateInProject is not supported. Download C-Gate 3.8.0 from Clipsal, put the zip in /share/cgate/, and restart. Leave cgate_install_source unset, or set it to upload."
+if [[ "$(_cgateweb_cgate_below_recommended "${recorded_cgate_version}")" == "1" ]]; then
+    bashio::log.warning "Installed C-Gate ${recorded_cgate_version} is older than 3.8.0; some features may be unsupported. To upgrade, download C-Gate 3.8.0 from Clipsal, put the zip in /share/cgate/, leave C-Gate install source unset or set it to upload, and restart the add-on."
 fi
 
 # Configure access.txt. Runs on every boot, not only when the file is absent,

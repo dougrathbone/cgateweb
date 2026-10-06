@@ -14,6 +14,7 @@ const SecurityEventHandler = require('./securityEventHandler');
 const MeasurementEventHandler = require('./measurementEventHandler');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
+const { CgateVersionReporter } = require('./cgateVersion');
 const DeviceStateManager = require('./deviceStateManager');
 const LabelLoader = require('./labelLoader');
 const WebServer = require('./webServer');
@@ -326,6 +327,10 @@ class _CgateWebBridgeBuild {
      * @private
      */
     _buildCommandResponseProcessor() {
+        this.cgateVersionReporter = new CgateVersionReporter({
+            settings: this.settings,
+            logger: this.logger
+        });
         this.commandResponseProcessor = new CommandResponseProcessor({
             eventPublisher: this.eventPublisher,
             haDiscovery: null, // Will be set after haDiscovery is initialized
@@ -333,6 +338,7 @@ class _CgateWebBridgeBuild {
             onNetworkState: (networkId, reading) => this._handleNetworkInterfaceReading(networkId, reading),
             onNetworkSyncComplete: (networkId) => this._handleNetworkSyncComplete(networkId),
             getNetworkInterfaceState: (networkId) => this.networkInterfaceMonitor.getNetwork(networkId),
+            onGreeting: (greeting) => this.cgateVersionReporter.handleGreeting(greeting),
             maxPendingTreeMessages: resolveSetting(this.settings, 'commandResponseMaxPendingTreeMessages'),
             errorRepeatWindowMs: resolveSetting(this.settings, 'commandErrorRepeatWindowMs'),
             logger: this.logger

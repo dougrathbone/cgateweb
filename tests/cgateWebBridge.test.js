@@ -310,6 +310,19 @@ describe('CgateWebBridge', () => {
             spy.mockRestore();
         });
 
+        it('warns once when C-Gate greets with a version older than 3.8.0 (issue #122)', () => {
+            const warnSpy = jest.spyOn(bridge.logger, 'warn');
+            const greeting = '201 Service ready: Clipsal C-Gate Version: v3.3.2 (build 1855) #cmd-syntax=1.0';
+
+            bridge.commandResponseProcessor.processLine(greeting);
+            bridge.commandResponseProcessor.processLine(greeting);
+
+            const versionWarnings = warnSpy.mock.calls.filter(([msg]) => String(msg).includes('older than 3.8.0'));
+            expect(versionWarnings).toHaveLength(1);
+            expect(bridge.cgateVersionReporter.version).toBe('3.3.2');
+            warnSpy.mockRestore();
+        });
+
         it('refreshes discovery only when an interface that was down reaches running (issue #122)', () => {
             const handleNetworkInterfaceUp = jest.fn();
             bridge.haDiscovery = { handleNetworkInterfaceUp, ensureNetworkConnectivityDiscovery: jest.fn() };

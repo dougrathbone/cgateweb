@@ -124,6 +124,8 @@ class CgateWebBridge {
     /** @type {*} */
     cniNotificationManager;
     /** @type {*} */
+    cgateVersionReporter;
+    /** @type {*} */
     commandResponseProcessor;
     /** @type {*} */
     webServer;

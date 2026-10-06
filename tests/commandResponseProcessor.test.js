@@ -77,6 +77,40 @@ describe('CommandResponseProcessor', () => {
         });
     });
 
+    describe('C-Gate greeting (201)', () => {
+        it('passes the greeting to onGreeting', () => {
+            const onGreeting = jest.fn();
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                onObjectStatus: mockOnObjectStatus,
+                onGreeting,
+                logger: mockLogger
+            });
+
+            p.processLine('201 Service ready: Clipsal C-Gate Version: v3.3.2 (build 1855) #cmd-syntax=1.0');
+
+            expect(onGreeting).toHaveBeenCalledWith('Service ready: Clipsal C-Gate Version: v3.3.2 (build 1855) #cmd-syntax=1.0');
+        });
+
+        it('does not pass a 200 OK to onGreeting', () => {
+            const onGreeting = jest.fn();
+            const p = new CommandResponseProcessor({
+                eventPublisher: mockEventPublisher,
+                onObjectStatus: mockOnObjectStatus,
+                onGreeting,
+                logger: mockLogger
+            });
+
+            p.processLine('200 OK.');
+
+            expect(onGreeting).not.toHaveBeenCalled();
+        });
+
+        it('handles a greeting without an onGreeting callback', () => {
+            expect(() => processor.processLine('201 Service ready: Clipsal C-Gate Version: v3.3.2 (build 1855)')).not.toThrow();
+        });
+    });
+
     describe('processLine', () => {
         it('should log received line at debug level', () => {
             processor.processLine('200-OK');
