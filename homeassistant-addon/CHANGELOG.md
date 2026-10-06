@@ -11,6 +11,18 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.36.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.36.2) - 2026-10-06
+
+### Fixed
+
+- **A device scan interrupted by another network's scan is retried.**
+- **A cover keeps its position when a ramp ends without reporting a level.**
+- **Saving settings applies a changed network list and alarm disarm limit without a restart.**
+
+### Security
+
+- **Alarm arm and bypass commands are now rate-limited, separately from disarm.**
+
 ## [1.36.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.36.1) - 2026-10-05
 
 ### Fixed
