@@ -3067,22 +3067,22 @@ configuration:
   ha_discovery_auto_type:
     name:
       en: Auto-detect Device Types
-      de: Auto-detect Device Types
-      es: Auto-detect Device Types
-      fr: Auto-detect Device Types
-      it: Auto-detect Device Types
-      nl: Auto-detect Device Types
-      pt: Auto-detect Device Types
-      ru: Auto-detect Device Types
-      zh: Auto-detect Device Types
-      ja: Auto-detect Device Types
-      ko: Auto-detect Device Types
-      pl: Auto-detect Device Types
-      sv: Auto-detect Device Types
-      no: Auto-detect Device Types
-      da: Auto-detect Device Types
-      cs: Auto-detect Device Types
-      uk: Auto-detect Device Types
+      de: Gerätetypen automatisch erkennen
+      es: Detectar automáticamente los tipos de dispositivo
+      fr: Détection automatique des types d'appareils
+      it: Rileva automaticamente i tipi di dispositivo
+      nl: Apparaattypen automatisch herkennen
+      pt: Detetar automaticamente os tipos de dispositivo
+      ru: Автоматически определять типы устройств
+      zh: 自动识别设备类型
+      ja: デバイスタイプを自動検出
+      ko: 장치 유형 자동 감지
+      pl: Automatyczne wykrywanie typów urządzeń
+      sv: Identifiera enhetstyper automatiskt
+      no: Oppdag enhetstyper automatisk
+      da: Registrér enhedstyper automatisk
+      cs: Automaticky rozpoznávat typy zařízení
+      uk: Автоматично визначати типи пристроїв
     description:
       en: >-
         Automatically classify Lighting (56) groups whose label looks like a
@@ -3090,261 +3090,263 @@ configuration:
         instead of lights. Manual type overrides always take precedence.
         Default: enabled.
       de: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Lighting-Gruppen (56), deren Label nach einer motorisierten Abdeckung
+        aussieht (Jalousie, Rollladen usw.), automatisch als Home Assistant
+        Abdeckungs-Entitäten statt als Lichter einstufen. Manuelle
+        Typ-Überschreibungen haben immer Vorrang. Standard: aktiviert.
       es: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Clasificar automáticamente los grupos de Lighting (56) cuya etiqueta
+        parezca una cubierta motorizada (persiana, contraventana, etc.) como
+        entidades de cubierta de Home Assistant en lugar de luces. Las
+        anulaciones manuales de tipo siempre tienen prioridad. Predeterminado:
+        habilitado.
       fr: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Classer automatiquement les groupes Lighting (56) dont le label
+        ressemble à un volet motorisé (store, volet roulant, etc.) comme entités
+        de volet Home Assistant plutôt que comme lumières. Les remplacements
+        manuels de type sont toujours prioritaires. Par défaut : activé.
       it: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Classificare automaticamente i gruppi Lighting (56) la cui etichetta
+        indica una copertura motorizzata (tapparella, persiana, ecc.) come
+        entità copertura di Home Assistant invece che come luci. Le sostituzioni
+        manuali del tipo hanno sempre la precedenza. Predefinito: abilitato.
       nl: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Lighting-groepen (56) waarvan het label op een gemotoriseerde cover
+        lijkt (rolluik, jaloezie, enz.) automatisch als Home Assistant
+        cover-entiteiten indelen in plaats van als lampen. Handmatige
+        type-overschrijvingen hebben altijd voorrang. Standaard: ingeschakeld.
       pt: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Classificar automaticamente os grupos Lighting (56) cuja etiqueta pareça
+        um estore motorizado (persiana, portada, etc.) como entidades de estore
+        do Home Assistant em vez de luzes. As substituições manuais de tipo têm
+        sempre prioridade. Predefinido: ativado.
       ru: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Автоматически классифицировать группы Lighting (56), метка которых
+        похожа на моторизованную штору (жалюзи, рольставни и т. п.), как объекты
+        штор Home Assistant, а не как освещение. Ручное переопределение типа
+        всегда имеет приоритет. По умолчанию: включено.
       zh: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        自动将标签看起来像电动窗帘（百叶窗、卷帘等）的 Lighting (56) 组归类为 Home Assistant
+        窗帘实体，而不是灯光。手动类型覆盖始终优先。默认：启用。
       ja: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        ラベルが電動カバー（ブラインド、シャッターなど）に見える Lighting (56) グループを、ライトではなく Home Assistant
+        のカバーエンティティとして自動的に分類します。手動のタイプ上書きが常に優先されます。デフォルト：有効。
       ko: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        라벨이 전동 커버(블라인드, 셔터 등)처럼 보이는 Lighting (56) 그룹을 조명 대신 Home Assistant 커버
+        엔티티로 자동 분류합니다. 수동 유형 재정의가 항상 우선합니다. 기본값: 활성화.
       pl: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Automatycznie klasyfikuj grupy Lighting (56), których etykieta wskazuje
+        na zmotoryzowaną osłonę (żaluzja, roleta itp.), jako encje osłon Home
+        Assistant zamiast świateł. Ręczne nadpisania typu zawsze mają
+        pierwszeństwo. Domyślnie: włączone.
       sv: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Klassificera automatiskt Lighting-grupper (56) vars etikett ser ut som
+        ett motoriserat skydd (persienn, rullgardin osv.) som Home Assistant
+        skyddsentiteter i stället för lampor. Manuella typåsidosättningar har
+        alltid företräde. Standard: aktiverat.
       no: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Klassifiser automatisk Lighting-grupper (56) med en etikett som ligner
+        en motorisert tildekking (persienne, rullegardin osv.) som Home
+        Assistant tildekkingsentiteter i stedet for lys. Manuelle
+        typeoverstyringer har alltid forrang. Standard: aktivert.
       da: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Klassificér automatisk Lighting-grupper (56), hvis etiket ligner en
+        motoriseret afdækning (persienne, rullegardin osv.), som Home Assistant
+        afdækningsentiteter i stedet for lys. Manuelle typetilsidesættelser har
+        altid forrang. Standard: aktiveret.
       cs: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Automaticky klasifikovat skupiny Lighting (56), jejichž štítek odpovídá
+        motorovému krytu (žaluzie, roleta apod.), jako entity krytů Home
+        Assistant místo světel. Ruční přepsání typu má vždy přednost. Výchozí:
+        povoleno.
       uk: >-
-        Automatically classify Lighting (56) groups whose label looks like a
-        motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-        instead of lights. Manual type overrides always take precedence.
-        Default: enabled.
+        Автоматично класифікувати групи Lighting (56), мітка яких схожа на
+        моторизовану штору (жалюзі, ролети тощо), як об'єкти штор Home Assistant
+        замість освітлення. Ручне перевизначення типу завжди має пріоритет. За
+        замовчуванням: увімкнено.
   ha_discovery_auto_type_name_heuristics:
     name:
       en: Auto-detect Using Label Keywords
-      de: Auto-detect Using Label Keywords
-      es: Auto-detect Using Label Keywords
-      fr: Auto-detect Using Label Keywords
-      it: Auto-detect Using Label Keywords
-      nl: Auto-detect Using Label Keywords
-      pt: Auto-detect Using Label Keywords
-      ru: Auto-detect Using Label Keywords
-      zh: Auto-detect Using Label Keywords
-      ja: Auto-detect Using Label Keywords
-      ko: Auto-detect Using Label Keywords
-      pl: Auto-detect Using Label Keywords
-      sv: Auto-detect Using Label Keywords
-      no: Auto-detect Using Label Keywords
-      da: Auto-detect Using Label Keywords
-      cs: Auto-detect Using Label Keywords
-      uk: Auto-detect Using Label Keywords
+      de: Automatische Erkennung über Label-Schlüsselwörter
+      es: Detección automática por palabras clave de la etiqueta
+      fr: Détection automatique par mots-clés du label
+      it: Rilevamento automatico tramite parole chiave dell'etichetta
+      nl: Automatisch herkennen via labeltrefwoorden
+      pt: Deteção automática por palavras-chave da etiqueta
+      ru: Автоопределение по ключевым словам метки
+      zh: 使用标签关键词自动识别
+      ja: ラベルのキーワードで自動検出
+      ko: 라벨 키워드로 자동 감지
+      pl: Automatyczne wykrywanie według słów kluczowych etykiety
+      sv: Identifiera automatiskt med etikettnyckelord
+      no: Oppdag automatisk med etikettnøkkelord
+      da: Registrér automatisk ud fra etiketnøgleord
+      cs: Automatické rozpoznávání podle klíčových slov štítku
+      uk: Автовизначення за ключовими словами мітки
     description:
       en: >-
         When auto-detection is on, match cover keywords in the group label. Turn
         off to disable keyword matching while keeping other auto-detection.
         Default: enabled.
       de: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Bei aktivierter automatischer Erkennung Abdeckungs-Schlüsselwörter im
+        Gruppen-Label abgleichen. Deaktivieren, um den Schlüsselwortabgleich
+        abzuschalten und die übrige automatische Erkennung beizubehalten.
+        Standard: aktiviert.
       es: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Con la detección automática activada, buscar palabras clave de cubiertas
+        en la etiqueta del grupo. Desactívelo para dejar de usar las palabras
+        clave sin desactivar el resto de la detección automática.
+        Predeterminado: habilitado.
       fr: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Lorsque la détection automatique est activée, rechercher les mots-clés
+        de volet dans le label du groupe. Désactiver pour ne plus utiliser les
+        mots-clés tout en conservant le reste de la détection automatique. Par
+        défaut : activé.
       it: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Con il rilevamento automatico attivo, cercare le parole chiave delle
+        coperture nell'etichetta del gruppo. Disattivare per non usare le parole
+        chiave mantenendo il resto del rilevamento automatico. Predefinito:
+        abilitato.
       nl: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Bij ingeschakelde automatische herkenning cover-trefwoorden in het
+        groepslabel zoeken. Schakel uit om geen trefwoorden meer te gebruiken en
+        de overige automatische herkenning te behouden. Standaard: ingeschakeld.
       pt: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Com a deteção automática ativada, procurar palavras-chave de estores na
+        etiqueta do grupo. Desative para deixar de usar palavras-chave, mantendo
+        o resto da deteção automática. Predefinido: ativado.
       ru: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        При включённом автоопределении искать ключевые слова штор в метке
+        группы. Отключите, чтобы не использовать ключевые слова, сохранив
+        остальное автоопределение. По умолчанию: включено.
       zh: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        启用自动识别时，在组标签中匹配窗帘关键词。关闭此项可停用关键词匹配，同时保留其他自动识别。默认：启用。
       ja: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        自動検出が有効な場合、グループラベル内のカバー用キーワードを照合します。無効にすると、ほかの自動検出を維持したままキーワード照合のみを停止します。デフォルト：有効。
       ko: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        자동 감지가 켜져 있으면 그룹 라벨에서 커버 키워드를 찾습니다. 끄면 다른 자동 감지는 유지한 채 키워드 매칭만 비활성화합니다.
+        기본값: 활성화.
       pl: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Gdy automatyczne wykrywanie jest włączone, szukaj słów kluczowych osłon
+        w etykiecie grupy. Wyłącz, aby przestać dopasowywać słowa kluczowe,
+        zachowując pozostałe automatyczne wykrywanie. Domyślnie: włączone.
       sv: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        När automatisk identifiering är på matchas skyddsnyckelord i gruppens
+        etikett. Stäng av för att sluta matcha nyckelord men behålla övrig
+        automatisk identifiering. Standard: aktiverat.
       no: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Når automatisk oppdagelse er på, matches tildekkingsnøkkelord i
+        gruppeetiketten. Slå av for å slutte å matche nøkkelord, men beholde
+        annen automatisk oppdagelse. Standard: aktivert.
       da: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Når automatisk registrering er slået til, matches afdækningsnøgleord i
+        gruppens etiket. Slå fra for at stoppe matchning af nøgleord, men bevare
+        den øvrige automatiske registrering. Standard: aktiveret.
       cs: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Když je automatické rozpoznávání zapnuté, hledat klíčová slova krytů ve
+        štítku skupiny. Vypněte, chcete-li přestat porovnávat klíčová slova a
+        ponechat ostatní automatické rozpoznávání. Výchozí: povoleno.
       uk: >-
-        When auto-detection is on, match cover keywords in the group label. Turn
-        off to disable keyword matching while keeping other auto-detection.
-        Default: enabled.
+        Коли автовизначення увімкнене, шукати ключові слова штор у мітці групи.
+        Вимкніть, щоб не використовувати ключові слова, зберігши решту
+        автовизначення. За замовчуванням: увімкнено.
   ha_discovery_auto_type_cover_keywords:
     name:
       en: Cover Detection Keywords
-      de: Cover Detection Keywords
-      es: Cover Detection Keywords
-      fr: Cover Detection Keywords
-      it: Cover Detection Keywords
-      nl: Cover Detection Keywords
-      pt: Cover Detection Keywords
-      ru: Cover Detection Keywords
-      zh: Cover Detection Keywords
-      ja: Cover Detection Keywords
-      ko: Cover Detection Keywords
-      pl: Cover Detection Keywords
-      sv: Cover Detection Keywords
-      no: Cover Detection Keywords
-      da: Cover Detection Keywords
-      cs: Cover Detection Keywords
-      uk: Cover Detection Keywords
+      de: Schlüsselwörter zur Abdeckungserkennung
+      es: Palabras clave para detectar cubiertas
+      fr: Mots-clés de détection des volets
+      it: Parole chiave per il rilevamento delle coperture
+      nl: Trefwoorden voor cover-herkenning
+      pt: Palavras-chave para deteção de estores
+      ru: Ключевые слова для определения штор
+      zh: 窗帘识别关键词
+      ja: カバー検出キーワード
+      ko: 커버 감지 키워드
+      pl: Słowa kluczowe wykrywania osłon
+      sv: Nyckelord för skyddsidentifiering
+      no: Nøkkelord for tildekkingsoppdagelse
+      da: Nøgleord til registrering af afdækninger
+      cs: Klíčová slova pro rozpoznání krytů
+      uk: Ключові слова для визначення штор
     description:
       en: >-
         Case-insensitive keywords in a Lighting group label that mark it as a
         cover (matching also catches plurals). Defaults: blind, shutter, shade,
         awning, curtain, roller, garage door.
       de: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Schlüsselwörter ohne Beachtung der Groß-/Kleinschreibung, die eine
+        Lighting-Gruppe als Abdeckung kennzeichnen, wenn sie im Gruppen-Label
+        vorkommen (Pluralformen werden ebenfalls erkannt). Standard: blind,
+        shutter, shade, awning, curtain, roller, garage door.
       es: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
+        Palabras clave, sin distinguir mayúsculas y minúsculas, que marcan un
+        grupo de Lighting como cubierta cuando aparecen en su etiqueta (también
+        se reconocen los plurales). Predeterminadas: blind, shutter, shade,
         awning, curtain, roller, garage door.
       fr: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Mots-clés, insensibles à la casse, qui identifient un groupe Lighting
+        comme volet lorsqu'ils figurent dans son label (les pluriels sont
+        également reconnus). Par défaut : blind, shutter, shade, awning,
+        curtain, roller, garage door.
       it: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Parole chiave, senza distinzione tra maiuscole e minuscole, che
+        identificano un gruppo Lighting come copertura quando compaiono nella
+        sua etichetta (vengono riconosciuti anche i plurali). Predefinite:
+        blind, shutter, shade, awning, curtain, roller, garage door.
       nl: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Hoofdletterongevoelige trefwoorden in het label van een Lighting-groep
+        die de groep als cover markeren (meervouden worden ook herkend).
+        Standaard: blind, shutter, shade, awning, curtain, roller, garage door.
       pt: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Palavras-chave, sem distinção entre maiúsculas e minúsculas, que
+        identificam um grupo Lighting como estore quando aparecem na sua
+        etiqueta (os plurais também são reconhecidos). Predefinidas: blind,
+        shutter, shade, awning, curtain, roller, garage door.
       ru: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Ключевые слова без учёта регистра, которые помечают группу Lighting как
+        штору, если встречаются в её метке (формы множественного числа тоже
+        распознаются). По умолчанию: blind, shutter, shade, awning, curtain,
+        roller, garage door.
       zh: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        出现在 Lighting 组标签中即将该组标记为窗帘的关键词，不区分大小写（也会匹配复数形式）。默认值：blind, shutter,
+        shade, awning, curtain, roller, garage door。
       ja: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Lighting
+        グループのラベルに含まれるとカバーとして扱うキーワード（大文字と小文字は区別せず、複数形も一致します）。デフォルト：blind,
+        shutter, shade, awning, curtain, roller, garage door。
       ko: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Lighting 그룹 라벨에 포함되면 해당 그룹을 커버로 표시하는 키워드입니다(대소문자 구분 없음, 복수형도 일치). 기본값:
+        blind, shutter, shade, awning, curtain, roller, garage door.
       pl: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Słowa kluczowe (bez rozróżniania wielkości liter) w etykiecie grupy
+        Lighting, które oznaczają ją jako osłonę (dopasowywane są też liczby
+        mnogie). Domyślnie: blind, shutter, shade, awning, curtain, roller,
+        garage door.
       sv: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Skiftlägesokänsliga nyckelord i en Lighting-grupps etikett som markerar
+        gruppen som ett skydd (pluralformer matchas också). Standard: blind,
+        shutter, shade, awning, curtain, roller, garage door.
       no: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Nøkkelord uten skille mellom store og små bokstaver i etiketten til en
+        Lighting-gruppe som markerer den som en tildekking (flertallsformer
+        matches også). Standard: blind, shutter, shade, awning, curtain, roller,
+        garage door.
       da: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Nøgleord uden forskel på store og små bogstaver i en Lighting-gruppes
+        etiket, som markerer gruppen som en afdækning (flertalsformer matches
+        også). Standard: blind, shutter, shade, awning, curtain, roller, garage
+        door.
       cs: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Klíčová slova bez rozlišení velikosti písmen ve štítku skupiny Lighting,
+        která ji označí jako kryt (rozpoznávají se i tvary množného čísla).
+        Výchozí: blind, shutter, shade, awning, curtain, roller, garage door.
       uk: >-
-        Case-insensitive keywords in a Lighting group label that mark it as a
-        cover (matching also catches plurals). Defaults: blind, shutter, shade,
-        awning, curtain, roller, garage door.
+        Ключові слова без урахування регістру, які позначають групу Lighting як
+        штору, якщо трапляються в її мітці (форми множини також розпізнаються).
+        За замовчуванням: blind, shutter, shade, awning, curtain, roller, garage
+        door.
   ha_discovery_hvac_app_id:
     name:
       en: HVAC Application ID

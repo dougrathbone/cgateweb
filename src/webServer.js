@@ -128,6 +128,7 @@ class WebServer {
  * @param {number} [options.maxDashboardDevices] - Maximum device rows on GET /api/dashboard
  * @param {number} [options.maxSseConnections] - Maximum concurrent SSE connections
  * @param {number} [options._sseKeepaliveMs] - SSE keep-alive interval in ms (internal)
+ * @param {string[]} [options._ingressProxyAddresses] - Peer addresses trusted as the Ingress proxy (internal; defaults to the Supervisor)
  * @param {number} [options.headersTimeoutMs] - HTTP headers timeout in ms
  * @param {number} [options.requestTimeoutMs] - HTTP request inactivity timeout in ms
      */
@@ -181,7 +182,8 @@ class WebServer {
         this._apiAuth = new ApiAuth({
             apiKey: options.apiKey,
             allowUnauthenticatedMutations: this.allowUnauthenticatedMutations,
-            getBasePath: () => this.basePath
+            getBasePath: () => this.basePath,
+            ...(options._ingressProxyAddresses ? { ingressProxyAddresses: options._ingressProxyAddresses } : {})
         });
         this.apiKey = this._apiAuth.apiKey;
         this._rateLimiter = new RateLimiter({

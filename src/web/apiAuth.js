@@ -42,6 +42,21 @@ function secretsMatch(provided, expected) {
     return sameLength && sameBytes;
 }
 
+// The Supervisor's address on the hassio network. Home Assistant's add-on docs
+// require Ingress servers to accept only this peer; a host-mapped port reaches
+// the container through Docker NAT from a different address.
+const SUPERVISOR_INGRESS_ADDRESSES = Object.freeze(['172.30.32.2']);
+
+/**
+ * Strip the IPv4-mapped IPv6 prefix a dual-stack socket reports.
+ * @param {unknown} address
+ * @returns {string}
+ */
+function normalizePeerAddress(address) {
+    if (typeof address !== 'string') return '';
+    return address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address;
+}
+
 /**
  * API route classification and authorization: API key / bearer checks and
  * Home Assistant ingress request detection.
@@ -52,11 +67,13 @@ class ApiAuth {
      * @param {string|null} options.apiKey - API key required for protected endpoints
      * @param {boolean} [options.allowUnauthenticatedMutations=false] - Allow protected requests without API key
      * @param {Function} options.getBasePath - Returns the current ingress base path (may change after startup)
+     * @param {readonly string[]} [options.ingressProxyAddresses] - Peer addresses trusted as the Ingress proxy
      */
-    constructor({ apiKey, allowUnauthenticatedMutations = false, getBasePath }) {
+    constructor({ apiKey, allowUnauthenticatedMutations = false, getBasePath, ingressProxyAddresses = SUPERVISOR_INGRESS_ADDRESSES }) {
         this.apiKey = normalizeApiKey(apiKey);
         this.allowUnauthenticatedMutations = allowUnauthenticatedMutations === true;
         this.getBasePath = getBasePath;
+        this.ingressProxyAddresses = new Set(ingressProxyAddresses.map(normalizePeerAddress));
     }
 
     /**
@@ -107,11 +124,9 @@ class ApiAuth {
         if (!this.apiKey) {
             // Requests proxied through Home Assistant Ingress have already been
             // authenticated by HA (only logged-in HA users can reach the ingress
-            // URL). The Supervisor injects an X-Ingress-Path header on every such
-            // request, which the directly-exposed port never carries. Trusting it
-            // lets the bundled label UI import/edit on a default add-on install
-            // (no web_api_key) without opening up the raw port. A configured
-            // web_api_key still takes precedence below.
+            // URL). Trusting them lets the bundled label UI import/edit on a
+            // default add-on install (no web_api_key) without opening up the raw
+            // port. A configured web_api_key still takes precedence below.
             if (this._isIngressRequest(req)) {
                 return true;
             }
@@ -128,15 +143,17 @@ class ApiAuth {
     /**
      * Only trust ingress markers when the server was started in ingress mode
      * (basePath set — from INGRESS_ENTRY, or discovered from the Supervisor
-     * API and applied via setBasePath). Require an exact path match plus HA
-     * Core's X-Hass-Source so a casual spoofed X-Ingress-Path on the direct
-     * :8080 port cannot authorize mutations.
+     * API and applied via setBasePath) and the connection comes from the
+     * Supervisor. The headers alone are not enough: anyone who has opened the
+     * UI through HA can read the ingress path and send both headers to a
+     * host-mapped :8080 from the LAN.
      * @param {import('http').IncomingMessage} req
      * @returns {boolean}
      */
     _isIngressRequest(req) {
         const basePath = this.getBasePath();
         if (!basePath) return false;
+        if (!this.ingressProxyAddresses.has(normalizePeerAddress(req.socket?.remoteAddress))) return false;
         const ingressPath = req.headers['x-ingress-path'];
         if (typeof ingressPath !== 'string' || ingressPath.length === 0) return false;
         // Trim trailing slashes without a regex: /\/+$/ on an attacker-controlled

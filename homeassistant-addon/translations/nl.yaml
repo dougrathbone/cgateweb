@@ -221,24 +221,24 @@ configuration:
       Een Home Assistant scène-entiteit aanmaken voor elke triggergroep, naast
       gebeurtenis- en knop-entiteiten. Standaard: ingeschakeld.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Apparaattypen automatisch herkennen
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Lighting-groepen (56) waarvan het label op een gemotoriseerde cover lijkt
+      (rolluik, jaloezie, enz.) automatisch als Home Assistant cover-entiteiten
+      indelen in plaats van als lampen. Handmatige type-overschrijvingen hebben
+      altijd voorrang. Standaard: ingeschakeld.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Automatisch herkennen via labeltrefwoorden
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Bij ingeschakelde automatische herkenning cover-trefwoorden in het
+      groepslabel zoeken. Schakel uit om geen trefwoorden meer te gebruiken en
+      de overige automatische herkenning te behouden. Standaard: ingeschakeld.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Trefwoorden voor cover-herkenning
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Hoofdletterongevoelige trefwoorden in het label van een Lighting-groep die
+      de groep als cover markeren (meervouden worden ook herkend). Standaard:
+      blind, shutter, shade, awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: HVAC Applicatie-ID
     description: >-

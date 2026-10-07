@@ -23,6 +23,10 @@ services:
       - ./active-options.json:/data/options.json:ro
     networks:
       addon-net:
+        # The real Supervisor's address. cgateweb only trusts Ingress headers
+        # from this peer, so the integration test sends its Ingress requests
+        # from this container.
+        ipv4_address: 172.30.32.2
         aliases:
           - supervisor
 
@@ -47,7 +51,8 @@ services:
       - TZ=Australia/Sydney
       - SUPERVISOR_TOKEN=mock-token
     networks:
-      - addon-net
+      addon-net:
+        ipv4_address: 172.30.33.2
     depends_on:
       - mqtt
       - supervisor
@@ -62,8 +67,15 @@ services:
     ports:
       - "1883:1883"
     networks:
-      - addon-net
+      addon-net:
+        ipv4_address: 172.30.33.3
 
+# Mirrors the hassio network layout: Supervisor on 172.30.32.2, add-ons in
+# 172.30.33.0/24. Every service has a static address so dynamic allocation
+# can never hand 172.30.32.2 to another container.
 networks:
   addon-net:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.32.0/23

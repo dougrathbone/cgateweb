@@ -215,24 +215,25 @@ configuration:
       Utwórz encję sceny Home Assistant dla każdej grupy wyzwalaczy, oprócz
       encji zdarzeń i przycisków. Domyślnie: włączone.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Automatyczne wykrywanie typów urządzeń
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Automatycznie klasyfikuj grupy Lighting (56), których etykieta wskazuje na
+      zmotoryzowaną osłonę (żaluzja, roleta itp.), jako encje osłon Home
+      Assistant zamiast świateł. Ręczne nadpisania typu zawsze mają
+      pierwszeństwo. Domyślnie: włączone.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Automatyczne wykrywanie według słów kluczowych etykiety
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Gdy automatyczne wykrywanie jest włączone, szukaj słów kluczowych osłon w
+      etykiecie grupy. Wyłącz, aby przestać dopasowywać słowa kluczowe,
+      zachowując pozostałe automatyczne wykrywanie. Domyślnie: włączone.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Słowa kluczowe wykrywania osłon
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Słowa kluczowe (bez rozróżniania wielkości liter) w etykiecie grupy
+      Lighting, które oznaczają ją jako osłonę (dopasowywane są też liczby
+      mnogie). Domyślnie: blind, shutter, shade, awning, curtain, roller, garage
+      door.
   ha_discovery_hvac_app_id:
     name: ID aplikacji HVAC
     description: >-

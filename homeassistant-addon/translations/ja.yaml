@@ -162,24 +162,19 @@ configuration:
     name: シーンエンティティを有効化
     description: 各トリガーグループに対して、イベントおよびボタンエンティティに加えて Home Assistant シーンエンティティを作成します。デフォルト：有効。
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: デバイスタイプを自動検出
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      ラベルが電動カバー（ブラインド、シャッターなど）に見える Lighting (56) グループを、ライトではなく Home Assistant
+      のカバーエンティティとして自動的に分類します。手動のタイプ上書きが常に優先されます。デフォルト：有効。
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: ラベルのキーワードで自動検出
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      自動検出が有効な場合、グループラベル内のカバー用キーワードを照合します。無効にすると、ほかの自動検出を維持したままキーワード照合のみを停止します。デフォルト：有効。
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: カバー検出キーワード
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Lighting グループのラベルに含まれるとカバーとして扱うキーワード（大文字と小文字は区別せず、複数形も一致します）。デフォルト：blind,
+      shutter, shade, awning, curtain, roller, garage door。
   ha_discovery_hvac_app_id:
     name: HVAC アプリケーション ID
     description: >-

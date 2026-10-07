@@ -131,24 +131,18 @@ configuration:
     name: 启用场景实体
     description: 为每个触发器组创建 Home Assistant 场景实体，除了事件和按钮实体。 默认：启用。
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: 自动识别设备类型
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      自动将标签看起来像电动窗帘（百叶窗、卷帘等）的 Lighting (56) 组归类为 Home Assistant
+      窗帘实体，而不是灯光。手动类型覆盖始终优先。默认：启用。
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
-    description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+    name: 使用标签关键词自动识别
+    description: 启用自动识别时，在组标签中匹配窗帘关键词。关闭此项可停用关键词匹配，同时保留其他自动识别。默认：启用。
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: 窗帘识别关键词
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      出现在 Lighting 组标签中即将该组标记为窗帘的关键词，不区分大小写（也会匹配复数形式）。默认值：blind, shutter, shade,
+      awning, curtain, roller, garage door。
   ha_discovery_hvac_app_id:
     name: HVAC 应用程序 ID
     description: >-

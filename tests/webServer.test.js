@@ -10,6 +10,10 @@ const StaticFileServer = require('../src/web/staticFiles');
 const { readRequestBody, BODY_TOO_LARGE } = require('../src/web/bodyReader');
 const { resolveSetting } = require('../src/config/schema');
 
+// Ingress tests talk to the server over loopback, so loopback stands in for
+// the Supervisor's proxy address in those servers.
+const LOOPBACK_INGRESS_PROXY = ['127.0.0.1', '::1'];
+
 describe('WebServer', () => {
     let tmpDir, labelFile, labelLoader, server, port;
 
@@ -431,6 +435,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -542,7 +547,8 @@ describe('WebServer', () => {
         });
 
         // Unit-level coverage of the authorization logic (no live server needed).
-        const mkReq = (headers = {}) => ({ headers });
+        // Requests come from the Supervisor's address unless a test says otherwise.
+        const mkReq = (headers = {}, remoteAddress = '172.30.32.2') => ({ headers, socket: { remoteAddress } });
 
         it('rejects sensitive GET routes without auth on a direct port', async () => {
             const locked = new WebServer({
@@ -576,6 +582,7 @@ describe('WebServer', () => {
             const ingress = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({ test: true })
             });
@@ -621,6 +628,50 @@ describe('WebServer', () => {
                 'x-hass-source': 'core.ingress'
             }))).toBe(false);
             expect(ingress._apiAuth.isAuthorized(mkReq({}))).toBe(false);
+        });
+
+        it.each([
+            ['the Docker gateway a host-mapped port NATs through', '172.30.32.1'],
+            ['another add-on', '172.30.33.5'],
+            ['a LAN client', '192.168.1.50'],
+            ['loopback', '127.0.0.1'],
+            ['an unknown peer', null]
+        ])('refuses valid ingress headers from %s', (_label, remoteAddress) => {
+            const ingress = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), basePath: '/api/hassio_ingress/abc' });
+            expect(ingress._apiAuth.isAuthorized(mkReq({
+                'x-ingress-path': '/api/hassio_ingress/abc',
+                'x-hass-source': 'core.ingress'
+            }, remoteAddress))).toBe(false);
+        });
+
+        it('accepts the Supervisor address in its IPv4-mapped IPv6 form', () => {
+            const ingress = new WebServer({ port: 0, labelLoader, getStatus: () => ({}), basePath: '/api/hassio_ingress/abc' });
+            expect(ingress._apiAuth.isAuthorized(mkReq({
+                'x-ingress-path': '/api/hassio_ingress/abc',
+                'x-hass-source': 'core.ingress'
+            }, '::ffff:172.30.32.2'))).toBe(true);
+        });
+
+        it('rejects forged ingress headers sent straight to the port when no API key is set', async () => {
+            const BASE = '/api/hassio_ingress/abc123';
+            const exposed = new WebServer({ port: 0, basePath: BASE, labelLoader, getStatus: () => ({}) });
+            await exposed.start();
+            const exposedPort = exposed._server.address().port;
+
+            const res = await new Promise((resolve, reject) => {
+                http.get({
+                    hostname: '127.0.0.1',
+                    port: exposedPort,
+                    path: '/api/labels',
+                    headers: { 'X-Ingress-Path': BASE, 'X-Hass-Source': 'core.ingress' }
+                }, (response) => {
+                    response.on('data', () => {});
+                    response.on('end', () => resolve({ status: response.statusCode }));
+                }).on('error', reject);
+            });
+
+            await exposed.close();
+            expect(res.status).toBe(401);
         });
 
         it('accepts the API key via Bearer or X-API-Key and rejects wrong/short keys', () => {
@@ -841,6 +892,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -858,6 +910,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -875,6 +928,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -891,6 +945,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });
@@ -942,6 +997,7 @@ describe('WebServer', () => {
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 apiKey: 'secret-key',
                 getStatus: () => ({})
@@ -984,6 +1040,7 @@ describe('WebServer', () => {
         const startLateServer = async () => {
             lateServer = new WebServer({
                 port: 0,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
                 labelLoader,
                 getStatus: () => ({})
             });

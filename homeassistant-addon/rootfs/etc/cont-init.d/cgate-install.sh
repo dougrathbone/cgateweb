@@ -270,6 +270,24 @@ _cgateweb_zip_matches_pin() {
     return 1
 }
 
+# Whether a failed curl run is worth repeating. HTTP 4xx (other than 408/429),
+# an unsupported protocol (1) and a malformed URL (3) fail the same way every
+# time; DNS, connect, timeout, TLS, reset and 5xx failures are often a CDN or
+# network blip that a later attempt gets past.
+_cgateweb_curl_failure_is_transient() {
+    local curl_exit="$1" http_code="$2"
+    case "${curl_exit}" in
+        1|3) return 1 ;;
+        22)
+            case "${http_code}" in
+                408|429) return 0 ;;
+                4??) return 1 ;;
+            esac
+            ;;
+    esac
+    return 0
+}
+
 # Standard "what to do now" block for every C-Gate download failure. The most
 # common external cause is Clipsal/Schneider changing the download URL or
 # repackaging the zip (they did on 2026-07-24, breaking every fresh install
@@ -334,6 +352,14 @@ _cgateweb_apply_cgate_config() {
     local config_file="$1"
     local project="$2"
     local command_port="$3"
+
+    # Same rule as isValidCgateProjectName in src/config/validationRules.js. The
+    # name is written through sed and into C-Gate's line-based config, so a |,
+    # & or newline would corrupt the rewrite or add keys of its own.
+    if [[ ! "${project}" =~ ^[A-Za-z0-9_]{1,32}$ ]]; then
+        bashio::log.error "cgate_project must be 1-32 characters of letters, digits, or underscore"
+        return 1
+    fi
 
     # C-Gate generates C-GateConfig.txt on its first start, which happens AFTER
     # cont-init runs -- so on a fresh install there is no file to edit yet. Seed
@@ -1352,6 +1378,12 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
 
         if [[ ${CURL_EXIT} -ne 0 ]]; then
             CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
+            if [[ ${attempt} -lt 3 ]] && _cgateweb_curl_failure_is_transient "${CURL_EXIT}" "${HTTP_CODE}"; then
+                bashio::log.warning "C-Gate download failed (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT}, attempt ${attempt}/3): ${CURL_ERR}"
+                bashio::log.warning "Retrying the download..."
+                sleep $((attempt * 10))
+                continue
+            fi
             bashio::log.error "Failed to download C-Gate (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT})"
             bashio::log.error "URL: $(_cgateweb_redact_url "${DOWNLOAD_URL}")"
             bashio::log.error "Error: ${CURL_ERR}"
@@ -1589,13 +1621,18 @@ fi
 # every boot (see the install guard above) so settings changes and the
 # project.start fix reach existing installs, not just fresh ones.
 CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
+# An explicitly empty option arrives as "", which cgateweb also treats as HOME.
+CGATE_PROJECT="${CGATE_PROJECT:-HOME}"
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
 # Always apply: the helper seeds the file if C-Gate has not generated it yet
 # (fresh install), so project.start is in place before C-Gate's first start.
 # event-port is intentionally left at C-Gate's default (20024); cgateweb reads
 # the load-change/status stream on 20025 (#21).
-_cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}"
+if ! _cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}"; then
+    bashio::log.error "Failed to apply C-Gate project settings to ${CGATE_CONFIG}"
+    exit 1
+fi
 bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
 bashio::log.info "Set command port to: ${CGATE_PORT}"
 bashio::log.info "Left event-port at C-Gate default (status stream stays on 20025 for cgateweb)"

@@ -193,5 +193,4 @@ When the user approves a batch of improvements:
 4. After all items are committed locally, push them as a batch and watch CI. The version bump goes in a separate `chore: release vX.Y.Z` commit at the end, with the CHANGELOG entry summarizing the batch.
 
    **CHANGELOG entries must be very concise** — one sentence per bullet, upgrade steps under Breaking changes or Action required, full GitHub issue links, no backticks, and no internal notes. Releases before 1.22.0 stay in the changelog archive. `npm run validate:changelog` enforces this. The full rules are in `AGENT.md` under "Changelog Format"; they are easy to drift from, because the commit message you just wrote is long and detailed and the changelog bullet is not. Match the density of the current changelog, not the archive. The same brevity applies to replies on GitHub issues and PRs.
-5. Tag and push the tag - that triggers the add-on distribution workflow.
-6. Backfill the source-repo GitHub Release with the CHANGELOG section.
+5. Tag and push the tag - that triggers the add-on distribution workflow, which also creates the source-repo GitHub Release from the CHANGELOG section. Watch it finish and confirm both releases exist.

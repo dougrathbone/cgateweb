@@ -225,24 +225,26 @@ configuration:
       Für jede Triggergruppe eine Home Assistant Szenen-Entität erstellen,
       zusätzlich zu Ereignis- und Tasten-Entitäten. Standard: aktiviert.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Gerätetypen automatisch erkennen
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Lighting-Gruppen (56), deren Label nach einer motorisierten Abdeckung
+      aussieht (Jalousie, Rollladen usw.), automatisch als Home Assistant
+      Abdeckungs-Entitäten statt als Lichter einstufen. Manuelle
+      Typ-Überschreibungen haben immer Vorrang. Standard: aktiviert.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Automatische Erkennung über Label-Schlüsselwörter
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Bei aktivierter automatischer Erkennung Abdeckungs-Schlüsselwörter im
+      Gruppen-Label abgleichen. Deaktivieren, um den Schlüsselwortabgleich
+      abzuschalten und die übrige automatische Erkennung beizubehalten.
+      Standard: aktiviert.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Schlüsselwörter zur Abdeckungserkennung
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Schlüsselwörter ohne Beachtung der Groß-/Kleinschreibung, die eine
+      Lighting-Gruppe als Abdeckung kennzeichnen, wenn sie im Gruppen-Label
+      vorkommen (Pluralformen werden ebenfalls erkannt). Standard: blind,
+      shutter, shade, awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: HVAC-Anwendungs-ID
     description: >-

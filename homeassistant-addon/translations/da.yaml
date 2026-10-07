@@ -215,24 +215,25 @@ configuration:
       Opret en Home Assistant sceneentitet for hver udløsergruppe, ud over
       hændelses- og knapentiteter. Standard: aktiveret.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Registrér enhedstyper automatisk
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Klassificér automatisk Lighting-grupper (56), hvis etiket ligner en
+      motoriseret afdækning (persienne, rullegardin osv.), som Home Assistant
+      afdækningsentiteter i stedet for lys. Manuelle typetilsidesættelser har
+      altid forrang. Standard: aktiveret.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Registrér automatisk ud fra etiketnøgleord
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Når automatisk registrering er slået til, matches afdækningsnøgleord i
+      gruppens etiket. Slå fra for at stoppe matchning af nøgleord, men bevare
+      den øvrige automatiske registrering. Standard: aktiveret.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Nøgleord til registrering af afdækninger
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Nøgleord uden forskel på store og små bogstaver i en Lighting-gruppes
+      etiket, som markerer gruppen som en afdækning (flertalsformer matches
+      også). Standard: blind, shutter, shade, awning, curtain, roller, garage
+      door.
   ha_discovery_hvac_app_id:
     name: HVAC applikations-ID
     description: >-

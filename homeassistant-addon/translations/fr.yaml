@@ -232,24 +232,26 @@ configuration:
       déclencheur, en plus des entités d'événement et de bouton. Par défaut :
       activé.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Détection automatique des types d'appareils
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Classer automatiquement les groupes Lighting (56) dont le label ressemble
+      à un volet motorisé (store, volet roulant, etc.) comme entités de volet
+      Home Assistant plutôt que comme lumières. Les remplacements manuels de
+      type sont toujours prioritaires. Par défaut : activé.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Détection automatique par mots-clés du label
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Lorsque la détection automatique est activée, rechercher les mots-clés de
+      volet dans le label du groupe. Désactiver pour ne plus utiliser les
+      mots-clés tout en conservant le reste de la détection automatique. Par
+      défaut : activé.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Mots-clés de détection des volets
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Mots-clés, insensibles à la casse, qui identifient un groupe Lighting
+      comme volet lorsqu'ils figurent dans son label (les pluriels sont
+      également reconnus). Par défaut : blind, shutter, shade, awning, curtain,
+      roller, garage door.
   ha_discovery_hvac_app_id:
     name: ID d'application HVAC
     description: >-

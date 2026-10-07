@@ -214,24 +214,23 @@ configuration:
       Vytvořit entitu scény Home Assistant pro každou skupinu spouštěčů, navíc k
       entitám událostí a tlačítek. Výchozí: povoleno.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Automaticky rozpoznávat typy zařízení
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Automaticky klasifikovat skupiny Lighting (56), jejichž štítek odpovídá
+      motorovému krytu (žaluzie, roleta apod.), jako entity krytů Home Assistant
+      místo světel. Ruční přepsání typu má vždy přednost. Výchozí: povoleno.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Automatické rozpoznávání podle klíčových slov štítku
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Když je automatické rozpoznávání zapnuté, hledat klíčová slova krytů ve
+      štítku skupiny. Vypněte, chcete-li přestat porovnávat klíčová slova a
+      ponechat ostatní automatické rozpoznávání. Výchozí: povoleno.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Klíčová slova pro rozpoznání krytů
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Klíčová slova bez rozlišení velikosti písmen ve štítku skupiny Lighting,
+      která ji označí jako kryt (rozpoznávají se i tvary množného čísla).
+      Výchozí: blind, shutter, shade, awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: ID aplikace HVAC
     description: >-

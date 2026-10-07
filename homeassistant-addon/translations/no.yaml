@@ -212,24 +212,25 @@ configuration:
       Opprett en Home Assistant sceneentitet for hver utløsergruppe, i tillegg
       til hendelses- og knappentiteter. Standard: aktivert.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Oppdag enhetstyper automatisk
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Klassifiser automatisk Lighting-grupper (56) med en etikett som ligner en
+      motorisert tildekking (persienne, rullegardin osv.) som Home Assistant
+      tildekkingsentiteter i stedet for lys. Manuelle typeoverstyringer har
+      alltid forrang. Standard: aktivert.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Oppdag automatisk med etikettnøkkelord
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Når automatisk oppdagelse er på, matches tildekkingsnøkkelord i
+      gruppeetiketten. Slå av for å slutte å matche nøkkelord, men beholde annen
+      automatisk oppdagelse. Standard: aktivert.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Nøkkelord for tildekkingsoppdagelse
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Nøkkelord uten skille mellom store og små bokstaver i etiketten til en
+      Lighting-gruppe som markerer den som en tildekking (flertallsformer
+      matches også). Standard: blind, shutter, shade, awning, curtain, roller,
+      garage door.
   ha_discovery_hvac_app_id:
     name: HVAC applikasjons-ID
     description: >-
