@@ -270,6 +270,24 @@ _cgateweb_zip_matches_pin() {
     return 1
 }
 
+# Whether a failed curl run is worth repeating. HTTP 4xx (other than 408/429),
+# an unsupported protocol (1) and a malformed URL (3) fail the same way every
+# time; DNS, connect, timeout, TLS, reset and 5xx failures are often a CDN or
+# network blip that a later attempt gets past.
+_cgateweb_curl_failure_is_transient() {
+    local curl_exit="$1" http_code="$2"
+    case "${curl_exit}" in
+        1|3) return 1 ;;
+        22)
+            case "${http_code}" in
+                408|429) return 0 ;;
+                4??) return 1 ;;
+            esac
+            ;;
+    esac
+    return 0
+}
+
 # Standard "what to do now" block for every C-Gate download failure. The most
 # common external cause is Clipsal/Schneider changing the download URL or
 # repackaging the zip (they did on 2026-07-24, breaking every fresh install
@@ -1360,6 +1378,12 @@ if [[ "${INSTALL_SOURCE}" == "download" ]]; then
 
         if [[ ${CURL_EXIT} -ne 0 ]]; then
             CURL_ERR=$(cat "${WORK_DIR}/curl.err" 2>/dev/null || echo "unknown")
+            if [[ ${attempt} -lt 3 ]] && _cgateweb_curl_failure_is_transient "${CURL_EXIT}" "${HTTP_CODE}"; then
+                bashio::log.warning "C-Gate download failed (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT}, attempt ${attempt}/3): ${CURL_ERR}"
+                bashio::log.warning "Retrying the download..."
+                sleep $((attempt * 10))
+                continue
+            fi
             bashio::log.error "Failed to download C-Gate (HTTP ${HTTP_CODE}, curl exit ${CURL_EXIT})"
             bashio::log.error "URL: $(_cgateweb_redact_url "${DOWNLOAD_URL}")"
             bashio::log.error "Error: ${CURL_ERR}"

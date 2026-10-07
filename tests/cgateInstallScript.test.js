@@ -282,6 +282,30 @@ describeBash('cgate-install.sh helpers', () => {
         });
     });
 
+    describe('_cgateweb_curl_failure_is_transient', () => {
+        const isTransient = (curlExit, httpCode) => {
+            try {
+                runHelperWithArgs('_cgateweb_curl_failure_is_transient', [String(curlExit), httpCode]);
+                return true;
+            } catch {
+                return false;
+            }
+        };
+
+        test.each([
+            [6, '000'], [7, '000'], [28, '000'], [35, '000'], [52, '000'], [56, '000'],
+            [22, '500'], [22, '503'], [22, '408'], [22, '429']
+        ])('retries curl exit %i with HTTP %s', (curlExit, httpCode) => {
+            expect(isTransient(curlExit, httpCode)).toBe(true);
+        });
+
+        test.each([
+            [22, '404'], [22, '403'], [22, '410'], [1, '000'], [3, '000']
+        ])('does not retry curl exit %i with HTTP %s', (curlExit, httpCode) => {
+            expect(isTransient(curlExit, httpCode)).toBe(false);
+        });
+    });
+
     describe('_cgateweb_installed_version', () => {
         function withBuildInfo(contents, callback) {
             const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-build-info-'));
@@ -1146,6 +1170,31 @@ describeBash('cgate-install.sh download failure guidance (main flow)', () => {
         for (const re of GUIDANCE) expect(r.output).toMatch(re);
         // A hard HTTP failure exits immediately; retrying a 404 is pointless.
         expect(r.attempts).toBe(1);
+    });
+
+    test.each([
+        ['a refused connection', 'printf "000"; exit 7', /HTTP 000, curl exit 7/],
+        ['a timeout', 'printf "000"; exit 28', /HTTP 000, curl exit 28/],
+        ['an HTTP 503', 'printf "503"; exit 22', /HTTP 503, curl exit 22/],
+        ['an HTTP 429', 'printf "429"; exit 22', /HTTP 429, curl exit 22/]
+    ])('retries %s before failing with the guidance', (_label, curlBody, detail) => {
+        const r = runDownloadFlow(curlBody);
+        expect(r.status).toBe(1);
+        expect(r.attempts).toBe(3);
+        expect(r.output).toMatch(/Retrying the download/);
+        expect(r.output).toMatch(new RegExp(`Failed to download C-Gate \\(${detail.source}`));
+        for (const re of GUIDANCE) expect(r.output).toMatch(re);
+    });
+
+    test('a network failure on the first attempt does not end the install', () => {
+        // Attempt 1 cannot resolve the host; later attempts reach the server,
+        // so the run gets as far as checksum verification.
+        const r = runDownloadFlow(
+            'if [[ "$n" -eq 1 ]]; then printf "000"; exit 6; fi; printf "PK\\x03\\x04 later-attempt" > "$out"; printf "200"'
+        );
+        expect(r.attempts).toBe(3);
+        expect(r.output).toMatch(/Retrying the download/);
+        expect(r.output).toMatch(/Expected: [0-9a-f]{64}/);
     });
 
     test('non-zip content (portal login/error page) retries, then logs the Schneider-login note and guidance', () => {
