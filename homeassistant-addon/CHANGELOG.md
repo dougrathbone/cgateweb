@@ -11,6 +11,19 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.37.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.37.2) - 2026-10-07
+
+### Fixed
+
+- **A network error while downloading C-Gate is retried instead of stopping the install.**
+- **An invalid C-Gate project name now stops startup with a clear message instead of corrupting the C-Gate config.**
+- **The auto-detect device type options are now translated in every language.**
+
+### Security
+
+- **The label editor only skips the API key for requests that come through Home Assistant Ingress.** If you reach it through your own proxy on port 8080, set web_api_key.
+- **C-Gate commands containing a line break are refused.**
+
 ## [1.37.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.37.1) - 2026-10-07
 
 ### Fixed
