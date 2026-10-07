@@ -374,6 +374,44 @@ function curlInAddon(urlPath, { method = 'GET', headers = {}, body = null } = {}
     };
 }
 
+// The add-on's static address in docker-compose.yml.
+const ADDON_WEB_URL = 'http://172.30.33.2:8080';
+
+// Sends the request from inside the mock supervisor container, which sits at
+// the real Supervisor's address (172.30.32.2) — the only peer cgateweb trusts
+// Ingress headers from. The image has Python but no curl. The request spec
+// travels on stdin so nothing is interpolated into the command line.
+const SUPERVISOR_HTTP_CLIENT = `
+import json, sys, urllib.request, urllib.error
+spec = json.load(sys.stdin)
+data = spec["body"].encode() if spec["body"] is not None else None
+req = urllib.request.Request(spec["url"], data=data, method=spec["method"], headers=spec["headers"])
+try:
+    with urllib.request.urlopen(req, timeout=10) as res:
+        status, body = res.status, res.read().decode()
+except urllib.error.HTTPError as err:
+    status, body = err.code, err.read().decode()
+print(json.dumps({"status": status, "body": body}))
+`;
+
+function httpFromSupervisor(urlPath, { method = 'GET', headers = {}, body = null } = {}) {
+    const container = containerFor('supervisor', { includeStopped: false });
+    if (!container) return { ok: false, status: 0, body: '', error: 'supervisor container not found' };
+
+    const allHeaders = body !== null ? { ...headers, 'Content-Type': 'application/json' } : headers;
+    const spec = JSON.stringify({ url: `${ADDON_WEB_URL}${urlPath}`, method, headers: allHeaders, body });
+    const res = spawnSync('podman', ['exec', '-i', container, 'python', '-c', SUPERVISOR_HTTP_CLIENT], {
+        encoding: 'utf8',
+        input: spec
+    });
+    try {
+        const parsed = JSON.parse((res.stdout || '').trim());
+        return { ok: res.status === 0, status: parsed.status, body: parsed.body, error: res.stderr || '' };
+    } catch {
+        return { ok: false, status: 0, body: '', error: res.stderr || res.stdout || 'no response' };
+    }
+}
+
 /**
  * Poll C-Gate until the named project reports state=started, or timeout.
  * project.start auto-loads the project *after* C-Gate begins accepting
@@ -731,8 +769,9 @@ async function runTests() {
     // On a real add-on install nothing injects INGRESS_ENTRY, so the bridge
     // learns its HA ingress entry path from the Supervisor API at startup
     // (here: the mock supervisor). With no web_api_key configured, a label
-    // save carrying the Supervisor-injected ingress headers must succeed,
-    // while the same request without them must 401.
+    // save carrying the Supervisor-injected ingress headers must succeed when
+    // it comes from the Supervisor's address, while the same headers sent from
+    // anywhere else, or no headers at all, must 401.
     section('Ingress web API (issue #33)');
 
     const INGRESS_ENTRY = '/api/hassio_ingress/mock_ingress_token'; // served by mock-supervisor
@@ -744,7 +783,7 @@ async function runTests() {
     {
         const deadline = Date.now() + 30000;
         do {
-            saveRes = curlInAddon('/api/labels', {
+            saveRes = httpFromSupervisor('/api/labels', {
                 method: 'PUT',
                 headers: ingressHeaders,
                 body: JSON.stringify({ labels: { '254/56/250': 'Ingress E2E Test' } })
@@ -759,7 +798,7 @@ async function runTests() {
         saveRes.error || saveRes.body.slice(0, 120)
     );
 
-    const unauthRes = curlInAddon('/api/labels', {
+    const unauthRes = httpFromSupervisor('/api/labels', {
         method: 'PUT',
         body: JSON.stringify({ labels: { '254/56/250': 'Nope' } })
     });
@@ -769,7 +808,18 @@ async function runTests() {
         `got HTTP ${unauthRes.status}`
     );
 
-    const statusRes = curlInAddon('/api/status', { headers: ingressHeaders });
+    const forgedRes = curlInAddon('/api/labels', {
+        method: 'PUT',
+        headers: ingressHeaders,
+        body: JSON.stringify({ labels: { '254/56/250': 'Forged' } })
+    });
+    assert(
+        'same ingress headers from a non-Supervisor address are rejected (401)',
+        forgedRes.status === 401,
+        `got HTTP ${forgedRes.status}`
+    );
+
+    const statusRes = httpFromSupervisor('/api/status', { headers: ingressHeaders });
     assert(
         `status read via ingress headers succeeds (HTTP ${statusRes.status})`,
         statusRes.status === 200,

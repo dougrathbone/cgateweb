@@ -832,12 +832,12 @@ Because injecting a reading isn't a hardware-actuation risk the way arming a pan
 
 This add-on runs with `host_network: false`.
 
-- Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (the Supervisor injects an `X-Ingress-Path` header), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`. At startup the add-on discovers its ingress entry path from the Supervisor API (`/addons/self/info`) and trusts requests carrying it; if that lookup fails, ingress API access stays denied (401) and a warning is logged — set `web_api_key` as a fallback.
+- Ingress is enabled and routes the label editor UI through Home Assistant. Requests arriving via Ingress are already authenticated by Home Assistant (they come from the Supervisor's address, `172.30.32.2`, with an `X-Ingress-Path` header the Supervisor injects), so label edits and `.cbz`/XML imports work out of the box with no `web_api_key`. At startup the add-on discovers its ingress entry path from the Supervisor API (`/addons/self/info`) and trusts requests carrying it; if that lookup fails, ingress API access stays denied (401) and a warning is logged — set `web_api_key` as a fallback.
 - Port `8080/tcp` is exposed by the add-on for direct access if needed.
 - Ports `20023/tcp`, `20024/tcp` and `20025/tcp` (and SSL `20123`–`20125`) are published on the host by default so managed C-Gate can be reached by C-Bus Toolkit after an upgrade. C-Gate has **no authentication** on these ports: list permitted clients in `cgate_external_clients`, and disable any mapping you do not need in the Network panel. Remote-mode installs have nothing listening on these ports. See "Letting external clients reach managed C-Gate" above.
 - Outbound connections to remote C-Gate and MQTT still work normally from the add-on container.
 
-If you expose `8080` for direct (non-Ingress) access, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`. Direct requests never carry the Ingress header, so they always require the key.
+If you expose `8080` for direct (non-Ingress) access, set `web_api_key` and keep `web_allow_unauthenticated_mutations: false`. Direct requests never come from the Supervisor's address, so they always require the key, even if they copy the Ingress headers.
 
 ## Stale Device Detection
 
