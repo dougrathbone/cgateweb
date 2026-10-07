@@ -209,6 +209,13 @@ class CgateConnectionPool extends EventEmitter {
             throw new Error('Connection pool is not started');
         }
 
+        // C-Gate runs every line it receives, so a line break inside a command
+        // would run a second command. Only the single trailing terminator is allowed.
+        const body = command.endsWith(NEWLINE) ? command.slice(0, -NEWLINE.length) : command;
+        if (/[\r\n]/.test(body)) {
+            throw new Error('Refusing to send C-Gate command containing a line break');
+        }
+
         const healthyConnections = this._getHealthyConnectionsSorted();
         if (healthyConnections.length === 0) {
             throw new Error('No healthy connections available in pool');

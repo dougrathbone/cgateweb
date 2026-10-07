@@ -662,6 +662,31 @@ describe('CgateConnectionPool', () => {
             await expect(pool.execute('cmd\n')).rejects.toThrow('No healthy connections');
         });
 
+        it.each([
+            ['an embedded newline', 'RAMP //HOME/254/56/1 255\nOFF //HOME/254/56/2\n'],
+            ['an embedded carriage return', 'RAMP //HOME/254/56/1 255\rOFF //HOME/254/56/2\n'],
+            ['a CRLF terminator', 'RAMP //HOME/254/56/1 255\r\n'],
+            ['two trailing newlines', 'RAMP //HOME/254/56/1 255\n\n']
+        ])('rejects a command with %s without sending it or marking connections unhealthy', async (_label, command) => {
+            const connections = await startWithConnections();
+            const healthyBefore = pool.healthyConnections.size;
+
+            await expect(pool.execute(command)).rejects.toThrow(/line break/i);
+
+            for (const c of connections) {
+                expect(c.sendWithBackpressure).not.toHaveBeenCalled();
+            }
+            expect(pool.healthyConnections.size).toBe(healthyBefore);
+        });
+
+        it('accepts a command without a trailing newline', async () => {
+            const connections = await startWithConnections();
+
+            await expect(pool.execute('GET //HOME/254/56/1 level')).resolves.toBe(true);
+
+            expect(connections.some(c => c.sendWithBackpressure.mock.calls.length > 0)).toBe(true);
+        });
+
         it('cleans up in-flight count after successful send', async () => {
             const connections = await startWithConnections();
             await pool.execute('cmd\n');

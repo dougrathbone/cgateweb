@@ -335,6 +335,14 @@ _cgateweb_apply_cgate_config() {
     local project="$2"
     local command_port="$3"
 
+    # Same rule as isValidCgateProjectName in src/config/validationRules.js. The
+    # name is written through sed and into C-Gate's line-based config, so a |,
+    # & or newline would corrupt the rewrite or add keys of its own.
+    if [[ ! "${project}" =~ ^[A-Za-z0-9_]{1,32}$ ]]; then
+        bashio::log.error "cgate_project must be 1-32 characters of letters, digits, or underscore"
+        return 1
+    fi
+
     # C-Gate generates C-GateConfig.txt on its first start, which happens AFTER
     # cont-init runs -- so on a fresh install there is no file to edit yet. Seed
     # a minimal config: C-Gate preserves an existing file and fills unspecified
@@ -1589,13 +1597,18 @@ fi
 # every boot (see the install guard above) so settings changes and the
 # project.start fix reach existing installs, not just fresh ones.
 CGATE_PROJECT=$(bashio::config 'cgate_project' 'HOME')
+# An explicitly empty option arrives as "", which cgateweb also treats as HOME.
+CGATE_PROJECT="${CGATE_PROJECT:-HOME}"
 CGATE_PORT=$(bashio::config 'cgate_port' '20023')
 CGATE_CONFIG="${CGATE_DIR}/config/C-GateConfig.txt"
 # Always apply: the helper seeds the file if C-Gate has not generated it yet
 # (fresh install), so project.start is in place before C-Gate's first start.
 # event-port is intentionally left at C-Gate's default (20024); cgateweb reads
 # the load-change/status stream on 20025 (#21).
-_cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}"
+if ! _cgateweb_apply_cgate_config "${CGATE_CONFIG}" "${CGATE_PROJECT}" "${CGATE_PORT}"; then
+    bashio::log.error "Failed to apply C-Gate project settings to ${CGATE_CONFIG}"
+    exit 1
+fi
 bashio::log.info "Set project to: ${CGATE_PROJECT} (project.default + project.start)"
 bashio::log.info "Set command port to: ${CGATE_PORT}"
 bashio::log.info "Left event-port at C-Gate default (status stream stays on 20025 for cgateweb)"

@@ -1,4 +1,4 @@
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -62,7 +62,7 @@ function callHelper(helperName, configObject) {
 // Run _cgateweb_apply_cgate_config against a temp config file and return its
 // resulting contents. The config path and call args are passed via the
 // environment so they are never interpolated into the executed command string.
-function applyCgateConfig({ initialConfig, project, commandPort }) {
+function applyCgateConfig({ initialConfig, project, commandPort, allowFailure = false }) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-install-'));
     const cfg = path.join(dir, 'C-GateConfig.txt');
     // initialConfig === null models a fresh install where C-Gate has not yet
@@ -84,10 +84,16 @@ function applyCgateConfig({ initialConfig, project, commandPort }) {
         source "$CGW_INSTALL_SCRIPT"
         _cgateweb_apply_cgate_config "$CGW_CFG_FILE" "$CGW_CFG_PROJECT" "$CGW_CFG_CMD_PORT"
     `;
-    execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
-    const result = fs.readFileSync(cfg, 'utf8');
+    if (!allowFailure) {
+        execFileSync('bash', ['-c', script], { encoding: 'utf8', env });
+        const result = fs.readFileSync(cfg, 'utf8');
+        fs.rmSync(dir, { recursive: true, force: true });
+        return result;
+    }
+    const run = spawnSync('bash', ['-c', script], { encoding: 'utf8', env });
+    const contents = fs.existsSync(cfg) ? fs.readFileSync(cfg, 'utf8') : null;
     fs.rmSync(dir, { recursive: true, force: true });
-    return result;
+    return { status: run.status, contents };
 }
 
 // Run a helper that takes positional arguments. Args are passed through the
@@ -609,6 +615,27 @@ describeBash('cgate-install.sh helpers', () => {
             expect(out).toMatch(/^event-file\.split=yes$/m);
             expect(out).toMatch(/^event-file\.split-size=5000000$/m);
             expect(out).toMatch(/^event-file\.split-count=50$/m);
+        });
+
+        test('accepts a 32-character project name of letters, digits and underscores', () => {
+            const project = 'My_Project_2026_' + 'A'.repeat(16);
+            const out = applyCgateConfig({ initialConfig: BASE_CONFIG, project, commandPort: 20023 });
+            expect(out).toMatch(new RegExp(`^project\\.start=${project}$`, 'm'));
+        });
+
+        test.each([
+            ['a sed delimiter', 'HOME|x'],
+            ['an embedded newline', 'HOME\nproject.start=OTHER'],
+            ['a space', 'MY HOME'],
+            ['an ampersand', 'HOME&'],
+            ['an empty name', ''],
+            ['33 characters', 'A'.repeat(33)]
+        ])('refuses a project name with %s and leaves the config untouched', (_label, project) => {
+            const result = applyCgateConfig({
+                initialConfig: BASE_CONFIG, project, commandPort: 20023, allowFailure: true
+            });
+            expect(result.status).not.toBe(0);
+            expect(result.contents).toBe(BASE_CONFIG);
         });
     });
 
