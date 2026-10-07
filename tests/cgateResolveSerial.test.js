@@ -26,6 +26,12 @@ const FTDI = { idVendor: '0403', idProduct: '6001', serial: 'A50285BI' };
 // this far.
 const ROOT_HUB = { idVendor: '1d6b', idProduct: '0002', serial: 'HUBROOT' };
 
+// The sysfs fixture uses kernel directory names such as `1-1:1.0`, which
+// Windows cannot create. The resolver only ever runs in the Linux add-on.
+const sysfsFixturesSupported = process.platform !== 'win32';
+const describeSysfs = sysfsFixturesSupported ? describe : describe.skip;
+const itSysfs = sysfsFixturesSupported ? it : it.skip;
+
 const tmpDirs = [];
 
 function tmpDir(prefix) {
@@ -127,7 +133,7 @@ describe('identityFromByIdDir', () => {
     });
 });
 
-describe('identityFromSysfs', () => {
+describeSysfs('identityFromSysfs', () => {
     it('reads vendor:product:serial through the symlinked sysfs device chain', () => {
         const sysfsRoot = makeSysfsRoot({ ttyUSB0: FTDI });
 
@@ -169,7 +175,7 @@ describe('identityFromSysfs', () => {
     });
 });
 
-describe('readIdentity', () => {
+describeSysfs('readIdentity', () => {
     it('falls back to sysfs when the host has no /dev/serial/by-id directory', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
         const sysfsRoot = makeSysfsRoot({ ttyUSB0: FTDI });
@@ -230,7 +236,7 @@ describe('findDeviceByIdentity', () => {
         expect(findDeviceByIdentity('../../ttyUSB7', { devRoot })).toBeNull();
     });
 
-    it('matches on serial when two same-model devices share vendor:product', () => {
+    itSysfs('matches on serial when two same-model devices share vendor:product', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0', 'ttyUSB1'] });
         const sysfsRoot = makeSysfsRoot({
             ttyUSB0: { ...FTDI, serial: 'DECOY123' },
@@ -286,7 +292,7 @@ describe('resolveSerialDevice', () => {
         expect(messageAt(result, /Prefer the stable path/).level).toBe('info');
     });
 
-    it('warns that recovery is impossible when the device has no stable identity', () => {
+    itSysfs('warns that recovery is impossible when the device has no stable identity', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
         const sysfsRoot = makeSysfsRoot({ ttyUSB0: { idVendor: '1a86', idProduct: '7523' } });
 
@@ -302,7 +308,7 @@ describe('resolveSerialDevice', () => {
         expect(messageAt(result, /recovery after a replug will not be possible/i).level).toBe('warning');
     });
 
-    it('treats an identity containing a path separator as no identity and warns honestly', () => {
+    itSysfs('treats an identity containing a path separator as no identity and warns honestly', () => {
         const devRoot = makeDevRoot({ ttys: ['ttyUSB0'] });
         const sysfsRoot = makeSysfsRoot({ ttyUSB0: { ...FTDI, serial: 'A50/285BI' } });
         const file = identityFile();
@@ -349,7 +355,7 @@ describe('resolveSerialDevice', () => {
         expect(messageText(result)).toMatch(/Update cgate_serial_device to/);
     });
 
-    it('does not recommend a nonexistent by-id path when recovery went through sysfs only', () => {
+    itSysfs('does not recommend a nonexistent by-id path when recovery went through sysfs only', () => {
         // This host has no /dev/serial/by-id directory at all, so the only
         // route to an identity is the vendor:product:serial sysfs fallback —
         // recommending a by-id path built from that identity would name a
@@ -397,7 +403,7 @@ describe('resolveSerialDevice', () => {
         expect(result.path).toBeNull();
     });
 
-    it('does not adopt a same-model device that differs only by serial', () => {
+    itSysfs('does not adopt a same-model device that differs only by serial', () => {
         const file = identityFile();
         const before = makeDevRoot({ ttys: ['ttyUSB0'] });
         const beforeSysfs = makeSysfsRoot({ ttyUSB0: FTDI });
@@ -488,7 +494,7 @@ describe('resolveSerialDevice', () => {
         expect(messageText(result)).toMatch(/no longer present/i);
     });
 
-    it('re-records the preferred identity when only its form changed for the same device', () => {
+    itSysfs('re-records the preferred identity when only its form changed for the same device', () => {
         // This host had no /dev/serial/by-id links on the first boot, so the
         // sysfs triple was recorded; udev now provides a by-id name for the very
         // same device. The identities differ but nothing moved, so this is not a
@@ -688,9 +694,7 @@ describe('main() (spawned CLI)', () => {
 
         expect(result.status).toBe(2);
         expect(untag(result.stderr)).toMatch(/Could not write .*serial-device/);
-        expect(untag(result.stderr)).toMatch(
-            new RegExp(`recovered at ${path.join(after, 'ttyUSB1')}`)
-        );
+        expect(untag(result.stderr)).toContain(`recovered at ${path.join(after, 'ttyUSB1')}`);
     });
 
     it('publishes the recovered path when the device renumbered', () => {

@@ -17,7 +17,7 @@ RUN apk add --no-cache nodejs npm
 WORKDIR /app
 # package.json and source are in the repo root (build context)
 COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # ----------------------------------------------------------------------------
@@ -51,7 +51,9 @@ COPY homeassistant-addon/run.sh /
 RUN chmod a+x /run.sh && \
     chmod a+x /etc/cont-init.d/*.sh && \
     chmod a+x /etc/services.d/*/run && \
-    chmod a+x /etc/services.d/*/finish
+    chmod a+x /etc/services.d/*/finish && \
+    chmod a+x /usr/bin/cgateweb-serial-diagnostics && \
+    chmod a+x /usr/bin/cgateweb-recover-serial
 
 ARG BUILD_ARCH=amd64
 ARG BUILD_DATE=dev
@@ -62,5 +64,8 @@ LABEL \
     io.hass.name="C-Gate Web Bridge (test)" \
     io.hass.type="addon" \
     io.hass.version="${BUILD_VERSION}"
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD nc -z 127.0.0.1 8080 || exit 1
 
 CMD [ "/run.sh" ]
