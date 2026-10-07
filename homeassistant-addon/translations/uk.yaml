@@ -223,24 +223,25 @@ configuration:
       Створювати об'єкт сцени Home Assistant для кожної групи тригерів, на
       додаток до об'єктів подій та кнопок. За замовчуванням: увімкнено.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Автоматично визначати типи пристроїв
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Автоматично класифікувати групи Lighting (56), мітка яких схожа на
+      моторизовану штору (жалюзі, ролети тощо), як об'єкти штор Home Assistant
+      замість освітлення. Ручне перевизначення типу завжди має пріоритет. За
+      замовчуванням: увімкнено.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Автовизначення за ключовими словами мітки
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Коли автовизначення увімкнене, шукати ключові слова штор у мітці групи.
+      Вимкніть, щоб не використовувати ключові слова, зберігши решту
+      автовизначення. За замовчуванням: увімкнено.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Ключові слова для визначення штор
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Ключові слова без урахування регістру, які позначають групу Lighting як
+      штору, якщо трапляються в її мітці (форми множини також розпізнаються). За
+      замовчуванням: blind, shutter, shade, awning, curtain, roller, garage
+      door.
   ha_discovery_hvac_app_id:
     name: ID застосунку HVAC
     description: >-

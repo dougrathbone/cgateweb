@@ -224,23 +224,24 @@ configuration:
       Criar uma entidade de cena do Home Assistant para cada grupo de trigger,
       além das entidades de evento e botão. Predefinido: ativado.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Detetar automaticamente os tipos de dispositivo
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Classificar automaticamente os grupos Lighting (56) cuja etiqueta pareça
+      um estore motorizado (persiana, portada, etc.) como entidades de estore do
+      Home Assistant em vez de luzes. As substituições manuais de tipo têm
+      sempre prioridade. Predefinido: ativado.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Deteção automática por palavras-chave da etiqueta
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      Com a deteção automática ativada, procurar palavras-chave de estores na
+      etiqueta do grupo. Desative para deixar de usar palavras-chave, mantendo o
+      resto da deteção automática. Predefinido: ativado.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Palavras-chave para deteção de estores
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
+      Palavras-chave, sem distinção entre maiúsculas e minúsculas, que
+      identificam um grupo Lighting como estore quando aparecem na sua etiqueta
+      (os plurais também são reconhecidos). Predefinidas: blind, shutter, shade,
       awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: ID de Aplicação HVAC

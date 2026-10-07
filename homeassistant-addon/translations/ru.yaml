@@ -222,24 +222,25 @@ configuration:
       Создавать объект сцены Home Assistant для каждой группы триггеров, в
       дополнение к объектам событий и кнопок. По умолчанию: включено.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Автоматически определять типы устройств
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Автоматически классифицировать группы Lighting (56), метка которых похожа
+      на моторизованную штору (жалюзи, рольставни и т. п.), как объекты штор
+      Home Assistant, а не как освещение. Ручное переопределение типа всегда
+      имеет приоритет. По умолчанию: включено.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Автоопределение по ключевым словам метки
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      При включённом автоопределении искать ключевые слова штор в метке группы.
+      Отключите, чтобы не использовать ключевые слова, сохранив остальное
+      автоопределение. По умолчанию: включено.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Ключевые слова для определения штор
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Ключевые слова без учёта регистра, которые помечают группу Lighting как
+      штору, если встречаются в её метке (формы множественного числа тоже
+      распознаются). По умолчанию: blind, shutter, shade, awning, curtain,
+      roller, garage door.
   ha_discovery_hvac_app_id:
     name: ID приложения HVAC
     description: >-

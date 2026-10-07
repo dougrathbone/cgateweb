@@ -213,24 +213,24 @@ configuration:
       Skapa en Home Assistant scenentitet för varje utlösargrupp, utöver
       händelse- och knappentiteter. Standard: aktiverat.
   ha_discovery_auto_type:
-    name: Auto-detect Device Types
+    name: Identifiera enhetstyper automatiskt
     description: >-
-      Automatically classify Lighting (56) groups whose label looks like a
-      motorised cover (blind, shutter, etc.) as Home Assistant cover entities
-      instead of lights. Manual type overrides always take precedence. Default:
-      enabled.
+      Klassificera automatiskt Lighting-grupper (56) vars etikett ser ut som ett
+      motoriserat skydd (persienn, rullgardin osv.) som Home Assistant
+      skyddsentiteter i stället för lampor. Manuella typåsidosättningar har
+      alltid företräde. Standard: aktiverat.
   ha_discovery_auto_type_name_heuristics:
-    name: Auto-detect Using Label Keywords
+    name: Identifiera automatiskt med etikettnyckelord
     description: >-
-      When auto-detection is on, match cover keywords in the group label. Turn
-      off to disable keyword matching while keeping other auto-detection.
-      Default: enabled.
+      När automatisk identifiering är på matchas skyddsnyckelord i gruppens
+      etikett. Stäng av för att sluta matcha nyckelord men behålla övrig
+      automatisk identifiering. Standard: aktiverat.
   ha_discovery_auto_type_cover_keywords:
-    name: Cover Detection Keywords
+    name: Nyckelord för skyddsidentifiering
     description: >-
-      Case-insensitive keywords in a Lighting group label that mark it as a
-      cover (matching also catches plurals). Defaults: blind, shutter, shade,
-      awning, curtain, roller, garage door.
+      Skiftlägesokänsliga nyckelord i en Lighting-grupps etikett som markerar
+      gruppen som ett skydd (pluralformer matchas också). Standard: blind,
+      shutter, shade, awning, curtain, roller, garage door.
   ha_discovery_hvac_app_id:
     name: HVAC applikations-ID
     description: >-
