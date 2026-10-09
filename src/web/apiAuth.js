@@ -121,15 +121,17 @@ class ApiAuth {
      * @returns {boolean}
      */
     isAuthorized(req) {
+        // Ingress is authenticated by Home Assistant itself (only logged-in HA
+        // users reach the ingress URL). Trust it whether or not web_api_key is
+        // set — the bundled UI never sends a key, so requiring one here would
+        // break the Ingress panel for anyone who set a key to harden the
+        // host-mapped port. Host-mapped :8080 still cannot forge this path:
+        // _isIngressRequest also requires the Supervisor proxy peer address.
+        if (this._isIngressRequest(req)) {
+            return true;
+        }
+
         if (!this.apiKey) {
-            // Requests proxied through Home Assistant Ingress have already been
-            // authenticated by HA (only logged-in HA users can reach the ingress
-            // URL). Trusting them lets the bundled label UI import/edit on a
-            // default add-on install (no web_api_key) without opening up the raw
-            // port. A configured web_api_key still takes precedence below.
-            if (this._isIngressRequest(req)) {
-                return true;
-            }
             return this.allowUnauthenticatedMutations;
         }
 

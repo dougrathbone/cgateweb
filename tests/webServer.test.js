@@ -991,9 +991,10 @@ describe('WebServer', () => {
             expect(res.status).toBe(401);
         });
 
-        it('still enforces a configured API key even for ingress requests', async () => {
-            // When an operator has explicitly set web_api_key (e.g. to harden an
-            // exposed port), it must always win over ingress trust.
+        it('allows genuine ingress requests even when an API key is configured', async () => {
+            // web_api_key hardens the host-mapped port; the bundled UI never
+            // sends it, so Ingress must still work with only HA's ingress
+            // markers (plus the Supervisor proxy peer check).
             ingressServer = new WebServer({
                 port: 0,
                 basePath: BASE,
@@ -1005,16 +1006,61 @@ describe('WebServer', () => {
             await ingressServer.start();
             ingressPort = ingressServer._server.address().port;
 
-            const res = await patchThroughIngress(ingressPort, {
+            const ok = await patchThroughIngress(ingressPort, {
                 'X-Ingress-Path': BASE,
                 'X-Hass-Source': 'core.ingress'
             });
-            expect(res.status).toBe(401);
+            expect(ok.status).toBe(200);
+        });
 
-            const ok = await patchThroughIngress(ingressPort, {
-                'X-Ingress-Path': BASE,
-                'X-Hass-Source': 'core.ingress',
-                'X-API-Key': 'secret-key'
+        it('still requires the API key on non-ingress requests when configured', async () => {
+            ingressServer = new WebServer({
+                port: 0,
+                basePath: BASE,
+                _ingressProxyAddresses: LOOPBACK_INGRESS_PROXY,
+                labelLoader,
+                apiKey: 'secret-key',
+                getStatus: () => ({})
+            });
+            await ingressServer.start();
+            ingressPort = ingressServer._server.address().port;
+
+            const denied = await new Promise((resolve, reject) => {
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: ingressPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Content-Length': 2 }
+                }, (response) => {
+                    response.resume();
+                    response.on('end', () => resolve({ status: response.statusCode }));
+                });
+                req.on('error', reject);
+                req.write('{}');
+                req.end();
+            });
+            expect(denied.status).toBe(401);
+
+            const ok = await new Promise((resolve, reject) => {
+                const body = JSON.stringify({ '254/56/10': 'Patched' });
+                const req = http.request({
+                    hostname: '127.0.0.1',
+                    port: ingressPort,
+                    path: '/api/labels',
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(body),
+                        'X-API-Key': 'secret-key'
+                    }
+                }, (response) => {
+                    response.resume();
+                    response.on('end', () => resolve({ status: response.statusCode }));
+                });
+                req.on('error', reject);
+                req.write(body);
+                req.end();
             });
             expect(ok.status).toBe(200);
         });
