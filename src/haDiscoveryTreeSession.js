@@ -3,6 +3,7 @@ const parseString = require('xml2js').parseString;
 const { findNetworkData, networkHasDeviceData, networkHasUnsyncedUnits, unsyncedUnitSummaries, treeGroupSignature } = require('./haDiscoveryTree');
 const { buildOriginBlock } = require('./haDiscoveryPayloads');
 const { backoffDelay } = require('./backoff');
+const { assertSafeXmlDocument, DEFAULT_MAX_XML_BYTES } = require('./xmlSafety');
 const {
     MQTT_TOPIC_PREFIX_READ,
     MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
@@ -75,6 +76,13 @@ class _HaDiscoveryTreeSession {
     /** @type {number} */
     _treeRequestTimeoutMs;
     _treeStreamStallMs;
+
+    /**
+     * Optional test seam that overrides DEFAULT_MAX_XML_BYTES for streaming
+     * TreeXML accumulation. Production leaves this unset.
+     * @type {number|undefined}
+     */
+    _treeXmlMaxBytes;
 
     /**
      * Deadline for a mid-stream TreeXML stall (343 received, 344 never
@@ -448,7 +456,8 @@ class _HaDiscoveryTreeSession {
 
         this.activeTreeSession = {
             network: networkKey,
-            bufferParts: []
+            bufferParts: [],
+            bufferedBytes: 0
         };
 
         this._armTreeStreamDeadline(networkKey);
@@ -505,7 +514,28 @@ class _HaDiscoveryTreeSession {
             this.logger.warn('Received TreeXML data without active tree session; creating fallback session.');
             this.handleTreeStart('');
         }
-        this.activeTreeSession.bufferParts.push(statusData);
+        const chunk = typeof statusData === 'string' ? statusData : String(statusData);
+        // Cap while streaming so a compromised/runaway C-Gate cannot grow
+        // memory until OOM; the same limit applies again at parse time.
+        // `_treeXmlMaxBytes` is a test seam; production uses the shared default.
+        const maxBytes = (typeof this._treeXmlMaxBytes === 'number' && this._treeXmlMaxBytes > 0)
+            ? this._treeXmlMaxBytes
+            : DEFAULT_MAX_XML_BYTES;
+        const nextBytes = (this.activeTreeSession.bufferedBytes || 0) + chunk.length;
+        if (nextBytes > maxBytes) {
+            const network = this.activeTreeSession.network;
+            this.logger.error(
+                `TreeXML for network ${network} exceeded ${maxBytes} bytes while streaming; aborting`
+            );
+            this.activeTreeSession = null;
+            this.treeBufferParts = [];
+            this.treeNetwork = null;
+            this._clearTreeStreamDeadline();
+            this._handleTreeRequestFailure(network, 'tree XML exceeds size limit');
+            return;
+        }
+        this.activeTreeSession.bufferParts.push(chunk);
+        this.activeTreeSession.bufferedBytes = nextBytes;
         // Progress resets the stall clock, so the deadline measures silence
         // rather than how long a big tree takes to arrive.
         this._armTreeStreamDeadline(this.activeTreeSession.network);
@@ -738,6 +768,13 @@ class _HaDiscoveryTreeSession {
      * @private
      */
     _parseTreeXml(treeXmlData, callback) {
+        try {
+            // Same DTD / size / element-token gates as project-file uploads.
+            assertSafeXmlDocument(treeXmlData);
+        } catch (e) {
+            callback(e);
+            return;
+        }
         parseString(treeXmlData, { explicitArray: false }, callback);
     }
 }

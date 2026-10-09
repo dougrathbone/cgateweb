@@ -3,19 +3,17 @@ const path = require('path');
 const AdmZip = require('adm-zip');
 const { parseString } = require('xml2js');
 const { createLogger } = require('./logger');
+const {
+    DEFAULT_MAX_XML_BYTES,
+    DEFAULT_MAX_XML_ELEMENT_TOKENS,
+    assertSafeXmlDocument
+} = require('./xmlSafety');
 
 // Maximum total decompressed bytes we will pull out of a .cbz archive.
 // .cbz files are XML payloads zipped together; typical real files are well
 // under 5MB extracted. Cap defends against zip-bomb uploads that could
 // otherwise exhaust process memory before xml2js parsing fails.
-const MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024; // 100MB
-
-// Bound xml2js work independently of byte size: a tiny document can still
-// contain millions of empty elements. Count of '<' tokens is a cheap proxy
-// for element count. Toolkit's DLT-tagged Group shape is ~18 tokens per
-// group; 2e6 leaves ~10x headroom over an 11k-group site while still
-// rejecting a small `<i/>` bomb (~8MB at 4 bytes/token).
-const MAX_XML_ELEMENT_TOKENS = 2000000;
+const MAX_DECOMPRESSED_BYTES = DEFAULT_MAX_XML_BYTES;
 
 // Defence-in-depth: reject ZIP entry names containing path-traversal or
 // absolute paths. The parser does not write extracted files to disk, but
@@ -100,7 +98,7 @@ class CbusProjectParser {
         this.maxDecompressedBytes = options.maxDecompressedBytes || MAX_DECOMPRESSED_BYTES;
         this.maxXmlElementTokens = Number.isFinite(options.maxXmlElementTokens) && options.maxXmlElementTokens > 0
             ? options.maxXmlElementTokens
-            : MAX_XML_ELEMENT_TOKENS;
+            : DEFAULT_MAX_XML_ELEMENT_TOKENS;
     }
 
     /**
@@ -347,33 +345,13 @@ class CbusProjectParser {
     }
 
     _parseXML(xmlString) {
-        // Bound size before regex/token work: a huge document must not pay
-        // for DTD scans or a full '<' walk only to be rejected on length.
-        if (typeof xmlString === 'string' && xmlString.length > this.maxDecompressedBytes) {
-            return Promise.reject(new Error(
-                `XML document exceeds ${this.maxDecompressedBytes} bytes; rejecting (zip-bomb protection)`
-            ));
-        }
-        // Reject DTDs / entity declarations before handing to the XML parser —
-        // xml2js (and libxml-backed parsers) can expand external entities or
-        // blow up on billion-laughs style entity expansion.
-        if (/<!DOCTYPE/i.test(xmlString) || /<!ENTITY/i.test(xmlString)) {
-            return Promise.reject(new Error('XML with DTD or entity declarations is not supported'));
-        }
-        // Cap element-ish tokens ('<') so a small but densely nested / empty-tag
-        // document cannot exhaust CPU/memory inside xml2js.
-        if (typeof xmlString === 'string') {
-            let tokenCount = 0;
-            for (let i = 0; i < xmlString.length; i++) {
-                if (xmlString.charCodeAt(i) === 60) { // '<'
-                    tokenCount++;
-                    if (tokenCount > this.maxXmlElementTokens) {
-                        return Promise.reject(new Error(
-                            `XML document has too many elements; rejecting (max ${this.maxXmlElementTokens})`
-                        ));
-                    }
-                }
-            }
+        try {
+            assertSafeXmlDocument(xmlString, {
+                maxBytes: this.maxDecompressedBytes,
+                maxElementTokens: this.maxXmlElementTokens
+            });
+        } catch (e) {
+            return Promise.reject(e);
         }
         return new Promise((resolve, reject) => {
             try {

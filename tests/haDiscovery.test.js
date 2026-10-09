@@ -733,6 +733,38 @@ describe('HaDiscovery', () => {
             jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
             expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
+
+        it('rejects TreeXML with a DTD before handing it to xml2js', () => {
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeData(
+                '<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY x "y">]><Network><NetworkNumber>254</NetworkNumber></Network>'
+            );
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                expect.stringContaining('/tree'),
+                expect.anything(),
+                expect.anything()
+            );
+        });
+
+        it('aborts a TreeXML stream that exceeds the shared size cap', () => {
+            const handleFailure = jest.spyOn(haDiscovery, '_handleTreeRequestFailure');
+            haDiscovery._treeXmlMaxBytes = 100;
+
+            haDiscovery.trigger();
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            // First chunk under the cap, second pushes past it.
+            haDiscovery.handleTreeData('x'.repeat(80));
+            haDiscovery.handleTreeData('y'.repeat(30));
+
+            expect(handleFailure).toHaveBeenCalledWith('254', 'tree XML exceeds size limit');
+            expect(haDiscovery.activeTreeSession).toBeNull();
+        });
     });
 
     describe('TreeXML stream stall recovery', () => {
