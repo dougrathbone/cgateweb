@@ -7,6 +7,7 @@ const {
     CGATE_LEVEL_MIN,
     CGATE_LEVEL_MAX
 } = require('../src/constants');
+const { withFakeTimers } = require('./helpers/withFakeTimers');
 
 describe('DeviceStateManager', () => {
     let stateManager;
@@ -260,21 +261,21 @@ describe('DeviceStateManager', () => {
         });
 
         it('should timeout and clean up operation', () => {
-            jest.useFakeTimers();
-            const callback = jest.fn();
-            const address = '254/56/4';
-            const timeout = 100;
+            withFakeTimers(() => {
+                const callback = jest.fn();
+                const address = '254/56/4';
+                const timeout = 100;
 
-            stateManager.setupRelativeLevelOperation(address, callback, timeout);
+                stateManager.setupRelativeLevelOperation(address, callback, timeout);
 
-            jest.advanceTimersByTime(timeout + 50);
+                jest.advanceTimersByTime(timeout + 50);
 
-            expect(callback).toHaveBeenCalledWith(null);
-            expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
-            expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Timeout waiting for level response from 254/56/4')
-            );
-            jest.useRealTimers();
+                expect(callback).toHaveBeenCalledWith(null);
+                expect(stateManager.isRelativeLevelOperationActive(address)).toBe(false);
+                expect(mockLogger.warn).toHaveBeenCalledWith(
+                    expect.stringContaining('Timeout waiting for level response from 254/56/4')
+                );
+            });
         });
 
         it('should handle multiple operations for different addresses', () => {

@@ -70,13 +70,8 @@ jobs:
       uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
     - name: Assemble add-on build context
-      run: |
-        mkdir -p ctx
-        cp -r homeassistant-addon/rootfs ctx/
-        cp homeassistant-addon/run.sh ctx/
-        cp homeassistant-addon/Dockerfile ctx/
-        cp -r src public ctx/
-        cp index.js package.json package-lock.json ctx/
+      # Shared recipe with quality.yml (tools/assemble-addon-build-context.sh).
+      run: tools/assemble-addon-build-context.sh ctx
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
@@ -347,10 +342,12 @@ jobs:
         HACS_DEPLOY_TOKEN: ${{ secrets.HACS_DEPLOY_TOKEN }}
         DIST_REPO: ${{ env.DISTRIBUTION_REPO }}
       run: |
-        # Token is exposed only via env, never substituted into the rendered
-        # workflow command line - prevents log leakage if `set -x` ever fires.
-        REMOTE_URL="https://x-access-token:${HACS_DEPLOY_TOKEN}@github.com/${DIST_REPO}.git"
-        if git clone "${REMOTE_URL}" hacs-repo 2>/dev/null; then
+        set -euo pipefail
+        # Auth via http.extraHeader so the PAT never lands in a remote URL
+        # (process args / .git/config remote). Token stays in env: only.
+        AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${HACS_DEPLOY_TOKEN}" | base64 | tr -d '\n')"
+        REMOTE_URL="https://github.com/${DIST_REPO}.git"
+        if git -c "http.extraHeader=${AUTH_HEADER}" clone "${REMOTE_URL}" hacs-repo 2>/dev/null; then
           cd hacs-repo
           if git show-ref --verify --quiet refs/heads/main; then
             git checkout main
@@ -367,6 +364,8 @@ jobs:
           git remote add origin "${REMOTE_URL}"
         fi
 
+        # Persist auth for the push step without embedding the token in the URL.
+        git config http.https://github.com/.extraheader "${AUTH_HEADER}"
         git config user.name 'cgateweb-bot'
         git config user.email 'actions@github.com'
 
@@ -376,6 +375,7 @@ jobs:
         SOURCE_REPO: ${{ github.repository }}
         SOURCE_SHA: ${{ github.sha }}
       run: |
+        set -euo pipefail
         cd hacs-repo
 
         # Clear existing content (except .git)

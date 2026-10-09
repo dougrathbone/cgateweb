@@ -3,6 +3,7 @@
 const CgateWebBridge = require('../src/cgateWebBridge');
 const { defaultSettings } = require('../index.js');
 const EventEmitter = require('events');
+const { withFakeTimers } = require('./helpers/withFakeTimers');
 
 // --- Mock CgateConnectionPool ---
 // One emitter shared by every test in this file, because jest.mock hands the
@@ -575,25 +576,25 @@ describe('CgateWebBridge', () => {
             });
 
             it('should set up periodic getall when enabled', () => {
-                jest.useFakeTimers();
-                bridge.settings.getallnetapp = '254/56';
-                bridge.settings.getallperiod = 5; // 5 seconds (not milliseconds)
-                bridge.mqttManager.connected = true;
-                bridge.commandConnectionPool.isStarted = true;
-                setPoolHealthyCount(3);
-                bridge.eventConnection.connected = true;
+                withFakeTimers(() => {
+                    bridge.settings.getallnetapp = '254/56';
+                    bridge.settings.getallperiod = 5; // 5 seconds (not milliseconds)
+                    bridge.mqttManager.connected = true;
+                    bridge.commandConnectionPool.isStarted = true;
+                    setPoolHealthyCount(3);
+                    bridge.eventConnection.connected = true;
 
-                bridge._handleAllConnected();
+                    bridge._handleAllConnected();
 
-                expect(bridge.initializationService._perAppTimers.size).toBeGreaterThan(0);
+                    expect(bridge.initializationService._perAppTimers.size).toBeGreaterThan(0);
 
-                // Test that periodic execution works
-                const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
-                jest.advanceTimersByTime(5000);
-                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
+                    // Test that periodic execution works
+                    const queueSpy = jest.spyOn(bridge.cgateCommandQueue, 'add');
+                    jest.advanceTimersByTime(5000);
+                    expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/* level\n');
 
-                queueSpy.mockRestore();
-                jest.useRealTimers();
+                    queueSpy.mockRestore();
+                });
             });
 
             it('should trigger HA discovery when enabled', () => {
