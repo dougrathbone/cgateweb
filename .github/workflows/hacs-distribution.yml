@@ -347,10 +347,12 @@ jobs:
         HACS_DEPLOY_TOKEN: ${{ secrets.HACS_DEPLOY_TOKEN }}
         DIST_REPO: ${{ env.DISTRIBUTION_REPO }}
       run: |
-        # Token is exposed only via env, never substituted into the rendered
-        # workflow command line - prevents log leakage if `set -x` ever fires.
-        REMOTE_URL="https://x-access-token:${HACS_DEPLOY_TOKEN}@github.com/${DIST_REPO}.git"
-        if git clone "${REMOTE_URL}" hacs-repo 2>/dev/null; then
+        set -euo pipefail
+        # Auth via http.extraHeader so the PAT never lands in a remote URL
+        # (process args / .git/config remote). Token stays in env: only.
+        AUTH_HEADER="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${HACS_DEPLOY_TOKEN}" | base64 | tr -d '\n')"
+        REMOTE_URL="https://github.com/${DIST_REPO}.git"
+        if git -c "http.extraHeader=${AUTH_HEADER}" clone "${REMOTE_URL}" hacs-repo 2>/dev/null; then
           cd hacs-repo
           if git show-ref --verify --quiet refs/heads/main; then
             git checkout main
@@ -367,6 +369,8 @@ jobs:
           git remote add origin "${REMOTE_URL}"
         fi
 
+        # Persist auth for the push step without embedding the token in the URL.
+        git config http.https://github.com/.extraheader "${AUTH_HEADER}"
         git config user.name 'cgateweb-bot'
         git config user.email 'actions@github.com'
 
@@ -376,6 +380,7 @@ jobs:
         SOURCE_REPO: ${{ github.repository }}
         SOURCE_SHA: ${{ github.sha }}
       run: |
+        set -euo pipefail
         cd hacs-repo
 
         # Clear existing content (except .git)
