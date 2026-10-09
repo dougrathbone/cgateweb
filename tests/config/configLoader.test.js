@@ -120,7 +120,9 @@ describe('ConfigLoader', () => {
             expect(config.cbusip).toBe('127.0.0.1');
             expect(config.cbuscommandport).toBe(20023);
             expect(config.cbuseventport).toBe(20025);
-            expect(config.cbusname).toBe('HOME');
+            // Schema default when cgate_project is omitted (config.yaml still
+            // presents HOME for new add-on installs via options).
+            expect(config.cbusname).toBe('CLIPSAL');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
             expect(config.log_level).toBe('info');
@@ -676,7 +678,7 @@ describe('ConfigLoader', () => {
             expect(config.cbusip).toBe('127.0.0.1');
             expect(config.cbuscommandport).toBe(20023);
             expect(config.cbuseventport).toBe(20025);
-            expect(config.cbusname).toBe('HOME');
+            expect(config.cbusname).toBe('CLIPSAL');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
             expect(config.logging).toBe(false);
@@ -1164,7 +1166,7 @@ describe('ConfigLoader', () => {
             expect(config.cbusip).toBe('127.0.0.1');
             expect(config.cbuscommandport).toBe(20023);
             expect(config.cbuseventport).toBe(20025);
-            expect(config.cbusname).toBe('HOME');
+            expect(config.cbusname).toBe('CLIPSAL');
             expect(config.mqtt).toBe('127.0.0.1:1883');
             expect(config.messageinterval).toBe(200);
             expect(config.logging).toBe(false);
@@ -1181,7 +1183,7 @@ describe('ConfigLoader', () => {
             expect(result.cbusip).toBe('127.0.0.1');
             expect(result.cbuscommandport).toBe(20023);
             expect(result.cbuseventport).toBe(20025);
-            expect(result.cbusname).toBe('HOME');
+            expect(result.cbusname).toBe('CLIPSAL');
             expect(result.mqtt).toBe('127.0.0.1:1883');
             expect(result.messageinterval).toBe(200);
             expect(result.logging).toBe(false);

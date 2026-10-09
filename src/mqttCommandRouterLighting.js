@@ -41,7 +41,7 @@ class _MqttCommandRouterLighting {
     /** @type {Object} */
     settings;
 
-    /** @type {{ cancelRelativeLevelOperation: Function, setupRelativeLevelOperation: Function }|null} */
+    /** @type {{ cancelRelativeLevelOperation: Function, setupRelativeLevelOperation: Function, getLevel: Function }|null} */
     deviceStateManager;
 
     /** @type {{ publish: Function }|null} */
@@ -190,14 +190,23 @@ class _MqttCommandRouterLighting {
 
         const timeoutMs = resolveSetting(this.settings, 'relativeLevelTimeoutMs');
         this.deviceStateManager.setupRelativeLevelOperation(levelAddress, (currentLevel) => {
+            const [network, application, group] = levelAddress.split('/');
             if (!Number.isInteger(currentLevel)) {
                 this.logger.warn(`${actionName} aborted for ${levelAddress}: current level was not received in time`);
+                // Re-publish the last known level so HA does not sit waiting for
+                // a change that never arrived (timeout used to only log).
+                const known = this.deviceStateManager.getLevel(network, application, group);
+                if (Number.isInteger(known)) {
+                    this._publishOptimisticLightState(network, application, group, {
+                        state: known > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF,
+                        levelPercent: Math.round(known / CGATE_LEVEL_MAX * 100)
+                    });
+                }
                 return;
             }
             const newLevel = Math.max(CGATE_LEVEL_MIN, Math.min(limit, currentLevel + step));
             this.logger.debug(`${actionName}: ${levelAddress} ${currentLevel} -> ${newLevel}`);
             this._queueCommand(`${CGATE_CMD_RAMP} ${cbusPath} ${newLevel}${NEWLINE}`);
-            const [network, application, group] = levelAddress.split('/');
             this._publishOptimisticLightState(network, application, group, {
                 state: newLevel > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF,
                 levelPercent: Math.round(newLevel / CGATE_LEVEL_MAX * 100)

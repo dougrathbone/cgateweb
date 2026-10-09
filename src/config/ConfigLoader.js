@@ -148,7 +148,10 @@ class ConfigLoader {
         }
         config.cbuscommandport = options.cgate_port || 20023;
         config.cbuseventport = options.cgate_event_port || 20025;
-        config.cbusname = options.cgate_project || 'HOME';
+        // Fall back to the schema default (CLIPSAL), not a hard-coded HOME —
+        // config.yaml's options default still presents HOME for new add-on
+        // installs; this path only runs when the option is absent/empty.
+        config.cbusname = options.cgate_project || resolveSetting({}, 'cbusname');
 
         // C-Gate managed mode settings
         if (config.cgate_mode === 'managed') {
@@ -431,7 +434,7 @@ class ConfigLoader {
             cbusip: '127.0.0.1',
             cbuscommandport: 20023,
             cbuseventport: 20025,
-            cbusname: 'HOME',
+            // cbusname comes from ...defaultSettings (schema: CLIPSAL)
             mqtt: '127.0.0.1:1883',
             messageinterval: 200,
             logging: false,

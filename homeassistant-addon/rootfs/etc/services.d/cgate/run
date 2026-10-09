@@ -50,13 +50,18 @@ cd "${CGATE_DIR}" || exit 1
 # Some 32-bit add-on bases only provide Java 8, which predates the module
 # system and rejects --add-opens as an unknown option. Probe the runtime: Java
 # 9+ accepts this version-only invocation, while Java 8 needs no workaround.
-JAVA_MODULE_ARGS=()
+# Prefer a string over an empty array: bash 3.2 (macOS /bin/bash) with `set -u`
+# treats "${arr[@]}" as unbound when the array is empty, which breaks the
+# Java-8 probe path in local script tests. Alpine's bash is fine either way.
+JAVA_MODULE_OPEN=""
 if java --add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED -version >/dev/null 2>&1; then
-    JAVA_MODULE_ARGS+=(--add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED)
+    JAVA_MODULE_OPEN="--add-opens=java.xml/com.sun.org.apache.xml.internal.serialize=ALL-UNNAMED"
 fi
 
+# Intentionally unquoted MODULE_OPEN so an empty value contributes no argv slot.
+# shellcheck disable=SC2086
 exec java \
-    "${JAVA_MODULE_ARGS[@]}" \
+    ${JAVA_MODULE_OPEN} \
     -Djava.awt.headless=true \
     -Djava.net.preferIPv4Stack=true \
     -XX:+UseSerialGC \
