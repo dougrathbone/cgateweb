@@ -1050,6 +1050,25 @@ describe('MqttCommandRouter', () => {
             });
         });
 
+        it('re-publishes the last known level when INCREASE times out', () => {
+            withFakeTimers(() => {
+                const publish = jest.fn();
+                router.mqttClient = { publish };
+                deviceStateManager._deviceLevels.set('254/56/1', 128);
+
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                jest.advanceTimersByTime(5000);
+
+                expect(publish).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/state', 'ON', expect.any(Object)
+                );
+                expect(publish).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/level', '50', expect.any(Object)
+                );
+                expect(queueSpy.mock.calls.some((c) => String(c[0]).startsWith('RAMP'))).toBe(false);
+            });
+        });
+
         it('should clear timeout when matching response arrives before timeout', () => {
             withFakeTimers(() => {
                 router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
