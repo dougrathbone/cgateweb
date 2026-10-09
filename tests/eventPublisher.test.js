@@ -1,5 +1,6 @@
 const EventPublisher = require('../src/eventPublisher');
 const CBusEvent = require('../src/cbusEvent');
+const { withFakeTimers } = require('./helpers/withFakeTimers');
 
 describe('EventPublisher', () => {
     let eventPublisher;
@@ -130,27 +131,27 @@ describe('EventPublisher', () => {
                 .map((c) => c[1]);
 
             it('does not jump to 100% on a positive-duration dim-up ramp', () => {
-                jest.useFakeTimers();
+                withFakeTimers(() => {
+                    // Establish last published raw level 102 (~40%).
+                    eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 102'), '(Test)');
+                    mockPublishFn.mockClear();
 
-                // Establish last published raw level 102 (~40%).
-                eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 102'), '(Test)');
-                mockPublishFn.mockClear();
+                    eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 255 4'), '(Test)');
 
-                eventPublisher.publishEvent(new CBusEvent('lighting ramp 254/56/193 255 4'), '(Test)');
+                    const immediateLevels = levelPayloads();
+                    expect(immediateLevels).toContain('40');
+                    expect(immediateLevels).not.toContain('100');
 
-                const immediateLevels = levelPayloads();
-                expect(immediateLevels).toContain('40');
-                expect(immediateLevels).not.toContain('100');
+                    jest.advanceTimersByTime(4000);
 
-                jest.advanceTimersByTime(4000);
-
-                const allLevels = levelPayloads().map(Number);
-                expect(allLevels[allLevels.length - 1]).toBe(100);
-                const mid = allLevels.filter((p) => p > 40 && p < 100);
-                expect(mid.length).toBeGreaterThan(0);
-                for (let i = 1; i < allLevels.length; i += 1) {
-                    expect(allLevels[i]).toBeGreaterThanOrEqual(allLevels[i - 1]);
-                }
+                    const allLevels = levelPayloads().map(Number);
+                    expect(allLevels[allLevels.length - 1]).toBe(100);
+                    const mid = allLevels.filter((p) => p > 40 && p < 100);
+                    expect(mid.length).toBeGreaterThan(0);
+                    for (let i = 1; i < allLevels.length; i += 1) {
+                        expect(allLevels[i]).toBeGreaterThanOrEqual(allLevels[i - 1]);
+                    }
+                });
             });
 
             it('still snaps immediately when ramp has no duration', () => {
@@ -1254,24 +1255,24 @@ describe('EventPublisher', () => {
 
     describe('shutdown', () => {
         it('clears a pending coalesce flush so shutdown does not publish later', () => {
-            jest.useFakeTimers();
-            const publisher = new EventPublisher({
-                settings: { ...mockSettings, eventPublishCoalesce: true },
-                publishFn: mockPublishFn,
-                mqttOptions: mockMqttOptions,
-                logger: mockLogger
+            withFakeTimers(() => {
+                const publisher = new EventPublisher({
+                    settings: { ...mockSettings, eventPublishCoalesce: true },
+                    publishFn: mockPublishFn,
+                    mqttOptions: mockMqttOptions,
+                    logger: mockLogger
+                });
+
+                publisher.publishEvent(new CBusEvent('lighting on 254/56/1'));
+                expect(publisher.getStats().coalesceBufferSize).toBeGreaterThan(0);
+                expect(publisher.getStats().coalesceEnabled).toBe(true);
+
+                publisher.shutdown();
+
+                expect(publisher.getStats().coalesceBufferSize).toBe(0);
+                jest.runOnlyPendingTimers();
+                expect(mockPublishFn).not.toHaveBeenCalled();
             });
-
-            publisher.publishEvent(new CBusEvent('lighting on 254/56/1'));
-            expect(publisher.getStats().coalesceBufferSize).toBeGreaterThan(0);
-            expect(publisher.getStats().coalesceEnabled).toBe(true);
-
-            publisher.shutdown();
-
-            expect(publisher.getStats().coalesceBufferSize).toBe(0);
-            jest.runOnlyPendingTimers();
-            expect(mockPublishFn).not.toHaveBeenCalled();
-            jest.useRealTimers();
         });
     });
 });

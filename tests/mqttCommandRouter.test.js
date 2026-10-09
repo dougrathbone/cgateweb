@@ -1,5 +1,6 @@
 const MqttCommandRouter = require('../src/mqttCommandRouter');
 const DeviceStateManager = require('../src/deviceStateManager');
+const { withFakeTimers } = require('./helpers/withFakeTimers');
 
 describe('MqttCommandRouter', () => {
     let router;
@@ -1027,57 +1028,53 @@ describe('MqttCommandRouter', () => {
         });
 
         it('should clean up listener after timeout if no matching response arrives', () => {
-            jest.useFakeTimers();
-            const warnSpy = jest.spyOn(router.logger, 'warn');
+            withFakeTimers(() => {
+                const warnSpy = jest.spyOn(router.logger, 'warn');
 
-            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
-            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                expect(mockInternalEmitter.listenerCount('level')).toBe(1);
 
-            jest.advanceTimersByTime(5000);
+                jest.advanceTimersByTime(5000);
 
-            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
-            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('INCREASE aborted'));
-            expect(queueSpy.mock.calls.some((c) => String(c[0]).startsWith('RAMP'))).toBe(false);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('INCREASE aborted'));
+                expect(queueSpy.mock.calls.some((c) => String(c[0]).startsWith('RAMP'))).toBe(false);
 
-            queueSpy.mockClear();
+                queueSpy.mockClear();
 
-            // Events after timeout should not trigger ramp commands
-            mockInternalEmitter.emit('level', '254/56/1', 100);
-            expect(queueSpy).not.toHaveBeenCalled();
+                // Events after timeout should not trigger ramp commands
+                mockInternalEmitter.emit('level', '254/56/1', 100);
+                expect(queueSpy).not.toHaveBeenCalled();
 
-            warnSpy.mockRestore();
-            jest.useRealTimers();
+                warnSpy.mockRestore();
+            });
         });
 
         it('should clear timeout when matching response arrives before timeout', () => {
-            jest.useFakeTimers();
+            withFakeTimers(() => {
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
 
-            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                mockInternalEmitter.emit('level', '254/56/1', 100);
+                expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 126\n');
 
-            mockInternalEmitter.emit('level', '254/56/1', 100);
-            expect(queueSpy).toHaveBeenCalledWith('RAMP //TestProject/254/56/1 126\n');
-
-            // Advancing past timeout should not cause errors or warnings
-            jest.advanceTimersByTime(5000);
-            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
-
-            jest.useRealTimers();
+                // Advancing past timeout should not cause errors or warnings
+                jest.advanceTimersByTime(5000);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+            });
         });
 
         it('should not remove listener for non-matching events before timeout', () => {
-            jest.useFakeTimers();
+            withFakeTimers(() => {
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
 
-            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                // Non-matching events should leave listener intact
+                mockInternalEmitter.emit('level', '254/56/2', 80);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(1);
 
-            // Non-matching events should leave listener intact
-            mockInternalEmitter.emit('level', '254/56/2', 80);
-            expect(mockInternalEmitter.listenerCount('level')).toBe(1);
-
-            // Matching event should clean up
-            mockInternalEmitter.emit('level', '254/56/1', 100);
-            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
-
-            jest.useRealTimers();
+                // Matching event should clean up
+                mockInternalEmitter.emit('level', '254/56/1', 100);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+            });
         });
 
         it('should only produce one RAMP when multiple INCREASE commands arrive before level response', () => {
@@ -1133,20 +1130,18 @@ describe('MqttCommandRouter', () => {
         });
 
         it('should clean up superseded operation timeout without firing', () => {
-            jest.useFakeTimers();
+            withFakeTimers(() => {
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
 
-            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
-            router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                // Resolve the active (second) operation
+                mockInternalEmitter.emit('level', '254/56/1', 100);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
 
-            // Resolve the active (second) operation
-            mockInternalEmitter.emit('level', '254/56/1', 100);
-            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
-
-            // Advance past timeout — the superseded timeout should not fire or error
-            jest.advanceTimersByTime(6000);
-            expect(mockInternalEmitter.listenerCount('level')).toBe(0);
-
-            jest.useRealTimers();
+                // Advance past timeout — the superseded timeout should not fire or error
+                jest.advanceTimersByTime(6000);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+            });
         });
     });
 

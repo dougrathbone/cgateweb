@@ -417,43 +417,17 @@ describe('LabelLoader', () => {
     });
 
     describe('watch / hot-reload', () => {
-        // Real fs.watch / setTimeout paths must not inherit fake timers from a
-        // previous file in the same Jest worker. A frozen Date.now() turns any
-        // "poll until deadline" helper into an infinite loop (the Node 20
-        // nightly flake after v1.34.1).
-        beforeEach(() => {
-            jest.useRealTimers();
-        });
-
-        it('should emit labels-changed when the file is modified', (done) => {
-            const data = { version: 1, labels: { '254/56/10': 'Original' } };
-            fs.writeFileSync(labelFile, JSON.stringify(data));
-
-            const loader = new LabelLoader(labelFile);
-            loader.load();
-            loader.watch();
-
-            loader.on('labels-changed', (labelData) => {
-                expect(labelData.labels.get('254/56/10')).toBe('Updated');
-                loader.unwatch();
-                done();
-            });
-
-            // Modify the file after a small delay
-            setTimeout(() => {
-                const updated = { version: 1, labels: { '254/56/10': 'Updated' } };
-                fs.writeFileSync(labelFile, JSON.stringify(updated));
-            }, 100);
-        }, 5000);
+        // External-edit → labels-changed is covered under fake timers in the
+        // suite below (mocked fs.watch). Do not add real inotify / setTimeout
+        // tests here — a frozen Date.now() from a leaked useFakeTimers() turns
+        // wall-clock polls into infinite loops (nightly Node 20 after v1.34.1).
 
         it('save() emits labels-changed once; an identical reload does not emit again', () => {
             // Production correctness is the content-signature gate in
             // _onFileChanged (a late fs.watch delivery after self-write grace
             // still reloads, but must not notify listeners). Prove that by
-            // calling the reload path directly — do not poll real inotify or
-            // wall-clock deadlines; those hang if fake timers leak into this
-            // worker (nightly Node 20 after v1.34.1). Grace + debounce are
-            // covered under fake timers in the suite below.
+            // calling the reload path directly. Grace + debounce are covered
+            // under fake timers in the suite below.
             const data = { version: 1, labels: { '254/56/10': 'Init' } };
             fs.writeFileSync(labelFile, JSON.stringify(data));
 
