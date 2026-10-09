@@ -1,0 +1,12 @@
+[
+  {
+    "version": "3.3.1",
+    "url": "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip",
+    "sha256": "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
+  },
+  {
+    "version": "3.3.2",
+    "url": "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip",
+    "sha256": "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+  }
+]

@@ -70,13 +70,8 @@ jobs:
       uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
     - name: Assemble add-on build context
-      run: |
-        mkdir -p ctx
-        cp -r homeassistant-addon/rootfs ctx/
-        cp homeassistant-addon/run.sh ctx/
-        cp homeassistant-addon/Dockerfile ctx/
-        cp -r src public ctx/
-        cp index.js package.json package-lock.json ctx/
+      # Shared recipe with quality.yml (tools/assemble-addon-build-context.sh).
+      run: tools/assemble-addon-build-context.sh ctx
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1

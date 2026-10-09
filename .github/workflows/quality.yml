@@ -242,18 +242,10 @@ jobs:
       uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
 
     - name: Assemble add-on build context
-      # The production homeassistant-addon/Dockerfile expects package.json,
-      # src/, public/, index.js and the add-on files (rootfs/, run.sh) all in
-      # one context directory — the same layout the distribution workflow ships
-      # to users. Mirror that here so CI builds the real image, not a copy.
+      # Shared recipe with hacs-distribution.yml so CI smoke images cannot
+      # diverge from published GHCR images (tools/assemble-addon-build-context.sh).
       if: ${{ inputs.run-expensive }}
-      run: |
-        mkdir -p ctx
-        cp -r homeassistant-addon/rootfs ctx/
-        cp homeassistant-addon/run.sh ctx/
-        cp homeassistant-addon/Dockerfile ctx/
-        cp -r src public ctx/
-        cp index.js package.json package-lock.json ctx/
+      run: tools/assemble-addon-build-context.sh ctx
 
     - name: Set up Docker Buildx
       if: ${{ inputs.run-expensive }}
@@ -395,25 +387,41 @@ jobs:
   #
   # Unlike addon-image this job may skip wholesale: it is not itself a required
   # check. The aggregator below is, and it understands a skipped leg.
+  # Single source of truth: test-env/cgate-ci-assets.json. Also consumed by
+  # ci.yml's scheduled ci-assets check so the pins cannot diverge.
+  resolve-cgate-ci-assets:
+    name: Resolve C-Gate CI asset matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ inputs.run-expensive }}
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+      default_upload_url: ${{ steps.set.outputs.default_upload_url }}
+      default_upload_sha256: ${{ steps.set.outputs.default_upload_sha256 }}
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+    - name: Build matrix from cgate-ci-assets.json
+      id: set
+      run: |
+        set -euo pipefail
+        # Nest under `cgate` so existing matrix.cgate.* references stay valid.
+        MATRIX=$(jq -c '{include: [.[] | {cgate: .}]}' test-env/cgate-ci-assets.json)
+        FIRST=$(jq -c '.[0]' test-env/cgate-ci-assets.json)
+        echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+        echo "default_upload_url=$(jq -r '.url' <<<"${FIRST}")" >> "$GITHUB_OUTPUT"
+        echo "default_upload_sha256=$(jq -r '.sha256' <<<"${FIRST}")" >> "$GITHUB_OUTPUT"
+
   integration-download:
     name: Integration download ${{ matrix.cgate.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: test
+    needs: [test, resolve-cgate-ci-assets]
     if: ${{ inputs.run-expensive }}
     strategy:
       fail-fast: false
-      matrix:
-        cgate:
-          # Both legs verify the download against the same sha256 pins the
-          # add-on uses in production (a custom URL requires the sha, which
-          # also keeps the pins honest if ci-assets is ever re-uploaded).
-          - version: "3.3.1"
-            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip"
-            sha256: "a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f"
-          - version: "3.3.2"
-            url: "https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.2-linux.zip"
-            sha256: "1d871bcd38355234a3b5b30a208463c8be079aa9346152476f2209f516cf271d"
+      matrix: ${{ fromJSON(needs.resolve-cgate-ci-assets.outputs.matrix) }}
 
     steps:
     - name: Checkout repository
@@ -458,7 +466,7 @@ jobs:
     name: Integration upload (hosted)
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    needs: test
+    needs: [test, resolve-cgate-ci-assets]
     if: ${{ inputs.run-expensive && (vars.CGATE_UPLOAD_TEST_URL != '' || inputs.require-upload-integration) }}
 
     steps:
@@ -481,8 +489,8 @@ jobs:
       env:
         CGATE_UPLOAD_TEST_URL: ${{ vars.CGATE_UPLOAD_TEST_URL }}
         CGATE_UPLOAD_TEST_SHA256: ${{ vars.CGATE_UPLOAD_TEST_SHA256 }}
-        DEFAULT_UPLOAD_URL: https://github.com/dougrathbone/cgateweb/releases/download/ci-assets/cgate-3.3.1-linux.zip
-        DEFAULT_UPLOAD_SHA256: a6959d862d2cc109ec049dceb9442560d576bc3d45bf3b1de7c5fbafbb478e6f
+        DEFAULT_UPLOAD_URL: ${{ needs.resolve-cgate-ci-assets.outputs.default_upload_url }}
+        DEFAULT_UPLOAD_SHA256: ${{ needs.resolve-cgate-ci-assets.outputs.default_upload_sha256 }}
       run: |
         set -euo pipefail
         URL="${CGATE_UPLOAD_TEST_URL:-$DEFAULT_UPLOAD_URL}"
