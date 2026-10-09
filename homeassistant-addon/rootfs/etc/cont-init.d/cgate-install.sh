@@ -414,10 +414,21 @@ _cgateweb_stat_mtime() {
 # unlinked inode, so the disk space would remain consumed but become invisible
 # to later retention passes. Startup pruning normally finds no open files.
 _cgateweb_log_file_is_open() {
-    local file="$1" fd target
+    local file="$1" fd file_id fd_id target
+    # Compare device:inode rather than path strings. macOS resolves /var to
+    # /private/var under `readlink -f`, so a path equality check against a
+    # fake proc tree built with /var/... paths would miss open files.
+    file_id=$(stat -c '%d:%i' "${file}" 2>/dev/null || stat -f '%d:%i' "${file}" 2>/dev/null || true)
+    [[ -n "${file_id}" ]] || return 1
     for fd in "${CGATEWEB_PROC_ROOT}"/[0-9]*/fd/*; do
         [[ -e "${fd}" || -L "${fd}" ]] || continue
-        target=$(readlink -f "${fd}" 2>/dev/null || true)
+        # GNU stat follows the fd symlink; BSD needs -L. Fall back to path
+        # compare when neither form of stat is available.
+        fd_id=$(stat -c '%d:%i' "${fd}" 2>/dev/null || stat -L -f '%d:%i' "${fd}" 2>/dev/null || true)
+        if [[ -n "${fd_id}" && "${fd_id}" == "${file_id}" ]]; then
+            return 0
+        fi
+        target=$(readlink -f "${fd}" 2>/dev/null || readlink "${fd}" 2>/dev/null || true)
         [[ "${target}" == "${file}" ]] && return 0
     done
     return 1
