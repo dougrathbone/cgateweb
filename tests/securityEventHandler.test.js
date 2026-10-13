@@ -167,6 +167,18 @@ describe('SecurityEventHandler', () => {
             .filter(c => c[2] === zone && c[3] && c[3].kind === 'security_zone')
             .map(c => c[3]);
 
+        const bypassListsFor = (deps) => deps.eventPublisher.publishReading.mock.calls
+            .filter(c => c[3] && c[3].kind === 'security_bypassed_zones')
+            .map(c => c[3]);
+
+        const labelledDeps = (labels) => makeDeps({
+            getHaDiscovery: () => ({
+                labelMap: new Map(Object.entries(labels)),
+                ensureSecurityZoneDiscovery: jest.fn(),
+                ensureSecurityPanelDiscovery: jest.fn()
+            })
+        });
+
         it('publishes the isolated flag alongside the zone state the zone was last in', () => {
             const deps = makeDeps();
             const handler = new SecurityEventHandler(deps);
@@ -428,6 +440,121 @@ describe('SecurityEventHandler', () => {
                     names: []
                 }
             );
+        });
+
+        // Home Assistant caps sensor state at 255 characters. A large panel's
+        // comma-separated names overflow that; the ellipsis is only the state
+        // string, and templates still read the full lists from attributes.
+        it('truncates the dashboard state at 255 characters and keeps every name in attributes', () => {
+            const labels = {};
+            const names = [];
+            const zones = [];
+            for (let zone = 1; zone <= 20; zone++) {
+                const name = `Room ${String(zone).padStart(2, '0')} window sensor`;
+                labels[`254/1/${zone}`] = name;
+                names.push(name);
+                zones.push(String(zone));
+            }
+            const full = names.join(', ');
+            expect(full.length).toBeGreaterThan(255);
+
+            const deps = labelledDeps(labels);
+            const handler = new SecurityEventHandler(deps);
+            for (const zone of zones) {
+                handler.handleLine(`# security zone_isolated //MIDSTRM/254/208/${zone}  #sourceunit=18 OID=`);
+            }
+
+            expect(bypassListsFor(deps).at(-1)).toEqual({
+                kind: 'security_bypassed_zones',
+                state: `${full.slice(0, 252)}...`,
+                zones,
+                names
+            });
+        });
+
+        it('leaves a bypass list that is exactly 255 characters untruncated', () => {
+            const name = 'A'.repeat(255);
+            const deps = labelledDeps({ '254/1/44': name });
+            const handler = new SecurityEventHandler(deps);
+
+            handler.handleLine(ZONE_ISOLATED_LINE);
+
+            expect(bypassListsFor(deps).at(-1)).toEqual({
+                kind: 'security_bypassed_zones',
+                state: name,
+                zones: ['44'],
+                names: [name]
+            });
+        });
+
+        it('publishes none when the last bypassed zone seals, and the zone update goes out first', () => {
+            const deps = labelledDeps({ '254/1/44': 'Front Door' });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            const groups = deps.eventPublisher.publishReading.mock.calls.map(c => c[2]);
+            expect(groups.indexOf('44')).toBeLessThan(groups.indexOf('panel/bypassed_zones'));
+            expect(zoneReadingsFor(deps, '44')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed' }
+            ]);
+            expect(bypassListsFor(deps)).toEqual([{
+                kind: 'security_bypassed_zones',
+                state: 'none',
+                zones: [],
+                names: []
+            }]);
+        });
+
+        it('does not republish the bypass list when a zone that was never bypassed seals', () => {
+            const deps = labelledDeps({ '254/1/44': 'Front Door', '254/1/58': 'Hall' });
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(ZONE_SEALED_LINE);
+
+            expect(bypassListsFor(deps)).toEqual([]);
+            expect(zoneReadingsFor(deps, '58')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed' }
+            ]);
+            expect(handler.panelState.isolatedZoneIds('254')).toEqual(['44']);
+        });
+
+        it('keeps a bypass when the zone opens or shorts instead of sealing', () => {
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine(ZONE_ISOLATED_LINE);
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine('# security zone_open //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+            handler.handleLine('# security zone_short //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+            expect(bypassListsFor(deps)).toEqual([]);
+            expect(zoneReadingsFor(deps, '44')).toEqual([
+                { kind: 'security_zone', zoneState: 'open', isolated: true },
+                { kind: 'security_zone', zoneState: 'short', isolated: true }
+            ]);
+        });
+
+        it('keeps a bypassed zone on the dashboard list when an armed status report says it is sealed', () => {
+            // Only the live zone_sealed verb means the panel put the zone back
+            // into protection. A status-report snapshot of "sealed" is the
+            // contact state and must not drop the bypass.
+            const deps = makeDeps();
+            const handler = new SecurityEventHandler(deps);
+            handler.handleLine('# security zone_isolated //MIDSTRM/254/208/5  #sourceunit=18 OID=');
+            deps.eventPublisher.publishReading.mockClear();
+
+            handler.handleLine(STATUS_REPORT_1_ARMED_LINE);
+
+            expect(bypassListsFor(deps)).toEqual([]);
+            expect(handler.panelState.isolatedZoneIds('254')).toEqual(['5']);
+            expect(zoneReadingsFor(deps, '5')).toEqual([
+                { kind: 'security_zone', zoneState: 'sealed', isolated: true }
+            ]);
         });
 
         it('leaves isolation alone for a status report that does not say disarmed', () => {
@@ -1023,6 +1150,29 @@ describe('panel state persistence', () => {
         handler.handleLine('# security system_arm //MIDSTRM/254/208 0 #sourceunit=18 OID=');
         const written = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
         expect(written['254']).not.toHaveProperty('isolated_zones');
+    });
+
+    it('drops a sealed zone from the persisted bypass list and keeps the ones still bypassed', () => {
+        const handler = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        handler.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+        handler.handleLine('# security zone_isolated //MIDSTRM/254/208/7  #sourceunit=18 OID=');
+        handler.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+        const written = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+        expect(written['254'].isolated_zones).toEqual(['7']);
+    });
+
+    it('does not restore a bypass that was cleared because the zone sealed', () => {
+        const first = new SecurityEventHandler(makeDeps({ panelStateFile: stateFile }));
+        first.handleLine('# security zone_isolated //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+        first.handleLine('# security zone_sealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+        const deps = makeDeps({ panelStateFile: stateFile });
+        const restarted = new SecurityEventHandler(deps);
+        restarted.handleLine('# security zone_unsealed //MIDSTRM/254/208/44  #sourceunit=18 OID=');
+
+        expect(deps.eventPublisher.publishReading).toHaveBeenCalledWith(
+            '254', '208', '44', { kind: 'security_zone', zoneState: 'unsealed' }
+        );
     });
 
     it('restores isolated zones and folds them into the next zone publish', () => {
