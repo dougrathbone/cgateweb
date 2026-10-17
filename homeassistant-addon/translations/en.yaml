@@ -203,13 +203,14 @@ configuration:
   ha_discovery_trigger_app_id:
     name: Trigger Application ID
     description: >-
-      C-Bus app ID for trigger groups (keypads, scenes). Common value: 202.
-      Leave empty to skip trigger discovery.
+      C-Bus app ID for trigger groups (keypads, scenes). Common value: 202. When
+      set, each group becomes an event, a button, a number (action selector
+      0–255), and optionally a scene. Leave empty to skip trigger discovery.
   ha_discovery_scene_enabled:
     name: Enable Scene Entities
     description: >-
       Create a Home Assistant scene entity for each trigger group, in addition
-      to event and button entities. Default: enabled.
+      to event, button, and number entities. Default: enabled.
   ha_discovery_auto_type:
     name: Auto-detect Device Types
     description: >-

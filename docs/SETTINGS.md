@@ -201,7 +201,7 @@ The poll expands to `network/application` pairs covering lighting (56) plus whic
 | `ha_discovery_enabled` | `ha_discovery_enabled` | boolean | `false` (the add-on ships `true` in its `options` block) | Publish MQTT Discovery config messages so Home Assistant creates entities automatically. With this off, cgateweb is a plain MQTT bridge. |
 | `ha_discovery_prefix` | `ha_discovery_prefix` | string | `homeassistant` | Discovery topic prefix. Must match HA's MQTT integration setting. Also determines the default `haStatusTopic`. |
 | `ha_discovery_networks` | `ha_discovery_networks` | number[] | `[]` | Networks to scan for discovery. In the add-on this falls back to `getall_networks` when left empty. Also drives the security zone status sync. |
-| `ha_discovery_scene_enabled` | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity per trigger group alongside the `event` and `button` entities. Set `false` to suppress scenes. |
+| `ha_discovery_scene_enabled` | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity per trigger group alongside the `event`, `button`, and `number` entities. Set `false` to suppress scenes. |
 
 > **Add-on gating:** most `ha_discovery_*` options are only applied when `ha_discovery_enabled` is on. The deliberate exceptions are `cbus_aircon_app_id`, `cbus_security_app_id`, the three `cbus_security_*_enabled` switches, `cbus_measurement_app_id`, `cbus_clock_enabled`, `cbus_scene_module_enabled` and `cbus_enable_control_app_id` — those publish over plain MQTT and would otherwise silently stop working for MQTT-only installs.
 
@@ -234,7 +234,7 @@ Each of these maps one C-Bus application ID onto a Home Assistant entity type. A
 | `ha_discovery_relay_app_id` | `ha_discovery_relay_app_id` | string \| null | `null` | Groups become relay-backed switch entities (outlet device class). |
 | `ha_discovery_pir_app_id` | `ha_discovery_pir_app_id` | string \| null | `null` | Groups become motion `binary_sensor` entities; also suppresses level tracking for that application. |
 | `ha_discovery_unlisted_groups` | `ha_discovery_unlisted_groups` | boolean | `false` | Announce a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default: unused and scene addresses also appear in the event stream. Turning this off retracts leftover discovery configs from the broker. (#63) |
-| `ha_discovery_trigger_app_id` | `ha_discovery_trigger_app_id` | string \| null | `null` | Keypad/scene trigger groups. Typically `202`. Publishes an `event` entity, a companion `button`, and a `scene` when `ha_discovery_scene_enabled`. Also gates the web UI's trigger label editing. |
+| `ha_discovery_trigger_app_id` | `ha_discovery_trigger_app_id` | string \| null | `null` | Keypad/scene trigger groups. Typically `202`. Publishes an `event` entity, a companion `button`, a `number` (action selector 0–255), and a `scene` when `ha_discovery_scene_enabled`. Also gates the web UI's trigger label editing. |
 | `ha_discovery_hvac_app_id` | `ha_discovery_hvac_app_id` | string \| null | `null` | Lighting-style HVAC application (level encodes temperature at 0.5 °C resolution). Distinct from the native Air Conditioning application below. |
 | `ha_hvac_temperature_unit` | `ha_hvac_temperature_unit` | `'C'` \| `'F'` | `'C'` | Unit advertised on climate entities. Anything other than `F` is treated as `C`. |
 

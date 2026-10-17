@@ -559,6 +559,27 @@ describe('CBusCommand', () => {
         });
     });
 
+    describe('Trigger payloads', () => {
+        it.each([
+            ['ON', 255],
+            ['PRESS', 255],
+            ['1', 1],
+            ['2', 2],
+            ['255', 255],
+            ['50%', 128],
+            [JSON.stringify({ event_type: 'trigger', level: 3 }), 3],
+        ])('maps payload %s to action selector %i', (payload, level) => {
+            const command = new CBusCommand('cbus/write/254/202/18/trigger', payload);
+            expect(command.isValid()).toBe(true);
+            expect(command.getLevel()).toBe(level);
+        });
+
+        it('clamps out-of-range raw selectors to 0–255', () => {
+            expect(new CBusCommand('cbus/write/254/202/1/trigger', '300').getLevel()).toBe(255);
+            expect(new CBusCommand('cbus/write/254/202/1/trigger', '-4').getLevel()).toBe(0);
+        });
+    });
+
     // === Command Type Validation ===
 
     describe('command type validation', () => {

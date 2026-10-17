@@ -2945,7 +2945,9 @@ configuration:
     description:
       en: >-
         C-Bus app ID for trigger groups (keypads, scenes). Common value: 202.
-        Leave empty to skip trigger discovery.
+        When set, each group becomes an event, a button, a number (action
+        selector 0–255), and optionally a scene. Leave empty to skip trigger
+        discovery.
       de: >-
         C-Bus App-ID für Triggergruppen (Tastenfelder, Szenen). Üblicher Wert:
         202. Leer lassen, um Triggererkennung zu überspringen.
@@ -3015,7 +3017,7 @@ configuration:
     description:
       en: >-
         Create a Home Assistant scene entity for each trigger group, in addition
-        to event and button entities. Default: enabled.
+        to event, button, and number entities. Default: enabled.
       de: >-
         Für jede Triggergruppe eine Home Assistant Szenen-Entität erstellen,
         zusätzlich zu Ereignis- und Tasten-Entitäten. Standard: aktiviert.

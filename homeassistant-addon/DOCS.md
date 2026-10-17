@@ -391,7 +391,7 @@ Disable auto-discovery (`auto_discover_networks: false`) if:
 | `ha_discovery_relay_app_id` | integer | (null) | C-Bus app ID whose groups become relay-backed switch entities (outlet device class). Leave empty to skip. |
 | `ha_discovery_pir_app_id` | integer | (null) | C-Bus app ID whose groups become motion binary sensors. Also stops level tracking for that application. Leave empty to skip. |
 | `ha_discovery_unlisted_groups` | boolean | `false` | Create a Home Assistant entity the first time a lighting-style group appears on the bus even if it is missing from the Toolkit project. Off by default because unused and scene addresses also appear in the event stream. Turning this off retracts those leftover entities from Home Assistant. |
-| `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event` entity, a companion `button` entity, and (when `ha_discovery_scene_enabled` is `true`) a `scene` entity. Leave empty to disable. |
+| `ha_discovery_trigger_app_id` | integer | (null) | C-Bus app ID for trigger groups (keypads, scene buttons). Typically `202`. Each group is exposed as an HA `event`, `button`, `number` (action selector 0–255), and (when `ha_discovery_scene_enabled` is `true`) a `scene`. Leave empty to disable. |
 | `ha_discovery_scene_enabled` | boolean | `true` | Publish an HA `scene` entity for each C-Bus trigger group in addition to the `event` and `button` entities. Set to `false` to suppress scene entities. |
 | `ha_discovery_auto_type` | boolean | `true` | Auto-detect device types for Lighting-application (56) groups. Detects motorised covers (blinds/shutters) from the group label. A manual `type_overrides` entry and a label prefix always take precedence; auto-detection only upgrades the default `light`. Setting this to `false` also disables `ha_discovery_type_from_unit`. Groups on the other `ha_discovery_*_app_id` applications are typed by their application-id mapping and are not classified here at all. |
 | `ha_discovery_type_from_label_prefix` | boolean | `false` | Treat a group label starting with an entity-domain prefix as that device type for discovery (e.g. `cover.bedroom_shutter` → cover, `switch.porch_light` → switch). Supported prefixes: `light.`, `cover.`, `switch.`, `relay.`, `pir.` A manual `type_overrides` entry always wins. |
@@ -687,7 +687,7 @@ C-Bus organises device functions into numbered **applications**. Each applicatio
 | 172 | Air Conditioning (native) | `climate` entity (auto-created per thermostat) + state topics keyed by source unit | `cbus_aircon_app_id: 172` (+ `cbus_aircon_control_enabled` for control) |
 | 208 | Security | `binary_sensor` per alarm zone (labels from application 1) + `alarm_control_panel` per network | On by default; `cbus_security_app_id: 0` disables; `cbus_security_control_enabled: true` for arming, plus `cbus_security_disarm_enabled: true` for disarming and `cbus_security_bypass_enabled: true` for force-arm |
 | 228 | Measurement | `sensor` per device/channel (unit/device_class from the reading) | Opt-in via `cbus_measurement_app_id: 228` — also enables the write path |
-| 202 | Trigger groups | `event` + `button` | Opt-in via `ha_discovery_trigger_app_id` |
+| 202 | Trigger groups | `event` + `button` + `number` (+ `scene`) | Opt-in via `ha_discovery_trigger_app_id` |
 | 203 | Enable Control (often covers) | `cover` | Opt-in via `ha_discovery_cover_app_id: 203` |
 | Custom | Enable Control (switches) | `switch` | Opt-in via `ha_discovery_switch_app_id` |
 | Custom | Enable Control (relays) | `switch` (outlet) | Opt-in via `ha_discovery_relay_app_id` |
@@ -702,12 +702,18 @@ The app ID values above are the C-Bus standard defaults. Some installations use 
 
 ### Trigger groups note
 
-Each trigger group address is published as **two** Home Assistant entities:
+Trigger discovery is **opt-in**. Set `ha_discovery_trigger_app_id: 202` (or your Trigger Control application ID). Leave it empty to disable.
 
-- An **`event`** entity that fires when the keypad button is pressed physically on the C-Bus network.
-- A **`button`** entity that allows Home Assistant to fire the scene programmatically.
+Each trigger group address is published as:
 
-To enable trigger discovery, set `ha_discovery_trigger_app_id: 202` (or your actual trigger application ID).
+- An **`event`** entity that fires when an action selector is seen on the network (`cbus/read/.../event` with `{"event_type":"trigger","level":N}`).
+- A **`button`** entity that fires action selector **255** (`cbus/write/.../trigger` with `ON`).
+- A **`number`** entity (0–255) that sets a specific **action selector**. This is how you replay Toolkit levels 0, 1, 2, … from Home Assistant.
+- A **`scene`** entity (when `ha_discovery_scene_enabled` is on) that also fires selector 255 via the same trigger topic.
+
+MQTT writes use C-Gate `TRIGGER EVENT`, not lighting `RAMP` or `ON`. Publish the raw selector to `cbus/write/{network}/{app}/{group}/trigger` (for example `2`), or JSON `{"level":2}`. There is no `…/level` write topic for triggers. Numeric payloads are action selectors, not percent — append `%` only if you want C-Gate's percent form.
+
+Toolkit “scenes” are often a **(trigger group × action selector)** pair. cgateweb discovers **one set of entities per trigger group**, not one entity per named Toolkit scene.
 
 ### HVAC note
 

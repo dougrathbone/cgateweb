@@ -38,6 +38,7 @@ const CGATE_CMD_ON = 'ON';
 const CGATE_CMD_OFF = 'OFF';
 const CGATE_CMD_RAMP = 'RAMP';
 const CGATE_CMD_TERMINATERAMP = 'TERMINATERAMP';  // Stop an in-progress ramp operation
+const CGATE_CMD_TRIGGER_EVENT = 'TRIGGER EVENT';  // Trigger Control action selector (C-Gate §4.5.214)
 const CGATE_CMD_GET = 'GET';
 const CGATE_CMD_TREEXML = 'TREEXML';
 // Event-mode opting the command session into level-6 events — needed to
@@ -68,6 +69,7 @@ const MQTT_TOPIC_SUFFIX_LEVEL = 'level';
 const MQTT_TOPIC_SUFFIX_POSITION = 'position';  // Cover position (0-100%)
 const MQTT_TOPIC_SUFFIX_TILT = 'tilt';          // Cover tilt angle (0-100%)
 const MQTT_TOPIC_SUFFIX_EVENT = 'event';        // Trigger group event
+const MQTT_TOPIC_SUFFIX_ACTION_SELECTOR = 'action_selector'; // Trigger Control action selector (0-255)
 // HVAC topic suffixes
 const MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP = 'current_temperature'; // Current temperature reading
 const MQTT_TOPIC_SUFFIX_HVAC_SETPOINT = 'setpoint';                // Target temperature setpoint
@@ -183,6 +185,7 @@ const HA_MODEL_TRIGGER = 'Trigger Group';
 const HA_MODEL_HVAC = 'HVAC Zone (Air Conditioning)';
 const HA_COMPONENT_EVENT = 'event';
 const HA_COMPONENT_SCENE = 'scene';
+const HA_COMPONENT_NUMBER = 'number';
 const HA_COMPONENT_ALARM_PANEL = 'alarm_control_panel';
 
 // HA Discovery health states surfaced as the per-network "Discovery" sensor.
@@ -263,6 +266,7 @@ module.exports = {
     CGATE_CMD_OFF,
     CGATE_CMD_RAMP,
     CGATE_CMD_TERMINATERAMP,
+    CGATE_CMD_TRIGGER_EVENT,
     CGATE_CMD_GET,
     CGATE_CMD_TREEXML,
     CGATE_CMD_EVENT_MODE_L6,
@@ -289,6 +293,7 @@ module.exports = {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_ACTION_SELECTOR,
     MQTT_TOPIC_SUFFIX_DISCOVERY_STATUS,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
@@ -380,6 +385,7 @@ module.exports = {
     HA_MODEL_HVAC,
     HA_COMPONENT_EVENT,
     HA_COMPONENT_SCENE,
+    HA_COMPONENT_NUMBER,
     HA_COMPONENT_ALARM_PANEL,
     DISCOVERY_STATE_DISCOVERING,
     DISCOVERY_STATE_OK,

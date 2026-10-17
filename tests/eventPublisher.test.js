@@ -856,7 +856,6 @@ describe('EventPublisher', () => {
 
             triggerPublisher.publishEvent(mockEvent, '(Test)');
 
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
             expect(mockPublishFn).toHaveBeenCalledWith(
                 `cbus/read/254/205/${group}/event`,
                 payload,
@@ -864,21 +863,44 @@ describe('EventPublisher', () => {
             );
         });
 
-        it('should not publish state or level topics for trigger events', () => {
+        it('should publish a retained action_selector when the trigger level is known', () => {
             const mockEvent = {
                 isValid: () => true,
                 getNetwork: () => '254',
                 getApplication: () => '205',
                 getGroup: () => '3',
-                getLevel: () => 128,
+                getLevel: () => 2,
+                getAction: () => 'on'
+            };
+
+            triggerPublisher.publishEvent(mockEvent);
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/3/event',
+                JSON.stringify({ event_type: 'trigger', level: 2 }),
+                { ...mockMqttOptions, retain: false }
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/3/action_selector',
+                '2',
+                mockMqttOptions
+            );
+        });
+
+        it('should not publish action_selector when the trigger level is unknown', () => {
+            const mockEvent = {
+                isValid: () => true,
+                getNetwork: () => '254',
+                getApplication: () => '205',
+                getGroup: () => '3',
+                getLevel: () => null,
                 getAction: () => 'on'
             };
 
             triggerPublisher.publishEvent(mockEvent);
 
             expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            const topic = mockPublishFn.mock.calls[0][0];
-            expect(topic).toBe('cbus/read/254/205/3/event');
+            expect(mockPublishFn.mock.calls[0][0]).toBe('cbus/read/254/205/3/event');
         });
 
         it('should not treat non-trigger app events as trigger events', () => {

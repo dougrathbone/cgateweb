@@ -26,6 +26,7 @@ const {
     MQTT_CMD_TYPE_REMOVE,
     CGATE_CMD_GET,
     CGATE_CMD_RAMP,
+    CGATE_CMD_TRIGGER_EVENT,
     CGATE_PARAM_LEVEL,
     NEWLINE,
     SECURITY_ARM_TOPIC_REGEX,
@@ -419,19 +420,29 @@ class MqttCommandRouter extends EventEmitter {
     }
 
     /**
-     * Handles trigger commands for C-Bus trigger groups.
-     * Fires the trigger at the specified level (default full level 255 for 'ON' payload).
+     * Handles trigger commands for C-Bus Trigger Control groups.
+     * Sends C-Gate TRIGGER EVENT with the action selector (0–255).
      * @param {CBusCommand} command - The trigger command
      * @param {string} topic - Original topic for error logging
      * @private
      */
     _handleTrigger(command, topic) {
-        this._queueRampCommand(command, topic, {
-            name: 'Trigger',
-            priority: null,
-            invalidText: `Invalid trigger payload for topic ${topic}`,
-            debugLine: (n, a, g, l) => `Firing trigger: ${n}/${a}/${g} at level ${l}`
-        });
+        if (!command.getGroup()) {
+            this.logger.warn(`Trigger command requires device ID on topic ${topic}`);
+            return;
+        }
+
+        const level = command.getLevel();
+        if (level === null || level === undefined) {
+            this.logger.warn(`Invalid trigger payload for topic ${topic}`);
+            return;
+        }
+
+        const cgateCommand = `${CGATE_CMD_TRIGGER_EVENT} ${this._buildCGatePath(command)} ${level}${NEWLINE}`;
+        this._queueCommand(cgateCommand);
+        this.logger.debug(
+            `Firing trigger: ${command.getNetwork()}/${command.getApplication()}/${command.getGroup()} action selector ${level}`
+        );
     }
 
     /**

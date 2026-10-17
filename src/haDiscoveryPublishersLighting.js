@@ -10,6 +10,7 @@ const {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_ACTION_SELECTOR,
     MQTT_CMD_TYPE_SWITCH,
     MQTT_CMD_TYPE_RAMP,
     MQTT_CMD_TYPE_POSITION,
@@ -20,10 +21,13 @@ const {
     MQTT_STATE_OFF,
     MQTT_COMMAND_STOP,
     MQTT_RETAINED_STATE_OPTIONS,
+    CGATE_LEVEL_MIN,
+    CGATE_LEVEL_MAX,
     HA_COMPONENT_LIGHT,
     HA_COMPONENT_BUTTON,
     HA_COMPONENT_BINARY_SENSOR,
     HA_COMPONENT_SCENE,
+    HA_COMPONENT_NUMBER,
     HA_DISCOVERY_SUFFIX,
     HA_MODEL_LIGHTING,
     HA_MODEL_TRIGGER
@@ -494,10 +498,12 @@ class _HaDiscoveryPublishersLighting {
         });
 
         // For trigger groups, also publish companion entities:
-        // - a button entity so HA automations can fire the C-Bus trigger via the trigger topic
-        // - a scene entity (when enabled) so HA scenes can activate the C-Bus scene via the switch topic
+        // - a button entity so HA automations can fire selector 255 via the trigger topic
+        // - a number entity so HA can set action selector 0-255
+        // - a scene entity (when enabled) that fires selector 255 via the same trigger topic
         if (config.isTrigger) {
             this._publishTriggerButton(networkId, appId, groupId, finalLabel);
+            this._publishTriggerActionNumber(networkId, appId, groupId, finalLabel);
             if (this.settings.ha_discovery_scene_enabled !== false) {
                 this._publishTriggerScene(networkId, appId, groupId, finalLabel);
             }
@@ -525,6 +531,31 @@ class _HaDiscoveryPublishersLighting {
         });
     }
 
+    _publishTriggerActionNumber(networkId, appId, groupId, label) {
+        const { entityIds } = this._labelSnapshot;
+        const labelKey = `${networkId}/${appId}/${groupId}`;
+        const uniqueId = `cgateweb_${networkId}_${appId}_${groupId}_action`;
+        const entityId = entityIds.get(labelKey);
+        this._finishTreeEntity({
+            discoveryTopic: `${this.settings.ha_discovery_prefix}/${HA_COMPONENT_NUMBER}/${uniqueId}/${HA_DISCOVERY_SUFFIX}`,
+            uniqueId,
+            entityId: entityId ? `${entityId}_action` : undefined,
+            component: HA_COMPONENT_NUMBER,
+            fields: {
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
+                state_topic: `${MQTT_TOPIC_PREFIX_READ}/${networkId}/${appId}/${groupId}/${MQTT_TOPIC_SUFFIX_ACTION_SELECTOR}`,
+                min: CGATE_LEVEL_MIN,
+                max: CGATE_LEVEL_MAX,
+                step: 1,
+                mode: 'box',
+                retain: false
+            },
+            deviceIdentifiers: [`cgateweb_${networkId}_${appId}_${groupId}`],
+            deviceName: label,
+            model: HA_MODEL_TRIGGER
+        });
+    }
+
     _publishTriggerScene(networkId, appId, groupId, label) {
         const { entityIds } = this._labelSnapshot;
         const labelKey = `${networkId}/${appId}/${groupId}`;
@@ -536,7 +567,8 @@ class _HaDiscoveryPublishersLighting {
             entityId: entityId ? `${entityId}_scene` : undefined,
             component: HA_COMPONENT_SCENE,
             fields: {
-                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_SWITCH}`,
+                // Trigger Control does not support ON; fire selector 255 via TRIGGER EVENT.
+                command_topic: `${MQTT_TOPIC_PREFIX_WRITE}/${networkId}/${appId}/${groupId}/${MQTT_CMD_TYPE_TRIGGER}`,
                 payload_on: MQTT_STATE_ON,
                 retain: false
             },

@@ -675,7 +675,7 @@ const SETTINGS_SCHEMA = {
         nullable: true,
         unit: 'none',
         exposure: 'both',
-        description: 'Keypad/scene trigger application (typically 202). Publishes an event entity, a companion button, and a scene when ha_discovery_scene_enabled. Also gates the web UI\'s trigger label editing.'
+        description: 'Keypad/scene trigger application (typically 202). Publishes an event entity, a companion button, a number for action selector 0-255, and a scene when ha_discovery_scene_enabled. Also gates the web UI\'s trigger label editing.'
     },
     ha_discovery_scene_enabled: {
         key: 'ha_discovery_scene_enabled',
@@ -683,7 +683,7 @@ const SETTINGS_SCHEMA = {
         default: true,
         unit: 'none',
         exposure: 'both',
-        description: 'Publish a Home Assistant scene entity per trigger group alongside the event and button entities.'
+        description: 'Publish a Home Assistant scene entity per trigger group alongside the event, button, and number entities.'
     },
     ha_discovery_auto_type: {
         key: 'ha_discovery_auto_type',

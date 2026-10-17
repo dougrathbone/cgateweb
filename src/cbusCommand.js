@@ -318,25 +318,49 @@ class CBusCommand {
     }
 
     /**
-     * Parses trigger payload for firing a C-Bus trigger group.
-     * 'ON' fires at full level (255).
-     * A numeric value (0-100) fires with the mapped C-Gate level (0-255).
+     * Parses trigger payload for firing a C-Bus Trigger Control action selector.
+     * Action selectors are discrete 0–255 values (not lighting percent).
+     * 'ON' / 'PRESS' fire selector 255. A trailing '%' keeps C-Gate's percent form.
+     * JSON matching the event payload ({"level":N}) is also accepted.
      * @private
      */
     _parseTriggerPayload() {
-        const upperPayload = this._payload.toUpperCase();
-        if (upperPayload === MQTT_STATE_ON) {
+        const payload = this._payload;
+        const upperPayload = payload.toUpperCase();
+        if (upperPayload === MQTT_STATE_ON || upperPayload === 'PRESS') {
             this._level = CGATE_LEVEL_MAX;
-        } else {
-            const levelValue = parseFloat(this._payload);
-            if (!isNaN(levelValue)) {
-                const clamped = Math.max(0, Math.min(100, levelValue));
-                this._level = Math.round((clamped / 100) * CGATE_LEVEL_MAX);
-            } else {
-                // Default to full level for any unrecognised payload
-                this._level = CGATE_LEVEL_MAX;
+            return;
+        }
+
+        if (payload.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(payload);
+                if (parsed && typeof parsed.level === 'number' && Number.isFinite(parsed.level)) {
+                    this._level = Math.round(Math.max(CGATE_LEVEL_MIN, Math.min(CGATE_LEVEL_MAX, parsed.level)));
+                    return;
+                }
+            } catch {
+                // Fall through to unrecognised → 255
             }
         }
+
+        if (payload.endsWith('%')) {
+            const percentValue = parseFloat(payload.slice(0, -1));
+            if (!isNaN(percentValue)) {
+                const clamped = Math.max(0, Math.min(100, percentValue));
+                this._level = Math.round((clamped / 100) * CGATE_LEVEL_MAX);
+                return;
+            }
+        }
+
+        const levelValue = parseFloat(payload);
+        if (!isNaN(levelValue)) {
+            this._level = Math.round(Math.max(CGATE_LEVEL_MIN, Math.min(CGATE_LEVEL_MAX, levelValue)));
+            return;
+        }
+
+        // Default to selector 255 for any unrecognised payload (matches button press)
+        this._level = CGATE_LEVEL_MAX;
     }
 
     isValid() {

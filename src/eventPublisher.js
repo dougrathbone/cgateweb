@@ -10,6 +10,7 @@ const {
     MQTT_TOPIC_SUFFIX_POSITION,
     MQTT_TOPIC_SUFFIX_TILT,
     MQTT_TOPIC_SUFFIX_EVENT,
+    MQTT_TOPIC_SUFFIX_ACTION_SELECTOR,
     MQTT_TOPIC_SUFFIX_HVAC_CURRENT_TEMP,
     MQTT_TOPIC_SUFFIX_HVAC_SETPOINT,
     MQTT_TOPIC_SUFFIX_HVAC_MODE,
@@ -54,6 +55,16 @@ const EVENT_KIND_HANDLERS = {
             eventPayload,
             ep._triggerMqttOptions
         );
+
+        // Retained action selector for the HA number entity (and MQTT readers).
+        // Omitted when the event carried no level — do not invent a selector.
+        if (ctx.rawLevel !== null && ctx.topics.actionSelector) {
+            ep._publishIfNeeded(
+                ctx.topics.actionSelector,
+                String(ctx.rawLevel),
+                ep.mqttOptions
+            );
+        }
     },
 
     hvac(ep, ctx) {
@@ -608,7 +619,8 @@ class EventPublisher {
             state: `${topicBase}/${MQTT_TOPIC_SUFFIX_STATE}`,
             level: `${topicBase}/${MQTT_TOPIC_SUFFIX_LEVEL}`,
             position: `${topicBase}/${MQTT_TOPIC_SUFFIX_POSITION}`,
-            event: `${topicBase}/${MQTT_TOPIC_SUFFIX_EVENT}`
+            event: `${topicBase}/${MQTT_TOPIC_SUFFIX_EVENT}`,
+            actionSelector: `${topicBase}/${MQTT_TOPIC_SUFFIX_ACTION_SELECTOR}`
         };
 
         if (this._topicCache.size >= this.topicCacheMaxEntries) {

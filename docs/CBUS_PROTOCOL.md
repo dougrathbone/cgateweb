@@ -86,12 +86,13 @@ Controls motorized devices like blinds, curtains, and garage doors.
 - `enable off <network>/<app>/<group>` - Cover fully closed
 - `enable ramp <network>/<app>/<group> <level>` - Cover at position level
 
-### Trigger Application (202)
-Handles general automation triggers and sensors.
+### Trigger Control Application (202 / $CA)
+Sends Trigger Control action selectors (discrete 0–255 values, not lighting brightness).
+C-Gate's write verb is `TRIGGER EVENT <address> <action-selector>` (or `N%` for the percent form).
+ON/OFF are not supported on this application.
 
-**Events:**
-- `trigger on <network>/<app>/<group>` - Trigger activated
-- `trigger off <network>/<app>/<group>` - Trigger deactivated
+**Events (typical SCP):**
+- `trigger event <network>/<app>/<group> <selector>` — action selector fired (also seen as lighting-style on/off in some streams)
 
 ### Air Conditioning Application (172)
 Native C-Bus HVAC thermostats. Unlike the apps above, C-Gate emits these as
@@ -157,7 +158,7 @@ Events are streamed continuously in this format:
 ```
 lighting on 254/56/4                 // Light 4 turned on
 lighting ramp 254/56/4 128           // Light 4 dimmed to 50%
-trigger on 254/202/10                // Motion sensor triggered
+trigger event 254/202/10 2           // Trigger Control action selector 2
 enable on 254/203/2                  // Blind started opening
 ```
 
@@ -168,8 +169,10 @@ MQTT topics follow this pattern:
 ```
 cbus/write/<network>/<app>/<group>/<command>    // Commands TO C-Bus
 cbus/read/<network>/<app>/<group>/state         // Status FROM C-Bus
-cbus/read/<network>/<app>/<group>/level         // Level FROM C-Bus (0-100%)
+cbus/read/<network>/<app>/<group>/level         // Level FROM C-Bus (0-100% for lighting)
 cbus/read/<network>/<app>/<group>/position      // Cover position FROM C-Bus (0-100%)
+cbus/read/<network>/<app>/<group>/event         // Trigger event JSON (not retained)
+cbus/read/<network>/<app>/<group>/action_selector // Trigger action selector 0-255 (retained)
 ```
 
 ### Command Translation
@@ -183,6 +186,12 @@ MQTT commands are translated to C-Gate commands:
 | `cbus/write/254/56/4/ramp` | `75,2s` | `RAMP //Project/254/56/4 191 2s` |
 | `cbus/write/254/203/1/position` | `50` | `RAMP //Project/254/203/1 128` |
 | `cbus/write/254/203/1/stop` | `STOP` | `TERMINATERAMP //Project/254/203/1` |
+| `cbus/write/254/202/18/trigger` | `2` | `TRIGGER EVENT //Project/254/202/18 2` |
+| `cbus/write/254/202/18/trigger` | `ON` | `TRIGGER EVENT //Project/254/202/18 255` |
+| `cbus/write/254/202/18/trigger` | `50%` | `TRIGGER EVENT //Project/254/202/18 128` |
+| `cbus/write/254/202/18/trigger` | `{"level":2}` | `TRIGGER EVENT //Project/254/202/18 2` |
+
+Numeric trigger payloads are **action selectors 0–255**, not lighting percent. Append `%` only when you want the C-Gate percent form. There is no `…/level` write command for triggers.
 
 ### Event Translation  
 C-Bus events are published to MQTT:
@@ -193,6 +202,8 @@ C-Bus events are published to MQTT:
 | `lighting ramp 254/56/4 128` | `cbus/read/254/56/4/level` | `50` |
 | `enable ramp 254/203/1 128` | `cbus/read/254/203/1/position` | `50` |
 | `enable on 254/203/1` | `cbus/read/254/203/1/state` | `ON` |
+| Trigger Control level N on 254/202/18 | `cbus/read/254/202/18/event` | `{"event_type":"trigger","level":N}` (not retained) |
+| (same) | `cbus/read/254/202/18/action_selector` | `N` (retained) |
 
 ## Error Handling
 

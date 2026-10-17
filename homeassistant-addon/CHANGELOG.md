@@ -11,6 +11,20 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.39.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.0) - 2026-10-17
+
+### Breaking changes
+
+- **MQTT trigger writes that used 0–100 percent now mean action selector 0–255.** Publish ON for selector 255, or append a percent sign for the old mapping. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
+### Added
+
+- **Trigger groups expose a Home Assistant number entity for action selector 0–255.** Opt-in via the trigger application ID setting. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
+### Fixed
+
+- **Trigger writes now send C-Gate TRIGGER EVENT so action selectors reach the network.** Scene companions use the same trigger topic instead of an unsupported ON. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
 ## [1.38.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.38.1) - 2026-10-17
 
 ### Changed

@@ -409,6 +409,26 @@ describe('HaDiscovery', () => {
             expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
         });
 
+        it('should publish companion number entity for action selector 0–255', () => {
+            mockSettings.ha_discovery_trigger_app_id = '203';
+            mockSettings.ha_discovery_cover_app_id = null;
+
+            publishTree(haDiscovery);
+
+            const payload = findDiscoveryPayload(
+                mockPublishFn,
+                'testhomeassistant/number/cgateweb_254_203_15_action/config'
+            );
+            expect(payload).toBeDefined();
+            expect(payload.command_topic).toBe('cbus/write/254/203/15/trigger');
+            expect(payload.state_topic).toBe('cbus/read/254/203/15/action_selector');
+            expect(payload.min).toBe(0);
+            expect(payload.max).toBe(255);
+            expect(payload.step).toBe(1);
+            expect(payload.unique_id).toBe('cgateweb_254_203_15_action');
+            expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
+        });
+
         it('migrates trigger entities into one device discovery payload', () => {
             mockSettings.ha_discovery_trigger_app_id = '203';
             mockSettings.ha_discovery_cover_app_id = null;
@@ -423,10 +443,12 @@ describe('HaDiscovery', () => {
             expect(Object.keys(payload.components)).toEqual([
                 'cgateweb_254_203_15',
                 'cgateweb_254_203_15_btn',
+                'cgateweb_254_203_15_action',
                 'cgateweb_254_203_15_scene'
             ]);
             expect(payload.components.cgateweb_254_203_15.platform).toBe('event');
             expect(payload.components.cgateweb_254_203_15_btn.platform).toBe('button');
+            expect(payload.components.cgateweb_254_203_15_action.platform).toBe('number');
             expect(payload.components.cgateweb_254_203_15_scene.platform).toBe('scene');
             expect(payload.device.identifiers).toEqual(['cgateweb_254_203_15']);
 
@@ -463,6 +485,7 @@ describe('HaDiscovery', () => {
             expect(store.topics).toEqual(expect.arrayContaining([
                 'testhomeassistant/event/cgateweb_254_203_15/config',
                 'testhomeassistant/button/cgateweb_254_203_15_btn/config',
+                'testhomeassistant/number/cgateweb_254_203_15_action/config',
                 'testhomeassistant/scene/cgateweb_254_203_15_scene/config'
             ]));
             expect(store.bridgeDiagnostics).toBe(false);
@@ -2832,14 +2855,14 @@ describe('HaDiscovery', () => {
             expect(sceneCall).toBeDefined();
             expect(sceneCall[0]).toMatch(/\/scene\//);
             const payload = JSON.parse(sceneCall[1]);
-            expect(payload.command_topic).toBe('cbus/write/254/202/1/switch');
+            expect(payload.command_topic).toBe('cbus/write/254/202/1/trigger');
             expect(payload.unique_id).toBe('cgateweb_254_202_1_scene');
             expect(payload.payload_on).toBe('ON');
             expect(payload.device.identifiers).toEqual(['cgateweb_254_202_1']);
             expect(payload.device.name).toBe('Entry Scene');
         });
 
-        it('should publish event, button, and scene entities for each trigger group', () => {
+        it('should publish event, button, number, and scene entities for each trigger group', () => {
             haDiscovery._publishDiscoveryFromTree('254', TRIGGER_TREE_DATA);
 
             const eventCalls = mockPublishFn.mock.calls.filter(
@@ -2848,12 +2871,16 @@ describe('HaDiscovery', () => {
             const buttonCalls = mockPublishFn.mock.calls.filter(
                 c => c[0].includes('/button/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
+            const numberCalls = mockPublishFn.mock.calls.filter(
+                c => c[0].includes('/number/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
+            );
             const sceneCalls = mockPublishFn.mock.calls.filter(
                 c => c[0].includes('/scene/') && c[0].endsWith('/config') && isFullDiscoveryPayload(c[1])
             );
-            // 2 trigger groups → 2 event + 2 button + 2 scene entities
+            // 2 trigger groups → 2 event + 2 button + 2 number + 2 scene entities
             expect(eventCalls.length).toBe(2);
             expect(buttonCalls.length).toBe(2);
+            expect(numberCalls.length).toBe(2);
             expect(sceneCalls.length).toBe(2);
         });
 
@@ -2890,7 +2917,7 @@ describe('HaDiscovery', () => {
 
             const payload = findDiscoveryPayload(mockPublishFn, 'testhomeassistant/scene/cgateweb_254_202_5_scene/config');
             expect(payload).toBeDefined();
-            expect(payload.command_topic).toBe('cbus/write/254/202/5/switch');
+            expect(payload.command_topic).toBe('cbus/write/254/202/5/trigger');
             expect(payload.unique_id).toBe('cgateweb_254_202_5_scene');
             expect(payload.device.name).toBe('Movie Mode');
         });

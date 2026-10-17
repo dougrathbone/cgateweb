@@ -1222,12 +1222,21 @@ describe('MqttCommandRouter', () => {
 
     describe('Trigger Commands', () => {
         it.each([
-            ['ON', 255], ['100', 255], ['PRESS', 255],
-            ['50', 128],
+            ['ON', 255],
+            ['PRESS', 255],
             ['0', 0],
-        ])('should map trigger payload %s to C-Gate level %i', (payload, level) => {
+            ['1', 1],
+            ['2', 2],
+            ['50', 50],
+            ['100', 100],
+            ['255', 255],
+            ['50%', 128],
+            ['100%', 255],
+            [JSON.stringify({ event_type: 'trigger', level: 2 }), 2],
+            [JSON.stringify({ level: 18 }), 18],
+        ])('should send TRIGGER EVENT for payload %s with action selector %i', (payload, level) => {
             router.routeMessage('cbus/write/254/202/1/trigger', payload);
-            expect(queueSpy).toHaveBeenCalledWith(`RAMP //TestProject/254/202/1 ${level}\n`);
+            expect(queueSpy).toHaveBeenCalledWith(`TRIGGER EVENT //TestProject/254/202/1 ${level}\n`);
         });
 
         it('should reject trigger command without device ID', () => {
@@ -1236,9 +1245,8 @@ describe('MqttCommandRouter', () => {
             expect(queueSpy).not.toHaveBeenCalled();
         });
 
-        it('should send ON command when scene entity activates trigger group via switch topic with ON payload', () => {
-            // Scene entities use the /switch topic with ON payload to activate a C-Bus scene.
-            // This verifies that the existing switch handler correctly routes ON to C-Gate ON command.
+        it('should still route a bare switch ON on a trigger address (legacy path)', () => {
+            // Discovery scenes now use /trigger; /switch remains the lighting-style path.
             router.routeMessage('cbus/write/254/202/1/switch', 'ON');
 
             expect(queueSpy).toHaveBeenCalledWith('ON //TestProject/254/202/1\n');
