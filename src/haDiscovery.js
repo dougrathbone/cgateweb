@@ -776,6 +776,13 @@ class HaDiscovery {
             collectUnitGroups(unit, groupsByApp, targetApps);
         });
 
+        // A flat TREEXML unit exposes one shared Groups list for every application
+        // it advertises. On keypads with a secondary Trigger Control application,
+        // those are often lighting key assignments rather than trigger groups.
+        // Project labels enumerate the actual trigger groups, so prefer that
+        // authoritative list whenever it is available.
+        this._replaceTriggerGroupsFromLabels(networkId, triggerAppId, groupsByApp);
+
         // Which unit types drive each group, so a group can be classified by its
         // hardware instead of by its name (issues #38, #37). Run-scoped instance
         // Run-scoped instance state, cleared in _withDiscoveryRun's finally like
@@ -879,6 +886,36 @@ class HaDiscovery {
                 this.onNetworkDiscovered(networkId);
             }
         }
+    }
+
+    /**
+     * Replace ambiguous TREEXML trigger groups with the groups defined by the
+     * imported Toolkit project. Structured TREEXML remains the fallback when no
+     * trigger labels are available.
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     */
+    _replaceTriggerGroupsFromLabels(networkId, triggerAppId, groupsByApp) {
+        if (triggerAppId === null || triggerAppId === undefined || triggerAppId === '') return;
+        const { labelMap } = this._labelSnapshot;
+        if (!labelMap || labelMap.size === 0) return;
+
+        const appId = String(triggerAppId);
+        const prefix = `${networkId}/${appId}/`;
+        const projectGroups = new Map();
+
+        for (const [labelKey] of labelMap) {
+            if (!labelKey.startsWith(prefix)) continue;
+            const groupId = labelKey.substring(prefix.length);
+            if (groupId) {
+                projectGroups.set(groupId, { GroupAddress: groupId });
+            }
+        }
+
+        if (projectGroups.size === 0) return;
+        groupsByApp.set(appId, projectGroups);
+        this.logger.info(
+            `Using ${projectGroups.size} project-labeled trigger groups for network ${networkId}, application ${appId}`
+        );
     }
 
     /**

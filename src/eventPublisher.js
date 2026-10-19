@@ -228,7 +228,9 @@ class EventPublisher {
             );
         }
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
-        const isTrigger = application === this.settings.ha_discovery_trigger_app_id;
+        const isTrigger = this.settings.ha_discovery_trigger_app_id !== null
+            && this.settings.ha_discovery_trigger_app_id !== undefined
+            && application === String(this.settings.ha_discovery_trigger_app_id);
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
