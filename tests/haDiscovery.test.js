@@ -2444,11 +2444,11 @@ describe('HaDiscovery', () => {
             expect(findDiscoveryPayload(
                 mockPublishFn,
                 'testhomeassistant/event/cgateweb_254_202_55/config'
-            )).toBeUndefined();
+            )).toBeNull();
             expect(findDiscoveryPayload(
                 mockPublishFn,
                 'testhomeassistant/event/cgateweb_254_202_102/config'
-            )).toBeUndefined();
+            )).toBeNull();
         });
     });
 
