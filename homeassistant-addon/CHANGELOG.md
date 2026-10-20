@@ -11,6 +11,13 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.39.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.1) - 2026-10-19
+
+### Fixed
+
+- **Incoming trigger events now keep the Toolkit action selector instead of showing a lighting percentage.** This is a new read-side cause after the 1.39.0 write fix. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+- **Trigger groups discovered in Home Assistant now match the imported project instead of leftover keypad groups.** ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
 ## [1.39.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.0) - 2026-10-17
 
 ### Breaking changes

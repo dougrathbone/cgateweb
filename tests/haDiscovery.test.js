@@ -2403,6 +2403,53 @@ describe('HaDiscovery', () => {
             expect(payload.default_entity_id).toBe('cover.extra_blind');
             expect(payload.object_id).toBe('extra_blind');
         });
+
+        it('should use project labels instead of ambiguous flat trigger groups', () => {
+            const flatTree = {
+                Network: {
+                    NetworkNumber: '254',
+                    Unit: [{
+                        UnitAddress: '10',
+                        Application: '56, 202',
+                        Groups: '55, 102'
+                    }]
+                }
+            };
+            const settings = {
+                ...mockSettings,
+                ha_discovery_trigger_app_id: '202',
+                ha_discovery_cover_app_id: null
+            };
+            const labelData = {
+                labels: new Map([
+                    ['254/202/0', 'Arrival'],
+                    ['254/202/5', 'Movie Mode']
+                ]),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(settings, mockPublishFn, mockSendCommandFn, labelData);
+
+            ha._publishDiscoveryFromTree('254', flatTree);
+
+            expect(findDiscoveryPayload(
+                mockPublishFn,
+                'testhomeassistant/event/cgateweb_254_202_0/config'
+            )).toBeDefined();
+            expect(findDiscoveryPayload(
+                mockPublishFn,
+                'testhomeassistant/event/cgateweb_254_202_5/config'
+            )).toBeDefined();
+            expect(findDiscoveryPayload(
+                mockPublishFn,
+                'testhomeassistant/event/cgateweb_254_202_55/config'
+            )).toBeNull();
+            expect(findDiscoveryPayload(
+                mockPublishFn,
+                'testhomeassistant/event/cgateweb_254_202_102/config'
+            )).toBeNull();
+        });
     });
 
     describe('Stale Discovery Cleanup', () => {

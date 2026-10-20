@@ -887,6 +887,35 @@ describe('EventPublisher', () => {
             );
         });
 
+        it.each(['202', 202])(
+            'should preserve raw selectors from lighting-shaped trigger events with app setting %p',
+            (triggerAppId) => {
+                const publisher = new EventPublisher({
+                    settings: {
+                        ...mockSettings,
+                        ha_discovery_pir_app_id: null,
+                        ha_discovery_trigger_app_id: triggerAppId
+                    },
+                    publishFn: mockPublishFn,
+                    mqttOptions: mockMqttOptions,
+                    logger: mockLogger
+                });
+
+                publisher.publishEvent(new CBusEvent('lighting ramp 254/202/15 3'));
+
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/202/15/action_selector',
+                    '3',
+                    mockMqttOptions
+                );
+                expect(mockPublishFn).not.toHaveBeenCalledWith(
+                    'cbus/read/254/202/15/level',
+                    expect.anything(),
+                    expect.anything()
+                );
+            }
+        );
+
         it('should not publish action_selector when the trigger level is unknown', () => {
             const mockEvent = {
                 isValid: () => true,
