@@ -11,6 +11,17 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.39.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.2) - 2026-10-26
+
+### Action required
+
+- **Restart the add-on after upgrading so trigger discovery runs again.** Deleting the MQTT state tree does not remove Home Assistant entities or rediscover groups. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
+### Fixed
+
+- **A trigger action selector no longer stays published as a lighting percentage.** 1.39.1 stopped new percentage publishes; this release clears the retained level left behind. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+- **Leftover trigger groups from keypad assignments are removed from Home Assistant when project labels replace them.** ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
 ## [1.39.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.1) - 2026-10-19
 
 ### Fixed
