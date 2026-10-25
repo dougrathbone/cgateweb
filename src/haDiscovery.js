@@ -9,6 +9,10 @@ const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
     HA_COMPONENT_SENSOR,
+    HA_COMPONENT_EVENT,
+    HA_COMPONENT_BUTTON,
+    HA_COMPONENT_NUMBER,
+    HA_COMPONENT_SCENE,
     HA_DISCOVERY_SUFFIX,
     DISCOVERY_STATE_OK
 } = require('./constants');
@@ -781,7 +785,7 @@ class HaDiscovery {
         // those are often lighting key assignments rather than trigger groups.
         // Project labels enumerate the actual trigger groups, so prefer that
         // authoritative list whenever it is available.
-        this._replaceTriggerGroupsFromLabels(networkId, triggerAppId, groupsByApp);
+        const droppedTriggerGroups = this._replaceTriggerGroupsFromLabels(networkId, triggerAppId, groupsByApp);
 
         // Which unit types drive each group, so a group can be classified by its
         // hardware instead of by its name (issues #38, #37). Run-scoped instance
@@ -822,6 +826,12 @@ class HaDiscovery {
                 this._processEnableControlGroups(networkId, appId, groups);
             }
         }
+
+        // Groups that were only on the flat TREEXML list (keypad lighting
+        // assignments copied onto the trigger application) are no longer
+        // published, but their discovery configs from the previous process
+        // are still retained. Clear them or Home Assistant keeps the entity.
+        this._retractDroppedTriggerGroups(networkId, triggerAppId, droppedTriggerGroups);
 
         // Supplement with labeled groups not found in TREEXML.
         // C-Gate's flat TREEXML format omits groups not assigned to specific units,
@@ -895,9 +905,9 @@ class HaDiscovery {
      * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     _replaceTriggerGroupsFromLabels(networkId, triggerAppId, groupsByApp) {
-        if (triggerAppId === null || triggerAppId === undefined || triggerAppId === '') return;
+        if (triggerAppId === null || triggerAppId === undefined || triggerAppId === '') return [];
         const { labelMap } = this._labelSnapshot;
-        if (!labelMap || labelMap.size === 0) return;
+        if (!labelMap || labelMap.size === 0) return [];
 
         const appId = String(triggerAppId);
         const prefix = `${networkId}/${appId}/`;
@@ -906,16 +916,61 @@ class HaDiscovery {
         for (const [labelKey] of labelMap) {
             if (!labelKey.startsWith(prefix)) continue;
             const groupId = labelKey.substring(prefix.length);
-            if (groupId) {
-                projectGroups.set(groupId, { GroupAddress: groupId });
-            }
+            // A label key is one group address. Skip action-selector suffixes
+            // and the Toolkit unused terminator (255).
+            if (!/^\d{1,3}$/.test(groupId)) continue;
+            const groupNum = Number(groupId);
+            if (groupNum > 254) continue;
+            projectGroups.set(groupId, { GroupAddress: groupId });
         }
 
-        if (projectGroups.size === 0) return;
+        if (projectGroups.size === 0) return [];
+        const previous = groupsByApp.get(appId);
+        const dropped = [];
+        if (previous) {
+            for (const groupId of previous.keys()) {
+                if (!projectGroups.has(String(groupId))) dropped.push(String(groupId));
+            }
+        }
         groupsByApp.set(appId, projectGroups);
         this.logger.info(
             `Using ${projectGroups.size} project-labeled trigger groups for network ${networkId}, application ${appId}`
         );
+        return dropped;
+    }
+
+    /**
+     * Publish empty retained discovery configs for trigger groups that the
+     * project label list replaced, including the bundled device topic and the
+     * legacy per-component topics from before device discovery.
+     * @param {string|number} networkId
+     * @param {string|number|null|undefined} triggerAppId
+     * @param {string[]} groupIds
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
+     */
+    _retractDroppedTriggerGroups(networkId, triggerAppId, groupIds) {
+        if (!groupIds || groupIds.length === 0) return;
+        if (triggerAppId === null || triggerAppId === undefined || triggerAppId === '') return;
+        const appId = String(triggerAppId);
+        const prefix = this.settings.ha_discovery_prefix;
+        const components = [
+            ['device', ''],
+            [HA_COMPONENT_EVENT, ''],
+            [HA_COMPONENT_BUTTON, '_btn'],
+            [HA_COMPONENT_NUMBER, '_action'],
+            [HA_COMPONENT_SCENE, '_scene']
+        ];
+        for (const groupId of groupIds) {
+            const baseId = `cgateweb_${networkId}_${appId}_${groupId}`;
+            for (const [component, suffix] of components) {
+                const topic = `${prefix}/${component}/${baseId}${suffix}/${HA_DISCOVERY_SUFFIX}`;
+                this.logger.debug(`Clearing dropped trigger discovery topic: ${topic}`);
+                this._publish(topic, '', MQTT_RETAINED_STATE_OPTIONS);
+                this._publishedTopics.delete(topic);
+                if (this._currentRunTopics) this._currentRunTopics.delete(topic);
+            }
+            if (this._deviceDiscoveryComponents) this._deviceDiscoveryComponents.delete(baseId);
+        }
     }
 
     /**

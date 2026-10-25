@@ -17,9 +17,44 @@ const {
     MQTT_TOPIC_SUFFIX_SOURCE_UNIT,
     MQTT_STATE_ON,
     MQTT_STATE_OFF,
+    MQTT_RETAINED_STATE_OPTIONS,
     CGATE_CMD_ON,
     CGATE_LEVEL_MAX
 } = require('./constants');
+
+/**
+ * True when this address is the configured Trigger Control application.
+ * Trims and compares numerically so "202", 202 and " 202 " are the same app.
+ * @param {Object} settings
+ * @param {string} application
+ * @returns {boolean}
+ */
+function isConfiguredTriggerApp(settings, application) {
+    const configured = settings && settings.ha_discovery_trigger_app_id;
+    if (configured === null || configured === undefined || configured === '') return false;
+    const left = String(configured).trim();
+    const right = String(application).trim();
+    if (left === '' || right === '') return false;
+    if (left === right) return true;
+    const leftNum = Number(left);
+    const rightNum = Number(right);
+    return Number.isInteger(leftNum) && Number.isInteger(rightNum) && leftNum === rightNum;
+}
+
+/**
+ * Trigger Control lines are either device-type "trigger" or lighting-shaped
+ * ramps on the configured trigger application. Either one carries an action
+ * selector, not a lighting percentage.
+ * @param {Object} settings
+ * @param {{ getDeviceType?: Function }} event
+ * @param {string} application
+ * @returns {boolean}
+ */
+function isTriggerPublication(settings, event, application) {
+    const deviceType = typeof event.getDeviceType === 'function' ? event.getDeviceType() : null;
+    if (typeof deviceType === 'string' && deviceType.toLowerCase() === 'trigger') return true;
+    return isConfiguredTriggerApp(settings, application);
+}
 
 /**
  * Dispatch table for publishReading: kind → handler(ep, base, reading).
@@ -65,6 +100,12 @@ const EVENT_KIND_HANDLERS = {
                 ep.mqttOptions
             );
         }
+
+        // A previous build published this address as a light, so /level still
+        // holds the lighting percentage (selector 2 retained as "1"). Clear
+        // those retained values. The selector lives on action_selector.
+        ep._publishIfNeeded(ctx.topics.level, '', MQTT_RETAINED_STATE_OPTIONS);
+        ep._publishIfNeeded(ctx.topics.state, '', MQTT_RETAINED_STATE_OPTIONS);
     },
 
     hvac(ep, ctx) {
@@ -228,9 +269,7 @@ class EventPublisher {
             );
         }
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
-        const isTrigger = this.settings.ha_discovery_trigger_app_id !== null
-            && this.settings.ha_discovery_trigger_app_id !== undefined
-            && application === String(this.settings.ha_discovery_trigger_app_id);
+        const isTrigger = isTriggerPublication(this.settings, event, application);
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;

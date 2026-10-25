@@ -887,6 +887,63 @@ describe('EventPublisher', () => {
             );
         });
 
+        it('should keep a trigger-event line on the selector path when trigger discovery is off', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    ha_discovery_pir_app_id: null,
+                    ha_discovery_trigger_app_id: null
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: mockMqttOptions,
+                logger: mockLogger
+            });
+
+            publisher.publishEvent(new CBusEvent('trigger event 254/202/17 2'));
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/202/17/action_selector',
+                '2',
+                mockMqttOptions
+            );
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'cbus/read/254/202/17/level',
+                '1',
+                expect.anything()
+            );
+        });
+
+        it('should clear a retained lighting level when a trigger selector is published', () => {
+            const publisher = new EventPublisher({
+                settings: {
+                    ...mockSettings,
+                    ha_discovery_pir_app_id: null,
+                    ha_discovery_trigger_app_id: ' 202 '
+                },
+                publishFn: mockPublishFn,
+                mqttOptions: { retain: false, qos: 0 },
+                logger: mockLogger
+            });
+
+            publisher.publishEvent(new CBusEvent('lighting ramp 254/202/17 2'));
+
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/202/17/action_selector',
+                '2',
+                { retain: false, qos: 0 }
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/202/17/level',
+                '',
+                { retain: true, qos: 0 }
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/202/17/state',
+                '',
+                { retain: true, qos: 0 }
+            );
+        });
+
         it.each(['202', 202])(
             'should preserve raw selectors from lighting-shaped trigger events with app setting %p',
             (triggerAppId) => {
@@ -910,8 +967,13 @@ describe('EventPublisher', () => {
                 );
                 expect(mockPublishFn).not.toHaveBeenCalledWith(
                     'cbus/read/254/202/15/level',
-                    expect.anything(),
+                    '1',
                     expect.anything()
+                );
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'cbus/read/254/202/15/level',
+                    '',
+                    { retain: true, qos: 0 }
                 );
             }
         );
@@ -928,8 +990,21 @@ describe('EventPublisher', () => {
 
             triggerPublisher.publishEvent(mockEvent);
 
-            expect(mockPublishFn).toHaveBeenCalledTimes(1);
-            expect(mockPublishFn.mock.calls[0][0]).toBe('cbus/read/254/205/3/event');
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/3/event',
+                JSON.stringify({ event_type: 'trigger' }),
+                { ...mockMqttOptions, retain: false }
+            );
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'cbus/read/254/205/3/action_selector',
+                expect.anything(),
+                expect.anything()
+            );
+            expect(mockPublishFn).toHaveBeenCalledWith(
+                'cbus/read/254/205/3/level',
+                '',
+                { retain: true, qos: 0 }
+            );
         });
 
         it('should not treat non-trigger app events as trigger events', () => {

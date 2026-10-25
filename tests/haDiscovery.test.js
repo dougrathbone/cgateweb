@@ -2450,6 +2450,49 @@ describe('HaDiscovery', () => {
                 'testhomeassistant/event/cgateweb_254_202_102/config'
             )).toBeNull();
         });
+
+        it('should retract trigger groups that the project labels replaced', () => {
+            const flatTree = {
+                Network: {
+                    NetworkNumber: '254',
+                    Unit: [{
+                        UnitAddress: '10',
+                        Application: '56, 202',
+                        Groups: '55, 102'
+                    }]
+                }
+            };
+            const settings = {
+                ...mockSettings,
+                ha_discovery_trigger_app_id: '202',
+                ha_discovery_cover_app_id: null
+            };
+            const labelData = {
+                labels: new Map([
+                    ['254/202/0', 'Arrival'],
+                    ['254/202/5', 'Movie Mode']
+                ]),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set()
+            };
+            const ha = new HaDiscovery(settings, mockPublishFn, mockSendCommandFn, labelData);
+
+            ha._publishDiscoveryFromTree('254', flatTree);
+
+            for (const groupId of ['55', '102']) {
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    `testhomeassistant/device/cgateweb_254_202_${groupId}/config`,
+                    '',
+                    { retain: true, qos: 0 }
+                );
+            }
+            expect(mockPublishFn).not.toHaveBeenCalledWith(
+                'testhomeassistant/device/cgateweb_254_202_0/config',
+                '',
+                expect.anything()
+            );
+        });
     });
 
     describe('Stale Discovery Cleanup', () => {
