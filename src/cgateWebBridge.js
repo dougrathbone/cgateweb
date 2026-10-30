@@ -1,7 +1,7 @@
 // @ts-check
 const BridgeInitializationService = require('./bridgeInitializationService');
 const CBusEvent = require('./cbusEvent');
-const { LINE_UNPARSED } = require('./applicationDecoders/appEventLine');
+const { LINE_UNPARSED, decodeTriggerMinMaxLine } = require('./applicationDecoders/appEventLine');
 const clockDecoder = require('./applicationDecoders/clockDecoder');
 const { discoverIngressEntry } = require('./ingressDiscovery');
 const { createLogger, resolveLogLevelFromSettings } = require('./logger');
@@ -527,6 +527,39 @@ class CgateWebBridge {
      *   for clock traffic left undecoded (feature off, or a shape the decoder
      *   will not guess at), false if not clock traffic.
      */
+    /**
+     * Handles the keypad/hardware-native shape of Trigger Control (app 202 /
+     * $CA) events: a `#`-comment-prefixed "trigger min|max //PROJECT/<net>/
+     * <app>/<group>" line C-Gate emits when a trigger group's action selector
+     * is driven to its bottom or top value from a hardware source (e.g. a
+     * keypad "Secondary Application" key), rather than a `TRIGGER EVENT`
+     * command. Left alone, the generic comment filter below would drop these
+     * lines outright, so the keypad press never reaches the retained
+     * action_selector topic (issue #162). Numeric selectors ("trigger event
+     * <addr> <n>") are not comment-prefixed and already reach CBusEvent
+     * directly, so this handler only needs to cover min/max.
+     *
+     * Rewrites the line into the same shape a numeric TRIGGER EVENT produces
+     * and republishes it through the standard path, so discovery, dedup and
+     * the retained action_selector topic all behave identically to a numeric
+     * selector.
+     *
+     * @param {string} line
+     * @returns {true|false} true if consumed (a trigger min/max line), false
+     *   if not trigger min/max traffic at all.
+     */
+    _handleTriggerMinMaxLine(line) {
+        const rewritten = decodeTriggerMinMaxLine(line);
+        if (rewritten === null) return false;
+
+        this._publishRawEventCapture(line);
+        if (this.logger.isLevelEnabled && this.logger.isLevelEnabled('debug')) {
+            this.logger.debug(`C-Gate Recv (Evt): ${redactCgateLine(line)}`);
+        }
+        this._publishParsedEvent(rewritten);
+        return true;
+    }
+
     _handleClockLine(line) {
         if (!clockDecoder.isClockLine(line)) return false;
 
@@ -555,7 +588,9 @@ class CgateWebBridge {
      * and the unparsed branch below can skip CBusEvent without re-scanning.
      * Security and aircon are `#`-comment-prefixed; clock is not, but is
      * claimed here so a comment-prefixed variant is not swallowed as a
-     * generic comment.
+     * generic comment. Trigger only claims the `#`-comment-prefixed min/max
+     * shape (always true/false, never LINE_UNPARSED) — numeric selectors are
+     * not comment-prefixed and reach CBusEvent directly.
      * @private
      */
     _runAppLineHandlers(line) {
@@ -564,7 +599,8 @@ class CgateWebBridge {
             ['aircon', () => this._handleAirconLine(line)],
             ['security', () => this._handleSecurityLine(line)],
             ['measurement', () => this._handleMeasurementLine(line)],
-            ['clock', () => this._handleClockLine(line)]
+            ['clock', () => this._handleClockLine(line)],
+            ['trigger', () => this._handleTriggerMinMaxLine(line)]
         ];
         /** @type {Record<string, true|typeof LINE_UNPARSED|false>} */
         const states = {};
@@ -625,6 +661,20 @@ class CgateWebBridge {
 
         if (this._dropUnparsedAppLine(appLine.states, line)) return;
 
+        this._publishParsedEvent(line);
+    }
+
+    /**
+     * Parses `line` into a CBusEvent and publishes it through the standard
+     * path (event publish, device-state tracking, temperature/unlisted-group
+     * discovery). Shared by the main non-comment event path above and by
+     * _handleTriggerMinMaxLine, whose rewritten "trigger event <addr>
+     * <selector>" line re-enters here exactly as a numeric TRIGGER EVENT
+     * line would.
+     * @param {string} line
+     * @private
+     */
+    _publishParsedEvent(line) {
         try {
             const event = new CBusEvent(line);
             if (event.isValid()) {
@@ -647,8 +697,6 @@ class CgateWebBridge {
             this.error(`Error processing event data line: ${e.message}`, { line: redactCgateLine(line) });
         }
     }
-
-
 
     /**
      * Single entry point for C-Gate's "Network sync ok" (762), reached from
