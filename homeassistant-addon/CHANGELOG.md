@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.1) - 2026-10-31
+
+### Changed
+
+- **Maintenance release; no user-facing changes.**
+
 ## [1.40.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.0) - 2026-10-30
 
 ### Fixed
