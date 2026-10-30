@@ -1018,6 +1018,107 @@ describe('CgateWebBridge', () => {
                 publishEventSpy.mockRestore();
             });
 
+            it('publishes a keypad trigger "max" line as action_selector 255 instead of dropping it as a comment', () => {
+                const line = '# trigger max //TestProject/254/202/2  #sourceunit=33 OID=f01f5530-6aed-103f-a610-f3e5ffd43e10';
+
+                bridge._processEventLine(line);
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/2/action_selector',
+                    '255',
+                    expect.anything()
+                );
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/2/source_unit',
+                    '33',
+                    expect.anything()
+                );
+            });
+
+            it('publishes a keypad trigger "min" line as action_selector 0', () => {
+                const line = '# trigger min //TestProject/254/202/2 #sourceunit=33 OID=f01f5530-6aed-103f-a610-f3e5ffd43e10';
+
+                bridge._processEventLine(line);
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/2/action_selector',
+                    '0',
+                    expect.anything()
+                );
+            });
+
+            it('publishes a keypad trigger line even when ha_discovery_trigger_app_id is unset (deviceType alone drives it)', () => {
+                expect(bridge.settings.ha_discovery_trigger_app_id).toBeFalsy();
+
+                bridge._processEventLine('# trigger max //TestProject/254/202/9');
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/9/action_selector',
+                    '255',
+                    expect.anything()
+                );
+            });
+
+            it('does not mistake a comment-prefixed numeric trigger event for a min/max line', () => {
+                const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                // Not min/max, so this stays a plain comment (current behaviour
+                // for any trigger shape other than min/max is unchanged).
+                bridge._processEventLine('# trigger event //TestProject/254/202/9 2');
+
+                expect(publishEventSpy).not.toHaveBeenCalled();
+                publishEventSpy.mockRestore();
+            });
+
+            it('parses a project name that ends in digits as the address, not the selector', () => {
+                bridge._processEventLine('# trigger max //MIDSTRM2026/254/202/2 #sourceunit=33');
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/2/action_selector',
+                    '255',
+                    expect.anything()
+                );
+                expect(publishSpy).not.toHaveBeenCalledWith(
+                    expect.stringContaining('/2026/'),
+                    expect.anything(),
+                    expect.anything()
+                );
+            });
+
+            it('publishes a channel-prefixed trigger min as action selector 0 and the event payload', () => {
+                bridge._processEventLine('#e# trigger min //TestProject/254/202/4 #sourceunit=8');
+
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/4/action_selector',
+                    '0',
+                    expect.anything()
+                );
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/4/event',
+                    JSON.stringify({ event_type: 'trigger', level: 0 }),
+                    expect.anything()
+                );
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/4/source_unit',
+                    '8',
+                    expect.anything()
+                );
+            });
+
+            it('clears a retained lighting level instead of publishing the selector as a percentage', () => {
+                bridge._processEventLine('# trigger max //TestProject/254/202/2');
+
+                const levelPublishes = publishSpy.mock.calls.filter((call) => call[0] === 'cbus/read/254/202/2/level');
+                expect(levelPublishes).toEqual([
+                    ['cbus/read/254/202/2/level', '', expect.objectContaining({ retain: true })]
+                ]);
+                expect(publishSpy).toHaveBeenCalledWith(
+                    'cbus/read/254/202/2/event',
+                    JSON.stringify({ event_type: 'trigger', level: 255 }),
+                    expect.anything()
+                );
+            });
+
             it('captures an unconsumed aircon line but does not warn-parse it as a standard event', () => {
                 const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
                 const warnSpy = jest.spyOn(bridge, 'warn');
