@@ -255,6 +255,30 @@ class EventPublisher {
             return;
         }
 
+        const ctx = this._buildEventPublishContext({ event, source, network, application, group, action, rawLevel, actionIsOn });
+
+        if (this._publishTerminateRampHold(ctx)) return;
+        if (this._maybeHandleLightRamp(ctx)) return;
+
+        this._computeLevelPercentAndState(ctx);
+        this._emitLiveEventLogEntry(ctx);
+        this._rememberLastPublishedLevel(ctx);
+        this._dispatchEventKindHandler(ctx);
+    }
+
+    /**
+     * Resolves MQTT topics, publishes the source-unit side effect, and
+     * classifies the event's entity type (PIR/trigger/cover/HVAC/tilt) —
+     * the shared context every later publishEvent phase branches on. Also
+     * cancels any active interpolated cover ramp, since a real C-Gate event
+     * for a cover address should take over immediately.
+     *
+     * @param {{event: Object, source: string, network: string, application: string, group: string, action: string, rawLevel: number|null, actionIsOn: boolean}} fields
+     * @returns {Object} ctx, threaded through the rest of publishEvent's
+     *   pipeline and into the trigger/hvac/tilt/status handlers below.
+     * @private
+     */
+    _buildEventPublishContext({ event, source, network, application, group, action, rawLevel, actionIsOn }) {
         const topics = this._getTopicsForAddress(network, application, group);
 
         // The event's origin unit (#sourceunit metadata) — which C-Bus unit
@@ -268,56 +292,90 @@ class EventPublisher {
                 this.mqttOptions
             );
         }
+
         const isPirSensor = application === this.settings.ha_discovery_pir_app_id;
         const isTrigger = isTriggerPublication(this.settings, event, application);
         const isCoverApp = application === this.settings.ha_discovery_cover_app_id;
         const isCoverOverride = this._isTypeOverride(network, application, group, 'cover');
         const isCover = isCoverApp || isCoverOverride;
+        const addressKey = `${network}/${application}/${group}`;
 
         // Cancel any active interpolated ramp for this cover address so the real
         // C-Gate event value takes over immediately without further estimated updates.
         if (isCover && this.coverRampTracker) {
-            this.coverRampTracker.cancelRamp(`${network}/${application}/${group}`);
+            this.coverRampTracker.cancelRamp(addressKey);
         }
+
         const isHvac = this.settings.ha_discovery_hvac_app_id &&
             application === String(this.settings.ha_discovery_hvac_app_id);
         const isTiltApp = this.settings.ha_discovery_cover_tilt_app_id &&
             application === String(this.settings.ha_discovery_cover_tilt_app_id);
 
-        const addressKey = `${network}/${application}/${group}`;
         const rampTimeMs = typeof event.getRampTimeMs === 'function' ? event.getRampTimeMs() : null;
         const isSpecialEntity = isPirSensor || isTrigger || isCover || Boolean(isHvac) || Boolean(isTiltApp);
 
-        // terminateramp carries no level. Keep the last published position for
-        // lights and covers. A missing level must not become fully closed.
-        if (action === 'terminateramp' && rawLevel === null && (isCover || !isSpecialEntity)) {
-            if (this.lightRampTracker.isRamping(addressKey)) {
-                this.lightRampTracker.cancelRamp(addressKey);
-            }
-            if (this._lastPublishedRawLevels.has(addressKey)) {
-                const lastLevel = /** @type {number} */ (this._lastPublishedRawLevels.get(addressKey));
-                if (this.onEventLog) {
-                    this.onEventLog({
-                        ts: Date.now(),
-                        network: network,
-                        app: application,
-                        group: group,
-                        level: lastLevel,
-                        type: 'update'
-                    });
-                }
-                this._publishLightingLevel(topics, lastLevel, source, network, application, group);
-                if (isCover) {
-                    const levelPercent = Math.round(lastLevel / CGATE_LEVEL_MAX * 100);
-                    this._publishIfNeeded(topics.position, levelPercent.toString(), this.mqttOptions);
-                }
-            }
-            return;
+        return {
+            event, source, network, application, group, action, rawLevel, actionIsOn,
+            topics, addressKey, rampTimeMs,
+            isPirSensor, isTrigger, isCover, isHvac, isTiltApp, isSpecialEntity
+        };
+    }
+
+    /**
+     * terminateramp carries no level. Keep the last published position for
+     * lights and covers instead of letting a missing level become "fully
+     * closed".
+     *
+     * @param {Object} ctx
+     * @returns {boolean} true if this event was fully handled (caller should return)
+     * @private
+     */
+    _publishTerminateRampHold(ctx) {
+        const { action, rawLevel, isCover, isSpecialEntity, addressKey, topics, source, network, application, group } = ctx;
+        if (!(action === 'terminateramp' && rawLevel === null && (isCover || !isSpecialEntity))) {
+            return false;
         }
 
-        // Positive-duration lighting ramps: publish interpolated levels so HA
-        // tracks the real rising/falling brightness instead of jumping to the
-        // target (issue #129 — eDLT dim-up hold).
+        if (this.lightRampTracker.isRamping(addressKey)) {
+            this.lightRampTracker.cancelRamp(addressKey);
+        }
+        if (this._lastPublishedRawLevels.has(addressKey)) {
+            const lastLevel = /** @type {number} */ (this._lastPublishedRawLevels.get(addressKey));
+            if (this.onEventLog) {
+                this.onEventLog({
+                    ts: Date.now(),
+                    network: network,
+                    app: application,
+                    group: group,
+                    level: lastLevel,
+                    type: 'update'
+                });
+            }
+            this._publishLightingLevel(topics, lastLevel, source, network, application, group);
+            if (isCover) {
+                const levelPercent = Math.round(lastLevel / CGATE_LEVEL_MAX * 100);
+                this._publishIfNeeded(topics.position, levelPercent.toString(), this.mqttOptions);
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Positive-duration lighting ramps: publish interpolated levels so HA
+     * tracks the real rising/falling brightness instead of jumping to the
+     * target (issue #129 — eDLT dim-up hold). When no interpolated ramp
+     * applies, cancels any stale light-ramp tracker left over from a prior
+     * event for this address instead.
+     *
+     * @param {Object} ctx
+     * @returns {boolean} true if an interpolated ramp was started and
+     *   publishEvent should return without publishing a state/level update
+     *   for this event (the ramp tracker's own callback will do that).
+     * @private
+     */
+    _maybeHandleLightRamp(ctx) {
+        const { action, rawLevel, rampTimeMs, isSpecialEntity, addressKey, topics, source, network, application, group } = ctx;
+
         const isInProgressLightRamp = action === 'ramp'
             && rampTimeMs !== null
             && rampTimeMs > 0
@@ -357,7 +415,7 @@ class EventPublisher {
                         this._publishLightingLevel(topics, level, source, network, application, group);
                     }
                 );
-                return;
+                return true;
             }
             // start === target: cancel any leftover tracker and publish normally.
             this.lightRampTracker.cancelRamp(addressKey);
@@ -368,70 +426,96 @@ class EventPublisher {
                 this.lightRampTracker.cancelRamp(addressKey);
             }
         }
-        
-        // Calculate level percentage for Home Assistant.
-        // Math.round is intentional: HA expects integer 0-100. This means two adjacent
-        // C-Bus levels can map to the same percentage (e.g. 127 and 128 both → 50).
-        const levelPercent = rawLevel !== null
+
+        return false;
+    }
+
+    /**
+     * Computes the HA level percentage and ON/OFF state for this event and
+     * sets `ctx.levelPercent` / `ctx.state` (read by the trigger/hvac/tilt/
+     * status handlers dispatched at the end of publishEvent).
+     * @param {Object} ctx
+     * @private
+     */
+    _computeLevelPercentAndState(ctx) {
+        const { rawLevel, actionIsOn, isPirSensor } = ctx;
+
+        // Math.round is intentional: HA expects integer 0-100. This means two
+        // adjacent C-Bus levels can map to the same percentage (e.g. 127 and
+        // 128 both → 50).
+        ctx.levelPercent = rawLevel !== null
             ? Math.round(rawLevel / CGATE_LEVEL_MAX * 100)
             : (actionIsOn ? 100 : 0);
 
-        let state;
         if (isPirSensor) {
             // PIR: ON/OFF from action (motion detected/cleared), not level.
-            state = actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF;
+            ctx.state = actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF;
         } else {
             // Covers and lighting: state from raw level, not quantized percent —
             // rawLevel 1-2 rounds to 0% but the device IS on/open.
-            state = rawLevel !== null
+            ctx.state = rawLevel !== null
                 ? ((rawLevel > 0) ? MQTT_STATE_ON : MQTT_STATE_OFF)
                 : (actionIsOn ? MQTT_STATE_ON : MQTT_STATE_OFF);
         }
-       
-        // Emit event log entry for live event stream (before any early returns)
-        if (this.onEventLog) {
-            const logAction = event.getAction();
-            let eventType = 'update';
-            if (logAction === 'ramp') eventType = 'ramp';
-            else if (logAction === 'on') eventType = 'on';
-            else if (logAction === 'off') eventType = 'off';
-            this.onEventLog({
-                ts: Date.now(),
-                network: network,
-                app: application,
-                group: group,
-                level: rawLevel !== null ? rawLevel : (actionIsOn ? 255 : 0),
-                type: eventType
-            });
-        }
+    }
 
-        // Track last published raw level for lighting (and covers) so a later
-        // positive-duration ramp can interpolate from the real prior value.
-        if (!isPirSensor && !isTrigger && !isHvac && !isTiltApp) {
-            const publishedRaw = rawLevel !== null
-                ? rawLevel
-                : (actionIsOn ? CGATE_LEVEL_MAX : 0);
-            this._lastPublishedRawLevels.set(addressKey, publishedRaw);
-        }
+    /**
+     * Emits one entry to the live event-log stream (SSE), if a listener is
+     * registered. Runs before the kind-specific publish dispatched at the
+     * end of publishEvent, same as before this method was split out.
+     * @param {Object} ctx
+     * @private
+     */
+    _emitLiveEventLogEntry(ctx) {
+        if (!this.onEventLog) return;
 
-        const kind = isTrigger ? 'trigger'
-            : isHvac ? 'hvac'
-                : isTiltApp ? 'tilt'
-                    : 'status';
-        EVENT_KIND_HANDLERS[kind](this, {
-            network,
-            application,
-            group,
-            action,
-            rawLevel,
-            actionIsOn,
-            source,
-            topics,
-            isPirSensor,
-            isCover,
-            state,
-            levelPercent
+        const { action, rawLevel, actionIsOn, network, application, group } = ctx;
+        let eventType = 'update';
+        if (action === 'ramp') eventType = 'ramp';
+        else if (action === 'on') eventType = 'on';
+        else if (action === 'off') eventType = 'off';
+        this.onEventLog({
+            ts: Date.now(),
+            network: network,
+            app: application,
+            group: group,
+            level: rawLevel !== null ? rawLevel : (actionIsOn ? 255 : 0),
+            type: eventType
         });
+    }
+
+    /**
+     * Tracks the last published raw level for lighting (and covers) so a
+     * later positive-duration ramp can interpolate from the real prior
+     * value. PIR, trigger, HVAC and tilt addresses don't carry a lighting
+     * level, so they're excluded here (mirrors `isSpecialEntity`).
+     * @param {Object} ctx
+     * @private
+     */
+    _rememberLastPublishedLevel(ctx) {
+        const { isPirSensor, isTrigger, isHvac, isTiltApp, rawLevel, actionIsOn, addressKey } = ctx;
+        if (isPirSensor || isTrigger || isHvac || isTiltApp) return;
+
+        const publishedRaw = rawLevel !== null
+            ? rawLevel
+            : (actionIsOn ? CGATE_LEVEL_MAX : 0);
+        this._lastPublishedRawLevels.set(addressKey, publishedRaw);
+    }
+
+    /**
+     * Picks the trigger/hvac/tilt/status handler for this event and runs
+     * it. `ctx` already carries every field those handlers read (plus a few
+     * that only earlier phases needed), so it's passed straight through
+     * rather than rebuilding a second object with the same values.
+     * @param {Object} ctx
+     * @private
+     */
+    _dispatchEventKindHandler(ctx) {
+        const kind = ctx.isTrigger ? 'trigger'
+            : ctx.isHvac ? 'hvac'
+                : ctx.isTiltApp ? 'tilt'
+                    : 'status';
+        EVENT_KIND_HANDLERS[kind](this, ctx);
     }
 
     /**
