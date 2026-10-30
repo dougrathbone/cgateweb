@@ -54,4 +54,29 @@ describe('decodeTriggerMinMaxLine', () => {
         expect(decodeTriggerMinMaxLine('')).toBeNull();
         expect(decodeTriggerMinMaxLine('   ')).toBeNull();
     });
+
+    it('keeps a project name that ends in digits as part of the address, not the selector', () => {
+        expect(decodeTriggerMinMaxLine('# trigger max //MIDSTRM2026/254/202/2 #sourceunit=33')).toBe(
+            'trigger event //MIDSTRM2026/254/202/2 255 #sourceunit=33'
+        );
+    });
+
+    it('accepts an EVENT channel prefix and a hash with no following space', () => {
+        expect(decodeTriggerMinMaxLine('#e# trigger min //MIDSTRM/254/202/2 #sourceunit=8')).toBe(
+            'trigger event //MIDSTRM/254/202/2 0 #sourceunit=8'
+        );
+        expect(decodeTriggerMinMaxLine('#s# trigger MAX //MIDSTRM/254/202/2')).toBe(
+            'trigger event //MIDSTRM/254/202/2 255'
+        );
+        expect(decodeTriggerMinMaxLine('#c# trigger min 254/202/2')).toBe('trigger event 254/202/2 0');
+        expect(decodeTriggerMinMaxLine('#trigger max //MIDSTRM/254/202/2')).toBe(
+            'trigger event //MIDSTRM/254/202/2 255'
+        );
+    });
+
+    it('returns null when min/max has no address, or the word is not exactly min or max', () => {
+        expect(decodeTriggerMinMaxLine('# trigger max')).toBeNull();
+        expect(decodeTriggerMinMaxLine('# trigger minimum //MIDSTRM/254/202/2')).toBeNull();
+        expect(decodeTriggerMinMaxLine('# trigger maximum //MIDSTRM/254/202/2')).toBeNull();
+    });
 });
