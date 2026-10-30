@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.0](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.0) - 2026-10-30
+
+### Fixed
+
+- **A keypad key set to trigger minimum or maximum now updates the action selector.** This is a new cause after 1.39.2: those events were dropped as comments. ([#162](https://github.com/dougrathbone/cgateweb/issues/162))
+
 ## [1.39.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.39.2) - 2026-10-26
 
 ### Action required

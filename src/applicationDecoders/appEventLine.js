@@ -14,8 +14,17 @@ const PREFIX_WITH_SPACE = {
     aircon: 'aircon ',
     security: 'security ',
     measurement: 'measurement ',
-    clock: 'clock '
+    clock: 'clock ',
+    trigger: 'trigger '
 };
+
+// Matches the keypad/hardware-native shape of a Trigger Control line, e.g.
+// "trigger max //MIDSTRM/254/202/2" (after normalizeAppEventLine has already
+// stripped a leading "#"/"#e#" marker and the trailing " #sourceunit=…"
+// metadata). Deliberately only min/max — numeric selectors arrive as
+// "trigger event <addr> <n>" and are not comment-prefixed, so they already
+// reach CBusEvent directly via its own fast path.
+const TRIGGER_MIN_MAX_REGEX = /^trigger\s+(min|max)\s+(\S+)/i;
 
 /**
  * Strip a C-Gate EVENT digit-level channel prefix ("#e# "/"#s# "/"#c# ",
@@ -96,4 +105,38 @@ function isAppEventLine(line, prefix) {
 // second isAppEventLine classification on its fall-through path.
 const LINE_UNPARSED = 'unparsed';
 
-module.exports = { normalizeAppEventLine, isAppEventLine, LINE_UNPARSED };
+/**
+ * Decodes a keypad/hardware-native Trigger Control (app 202/$CA) line — one
+ * where a trigger group's action selector is set to its bottom (`min`) or
+ * top (`max`) value from a hardware source (e.g. a keypad "Secondary
+ * Application" key) rather than a `TRIGGER EVENT` command. C-Gate renders
+ * these as "[# ]trigger min|max //PROJECT/<net>/<app>/<group> …", which
+ * CBusEvent's fast path cannot read as a level (`min`/`max` are not digits)
+ * and which — being `#`-comment-prefixed — the bridge's generic comment
+ * filter would otherwise drop before CBusEvent ever sees it (issue #162).
+ *
+ * Rewrites the line into the same "trigger event <addr> <selector>" shape a
+ * numeric TRIGGER EVENT produces (0 for min, 255 for max, per C-Gate's own
+ * action-selector range), preserving the original address token — including
+ * any "//PROJECT/" prefix — and any trailing " #sourceunit=…" metadata
+ * verbatim, so the rewritten line re-enters CBusEvent's already-tested
+ * address and metadata parsing unchanged.
+ *
+ * @param {string} line - Raw line from the C-Gate event stream.
+ * @returns {string|null} A rewritten line ready for `new CBusEvent(...)`, or
+ *   null if `line` is not a trigger min/max line at all.
+ */
+function decodeTriggerMinMaxLine(line) {
+    const normalized = normalizeAppEventLine(line, 'trigger');
+    if (!normalized) return null;
+
+    const match = TRIGGER_MIN_MAX_REGEX.exec(normalized.text);
+    if (!match) return null;
+
+    const selector = match[1].toLowerCase() === 'max' ? 255 : 0;
+    const addressToken = match[2];
+    const metadata = normalized.metadata || '';
+    return `trigger event ${addressToken} ${selector}${metadata}`;
+}
+
+module.exports = { normalizeAppEventLine, isAppEventLine, LINE_UNPARSED, decodeTriggerMinMaxLine };
