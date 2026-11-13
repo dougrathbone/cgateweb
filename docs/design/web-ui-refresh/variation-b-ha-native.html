@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Variation B - Home Assistant Native - cgateweb design prototype</title>
+<!--
+  DESIGN PROTOTYPE - static mock, no live data, not wired to the API.
+  Variation B: "Home Assistant Native". Borrows HA's own design language
+  (app bar, ha-card surfaces, entity rows, logbook list) so the add-on panel
+  reads as part of Home Assistant rather than a separate tool.
+  Open with ?theme=dark for the dark palette, ?tab=labels to deep-link a tab.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --ha-primary: #03a9f4;
+  --ha-primary-dark: #0288d1;
+  --ha-accent: #ff9800;
+  --bg: #f2f4f7;
+  --card: #ffffff;
+  --card-alt: #f6f8fa;
+  --divider: rgba(0, 0, 0, 0.10);
+  --text: #212121;
+  --text-secondary: #727272;
+  --disabled: #bdbdbd;
+  --state-on: #fdd835;
+  --success: #43a047;
+  --error: #db4437;
+  --warning: #ffa600;
+  --card-radius: 12px;
+  --card-shadow: 0 2px 1px -1px rgba(0,0,0,.2), 0 1px 1px 0 rgba(0,0,0,.14), 0 1px 3px 0 rgba(0,0,0,.12);
+  --header-height: 56px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111111;
+  --card: #1c1c1c;
+  --card-alt: #232323;
+  --divider: rgba(225, 225, 225, 0.12);
+  --text: #e1e1e1;
+  --text-secondary: #9b9b9b;
+  --disabled: #545454;
+  --card-shadow: none;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- HA-style app bar ---------- */
+.app-bar {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--ha-primary);
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.16);
+  padding-top: env(safe-area-inset-top);
+}
+.app-bar-row {
+  height: var(--header-height);
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px;
+  max-width: 1180px; margin: 0 auto;
+}
+.app-bar h1 { font-size: 1.25rem; font-weight: 400; flex: 1; letter-spacing: 0.0125em; }
+.icon-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  border: none; background: none; color: #fff; cursor: pointer;
+  display: grid; place-items: center;
+}
+.icon-btn:hover { background: rgba(255,255,255,0.14); }
+.icon-btn:disabled { color: rgba(255,255,255,0.42); cursor: not-allowed; }
+.icon-btn:disabled:hover { background: none; }
+.bar-save {
+  border: none; border-radius: 4px; cursor: pointer;
+  background: rgba(255,255,255,0.18); color: #fff;
+  padding: 8px 16px; font-size: 0.875rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.bar-save:hover { background: rgba(255,255,255,0.3); }
+
+.tab-bar { display: flex; max-width: 1180px; margin: 0 auto; padding: 0 4px; overflow-x: auto; }
+.tab-btn {
+  border: none; background: none; cursor: pointer;
+  color: rgba(255,255,255,0.75);
+  padding: 0 20px; height: 48px;
+  font-size: 0.875rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.tab-btn:hover { color: #fff; }
+.tab-btn.active { color: #fff; border-bottom-color: #fff; }
+
+.content { max-width: 1180px; margin: 0 auto; padding: 16px; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ---------- ha-card ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.card-header {
+  padding: 16px 16px 8px;
+  font-size: 1.5rem; font-weight: 400; letter-spacing: -0.012em;
+}
+.card-subhead {
+  padding: 0 16px 12px;
+  color: var(--text-secondary); font-size: 0.875rem;
+}
+.card-body { padding: 8px 16px 16px; }
+
+/* ---------- entity rows (status) ---------- */
+.entity-row {
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--divider);
+}
+.entity-row:first-child { border-top: none; }
+.entity-icon {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--card-alt);
+  color: var(--text-secondary);
+  display: grid; place-items: center; flex: none;
+}
+.entity-icon.on { background: rgba(253, 216, 53, 0.2); color: var(--state-on); }
+.entity-icon.ok { background: rgba(67, 160, 71, 0.16); color: var(--success); }
+.entity-icon.bad { background: rgba(219, 68, 55, 0.16); color: var(--error); }
+.entity-icon.cover { background: rgba(3, 169, 244, 0.16); color: var(--ha-primary); }
+.entity-icon.switch { background: rgba(255, 152, 0, 0.16); color: var(--ha-accent); }
+.entity-icon.scene { background: rgba(156, 39, 176, 0.16); color: #9c27b0; }
+.entity-text { flex: 1; min-width: 0; }
+.entity-name { font-size: 0.95rem; }
+.entity-secondary { font-size: 0.8rem; color: var(--text-secondary); }
+.entity-state { font-size: 0.95rem; color: var(--text-secondary); white-space: nowrap; }
+.entity-state.strong { color: var(--text); font-weight: 500; }
+
+/* ---------- stat strip ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--divider);
+  border-top: 1px solid var(--divider);
+}
+.stat-cell { background: var(--card); padding: 14px 16px; text-align: center; }
+.stat-value { font-size: 1.6rem; font-weight: 300; letter-spacing: -0.02em; }
+.stat-label { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* ---------- search / controls ---------- */
+.search-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; flex-wrap: wrap; }
+.text-field { position: relative; flex: 1; min-width: 200px; }
+.text-field input {
+  width: 100%;
+  padding: 12px 14px 12px 42px;
+  border: none;
+  border-radius: 24px;
+  background: var(--card-alt);
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.text-field input::placeholder { color: var(--text-secondary); }
+.text-field input:focus { outline: 2px solid var(--ha-primary); }
+.text-field svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); }
+.chip-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; }
+.chip {
+  border: 1px solid var(--divider);
+  background: var(--card);
+  color: var(--text-secondary);
+  border-radius: 16px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.chip:hover { background: var(--card-alt); }
+.chip.selected { background: var(--ha-primary); border-color: var(--ha-primary); color: #fff; }
+
+/* ---------- area group ---------- */
+.area-group-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px;
+  background: var(--card-alt);
+  border-top: 1px solid var(--divider);
+  font-size: 0.8rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+.area-count {
+  margin-left: auto; text-transform: none; letter-spacing: 0;
+  font-weight: 400; font-size: 0.8rem;
+}
+.device-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--divider);
+}
+.device-row:hover { background: var(--card-alt); }
+.device-row.excluded { opacity: 0.5; }
+.device-row .row-check { width: 18px; height: 18px; accent-color: var(--ha-primary); cursor: pointer; flex: none; }
+.device-name { font-size: 0.95rem; }
+.device-name[contenteditable] { outline: none; }
+.device-meta { font-size: 0.78rem; color: var(--text-secondary); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.device-meta .addr { font-family: var(--mono); }
+.pill {
+  border-radius: 12px; padding: 1px 8px; font-size: 0.7rem;
+  background: var(--card-alt); color: var(--text-secondary);
+  border: 1px solid var(--divider);
+}
+.pill.unsaved { background: rgba(255, 152, 0, 0.16); color: var(--ha-accent); border-color: transparent; }
+.row-actions { display: flex; gap: 4px; align-items: center; margin-left: auto; }
+.type-select {
+  border: 1px solid var(--divider); border-radius: 4px;
+  background: var(--card); color: var(--text);
+  padding: 6px 8px; font-size: 0.8rem; cursor: pointer;
+}
+.row-icon-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: none; color: var(--text-secondary);
+  cursor: pointer; display: grid; place-items: center;
+}
+.row-icon-btn:hover { background: var(--card-alt); color: var(--error); }
+
+.card-actions {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  padding: 8px 16px 16px;
+  border-top: 1px solid var(--divider);
+  padding-top: 12px;
+}
+.text-button {
+  border: none; background: none; cursor: pointer;
+  color: var(--ha-primary);
+  padding: 8px 12px; border-radius: 4px;
+  font-size: 0.875rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.text-button:hover { background: rgba(3, 169, 244, 0.1); }
+.text-button:disabled { color: var(--disabled); cursor: not-allowed; }
+.text-button:disabled:hover { background: none; }
+.filled-button {
+  border: none; border-radius: 4px; cursor: pointer;
+  background: var(--ha-primary); color: #fff;
+  padding: 9px 18px; font-size: 0.875rem; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  box-shadow: var(--card-shadow);
+}
+.filled-button:hover { background: var(--ha-primary-dark); }
+
+.pagination { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--divider); font-size: 0.85rem; color: var(--text-secondary); flex-wrap: wrap; }
+
+/* ---------- selection banner ---------- */
+.selection-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px;
+  background: rgba(3, 169, 244, 0.12);
+  color: var(--ha-primary);
+  font-size: 0.9rem; font-weight: 500;
+}
+.selection-bar .text-button { margin-left: 0; }
+.selection-bar .spacer { flex: 1; }
+
+/* ---------- import ---------- */
+.dropzone {
+  margin: 8px 16px 16px;
+  border: 2px dashed var(--divider);
+  border-radius: var(--card-radius);
+  padding: 44px 16px;
+  text-align: center;
+  cursor: pointer;
+}
+.dropzone:hover { border-color: var(--ha-primary); background: rgba(3, 169, 244, 0.05); }
+.dropzone .big { font-size: 1.05rem; margin-bottom: 6px; }
+.dropzone p { color: var(--text-secondary); font-size: 0.875rem; margin-bottom: 16px; }
+
+/* ---------- logbook-style events ---------- */
+.logbook { padding: 4px 0 8px; }
+.log-row { display: flex; gap: 14px; padding: 10px 16px; align-items: flex-start; }
+.log-row:hover { background: var(--card-alt); }
+.log-time { font-size: 0.78rem; color: var(--text-secondary); width: 62px; flex: none; padding-top: 2px; font-family: var(--mono); }
+.log-icon { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.log-text { font-size: 0.9rem; }
+.log-text .name { font-weight: 500; }
+.log-text .detail { color: var(--text-secondary); }
+.log-addr { font-family: var(--mono); font-size: 0.75rem; color: var(--text-secondary); }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: pulse 1.6s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.25 } }
+
+.proto-note { text-align: center; font-size: 0.75rem; color: var(--text-secondary); padding: 8px 0 24px; }
+
+@media (max-width: 600px) {
+  .card { border-radius: 0; margin-left: -16px; margin-right: -16px; }
+  .app-bar h1 { font-size: 1.1rem; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .row-actions .type-select { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="app-bar">
+  <div class="app-bar-row">
+    <h1>C-Bus Web</h1>
+    <button class="icon-btn" disabled title="Undo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
+    </button>
+    <button class="icon-btn" disabled title="Redo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg>
+    </button>
+    <button class="icon-btn" id="themeToggle" title="Toggle theme (prototype only)">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+    </button>
+    <button class="bar-save">Save</button>
+  </div>
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-btn active" data-tab="status">Status</button>
+    <button class="tab-btn" data-tab="labels">Devices</button>
+    <button class="tab-btn" data-tab="events">Live events</button>
+    <button class="tab-btn" data-tab="import">Import</button>
+  </div>
+</div>
+
+<div class="content">
+  <div class="tab-panel active" id="tabStatus">
+    <div class="card">
+      <div class="card-header">Bridge</div>
+      <div class="card-subhead">cgateweb 1.22.3 &middot; up 4 days, 6 hours</div>
+      <div>
+        <div class="entity-row">
+          <div class="entity-icon ok"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>
+          <div class="entity-text"><div class="entity-name">Bridge ready</div><div class="entity-secondary">Lifecycle: running</div></div>
+          <div class="entity-state strong">Yes</div>
+        </div>
+        <div class="entity-row">
+          <div class="entity-icon ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 9a15 15 0 0120 0"/><path d="M5.5 12.5a10 10 0 0113 0"/><path d="M9 16a5 5 0 016 0"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></svg></div>
+          <div class="entity-text"><div class="entity-name">MQTT broker</div><div class="entity-secondary">core-mosquitto:1883 &middot; 0 reconnects</div></div>
+          <div class="entity-state strong">Connected</div>
+        </div>
+        <div class="entity-row">
+          <div class="entity-icon ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div>
+          <div class="entity-text"><div class="entity-name">C-Gate event connection</div><div class="entity-secondary">port 20025</div></div>
+          <div class="entity-state strong">Connected</div>
+        </div>
+        <div class="entity-row">
+          <div class="entity-icon ok"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></div>
+          <div class="entity-text"><div class="entity-name">Command pool</div><div class="entity-secondary">Queue depth 0</div></div>
+          <div class="entity-state strong">3 / 3 healthy</div>
+        </div>
+        <div class="entity-row">
+          <div class="entity-icon cover"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div class="entity-text"><div class="entity-name">C-Bus network 254</div><div class="entity-secondary">CNI 192.168.1.50:20023</div></div>
+          <div class="entity-state strong">Online</div>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-cell"><div class="stat-value">418</div><div class="stat-label">Labels</div></div>
+        <div class="stat-cell"><div class="stat-value">37</div><div class="stat-label">Custom</div></div>
+        <div class="stat-cell"><div class="stat-value">12</div><div class="stat-label">Overrides</div></div>
+        <div class="stat-cell"><div class="stat-value">5</div><div class="stat-label">Excluded</div></div>
+        <div class="stat-cell"><div class="stat-value">0</div><div class="stat-label">Unsaved</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabLabels">
+    <div class="card">
+      <div class="search-row">
+        <div class="text-field">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="text" placeholder="Search devices, addresses or areas">
+        </div>
+        <button class="text-button">&#10024; Auto-fill areas</button>
+      </div>
+      <div class="chip-row">
+        <button class="chip selected">All 418</button>
+        <button class="chip">Lights 361</button>
+        <button class="chip">Covers 14</button>
+        <button class="chip">Switches 26</button>
+        <button class="chip">Triggers 12</button>
+        <button class="chip">Excluded 5</button>
+      </div>
+
+      <div class="selection-bar">
+        <span>2 selected</span>
+        <button class="text-button">Set light</button>
+        <button class="text-button">Set cover</button>
+        <button class="text-button">Set switch</button>
+        <button class="text-button">Exclude</button>
+        <span class="spacer"></span>
+        <button class="text-button">Clear</button>
+      </div>
+
+      <div class="area-group-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 01-1 1H4a1 1 0 01-1-1z"/></svg>
+        Kitchen <span class="area-count">2 devices</span>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check" checked>
+        <div class="entity-icon on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Kitchen Downlights</div>
+          <div class="device-meta"><span class="addr">254/56/1</span> &middot; <span>light.kitchen_downlights</span> <span class="pill unsaved">unsaved</span></div>
+        </div>
+        <div class="row-actions">
+          <select class="type-select"><option>light</option><option>cover</option><option>switch</option></select>
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check" checked>
+        <div class="entity-icon on"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Kitchen Pendants</div>
+          <div class="device-meta"><span class="addr">254/56/2</span> &middot; <span>entity ID auto</span></div>
+        </div>
+        <div class="row-actions">
+          <select class="type-select"><option>light</option><option>cover</option><option>switch</option></select>
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+
+      <div class="area-group-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 01-1 1H4a1 1 0 01-1-1z"/></svg>
+        Living Room <span class="area-count">3 devices</span>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check">
+        <div class="entity-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Living Room Lamps</div>
+          <div class="device-meta"><span class="addr">254/56/4</span> &middot; <span>entity ID auto</span></div>
+        </div>
+        <div class="row-actions">
+          <select class="type-select"><option>light</option><option>cover</option><option>switch</option></select>
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check">
+        <div class="entity-icon cover"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 13h18M3 17h18"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Living Room Blinds</div>
+          <div class="device-meta"><span class="addr">254/203/1</span> &middot; <span>cover.living_blinds</span></div>
+        </div>
+        <div class="row-actions">
+          <select class="type-select"><option>cover</option><option>light</option><option>switch</option></select>
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check">
+        <div class="entity-icon scene"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.3 5.3 5.7.5-4.3 3.8 1.3 5.6L12 15.9 6.9 18.2l1.3-5.6L4 8.8l5.7-.5z"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Scene: Movie Night</div>
+          <div class="device-meta"><span class="addr">254/202/5</span> <span class="pill">trigger</span></div>
+        </div>
+        <div class="row-actions">
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+
+      <div class="area-group-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a1 1 0 01-1 1H4a1 1 0 01-1-1z"/></svg>
+        Garage <span class="area-count">1 device</span>
+      </div>
+      <div class="device-row">
+        <input type="checkbox" class="row-check">
+        <div class="entity-icon switch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="17" cy="12" r="3" fill="currentColor"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Garage Door Relay</div>
+          <div class="device-meta"><span class="addr">254/56/33</span> &middot; <span>entity ID auto</span></div>
+        </div>
+        <div class="row-actions">
+          <select class="type-select"><option>switch</option><option>light</option><option>cover</option></select>
+          <button class="row-icon-btn" title="Remove"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+        </div>
+      </div>
+
+      <div class="area-group-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4l16 16M20 4L4 20"/></svg>
+        Not exposed to Home Assistant <span class="area-count">1 device</span>
+      </div>
+      <div class="device-row excluded">
+        <input type="checkbox" class="row-check">
+        <div class="entity-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+        <div class="entity-text">
+          <div class="device-name">Alfresco Flood</div>
+          <div class="device-meta"><span class="addr">254/56/40</span> &middot; <span>Alfresco</span> <span class="pill">excluded</span></div>
+        </div>
+        <div class="row-actions">
+          <button class="text-button">Include</button>
+        </div>
+      </div>
+
+      <div class="pagination">
+        <button class="text-button">Previous</button>
+        <button class="text-button">Next</button>
+        <span>1&ndash;8 of 418</span>
+      </div>
+      <div class="card-actions">
+        <button class="filled-button">Add device</button>
+        <button class="text-button">Save labels</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabEvents">
+    <div class="card">
+      <div class="card-header">Live events</div>
+      <div class="search-row" style="padding-top:0">
+        <div class="text-field">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="text" placeholder="Filter by address or label">
+        </div>
+        <span style="display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:0.85rem"><span class="live-dot"></span>Live &middot; 126 events</span>
+        <button class="text-button">Pause</button>
+        <button class="text-button">Clear</button>
+      </div>
+      <div class="logbook">
+        <div class="log-row">
+          <div class="log-time">09:24:16</div>
+          <div class="log-icon entity-icon on" style="width:28px;height:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+          <div class="log-text"><span class="name">Kitchen Downlights</span> <span class="detail">turned on, brightness 100%</span><div class="log-addr">254/56/1</div></div>
+        </div>
+        <div class="log-row">
+          <div class="log-time">09:24:11</div>
+          <div class="log-icon entity-icon on" style="width:28px;height:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+          <div class="log-text"><span class="name">Living Room Lamps</span> <span class="detail">ramped to 64%</span><div class="log-addr">254/56/4</div></div>
+        </div>
+        <div class="log-row">
+          <div class="log-time">09:23:58</div>
+          <div class="log-icon entity-icon cover" style="width:28px;height:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="1"/><path d="M3 9h18M3 13h18"/></svg></div>
+          <div class="log-text"><span class="name">Living Room Blinds</span> <span class="detail">opened to 40%</span><div class="log-addr">254/203/1</div></div>
+        </div>
+        <div class="log-row">
+          <div class="log-time">09:23:41</div>
+          <div class="log-icon entity-icon" style="width:28px;height:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M12 3a6 6 0 00-3.5 10.9c.4.3.5.7.5 1.1h6c0-.4.1-.8.5-1.1A6 6 0 0012 3z"/></svg></div>
+          <div class="log-text"><span class="name">Hallway Sconces</span> <span class="detail">turned off</span><div class="log-addr">254/56/12</div></div>
+        </div>
+        <div class="log-row">
+          <div class="log-time">09:23:02</div>
+          <div class="log-icon entity-icon switch" style="width:28px;height:28px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="17" cy="12" r="3" fill="currentColor"/></svg></div>
+          <div class="log-text"><span class="name">Garage Door Relay</span> <span class="detail">turned on</span><div class="log-addr">254/56/33</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabImport">
+    <div class="card">
+      <div class="card-header">Import project</div>
+      <div class="card-subhead">Load labels, areas and device types from a C-Bus Toolkit project file.</div>
+      <div class="dropzone">
+        <div class="big">Drop a .cbz or .xml file here</div>
+        <p>or choose a file to upload. Existing labels can be merged or replaced.</p>
+        <button class="filled-button">Choose file</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">Export</div>
+      <div class="entity-row">
+        <div class="entity-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/></svg></div>
+        <div class="entity-text"><div class="entity-name">Label backup</div><div class="entity-secondary">JSON snapshot of all labels, types and areas</div></div>
+        <button class="text-button">Download</button>
+      </div>
+      <div class="entity-row">
+        <div class="entity-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg></div>
+        <div class="entity-text"><div class="entity-name">Project XML</div><div class="entity-secondary">Re-exported C-Bus project for Toolkit</div></div>
+        <button class="text-button">Export</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="proto-note">Design prototype &mdash; Variation B "Home Assistant Native". Static mock, not connected to the bridge.</div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  if (params.get('theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else if (params.get('theme') !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
+  function showTab(name) {
+    var panels = document.querySelectorAll('.tab-panel');
+    for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+    var btns = document.querySelectorAll('.tab-btn');
+    for (var j = 0; j < btns.length; j++) btns[j].classList.toggle('active', btns[j].dataset.tab === name);
+    var panel = document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1));
+    if (panel) panel.classList.add('active');
+  }
+  var wanted = params.get('tab');
+  if (wanted) showTab(wanted);
+  document.getElementById('tabBar').addEventListener('click', function (e) {
+    var btn = e.target.closest('.tab-btn');
+    if (btn) showTab(btn.dataset.tab);
+  });
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+  });
+})();
+</script>
+</body>
+</html>

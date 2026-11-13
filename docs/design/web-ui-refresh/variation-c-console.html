@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Variation C - Operator Console - cgateweb design prototype</title>
+<!--
+  DESIGN PROTOTYPE - static mock, no live data, not wired to the API.
+  Variation C: "Operator Console". Dark-first, density-first layout for large
+  installs: icon rail navigation, always-on health strip, dense data grid with
+  an inspector panel, terminal-style event stream.
+  Open with ?theme=light for the light palette, ?tab=labels to deep-link a view.
+-->
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b0e14;
+  --panel: #11151d;
+  --panel-alt: #161b25;
+  --rail: #0d1118;
+  --line: #1f2733;
+  --line-soft: #171e28;
+  --text: #d6dde8;
+  --text-dim: #7c8899;
+  --text-faint: #56606f;
+  --accent: #3d8bfd;
+  --accent-soft: rgba(61, 139, 253, 0.14);
+  --ok: #35c88a;
+  --warn: #e5a53f;
+  --bad: #f4685f;
+  --violet: #a97bf0;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --rail-w: 76px;
+  --row-h: 30px;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f5;
+  --panel: #ffffff;
+  --panel-alt: #f5f7fa;
+  --rail: #1b2230;
+  --line: #dde3ea;
+  --line-soft: #e9edf2;
+  --text: #16202b;
+  --text-dim: #5c6875;
+  --text-faint: #8b96a3;
+  --accent: #1c6ee0;
+  --accent-soft: rgba(28, 110, 224, 0.10);
+  --ok: #14875a;
+  --warn: #9a6b12;
+  --bad: #cc3a35;
+  --violet: #7444c4;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+.shell { display: flex; min-height: 100vh; }
+
+/* ---------- icon rail ---------- */
+.rail {
+  width: var(--rail-w); flex: none;
+  background: var(--rail);
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 0;
+  gap: 4px;
+  position: sticky; top: 0; height: 100vh;
+}
+.rail-logo {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: linear-gradient(140deg, var(--accent), var(--violet));
+  display: grid; place-items: center;
+  color: #fff; font-weight: 700; font-size: 11px; letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.rail-btn {
+  width: 60px; padding: 9px 0 7px;
+  border: none; background: none; cursor: pointer;
+  color: #7d8ba0;
+  border-radius: 9px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 10px; letter-spacing: 0.02em;
+}
+.rail-btn:hover { background: rgba(255,255,255,0.06); color: #cfd8e6; }
+.rail-btn.active { background: var(--accent-soft); color: #7fb2ff; }
+.rail-spacer { flex: 1; }
+.rail-badge {
+  position: absolute; transform: translate(16px, -6px);
+  background: var(--bad); color: #fff;
+  font-size: 9px; font-weight: 700;
+  border-radius: 8px; padding: 0 5px;
+}
+
+/* ---------- main ---------- */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar {
+  display: flex; align-items: center; gap: 14px;
+  padding: 0 16px; height: 46px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 8;
+}
+.crumb { font-size: 13px; font-weight: 600; letter-spacing: -0.01em; }
+.crumb small { color: var(--text-faint); font-weight: 400; margin-left: 8px; }
+
+.health { display: flex; align-items: center; gap: 14px; margin-left: auto; flex-wrap: wrap; }
+.health-item { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim); white-space: nowrap; }
+.health-item b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.led { width: 7px; height: 7px; border-radius: 50%; }
+.led-ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.led-warn { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.led-bad { background: var(--bad); box-shadow: 0 0 6px var(--bad); }
+
+.btn {
+  border: 1px solid var(--line); background: var(--panel-alt); color: var(--text);
+  border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { border-color: var(--text-faint); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: none; border-color: transparent; color: var(--text-dim); }
+.btn.ghost:hover { background: var(--panel-alt); color: var(--text); }
+.btn.danger:hover { border-color: var(--bad); color: var(--bad); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.kbd {
+  font-family: var(--mono); font-size: 10px;
+  border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 1px 4px; color: var(--text-faint);
+}
+
+.view { display: none; flex: 1; min-height: 0; }
+.view.active { display: flex; flex-direction: column; }
+
+/* ---------- filter bar ---------- */
+.filterbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+.search {
+  flex: 1; min-width: 200px; position: relative;
+}
+.search input {
+  width: 100%; padding: 6px 10px 6px 30px;
+  background: var(--panel-alt); color: var(--text);
+  border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12.5px; font-family: var(--mono);
+}
+.search input::placeholder { color: var(--text-faint); font-family: inherit; }
+.search svg { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button {
+  border: none; background: var(--panel-alt); color: var(--text-dim);
+  padding: 5px 10px; font-size: 11.5px; cursor: pointer;
+  border-right: 1px solid var(--line);
+}
+.seg button:last-child { border-right: none; }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.count-note { color: var(--text-faint); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+
+/* ---------- grid + inspector ---------- */
+.grid-wrap { flex: 1; display: flex; min-height: 0; }
+.grid-scroll { flex: 1; overflow: auto; min-width: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--panel-alt);
+  text-align: left; padding: 6px 10px;
+  font-size: 10.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap; user-select: none; cursor: pointer;
+}
+thead th:hover { color: var(--text-dim); }
+tbody tr { border-bottom: 1px solid var(--line-soft); height: var(--row-h); }
+tbody tr:hover { background: var(--panel-alt); }
+tbody tr.selected { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+tbody tr.excluded td { color: var(--text-faint); }
+td { padding: 3px 10px; white-space: nowrap; }
+td.addr { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+td.name { font-weight: 500; }
+td.eid { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+td.dim { color: var(--text-faint); }
+.cb { width: 13px; height: 13px; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+th.cbc, td.cbc { width: 34px; text-align: center; padding-left: 8px; padding-right: 0; }
+.tag {
+  display: inline-block; padding: 0 7px; border-radius: 4px;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+.tag-light { background: rgba(229, 165, 63, 0.14); color: var(--warn); }
+.tag-cover { background: rgba(61, 139, 253, 0.14); color: var(--accent); }
+.tag-switch { background: rgba(53, 200, 138, 0.14); color: var(--ok); }
+.tag-trigger { background: rgba(169, 123, 240, 0.16); color: var(--violet); }
+.tag-dirty { background: rgba(244, 104, 95, 0.14); color: var(--bad); }
+.tag-excl { background: rgba(124, 136, 153, 0.14); color: var(--text-dim); }
+
+.inspector {
+  width: 300px; flex: none;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  overflow-y: auto;
+}
+.insp-head { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.insp-title { font-size: 14px; font-weight: 600; }
+.insp-sub { font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
+.insp-section { padding: 12px 14px; border-bottom: 1px solid var(--line-soft); }
+.insp-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--text-faint); margin-bottom: 6px;
+}
+.field {
+  width: 100%; padding: 6px 8px; margin-bottom: 8px;
+  background: var(--panel-alt); color: var(--text);
+  border: 1px solid var(--line); border-radius: 5px; font-size: 12.5px;
+}
+.field:focus { outline: none; border-color: var(--accent); }
+.kv { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; font-size: 12px; }
+.kv span:first-child { color: var(--text-faint); }
+.kv span:last-child { font-family: var(--mono); font-size: 11.5px; }
+.topic { font-family: var(--mono); font-size: 11px; color: var(--text-dim); word-break: break-all; padding: 2px 0; }
+
+.actionbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+.sel-note { color: var(--accent); font-weight: 600; font-size: 12px; }
+.sep { width: 1px; height: 18px; background: var(--line); }
+
+/* ---------- status view ---------- */
+.status-body { padding: 16px; overflow-y: auto; }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.metric {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+  padding: 12px 14px;
+}
+.metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-faint); }
+.metric-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; }
+.metric-value small { font-size: 12px; font-weight: 400; color: var(--text-dim); }
+.spark { margin-top: 6px; display: block; }
+.panel-block { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; margin-bottom: 14px; overflow: hidden; }
+.block-head {
+  padding: 9px 14px; border-bottom: 1px solid var(--line);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--text-faint);
+  display: flex; align-items: center; gap: 8px;
+}
+.conn-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-bottom: 1px solid var(--line-soft); }
+.conn-row:last-child { border-bottom: none; }
+.conn-name { font-weight: 500; }
+.conn-detail { color: var(--text-faint); font-family: var(--mono); font-size: 11.5px; }
+.conn-state { margin-left: auto; display: flex; align-items: center; gap: 7px; color: var(--text-dim); font-size: 12px; }
+
+/* ---------- event stream ---------- */
+.stream { flex: 1; overflow-y: auto; padding: 6px 0; background: var(--panel); }
+.ev {
+  display: grid;
+  grid-template-columns: 74px 92px 1fr 52px 120px;
+  gap: 12px; align-items: center;
+  padding: 3px 16px;
+  font-size: 12.5px;
+}
+.ev:hover { background: var(--panel-alt); }
+.ev-time { font-family: var(--mono); font-size: 11.5px; color: var(--text-faint); }
+.ev-addr { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+.ev-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-level { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.ev.fresh { background: var(--accent-soft); }
+
+/* ---------- import view ---------- */
+.import-body { padding: 16px; overflow-y: auto; }
+.dz {
+  border: 1.5px dashed var(--line); border-radius: 8px;
+  background: var(--panel); padding: 40px 16px; text-align: center; cursor: pointer;
+}
+.dz:hover { border-color: var(--accent); background: var(--accent-soft); }
+.dz .t { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.dz p { color: var(--text-dim); margin-bottom: 14px; }
+.io-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--line-soft); }
+.io-row:last-child { border-bottom: none; }
+.io-row .btn { margin-left: auto; }
+
+.proto-note { padding: 10px 16px; color: var(--text-faint); font-size: 11px; border-top: 1px solid var(--line); }
+
+@media (max-width: 1100px) { .inspector { display: none; } }
+@media (max-width: 720px) {
+  .shell { flex-direction: column; }
+  .rail {
+    width: 100%; height: auto; position: fixed; bottom: 0; top: auto;
+    flex-direction: row; justify-content: space-around;
+    padding: 4px 0 calc(4px + env(safe-area-inset-bottom));
+    border-right: none; border-top: 1px solid var(--line); z-index: 20;
+  }
+  .rail-logo, .rail-spacer { display: none; }
+  .rail-btn { width: auto; flex: 1; padding: 8px 0 6px; min-height: 48px; }
+  .main { padding-bottom: 62px; }
+  .topbar { height: auto; padding: 8px 12px; flex-wrap: wrap; }
+  .health { width: 100%; margin-left: 0; gap: 10px; }
+  .health .btn.ghost, .health .sep { display: none; }
+  .health .btn.primary { margin-left: auto; }
+  .ev { grid-template-columns: 66px 84px 1fr 46px; }
+  .ev .bar { display: none; }
+  td.eid, th.eid { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <nav class="rail" id="rail">
+    <div class="rail-logo">CB</div>
+    <button class="rail-btn" data-tab="status">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h4l3 7 4-16 3 9h4"/></svg>
+      Status
+    </button>
+    <button class="rail-btn active" data-tab="labels">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11"/></svg>
+      Devices
+    </button>
+    <button class="rail-btn" data-tab="events">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l5-5 3 3 5-7"/><path d="M4 20h16"/></svg>
+      Events
+    </button>
+    <button class="rail-btn" data-tab="import">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M8 8l4-4 4 4"/><path d="M4 20h16"/></svg>
+      Import
+    </button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" id="themeToggle">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg>
+      Theme
+    </button>
+  </nav>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb" id="crumb">Devices <small>418 groups &middot; network 254</small></div>
+      <div class="health">
+        <span class="health-item"><span class="led led-ok"></span>MQTT</span>
+        <span class="health-item"><span class="led led-ok"></span>C-Gate</span>
+        <span class="health-item">Pool <b>3/3</b></span>
+        <span class="health-item">Queue <b>0</b></span>
+        <span class="health-item">Uptime <b>4d 6h</b></span>
+        <span class="sep"></span>
+        <button class="btn ghost" disabled>&#8630;</button>
+        <button class="btn ghost" disabled>&#8631;</button>
+        <button class="btn primary">Save <span class="kbd" style="color:#dceaff;border-color:rgba(255,255,255,0.4)">&#8984;S</span></button>
+      </div>
+    </div>
+
+    <!-- ============ DEVICES ============ -->
+    <div class="view active" id="tabLabels">
+      <div class="filterbar">
+        <div class="search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="text" placeholder="address:254/56/*  area:kitchen  type:cover">
+        </div>
+        <div class="seg">
+          <button class="on">All</button><button>Light</button><button>Cover</button>
+          <button>Switch</button><button>Trigger</button><button>Excl</button>
+        </div>
+        <button class="btn">&#10024; Auto-fill areas</button>
+        <span class="count-note">418 rows &middot; 8 shown</span>
+      </div>
+
+      <div class="grid-wrap">
+        <div class="grid-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th class="cbc"><input type="checkbox" class="cb"></th>
+                <th>Address &#9650;</th>
+                <th>Label</th>
+                <th>Type</th>
+                <th class="eid">Entity ID</th>
+                <th>Area</th>
+                <th>Flags</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="selected">
+                <td class="cbc"><input type="checkbox" class="cb" checked></td>
+                <td class="addr">254/56/1</td>
+                <td class="name">Kitchen Downlights</td>
+                <td><span class="tag tag-light">light</span></td>
+                <td class="eid">light.kitchen_downlights</td>
+                <td>Kitchen</td>
+                <td><span class="tag tag-dirty">unsaved</span></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb" checked></td>
+                <td class="addr">254/56/2</td>
+                <td class="name">Kitchen Pendants</td>
+                <td><span class="tag tag-light">light</span></td>
+                <td class="eid dim">auto</td>
+                <td>Kitchen</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/56/4</td>
+                <td class="name">Living Room Lamps</td>
+                <td><span class="tag tag-light">light</span></td>
+                <td class="eid dim">auto</td>
+                <td>Living Room</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/56/12</td>
+                <td class="name">Hallway Sconces</td>
+                <td><span class="tag tag-light">light</span></td>
+                <td class="eid dim">auto</td>
+                <td class="dim">Hall?</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/203/1</td>
+                <td class="name">Living Room Blinds</td>
+                <td><span class="tag tag-cover">cover</span></td>
+                <td class="eid">cover.living_blinds</td>
+                <td>Living Room</td>
+                <td></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/56/33</td>
+                <td class="name">Garage Door Relay</td>
+                <td><span class="tag tag-switch">switch</span></td>
+                <td class="eid dim">auto</td>
+                <td>Garage</td>
+                <td></td>
+              </tr>
+              <tr class="excluded">
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/56/40</td>
+                <td class="name">Alfresco Flood</td>
+                <td><span class="tag tag-light">light</span></td>
+                <td class="eid dim">auto</td>
+                <td>Alfresco</td>
+                <td><span class="tag tag-excl">excluded</span></td>
+              </tr>
+              <tr>
+                <td class="cbc"><input type="checkbox" class="cb"></td>
+                <td class="addr">254/202/5</td>
+                <td class="name">Scene: Movie Night</td>
+                <td><span class="tag tag-trigger">trigger</span></td>
+                <td class="eid dim">auto</td>
+                <td>Living Room</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <aside class="inspector">
+          <div class="insp-head">
+            <div class="insp-title">Kitchen Downlights</div>
+            <div class="insp-sub">254/56/1 &middot; network 254 &middot; app 56</div>
+          </div>
+          <div class="insp-section">
+            <div class="insp-label">Label</div>
+            <input class="field" value="Kitchen Downlights">
+            <div class="insp-label">Entity ID</div>
+            <input class="field" value="light.kitchen_downlights">
+            <div class="insp-label">Area</div>
+            <input class="field" value="Kitchen">
+            <div class="insp-label">Type</div>
+            <select class="field"><option>light</option><option>cover</option><option>switch</option></select>
+            <label style="display:flex;gap:8px;align-items:center;color:var(--text-dim)">
+              <input type="checkbox" class="cb"> Exclude from Home Assistant
+            </label>
+          </div>
+          <div class="insp-section">
+            <div class="insp-label">Live state</div>
+            <div class="kv"><span>Level</span><span>100%</span></div>
+            <div class="kv"><span>Last event</span><span>09:24:16</span></div>
+            <div class="kv"><span>Source</span><span>project file</span></div>
+          </div>
+          <div class="insp-section">
+            <div class="insp-label">MQTT topics</div>
+            <div class="topic">cbus/read/254/56/1/state</div>
+            <div class="topic">cbus/read/254/56/1/level</div>
+            <div class="topic">cbus/write/254/56/1/switch</div>
+            <div class="topic">cbus/write/254/56/1/ramp</div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="actionbar">
+        <span class="sel-note">2 selected</span>
+        <span class="sep"></span>
+        <span style="color:var(--text-faint)">Set type</span>
+        <button class="btn">light</button><button class="btn">cover</button><button class="btn">switch</button>
+        <span class="sep"></span>
+        <button class="btn">Exclude</button><button class="btn">Include</button>
+        <button class="btn danger">Remove</button>
+        <span class="sep"></span>
+        <button class="btn ghost">Clear</button>
+        <span style="margin-left:auto;color:var(--text-faint)">
+          <span class="kbd">&#8593;&#8595;</span> move &nbsp; <span class="kbd">Space</span> select &nbsp; <span class="kbd">E</span> edit
+        </span>
+      </div>
+    </div>
+
+    <!-- ============ STATUS ============ -->
+    <div class="view" id="tabStatus">
+      <div class="status-body">
+        <div class="metric-grid">
+          <div class="metric">
+            <div class="metric-label">Uptime</div>
+            <div class="metric-value">4d 6h <small>12m</small></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Events / min</div>
+            <div class="metric-value">42</div>
+            <svg class="spark" width="100%" height="26" viewBox="0 0 160 26" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#3d8bfd" stroke-width="1.6" points="0,20 12,17 24,21 36,10 48,14 60,8 72,12 84,5 96,11 108,7 120,15 132,9 144,13 160,6"/>
+            </svg>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Queue depth</div>
+            <div class="metric-value">0 <small>peak 6</small></div>
+            <svg class="spark" width="100%" height="26" viewBox="0 0 160 26" preserveAspectRatio="none">
+              <polyline fill="none" stroke="#35c88a" stroke-width="1.6" points="0,24 20,24 40,18 60,22 80,10 100,20 120,24 140,24 160,24"/>
+            </svg>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Command pool</div>
+            <div class="metric-value"><span class="led led-ok"></span>3 / 3 <small>healthy</small></div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Reconnects (24h)</div>
+            <div class="metric-value">0</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Version</div>
+            <div class="metric-value" style="font-size:18px">1.22.3</div>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="block-head">Connections</div>
+          <div class="conn-row">
+            <span class="led led-ok"></span>
+            <span class="conn-name">MQTT broker</span>
+            <span class="conn-detail">core-mosquitto:1883</span>
+            <span class="conn-state">connected &middot; 4d 6h</span>
+          </div>
+          <div class="conn-row">
+            <span class="led led-ok"></span>
+            <span class="conn-name">C-Gate command pool</span>
+            <span class="conn-detail">192.168.1.20:20023</span>
+            <span class="conn-state">3 connections</span>
+          </div>
+          <div class="conn-row">
+            <span class="led led-ok"></span>
+            <span class="conn-name">C-Gate event stream</span>
+            <span class="conn-detail">192.168.1.20:20025</span>
+            <span class="conn-state">connected</span>
+          </div>
+          <div class="conn-row">
+            <span class="led led-ok"></span>
+            <span class="conn-name">CNI network 254</span>
+            <span class="conn-detail">192.168.1.50</span>
+            <span class="conn-state">online</span>
+          </div>
+        </div>
+
+        <div class="panel-block">
+          <div class="block-head">Label store</div>
+          <div class="conn-row"><span class="conn-name">Total labels</span><span class="conn-state">418</span></div>
+          <div class="conn-row"><span class="conn-name">Custom labels</span><span class="conn-state">37</span></div>
+          <div class="conn-row"><span class="conn-name">Type overrides</span><span class="conn-state">12</span></div>
+          <div class="conn-row"><span class="conn-name">Excluded from discovery</span><span class="conn-state">5</span></div>
+          <div class="conn-row"><span class="conn-name">Unsaved changes</span><span class="conn-state">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ EVENTS ============ -->
+    <div class="view" id="tabEvents">
+      <div class="filterbar">
+        <div class="search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input type="text" placeholder="filter: address, label or level">
+        </div>
+        <button class="btn primary">&#9632; Pause</button>
+        <button class="btn">Clear</button>
+        <span class="count-note"><span class="led led-ok" style="display:inline-block"></span> streaming &middot; 126 events &middot; 42/min</span>
+      </div>
+      <div class="stream">
+        <div class="ev fresh"><span class="ev-time">09:24:16.4</span><span class="ev-addr">254/56/1</span><span class="ev-name">Kitchen Downlights</span><span class="ev-level">100%</span><span class="bar"><i style="width:100%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:24:11.9</span><span class="ev-addr">254/56/4</span><span class="ev-name">Living Room Lamps</span><span class="ev-level">64%</span><span class="bar"><i style="width:64%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:23:58.1</span><span class="ev-addr">254/203/1</span><span class="ev-name">Living Room Blinds</span><span class="ev-level">40%</span><span class="bar"><i style="width:40%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:23:41.7</span><span class="ev-addr">254/56/12</span><span class="ev-name">Hallway Sconces</span><span class="ev-level">0%</span><span class="bar"><i style="width:0%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:23:02.3</span><span class="ev-addr">254/56/33</span><span class="ev-name">Garage Door Relay</span><span class="ev-level">100%</span><span class="bar"><i style="width:100%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:22:47.0</span><span class="ev-addr">254/56/2</span><span class="ev-name">Kitchen Pendants</span><span class="ev-level">25%</span><span class="bar"><i style="width:25%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:22:31.6</span><span class="ev-addr">254/56/4</span><span class="ev-name">Living Room Lamps</span><span class="ev-level">80%</span><span class="bar"><i style="width:80%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:22:04.2</span><span class="ev-addr">254/202/5</span><span class="ev-name">Scene: Movie Night</span><span class="ev-level">on</span><span class="bar"><i style="width:100%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:21:52.8</span><span class="ev-addr">254/56/1</span><span class="ev-name">Kitchen Downlights</span><span class="ev-level">55%</span><span class="bar"><i style="width:55%"></i></span></div>
+        <div class="ev"><span class="ev-time">09:21:30.5</span><span class="ev-addr">254/56/12</span><span class="ev-name">Hallway Sconces</span><span class="ev-level">100%</span><span class="bar"><i style="width:100%"></i></span></div>
+      </div>
+    </div>
+
+    <!-- ============ IMPORT ============ -->
+    <div class="view" id="tabImport">
+      <div class="import-body">
+        <div class="dz">
+          <div class="t">Drop a .cbz or .xml project file</div>
+          <p>Labels, areas and unit types are parsed from the Toolkit project. Merge or replace on import.</p>
+          <button class="btn primary">Choose file</button>
+        </div>
+        <div class="panel-block" style="margin-top:14px">
+          <div class="block-head">Export</div>
+          <div class="io-row">
+            <span class="conn-name">Label backup</span>
+            <span class="conn-detail">JSON &middot; labels, types, areas, exclusions</span>
+            <button class="btn">Download</button>
+          </div>
+          <div class="io-row">
+            <span class="conn-name">Project XML</span>
+            <span class="conn-detail">C-Bus Toolkit compatible</span>
+            <button class="btn">Export</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="proto-note">Design prototype &mdash; Variation C "Operator Console". Static mock, not connected to the bridge.</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  if (params.get('theme') === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  var titles = {
+    status: ['Status', 'cgateweb 1.22.3'],
+    labels: ['Devices', '418 groups \u00b7 network 254'],
+    events: ['Live events', 'streaming from C-Gate'],
+    import: ['Import / Export', 'project files and backups']
+  };
+  function showTab(name) {
+    var views = document.querySelectorAll('.view');
+    for (var i = 0; i < views.length; i++) views[i].classList.remove('active');
+    var btns = document.querySelectorAll('.rail-btn');
+    for (var j = 0; j < btns.length; j++) {
+      if (btns[j].dataset.tab) btns[j].classList.toggle('active', btns[j].dataset.tab === name);
+    }
+    var view = document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1));
+    if (view) view.classList.add('active');
+    var t = titles[name];
+    if (t) document.getElementById('crumb').innerHTML = t[0] + ' <small>' + t[1] + '</small>';
+  }
+  var wanted = params.get('tab');
+  if (wanted) showTab(wanted);
+  document.getElementById('rail').addEventListener('click', function (e) {
+    var btn = e.target.closest('.rail-btn');
+    if (btn && btn.dataset.tab) showTab(btn.dataset.tab);
+  });
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var light = document.documentElement.getAttribute('data-theme') === 'light';
+    document.documentElement.setAttribute('data-theme', light ? 'dark' : 'light');
+  });
+})();
+</script>
+</body>
+</html>
