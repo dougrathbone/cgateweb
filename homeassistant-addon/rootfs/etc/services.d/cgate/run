@@ -32,6 +32,13 @@ bashio::log.info "  Event port: ${CGATE_EVENT_PORT}"
 
 cd "${CGATE_DIR}" || exit 1
 
+# C-Gate 3.8.0's config command interpreter refuses to initialise without
+# CGATE_APPDATA: every `config ...` command throws IllegalStateException and
+# that command session stops answering (#174). 3.3.x never read it. Point it at
+# the install directory, the one place the add-on persists (config/, tag/,
+# logs/, Projects/), unless the add-on environment already set one.
+export CGATE_APPDATA="${CGATE_APPDATA:-${CGATE_DIR}}"
+
 # No -s / --servermode. Its only server-side effect is a "Shutdown is not
 # recommended" warning before C-Gate shuts down anyway, but it also makes
 # C-Gate answer `get cgate ServerMode` with yes — and C-Bus Toolkit reads that

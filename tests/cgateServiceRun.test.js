@@ -26,6 +26,7 @@ case "$1" in
         ;;
 esac
 echo "JAVA $*"
+echo "APPDATA=\${CGATE_APPDATA-unset}"
 `);
     fs.writeFileSync(path.join(bin, 'sleep'), '#!/bin/sh\necho "SLEEP $*"\n');
     fs.chmodSync(path.join(bin, 'java'), 0o755);
@@ -33,7 +34,7 @@ echo "JAVA $*"
     return bin;
 }
 
-function runService({ mode = 'managed', installJar = true, supportsModules = true } = {}) {
+function runService({ mode = 'managed', installJar = true, supportsModules = true, extraEnv = {} } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cgate-service-run-'));
     const cgateDir = path.join(root, 'cgate');
     fs.mkdirSync(cgateDir, { recursive: true });
@@ -47,7 +48,8 @@ function runService({ mode = 'managed', installJar = true, supportsModules = tru
         // command text, so the absolute path is never part of the command.
         CGW_SERVICE_SCRIPT: SCRIPT,
         CGW_TEST_cgate_mode: mode,
-        CGW_TEST_JAVA_SUPPORTS_MODULES: supportsModules ? '1' : '0'
+        CGW_TEST_JAVA_SUPPORTS_MODULES: supportsModules ? '1' : '0',
+        ...extraEnv
     };
 
     try {
@@ -98,6 +100,20 @@ describeBash('services.d/cgate/run', () => {
         expect(out).toContain('JAVA ');
         expect(out).not.toContain('--add-opens');
         expect(out).toMatch(/JAVA .*-jar \S+cgate\.jar/);
+    });
+
+    // Issue #174: C-Gate 3.8.0 throws on every `config ...` command and stops
+    // answering that session unless CGATE_APPDATA is set.
+    test('gives C-Gate its install directory as CGATE_APPDATA', () => {
+        const out = runService();
+
+        expect(out).toMatch(/^APPDATA=\S+\/cgate$/m);
+    });
+
+    test('keeps a CGATE_APPDATA the environment already set', () => {
+        const out = runService({ extraEnv: { CGATE_APPDATA: '/custom/appdata' } });
+
+        expect(out).toContain('APPDATA=/custom/appdata');
     });
 
     test('sleeps instead of starting C-Gate in remote mode', () => {
