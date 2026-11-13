@@ -11,6 +11,13 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.2) - 2026-11-14
+
+### Fixed
+
+- **Managed C-Gate 3.8.0 no longer stops answering after a config command.** The add-on now gives C-Gate the data directory it needs. ([#174](https://github.com/dougrathbone/cgateweb/issues/174))
+- **Home Assistant no longer logs hundreds of "No device components to cleanup" lines an hour.** Leftover keypad trigger groups are now cleared once per start. ([#171](https://github.com/dougrathbone/cgateweb/issues/171))
+
 ## [1.40.1](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.1) - 2026-10-31
 
 ### Changed
