@@ -2493,6 +2493,68 @@ describe('HaDiscovery', () => {
                 expect.anything()
             );
         });
+
+        describe('retracting dropped trigger groups', () => {
+            const flatTree = {
+                Network: {
+                    NetworkNumber: '254',
+                    Unit: [{
+                        UnitAddress: '10',
+                        Application: '56, 202',
+                        Groups: '55, 102'
+                    }]
+                }
+            };
+            const triggerSettings = () => ({
+                ...mockSettings,
+                ha_discovery_trigger_app_id: '202',
+                ha_discovery_cover_app_id: null
+            });
+            const labelsFor = (...addresses) => ({
+                labels: new Map(addresses.map(a => [a, 'Label'])),
+                typeOverrides: new Map(),
+                entityIds: new Map(),
+                exclude: new Set()
+            });
+            const emptyConfigPublishes = () => mockPublishFn.mock.calls.filter(
+                c => c[0].includes('cgateweb_254_202_') && c[0].endsWith('/config') && c[1] === ''
+            );
+
+            it('retracts each dropped group once, not on every tree refresh', () => {
+                const ha = new HaDiscovery(
+                    triggerSettings(), mockPublishFn, mockSendCommandFn, labelsFor('254/202/0', '254/202/5')
+                );
+
+                ha._publishDiscoveryFromTree('254', flatTree);
+                const firstRun = emptyConfigPublishes().length;
+                mockPublishFn.mockClear();
+                ha._publishDiscoveryFromTree('254', flatTree);
+                ha._publishDiscoveryFromTree('254', flatTree);
+
+                expect(firstRun).toBeGreaterThan(0);
+                expect(emptyConfigPublishes()).toHaveLength(0);
+            });
+
+            it('retracts a group again if it returns and is dropped a second time', () => {
+                const ha = new HaDiscovery(
+                    triggerSettings(), mockPublishFn, mockSendCommandFn, labelsFor('254/202/0', '254/202/5')
+                );
+                const labelledWith55 = labelsFor('254/202/0', '254/202/5', '254/202/55', '254/202/102');
+
+                ha._publishDiscoveryFromTree('254', flatTree);
+                ha.updateLabels(labelledWith55);
+                ha._publishDiscoveryFromTree('254', flatTree);
+                mockPublishFn.mockClear();
+                ha.updateLabels(labelsFor('254/202/0', '254/202/5'));
+                ha._publishDiscoveryFromTree('254', flatTree);
+
+                expect(mockPublishFn).toHaveBeenCalledWith(
+                    'testhomeassistant/device/cgateweb_254_202_55/config',
+                    '',
+                    { retain: true, qos: 0 }
+                );
+            });
+        });
     });
 
     describe('Stale Discovery Cleanup', () => {
