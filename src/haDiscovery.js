@@ -88,6 +88,11 @@ class HaDiscovery {
         // Tracks all discovery config topics published in this session so that
         // stale retained messages can be cleared when devices are excluded or change type.
         this._publishedTopics = new Set();
+        // Trigger groups already retracted this process, per "network_app", so
+        // the hourly tree refresh does not re-publish the same empty configs.
+        // Home Assistant logs a line for every retraction it receives.
+        /** @type {Map<string, Set<string>>} */
+        this._retractedTriggerGroups = new Map();
 
         // C-Gate accepts TCP connections on the command port before its project
         // networks are loaded. Initial TREEXML can therefore return 401 "Network
@@ -949,9 +954,17 @@ class HaDiscovery {
      * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     _retractDroppedTriggerGroups(networkId, triggerAppId, groupIds) {
-        if (!groupIds || groupIds.length === 0) return;
         if (triggerAppId === null || triggerAppId === undefined || triggerAppId === '') return;
         const appId = String(triggerAppId);
+        const dropped = (groupIds || []).map(String);
+
+        // Retract each group once per process. Replacing the set (rather than
+        // adding to it) forgets a group that is no longer dropped, so one that
+        // comes back and is dropped again is retracted again.
+        const key = `${networkId}_${appId}`;
+        const alreadyRetracted = this._retractedTriggerGroups.get(key);
+        this._retractedTriggerGroups.set(key, new Set(dropped));
+
         const prefix = this.settings.ha_discovery_prefix;
         const components = [
             ['device', ''],
@@ -960,7 +973,8 @@ class HaDiscovery {
             [HA_COMPONENT_NUMBER, '_action'],
             [HA_COMPONENT_SCENE, '_scene']
         ];
-        for (const groupId of groupIds) {
+        for (const groupId of dropped) {
+            if (alreadyRetracted && alreadyRetracted.has(groupId)) continue;
             const baseId = `cgateweb_${networkId}_${appId}_${groupId}`;
             for (const [component, suffix] of components) {
                 const topic = `${prefix}/${component}/${baseId}${suffix}/${HA_DISCOVERY_SUFFIX}`;
