@@ -24,6 +24,12 @@ if [[ "${CGATE_MODE}" == "managed" ]]; then
     done
     bashio::log.info "C-Gate is ready"
 
+    # Issue #174: C-Gate 3.8.0 will not load a project database written by
+    # 3.3.x until TRANSFORM MIGRATE_SQL runs. Do that before the bridge
+    # starts, so it does not spend the boot sending commands at a project
+    # that was never loaded. The script exits 0 unless it is interrupted.
+    cgateweb-migrate-project || true
+
     # ALPHA (issue #28): when the opt-in cgate_serial_device is configured,
     # dump what C-Gate sees (PORT LIST / IFLIST) into the log. Backgrounded:
     # the nc query can block up to its -w timeout and diagnostics must not

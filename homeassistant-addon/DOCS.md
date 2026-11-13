@@ -505,6 +505,8 @@ If it persists on a current version, the project genuinely has no synchronised u
 
 **If the network stays Closed after you click Open Network:** current C-Bus Toolkit needs C-Gate 3.8.0. The add-on's built-in download is 3.3.2, which answers `OriginateInProject` with 402 and Toolkit leaves the network Closed even though the interface is running and Home Assistant can control it. Download C-Gate 3.8.0 from Clipsal, place the zip in `/share/cgate/`, and restart. If C-Gate install source is left unset, a zip in that folder is what gets installed. Set it to upload if you previously chose download. Turn on Force C-Gate Reinstall for one restart if C-Gate is already installed, then turn it off again (#122).
 
+**If C-Gate 3.8.0 is running but the project never loads:** a project last saved by an older C-Gate has to be migrated before 3.8.0 will open it, and until then every command fails with "network not found". From 1.40.3 the add-on runs that migration when C-Gate refuses the database, and keeps a copy of it next to the original (`HOME.db.before-schema-migrate` for a project named HOME). Restart the add-on once after upgrading (#174).
+
 > **Remember what mapping this port means.** C-Gate has no authentication beyond the address list, and `program` sits above `admin` in its access levels, so it also permits shutting C-Gate down. Map to a single specific address, never a subnet, and never expose it to the internet.
 
 ## Finding Your C-Bus Network ID
