@@ -1,0 +1,150 @@
+#!/usr/bin/with-contenv bashio
+# ==============================================================================
+# Migrate a managed C-Gate project database when this C-Gate cannot load it.
+#
+# C-Gate 3.8.0 rejects a project last written by 3.3.x with:
+#   408 ... SchemaVersion is 13 and must be 14 - perform a TRANSFORM MIGRATE_SQL
+# and then every bridge command fails because the project never starts (#174).
+# The command that fixes it is `transform migrate_sql <PROJECT>`, followed by
+# project load, use and start. This script does that, and only that.
+#
+# It must never break add-on startup. A query failure, a project that is
+# already started, or a load error that is not the schema mismatch all exit 0.
+# ==============================================================================
+set -euo pipefail
+
+CGATE_MODE=$(bashio::config 'cgate_mode' 'remote')
+if [[ "${CGATE_MODE}" != "managed" ]]; then
+    exit 0
+fi
+
+PROJECT=$(bashio::config 'cgate_project' 'HOME')
+if [[ "${PROJECT}" == "null" || -z "${PROJECT}" ]]; then
+    PROJECT="HOME"
+fi
+# Same rule as cgate-install.sh. The name is sent as a C-Gate command argument
+# and used as a directory name, so anything else is refused rather than escaped.
+if [[ ! "${PROJECT}" =~ ^[A-Za-z0-9_]{1,32}$ ]]; then
+    bashio::log.warning "cgate_project is not a usable project name; skipping schema migration"
+    exit 0
+fi
+
+if [[ -n "${CGATEWEB_CGATE_PORT:-}" ]]; then
+    CGATE_PORT="${CGATEWEB_CGATE_PORT}"
+else
+    CGATE_PORT=$(bashio::config 'cgate_port' '20023')
+fi
+CGATE_HOST="${CGATEWEB_CGATE_HOST:-127.0.0.1}"
+CGATE_DIR="${CGATE_DIR:-/data/cgate}"
+POLLS="${CGATEWEB_MIGRATE_POLLS:-4}"
+POLL_INTERVAL="${CGATEWEB_MIGRATE_POLL_INTERVAL:-2}"
+
+# One C-Gate command, response body only (the 201 greeting is discarded).
+# Tests set CGATEWEB_CGATE_QUERY to a program that reads the command on stdin.
+# Production uses bash /dev/tcp, which the integration probe already relies on.
+_cgate_query() {
+    local cmd="$1"
+    if [[ -n "${CGATEWEB_CGATE_QUERY:-}" ]]; then
+        printf '%s\n' "${cmd}" | "${CGATEWEB_CGATE_QUERY}" 2>&1 || true
+        return 0
+    fi
+    # shellcheck disable=SC2016
+    timeout 8 bash -c '
+        host="$1"; port="$2"; cmd="$3"
+        exec 3<>"/dev/tcp/${host}/${port}" || exit 1
+        IFS= read -r -t 3 -u 3 _greeting || true
+        printf "%s\r\n" "${cmd}" >&3
+        while IFS= read -r -t 5 -u 3 line; do
+            printf "%s\n" "${line}"
+            [[ "${line}" =~ ^[0-9]{3}[[:space:]] ]] && break
+        done
+    ' bash "${CGATE_HOST}" "${CGATE_PORT}" "${cmd}" 2>&1 || true
+}
+
+# project list lines look like "project=HOME state=started" (integration test
+# asserts that form). Anything else for this project (loading, loaded) is left
+# alone: project load would change a project that is already coming up.
+_project_state() {
+    local out="$1"
+    if [[ "${out}" == *"project=${PROJECT} state=started"* ]]; then
+        printf 'started'
+    elif [[ "${out}" == *"project=${PROJECT} state=stopped"* || "${out}" == *"project=${PROJECT} state=failed"* ]]; then
+        printf 'stopped'
+    elif [[ "${out}" == *"project=${PROJECT} state="* ]]; then
+        printf 'other'
+    else
+        printf 'missing'
+    fi
+}
+
+_is_schema_mismatch() {
+    [[ "$1" == *SchemaVersion* && "$1" == *MIGRATE_SQL* ]]
+}
+
+_response_ok() {
+    [[ "$1" =~ (^|[^0-9])2[0-9]{2}[[:space:]] ]]
+}
+
+list_out=""
+state="missing"
+poll=0
+while [[ "${poll}" -lt "${POLLS}" ]]; do
+    poll=$((poll + 1))
+    list_out=$(_cgate_query "project list")
+    list_out="${list_out//$'\r'/}"
+    state=$(_project_state "${list_out}")
+    [[ "${state}" == "started" ]] && exit 0
+    [[ "${state}" == "stopped" ]] && break
+    [[ "${poll}" -lt "${POLLS}" ]] && sleep "${POLL_INTERVAL}"
+done
+
+if [[ -z "${list_out//[[:space:]]/}" ]]; then
+    bashio::log.warning "Could not query C-Gate project list; skipping schema migration"
+    exit 0
+fi
+
+# A project that is loading or already loaded is not this bug. Only a stopped
+# project, or one missing after the wait, is asked to load — that is when
+# 3.8.0 returns the schema error instead of starting the project.
+if [[ "${state}" != "stopped" && "${state}" != "missing" ]]; then
+    exit 0
+fi
+
+load_out=$(_cgate_query "project load ${PROJECT}")
+load_out="${load_out//$'\r'/}"
+if ! _is_schema_mismatch "${load_out}"; then
+    exit 0
+fi
+
+db="${CGATE_DIR}/Projects/${PROJECT}/${PROJECT}.db"
+backup="${db}.before-schema-migrate"
+if [[ ! -f "${db}" ]]; then
+    bashio::log.warning "C-Gate cannot load project ${PROJECT} (database schema is too old) but ${db} is not there, so it was not migrated"
+    exit 0
+fi
+if [[ ! -f "${backup}" ]]; then
+    if ! cp -p "${db}" "${backup}"; then
+        bashio::log.warning "Could not copy ${db} before migrating it; leaving the project database unchanged"
+        exit 0
+    fi
+    bashio::log.info "Saved a copy of project ${PROJECT} as ${backup}"
+fi
+
+bashio::log.warning "C-Gate refused to load project ${PROJECT} because its database schema is older than this C-Gate. Migrating it."
+migrate_out=$(_cgate_query "transform migrate_sql ${PROJECT}")
+migrate_out="${migrate_out//$'\r'/}"
+if ! _response_ok "${migrate_out}"; then
+    bashio::log.warning "Schema migration for project ${PROJECT} failed. The copy from before the attempt is ${backup}"
+    exit 0
+fi
+
+_cgate_query "project load ${PROJECT}" >/dev/null
+_cgate_query "project use ${PROJECT}" >/dev/null
+start_out=$(_cgate_query "project start ${PROJECT}")
+start_out="${start_out//$'\r'/}"
+if _response_ok "${start_out}"; then
+    bashio::log.info "Project ${PROJECT} was migrated and started."
+else
+    bashio::log.warning "Project ${PROJECT} was migrated but did not start. The copy from before the migration is ${backup}"
+fi
+exit 0
