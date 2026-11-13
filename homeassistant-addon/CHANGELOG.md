@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.3](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.3) - 2026-11-14
+
+### Fixed
+
+- **A project saved by an older C-Gate now loads after upgrading managed C-Gate to 3.8.0.** The add-on migrates the database when C-Gate refuses it, and keeps a copy beside the original. ([#174](https://github.com/dougrathbone/cgateweb/issues/174))
+
 ## [1.40.2](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.2) - 2026-11-14
 
 ### Fixed
