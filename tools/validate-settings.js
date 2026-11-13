@@ -22,15 +22,32 @@ const { defaultSettings } = require('../src/defaultSettings');
 
 const SETTINGS_PATH = path.join(__dirname, '..', 'settings.js');
 
-function main() {
-    if (!fs.existsSync(SETTINGS_PATH)) {
+/**
+ * @param {string} [settingsPath] File to check; defaults to the repo-root settings.js.
+ * @returns {number} process exit status
+ */
+function main(settingsPath = SETTINGS_PATH) {
+    if (!fs.existsSync(settingsPath)) {
         console.error('No settings.js found.');
         console.error('Create one with:  cp settings.js.example settings.js');
         console.error('Then edit it - docs/SETTINGS.md documents every option.');
         return 1;
     }
 
-    const loader = new ConfigLoader();
+    // Pin the loader to the file being checked. Letting EnvironmentDetector
+    // search for one would validate whichever settings.js it found first, which
+    // need not be the file named here.
+    const loader = new ConfigLoader({
+        environmentDetector: {
+            detect: () => ({
+                type: 'standalone',
+                isStandalone: true,
+                isAddon: false,
+                settingsPath,
+                workingDirectory: process.cwd()
+            })
+        }
+    });
 
     let loaded;
     try {
@@ -59,7 +76,7 @@ function main() {
 }
 
 if (require.main === module) {
-    process.exitCode = main();
+    process.exitCode = main(process.argv[2] ? path.resolve(process.argv[2]) : undefined);
 }
 
 module.exports = { main, SETTINGS_PATH };

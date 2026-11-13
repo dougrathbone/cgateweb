@@ -1,35 +1,31 @@
 const { execFileSync } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const SCRIPT = path.join(__dirname, '..', 'tools', 'validate-settings.js');
-const REAL_SETTINGS = path.join(__dirname, '..', 'settings.js');
 const EXAMPLE = path.join(__dirname, '..', 'settings.js.example');
 
-// The script reads settings.js from the repo root, which is a real developer's
-// file. Swap it for the duration of each case and always put it back, so a
-// failing assertion cannot destroy someone's working config.
+// The script takes the file to check as an argument, so each case validates a
+// private temp file. It must never touch the repo-root settings.js: that is a
+// real developer's file, and other suites load it concurrently in parallel Jest
+// workers, so swapping it out from under them made them fail intermittently.
 function withSettings(contents, run) {
-    const had = fs.existsSync(REAL_SETTINGS);
-    const backup = had ? fs.readFileSync(REAL_SETTINGS) : null;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cgateweb-validate-settings-'));
+    const file = path.join(dir, 'settings.js');
     try {
-        if (contents === null) {
-            if (had) fs.unlinkSync(REAL_SETTINGS);
-        } else {
-            fs.writeFileSync(REAL_SETTINGS, contents);
-        }
-        return run();
+        if (contents !== null) fs.writeFileSync(file, contents);
+        return run(file);
     } finally {
-        if (backup !== null) fs.writeFileSync(REAL_SETTINGS, backup);
-        else if (fs.existsSync(REAL_SETTINGS)) fs.unlinkSync(REAL_SETTINGS);
+        fs.rmSync(dir, { recursive: true, force: true });
     }
 }
 
 // Exit status is the whole contract: this is a pre-flight command a user or a
 // CI step runs, so "did it fail" matters more than what it printed.
-function runScript() {
+function runScript(settingsFile) {
     try {
-        const stdout = execFileSync(process.execPath, [SCRIPT], { encoding: 'utf8', stdio: 'pipe' });
+        const stdout = execFileSync(process.execPath, [SCRIPT, settingsFile], { encoding: 'utf8', stdio: 'pipe' });
         return { status: 0, output: stdout };
     } catch (error) {
         return { status: error.status, output: `${error.stdout || ''}${error.stderr || ''}` };
