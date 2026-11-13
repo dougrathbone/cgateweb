@@ -417,7 +417,10 @@ jobs:
 
   integration-download:
     name: Integration download ${{ matrix.cgate.version }}
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to Ubuntu 26 in November 2026, and podman-compose
+    # 1.3.0 hangs there after the image build (up --detach never returns).
+    # 24.04 is the runner these legs last completed on.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     needs: [test, resolve-cgate-ci-assets]
     if: ${{ inputs.run-expensive }}
@@ -466,7 +469,8 @@ jobs:
   # upload path is covered without redistributing a non-public Schneider build.
   integration-upload:
     name: Integration upload (hosted)
-    runs-on: ubuntu-latest
+    # Same Ubuntu 26 podman-compose hang as integration-download.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     needs: [test, resolve-cgate-ci-assets]
     if: ${{ inputs.run-expensive && (vars.CGATE_UPLOAD_TEST_URL != '' || inputs.require-upload-integration) }}
