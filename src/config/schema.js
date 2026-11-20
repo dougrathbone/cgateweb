@@ -1502,7 +1502,7 @@ const SETTINGS_SCHEMA = {
         default: 500,
         unit: 'none',
         exposure: 'standalone',
-        description: 'How many TREEXML fragments to buffer while HA Discovery is still starting. Further fragments are dropped (with one warning) until discovery is ready.',
+        description: 'How many TREEXML fragments to buffer while HA Discovery is still starting. A tree that does not fit is discarded whole, and discovery requests a fresh one once it starts.',
         reason: TUNING_ONLY_REASON
     },
     commandErrorRepeatWindowMs: {

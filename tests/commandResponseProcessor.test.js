@@ -547,7 +547,7 @@ describe('CommandResponseProcessor', () => {
                 expect(processorWithNullHaDiscovery._pendingTreeMessages).toHaveLength(0);
             });
 
-            it('warns once when the pending-tree buffer is full and then drops further fragments', () => {
+            it('discards the whole pending tree when the buffer is full and does not replay it', () => {
                 const capped = new CommandResponseProcessor({
                     eventPublisher: mockEventPublisher,
                     haDiscovery: null,
@@ -558,11 +558,58 @@ describe('CommandResponseProcessor', () => {
                 capped._processCommandResponse(CGATE_RESPONSE_TREE_START, 'start');
                 capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-1');
                 capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-2');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-3');
                 capped._processCommandResponse(CGATE_RESPONSE_TREE_END, 'end');
 
-                expect(capped._pendingTreeMessages).toHaveLength(2);
+                expect(capped._pendingTreeMessages).toHaveLength(0);
                 expect(mockLogger.warn).toHaveBeenCalledTimes(1);
-                expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('pending-tree buffer is full'));
+                expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Discarding incomplete TREEXML'));
+
+                const mockHaDiscovery = {
+                    handleTreeStart: jest.fn(),
+                    handleTreeData: jest.fn(),
+                    handleTreeEnd: jest.fn()
+                };
+                capped.haDiscovery = mockHaDiscovery;
+                expect(mockHaDiscovery.handleTreeStart).not.toHaveBeenCalled();
+                expect(mockHaDiscovery.handleTreeData).not.toHaveBeenCalled();
+                expect(mockHaDiscovery.handleTreeEnd).not.toHaveBeenCalled();
+            });
+
+            it('buffers a later complete tree after discarding one that overflowed', () => {
+                const capped = new CommandResponseProcessor({
+                    eventPublisher: mockEventPublisher,
+                    haDiscovery: null,
+                    onObjectStatus: mockOnObjectStatus,
+                    logger: mockLogger,
+                    maxPendingTreeMessages: 3
+                });
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_START, 'start-1');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-1');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-2');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'overflow');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_END, 'end-1');
+
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_START, 'start-2');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_DATA, 'data-2');
+                capped._processCommandResponse(CGATE_RESPONSE_TREE_END, 'end-2');
+
+                expect(capped._pendingTreeMessages).toEqual([
+                    { code: CGATE_RESPONSE_TREE_START, data: 'start-2' },
+                    { code: CGATE_RESPONSE_TREE_DATA, data: 'data-2' },
+                    { code: CGATE_RESPONSE_TREE_END, data: 'end-2' }
+                ]);
+
+                const mockHaDiscovery = {
+                    handleTreeStart: jest.fn(),
+                    handleTreeData: jest.fn(),
+                    handleTreeEnd: jest.fn()
+                };
+                capped.haDiscovery = mockHaDiscovery;
+                expect(mockHaDiscovery.handleTreeStart).toHaveBeenCalledTimes(1);
+                expect(mockHaDiscovery.handleTreeStart).toHaveBeenCalledWith('start-2');
+                expect(mockHaDiscovery.handleTreeData).toHaveBeenCalledWith('data-2');
+                expect(mockHaDiscovery.handleTreeEnd).toHaveBeenCalledWith('end-2');
             });
 
             it('should still process object status when haDiscovery is null', () => {
