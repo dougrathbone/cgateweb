@@ -11,6 +11,17 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.4](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.4) - 2026-11-20
+
+### Fixed
+
+- **Home Assistant no longer builds devices from a partial C-Bus tree.** When the tree arrives before discovery is ready and does not fit, the add-on discards it and requests a complete one.
+- **A tree fragment with no matching start is ignored.** Discovery no longer assigns that fragment to the wrong network.
+
+### Changed
+
+- **Discovery keeps a bounded set of device configs across a broker restart.** An installation past that bound is rediscovered from C-Gate instead of growing the add-on's memory without a limit.
+
 ## [1.40.3](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.3) - 2026-11-14
 
 ### Fixed
