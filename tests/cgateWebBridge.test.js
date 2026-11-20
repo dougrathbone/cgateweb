@@ -1913,6 +1913,57 @@ describe('CgateWebBridge', () => {
                 );
                 expect(publishSpy.mock.calls[0][1]).toContain('No healthy connections');
             });
+
+            it('warns once for a failed send and still sends the next command', async () => {
+                jest.useFakeTimers();
+                try {
+                    mockConnectionPool.isStarted = true;
+                    setPoolHealthyCount(3);
+                    mockConnectionPool.getStats.mockImplementation(() => ({
+                        isStarted: mockConnectionPool.isStarted,
+                        isShuttingDown: false,
+                        healthyConnections: mockConnectionPool.healthyConnections.size,
+                        writableConnections: mockConnectionPool.healthyConnections.size
+                    }));
+                    let attempts = 0;
+                    mockConnectionPool.execute.mockImplementation(async () => {
+                        attempts += 1;
+                        if (attempts === 1) {
+                            throw new Error('No healthy connections available in pool');
+                        }
+                        return true;
+                    });
+
+                    bridge.settings.messageinterval = 10;
+                    bridge.settings.messageIntervalMinMs = 10;
+                    bridge.settings.commandMinIntervalMs = 10;
+                    bridge.settings.commandMinIntervalFloorMs = 10;
+                    bridge._buildQueues();
+
+                    const publishSpy = jest.spyOn(bridge.mqttManager, 'publish');
+                    bridge.cgateCommandQueue.add('CMD1\n');
+                    bridge.cgateCommandQueue.add('CMD2\n');
+
+                    for (let i = 0; i < 10 && mockConnectionPool.execute.mock.calls.length < 2; i++) {
+                        jest.advanceTimersByTime(20);
+                        await Promise.resolve();
+                        await Promise.resolve();
+                    }
+
+                    expect(mockConnectionPool.execute).toHaveBeenCalledTimes(2);
+                    expect(mockConnectionPool.execute).toHaveBeenNthCalledWith(1, 'CMD1\n');
+                    expect(mockConnectionPool.execute).toHaveBeenNthCalledWith(2, 'CMD2\n');
+                    const warnings = publishSpy.mock.calls.filter((call) => (
+                        call[0] === 'hello/cgateweb/warnings'
+                        && String(call[1]).includes('C-Gate command send failed')
+                    ));
+                    expect(warnings).toHaveLength(1);
+                    expect(bridge.cgateCommandQueue.length).toBe(0);
+                } finally {
+                    mockConnectionPool.execute.mockImplementation(async () => true);
+                    jest.useRealTimers();
+                }
+            });
         });
 
         describe('command queue gating', () => {
