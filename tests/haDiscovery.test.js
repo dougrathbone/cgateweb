@@ -171,10 +171,23 @@ describe('HaDiscovery', () => {
         });
 
         it('should accumulate tree data in array', () => {
+            haDiscovery.handleTreeStart('start');
             haDiscovery.handleTreeData('line1');
             haDiscovery.handleTreeData('line2');
             
             expect(haDiscovery.treeBufferParts).toEqual(['line1', 'line2']);
+        });
+
+        it('ignores tree data that arrives before a start and leaves the pending network queued', () => {
+            haDiscovery.pendingTreeNetworks = ['254'];
+            const warnSpy = jest.spyOn(haDiscovery.logger, 'warn');
+
+            haDiscovery.handleTreeData('<Network></Network>');
+
+            expect(haDiscovery.activeTreeSession).toBeNull();
+            expect(haDiscovery.pendingTreeNetworks).toEqual(['254']);
+            expect(haDiscovery.treeBufferParts).toEqual([]);
+            expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('without active tree session'));
         });
 
         it('should join buffer parts with newlines on tree end', () => {
