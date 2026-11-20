@@ -3691,4 +3691,28 @@ describe('HaDiscovery — discovery config replay (issue #44)', () => {
         d._publish('cbus/read/254/208/13/state', 'ON', { retain: true });
         expect(d.republishDiscoveryConfigs()).toBe(0);
     });
+
+    it('drops the oldest discovery configs once the cache is full and re-requests the tree on replay', () => {
+        d.settings.haDiscoveryConfigCacheMaxEntries = 2;
+        d._configCacheMaxEntries = 2;
+        d.settings.ha_discovery_networks = ['254'];
+        d.settings.cbusname = 'TESTPROJECT';
+        const send = jest.fn();
+        d._sendCommand = send;
+
+        d.ensureSecurityZoneDiscovery('254', '208', '13');
+        d.ensureSecurityZoneDiscovery('254', '208', '14');
+        publishFn.mockClear();
+
+        expect(d._publishedConfigPayloads.size).toBe(2);
+        expect(d._configCacheEvicted).toBe(true);
+        expect(d.republishDiscoveryConfigs()).toBe(2);
+        expect(publishFn).not.toHaveBeenCalledWith(
+            'homeassistant/binary_sensor/cgateweb_254_208_13/config',
+            expect.anything(),
+            expect.anything()
+        );
+        expect(send).toHaveBeenCalledWith(expect.stringContaining('254'));
+        d.stop();
+    });
 });

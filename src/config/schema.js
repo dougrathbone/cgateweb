@@ -1440,6 +1440,15 @@ const SETTINGS_SCHEMA = {
         description: 'How long a TreeXML request may go without any response at all before it counts as failed.',
         reason: TUNING_ONLY_REASON
     },
+    haDiscoveryConfigCacheMaxEntries: {
+        key: 'haDiscoveryConfigCacheMaxEntries',
+        type: 'number',
+        default: 20000,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'How many Home Assistant discovery configs to remember so they can be replayed after a broker restart. Past this, the oldest are dropped and the next restart re-requests the tree.',
+        reason: 'Each config is a few hundred bytes and a normal install is well under this. The cap stops a stream of unique topics from growing the cache for the life of the process.'
+    },
     haDiscoveryTreeStreamStallMs: {
         key: 'haDiscoveryTreeStreamStallMs',
         type: 'number',
