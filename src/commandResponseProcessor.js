@@ -66,6 +66,10 @@ class CommandResponseProcessor {
             ? pendingCap
             : resolveSetting({}, 'commandResponseMaxPendingTreeMessages');
         this._pendingTreeOverflowLogged = false;
+        // Once a tree no longer fits, the rest of that tree is discarded too.
+        // Keeping the head and dropping the tail is what used to replay a
+        // truncated TREEXML into discovery.
+        this._pendingTreeDiscarding = false;
         this.onObjectStatus = onObjectStatus;
         this.onCommandError = onCommandError || null;
         // Called for network-level interface/state responses
@@ -123,6 +127,7 @@ class CommandResponseProcessor {
             this._pendingTreeMessages = [];
         }
         this._pendingTreeOverflowLogged = false;
+        this._pendingTreeDiscarding = false;
     }
 
     /**
@@ -520,11 +525,23 @@ class CommandResponseProcessor {
     }
 
     /**
-     * Queue a TREEXML fragment until HA Discovery is constructed. Log once
-     * when the cap is hit so a truncated tree is visible in the logs.
+     * Queue a TREEXML fragment until HA Discovery is constructed.
+     *
+     * A tree that does not fit is discarded whole. Replaying the fragments
+     * that happened to fit publishes a partial tree, and discovery then
+     * treats the missing groups as gone. The following startup request
+     * fetches a complete one. A later TREE_START begins a new buffer.
      * @private
      */
     _bufferTreeMessage(code, data) {
+        if (this._pendingTreeDiscarding) {
+            if (code === CGATE_RESPONSE_TREE_START) {
+                this._pendingTreeDiscarding = false;
+            } else {
+                if (code === CGATE_RESPONSE_TREE_END) this._pendingTreeDiscarding = false;
+                return;
+            }
+        }
         if (this._pendingTreeMessages.length < this._maxPendingTreeMessages) {
             if (code === CGATE_RESPONSE_TREE_START) {
                 this.logger.debug('Buffering tree start (HA Discovery not yet initialized)');
@@ -532,10 +549,12 @@ class CommandResponseProcessor {
             this._pendingTreeMessages.push({ code, data });
             return;
         }
+        this._pendingTreeMessages = [];
+        this._pendingTreeDiscarding = code !== CGATE_RESPONSE_TREE_END;
         if (this._pendingTreeOverflowLogged) return;
         this._pendingTreeOverflowLogged = true;
         this.logger.warn(
-            `Dropping TREEXML fragments: HA Discovery is not ready and the pending-tree buffer is full (${this._maxPendingTreeMessages} messages). Discovery may start with a truncated tree.`
+            `Discarding incomplete TREEXML: HA Discovery is not ready and the pending-tree buffer is full (${this._maxPendingTreeMessages} messages). Discovery will request a fresh tree once it starts.`
         );
     }
 

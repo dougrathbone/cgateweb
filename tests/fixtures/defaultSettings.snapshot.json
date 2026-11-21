@@ -45,6 +45,7 @@
   "getallnetapp": null,
   "getallonstart": false,
   "getallperiod": null,
+  "haDiscoveryConfigCacheMaxEntries": 20000,
   "haDiscoveryMaxTreeResyncAttempts": 3,
   "haDiscoveryMaxTreeRetryAttempts": 8,
   "haDiscoveryTreeRequestTimeoutMs": 8000,

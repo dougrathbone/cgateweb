@@ -337,6 +337,25 @@ jobs:
         fi
         echo "Rendered distribution config validated at version ${VERSION}."
 
+    # Release notes and the source GitHub Release are created before the
+    # add-on store is updated. Doing it the other way left Supervisor on the
+    # new version whenever changelog extraction or the source release failed.
+    # If the store push fails after this point, the source release already
+    # exists and distribution-drift-check reports the unpublished tag.
+    - name: Write source-repo release notes from the changelog
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: node tools/extract-changelog.js "$VERSION" > source-release-notes.md
+
+    - name: Create source-repo GitHub Release
+      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
+      with:
+        tag_name: v${{ steps.version.outputs.version }}
+        name: v${{ steps.version.outputs.version }}
+        body_path: source-release-notes.md
+        draft: false
+        prerelease: false
+
     - name: Checkout or initialize distribution repository
       env:
         HACS_DEPLOY_TOKEN: ${{ secrets.HACS_DEPLOY_TOKEN }}
@@ -400,20 +419,6 @@ jobs:
           echo "Failed to push to distribution repository"
           exit 1
         fi
-
-    - name: Write source-repo release notes from the changelog
-      env:
-        VERSION: ${{ steps.version.outputs.version }}
-      run: node tools/extract-changelog.js "$VERSION" > source-release-notes.md
-
-    - name: Create source-repo GitHub Release
-      uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
-      with:
-        tag_name: v${{ steps.version.outputs.version }}
-        name: v${{ steps.version.outputs.version }}
-        body_path: source-release-notes.md
-        draft: false
-        prerelease: false
 
     - name: Create distribution-repo GitHub Release
       uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3

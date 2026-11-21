@@ -457,6 +457,7 @@ C-Gate accepts connections on the command port before its networks have loaded, 
 | `haDiscoveryTreeRetryMaxDelayMs` | *standalone only* | integer (ms) | `60000` | Backoff ceiling. |
 | `haDiscoveryTreeRequestTimeoutMs` | *standalone only* | integer (ms) | `8000` | "No response at all" timeout for a tree request. |
 | `haDiscoveryTreeStreamStallMs` | *standalone only* | integer (ms) | `8000` | How long a tree stream may go **silent mid-transfer** before counting as stalled. Reset by every data chunk, so it bounds idle time rather than total transfer time. Raise it only if a very large tree on slow hardware still reports "tree stream stalled". |
+| `haDiscoveryConfigCacheMaxEntries` | *standalone only* | integer | `20000` | How many discovery configs to remember so a broker restart can replay them. Past this, the oldest are dropped and the next restart re-requests the tree. A normal install never reaches it. |
 | `haDiscoveryMaxTreeResyncAttempts` | *standalone only* | integer | `3` | Re-fetches of an accepted tree that still had empty `<Groups>` because C-Gate had not finished syncing group bindings. |
 | `haDiscoveryTreeResyncInitialDelayMs` | *standalone only* | integer (ms) | `30000` | Initial delay before the first re-fetch. |
 | `haDiscoveryTreeResyncMaxDelayMs` | *standalone only* | integer (ms) | `120000` | Ceiling for re-fetch backoff. |

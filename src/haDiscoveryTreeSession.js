@@ -511,8 +511,13 @@ class _HaDiscoveryTreeSession {
 
     handleTreeData(statusData) {
         if (!this.activeTreeSession) {
-            this.logger.warn('Received TreeXML data without active tree session; creating fallback session.');
-            this.handleTreeStart('');
+            // A data chunk with no TREE_START used to open a fallback session
+            // and attach the XML to whichever network was next in the queue,
+            // or to the literal 'unknown'. That corrupts discovery for the
+            // wrong network. Drop the chunk. The request watchdog still fails
+            // a tree that never completes.
+            this.logger.warn('Received TreeXML data without active tree session; ignoring it.');
+            return;
         }
         const chunk = typeof statusData === 'string' ? statusData : String(statusData);
         // Cap while streaming so a compromised/runaway C-Gate cannot grow

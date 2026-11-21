@@ -4,7 +4,7 @@ const path = require('path');
 const { createLogger } = require('./logger');
 const { findNetworkData, collectUnitGroups, collectUnitTypeData, networkHasUnsyncedUnits } = require('./haDiscoveryTree');
 const { parseSecurityZoneLabelKey, securityZoneLabelKey } = require('./securityZoneLabels');
-const { resolveSetting } = require('./config/schema');
+const { resolveSetting, resolveClampedSetting } = require('./config/schema');
 const {
     DEFAULT_CBUS_APP_LIGHTING,
     MQTT_RETAINED_STATE_OPTIONS,
@@ -54,14 +54,18 @@ class HaDiscovery {
         // after an MQTT broker restart drops them (issue #44). Recorded in the
         // _publish wrapper below rather than at each of the ~16 call sites that
         // publish a config, so the cache cannot drift out of sync with them.
-        // Bounded by entity count: a few hundred payloads of roughly 500 bytes.
+        // Capped so a runaway unique-topic stream cannot grow for the life of
+        // the process. Updating an existing topic does not count as growth.
+        // Oldest entries are dropped first; a broker restart then re-requests
+        // the tree so those devices are announced again.
+        this._configCacheMaxEntries = resolveClampedSetting(settings || {}, 'haDiscoveryConfigCacheMaxEntries', { min: 1 });
+        this._configCacheEvicted = false;
+        this._discoveryNetworks = null;
         this._publishedConfigPayloads = new Map();
         this._rawPublish = publishFn;
         this._publish = (topic, payload, options) => {
             if (typeof topic === 'string' && topic.endsWith(CONFIG_TOPIC_SUFFIX)) {
-                // An empty payload is a retraction — forget it, don't replay it.
-                if (payload) this._publishedConfigPayloads.set(topic, payload);
-                else this._publishedConfigPayloads.delete(topic);
+                this._rememberConfigPayload(topic, payload);
             }
             return publishFn(topic, payload, options);
         };
@@ -208,9 +212,12 @@ class HaDiscovery {
      * A broker restart without retained-message persistence loses the configs,
      * and Home Assistant then has no entities at all until the next tree run.
      * Replaying the cached payloads restores them exactly, without re-running
-     * TREEXML and its retry/epoch machinery (issue #44).
+     * TREEXML and its retry/epoch machinery (issue #44). If the cache had to
+     * drop configs to stay within its cap, a fresh tree is requested as well
+     * so those devices are announced again.
      *
      * @returns {number} configs republished
+     * @this {HaDiscovery & HaDiscoveryMixinMethods}
      */
     republishDiscoveryConfigs() {
         let count = 0;
@@ -220,9 +227,48 @@ class HaDiscovery {
             this._rawPublish(topic, payload, MQTT_RETAINED_STATE_OPTIONS);
             count++;
         }
+        if (this._configCacheEvicted) {
+            this.logger.warn(
+                'Discovery config cache was truncated; requesting a fresh tree so evicted devices are announced again'
+            );
+            this.trigger(this._discoveryNetworks);
+        }
         if (count > 0) this.logger.info(`Republished ${count} HA Discovery config(s)`);
         this.syncUnlistedGroupDiscovery();
         return count;
+    }
+
+    /**
+     * Remember a discovery config for replay, or forget it when retracted.
+     * An update of a topic already cached refreshes that entry in place.
+     * A new topic past the cap evicts the oldest one.
+     * @param {string} topic
+     * @param {string} payload
+     * @private
+     */
+    _rememberConfigPayload(topic, payload) {
+        if (!payload) {
+            this._publishedConfigPayloads.delete(topic);
+            return;
+        }
+        if (this._publishedConfigPayloads.has(topic)) {
+            // Refresh in place and move to the newest end of the eviction order.
+            this._publishedConfigPayloads.delete(topic);
+            this._publishedConfigPayloads.set(topic, payload);
+            return;
+        }
+        while (this._publishedConfigPayloads.size >= this._configCacheMaxEntries) {
+            const oldest = this._publishedConfigPayloads.keys().next().value;
+            if (oldest === undefined) break;
+            this._publishedConfigPayloads.delete(oldest);
+            if (!this._configCacheEvicted) {
+                this._configCacheEvicted = true;
+                this.logger.warn(
+                    `HA discovery config cache reached ${this._configCacheMaxEntries} entries; oldest configs will not be replayed from memory. A broker restart re-requests the tree.`
+                );
+            }
+        }
+        this._publishedConfigPayloads.set(topic, payload);
     }
 
     /**
@@ -537,6 +583,7 @@ class HaDiscovery {
         }
 
         this.logger.info(`HA Discovery enabled, querying network trees...`);
+        this._discoveryNetworks = discoveredNetworks;
         let networksToDiscover = this.settings.ha_discovery_networks;
 
         // If no networks explicitly configured, fall back to auto-discovered networks
