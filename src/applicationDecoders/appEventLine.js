@@ -15,7 +15,9 @@ const PREFIX_WITH_SPACE = {
     security: 'security ',
     measurement: 'measurement ',
     clock: 'clock ',
-    trigger: 'trigger '
+    trigger: 'trigger ',
+    audio: 'audio ',
+    mediatransport: 'mediatransport '
 };
 
 // Matches the keypad/hardware-native shape of a Trigger Control line, e.g.

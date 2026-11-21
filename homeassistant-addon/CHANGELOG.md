@@ -11,6 +11,12 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.6](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.6) - 2026-11-21
+
+### Added
+
+- **Audio and Media Transport lines are now captured instead of reported as unreadable.** Set raw event logging to include applications 205 and 192 and share what your hardware sends. ([#172](https://github.com/dougrathbone/cgateweb/issues/172))
+
 ## [1.40.5](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.5) - 2026-11-21
 
 ### Fixed

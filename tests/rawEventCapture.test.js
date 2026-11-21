@@ -43,6 +43,16 @@ describe('raw event capture', () => {
         expect(published.length).toBe(1);
     });
 
+    it('captures a two-segment address under cbus/read/{net}/{app}/raw', () => {
+        const { bridge, published } = buildBridge(['205']);
+        bridge._publishRawEventCapture('audio current_feed //BOARD/254/205 1 2 4 0 #sourceunit=0');
+        expect(published).toContainEqual({
+            topic: 'cbus/read/254/205/raw',
+            payload: 'audio current_feed //BOARD/254/205 1 2 4 0 #sourceunit=0',
+            opts: { retain: false, qos: 0 }
+        });
+    });
+
     it('handles a line with no net/app/group token gracefully', () => {
         const { bridge, published } = buildBridge(['172']);
         bridge._publishRawEventCapture('garbage line with no address');
@@ -59,6 +69,25 @@ describe('parseRawCaptureTarget', () => {
     it('matches app IDs regardless of string/number type', () => {
         expect(parseRawCaptureTarget('temperature 254/172/3 86', [172]))
             .toEqual({ network: '254', application: '172', group: '3' });
+    });
+
+    it('falls back to network and application for a line with no group', () => {
+        expect(parseRawCaptureTarget('audio mute //BOARD/254/205 1 2 7', [205]))
+            .toEqual({ network: '254', application: '205', group: null });
+        expect(parseRawCaptureTarget('#s# clock time //MIDSTRM/254/223 08:44:00 255 #sourceunit=18', ['223']))
+            .toEqual({ network: '254', application: '223', group: null });
+        expect(parseRawCaptureTarget('mediatransport play 254/192 2', ['192']))
+            .toEqual({ network: '254', application: '192', group: null });
+    });
+
+    it('prefers the group address when a line has both shapes', () => {
+        expect(parseRawCaptureTarget('lighting on //HOME/254/56/4', ['56']))
+            .toEqual({ network: '254', application: '56', group: '4' });
+    });
+
+    it('does not mistake a date or time for an address', () => {
+        expect(parseRawCaptureTarget('clock date //HOME/254/223 2026-03-02 0', ['2026', '3', '2']))
+            .toBeNull();
     });
 
     it('returns null when the app is not configured', () => {

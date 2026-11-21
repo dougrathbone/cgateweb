@@ -1574,7 +1574,7 @@ const SETTINGS_SCHEMA = {
         default: [],
         unit: 'none',
         exposure: 'both',
-        description: 'Apps whose raw C-Gate event lines should be logged verbatim (and published to cbus/read/{net}/{app}/{group}/raw) for protocol capture. Empty = off. Noisy; leave empty in normal operation.',
+        description: 'Apps whose raw C-Gate event lines should be logged verbatim (and published to cbus/read/{net}/{app}/{group}/raw, or cbus/read/{net}/{app}/raw for apps with no group such as Audio 205 and Media Transport 192) for protocol capture. Empty = off. Noisy; leave empty in normal operation.',
         aliases: ['cbus_raw_event_log_apps']
     }
 };

@@ -390,7 +390,7 @@ The add-on does this for you: its service script exports `LOG_LEVEL` from the `l
 
 | Setting | Add-on option | Type | Default | Notes |
 |---|---|---|---|---|
-| `cbusRawEventLogApps` | `cbus_raw_event_log_apps` | number[] | `[]` | Applications whose raw C-Gate event lines are logged verbatim and republished to `cbus/read/{net}/{app}/{group}/raw`. For capturing ground-truth protocol samples before writing a decoder (e.g. `[172]`). Empty disables. Leave empty in normal operation — it is noisy. |
+| `cbusRawEventLogApps` | `cbus_raw_event_log_apps` | number[] | `[]` | Applications whose raw C-Gate event lines are logged verbatim and republished to `cbus/read/{net}/{app}/{group}/raw` (`cbus/read/{net}/{app}/raw` for applications with no group address: Audio 205, Media Transport 192, Clock 223). For capturing ground-truth protocol samples before writing a decoder (e.g. `[172]`, or `[205, 192]` for audio). Empty disables. Leave empty in normal operation — it is noisy. |
 
 ---
 
