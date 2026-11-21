@@ -848,7 +848,9 @@ class CgateWebBridge {
                 // Redacted like the log line above. Redacting one and not the
                 // other was the original 1.24.3 miss: this publishes off-box to
                 // every broker subscriber, so it is the worse of the two (#51).
-                `cbus/read/${target.network}/${target.application}/${target.group}/raw`,
+                target.group === null
+                    ? `cbus/read/${target.network}/${target.application}/raw`
+                    : `cbus/read/${target.network}/${target.application}/${target.group}/raw`,
                 redactCgateLine(line),
                 RAW_CAPTURE_MQTT_OPTIONS
             );
