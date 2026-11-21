@@ -12,6 +12,7 @@ const EventPublisher = require('./eventPublisher');
 const AirconEventHandler = require('./airconEventHandler');
 const SecurityEventHandler = require('./securityEventHandler');
 const MeasurementEventHandler = require('./measurementEventHandler');
+const AudioEventHandler = require('./audioEventHandler');
 const StateResyncCoordinator = require('./stateResyncCoordinator');
 const CommandResponseProcessor = require('./commandResponseProcessor');
 const { CgateVersionReporter } = require('./cgateVersion');
@@ -49,6 +50,9 @@ class _CgateWebBridgeBuild {
 
     /** @type {() => *} */
     _createLineProcessor;
+
+    /** @type {(line: string) => void} */
+    _publishRawEventCapture;
 
     /** @type {() => number} */
     _getAdaptiveQueueIntervalMs;
@@ -272,6 +276,14 @@ class _CgateWebBridgeBuild {
             logger: this.logger,
             settings: this.settings,
             getHaDiscovery: this._getHaDiscovery
+        });
+
+        // Audio (app 205) and Media Transport (app 192) are not decoded yet;
+        // the handler only keeps their lines out of the standard parser and
+        // routes them to raw capture.
+        this.audioEventHandler = new AudioEventHandler({
+            logger: this.logger,
+            captureRaw: (line) => this._publishRawEventCapture(line)
         });
 
         // Republishes state after a Home Assistant or MQTT broker restart

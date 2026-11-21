@@ -1009,6 +1009,41 @@ describe('CgateWebBridge', () => {
                 publishEventSpy.mockRestore();
             });
 
+            describe.each([
+                ['audio', 'audio current_feed //PROJ/254/205 1 2 4 100 #sourceunit=9 OID='],
+                ['audio (channel-prefixed)', '#s# audio mute //PROJ/254/205 1 2 7 #sourceunit=9 OID='],
+                ['media transport', 'mediatransport play //PROJ/254/192 3 #sourceunit=9 OID='],
+            ])('%s lines', (_name, line) => {
+                it('are captured but not warn-parsed as standard events', () => {
+                    const rawCaptureSpy = jest.spyOn(bridge, '_publishRawEventCapture');
+                    const warnSpy = jest.spyOn(bridge, 'warn');
+                    const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
+
+                    bridge._processEventLine(line);
+
+                    expect(rawCaptureSpy).toHaveBeenCalledWith(line);
+                    expect(publishEventSpy).not.toHaveBeenCalled();
+                    expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('Could not parse event line'));
+
+                    rawCaptureSpy.mockRestore();
+                    warnSpy.mockRestore();
+                    publishEventSpy.mockRestore();
+                });
+
+                it('are published to the raw topic when the app is configured', () => {
+                    bridge.settings.cbusRawEventLogApps = [205, 192];
+
+                    bridge._processEventLine(line);
+
+                    const app = line.includes('mediatransport') ? '192' : '205';
+                    expect(publishSpy).toHaveBeenCalledWith(
+                        `cbus/read/254/${app}/raw`,
+                        expect.stringContaining(line.replace(/^#s# /, '')),
+                        expect.anything()
+                    );
+                });
+            });
+
             it('should ignore comment lines starting with #', () => {
                 const publishEventSpy = jest.spyOn(bridge.eventPublisher, 'publishEvent');
 
