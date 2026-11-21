@@ -421,6 +421,32 @@ describe('BridgeInitializationService', () => {
             expect(commandQueueAdd).toHaveBeenCalledWith('tree //HOME\n');
         });
 
+        it('does not let an earlier discovery run clear or overwrite a later one', async () => {
+            const { bridge } = makeBridge({ cbusname: 'HOME' });
+            const svc = makeService(bridge);
+            const processor = bridge.commandResponseProcessor;
+
+            const first = svc._discoverNetworks();
+            const firstHandler = processor.networkDiscoveryHandler;
+            const second = svc._discoverNetworks();
+            const secondHandler = processor.networkDiscoveryHandler;
+
+            expect(secondHandler).not.toBe(firstHandler);
+
+            // The first run's responses, including the error that used to
+            // null the handler, belong to a generation that is no longer current.
+            firstHandler('200', '//HOME/1');
+            firstHandler('400', 'superseded');
+            expect(processor.networkDiscoveryHandler).toBe(secondHandler);
+
+            secondHandler('200', '//HOME/254');
+            jest.advanceTimersByTime(6000);
+            await Promise.all([first, second]);
+
+            expect(bridge.discoveredNetworks).toEqual([254]);
+            expect(processor.networkDiscoveryHandler).toBeNull();
+        });
+
         it('ignores non-network lines in the tree response', async () => {
             const { bridge } = makeBridge({ cbusname: 'HOME' });
             const svc = makeService(bridge);

@@ -1,5 +1,9 @@
 // @ts-check
 const { createLogger } = require('./logger');
+
+// Marks a queue entry that carries send/drop hooks. The process function
+// still receives the original item; only this queue sees the wrapper.
+const QUEUE_HOOKS = Symbol('cgateQueueHooks');
 const { clampSetting, redactCgateLine } = require('./utils');
 const { resolveSetting } = require('./config/schema');
 
@@ -70,7 +74,7 @@ class ThrottledQueue {
         if (this._maxSize > 0 && this._length >= this._maxSize) {
             this._dropOneItem();
         }
-        this._queues[priority].push(item);
+        this._queues[priority].push(this._attachHooks(item, options));
         this._length++;
 
         if (!this._active) {
@@ -98,11 +102,16 @@ class ThrottledQueue {
             return;
         }
 
-        const item = this._dequeueOneItem();
-        if (item === undefined) {
+        const stored = this._dequeueOneItem();
+        if (stored === undefined) {
             this._clearTimer();
             return;
         }
+        const { item, onSent } = this._unwrap(stored);
+        // The command is leaving the queue now, after canProcess has passed.
+        // Callers that time a response (relative dim) start that wait here,
+        // not when the command was merely queued.
+        this._callHook(onSent, 'onSent');
 
         this._isProcessing = true;
         let result;
@@ -207,9 +216,10 @@ class ThrottledQueue {
         const dropOrder = ['bulk', 'normal', 'interactive', 'critical'];
         for (const priority of dropOrder) {
             if (this._queueLength(priority) > 0) {
-                this._takeFromQueue(priority);
+                const stored = this._takeFromQueue(priority);
                 this._length--;
                 this._droppedCount++;
+                this._callHook(this._unwrap(stored).onDrop, 'onDrop');
                 if (this._droppedCount === 1 || this._droppedCount % 100 === 0) {
                     this._logger.warn(`${this._name} queue full (max ${this._maxSize}), dropping ${priority} items (${this._droppedCount} total dropped)`);
                     this._onDrop?.(this._droppedCount, priority, this._maxSize);
@@ -228,12 +238,58 @@ class ThrottledQueue {
     }
 
     clear() {
+        for (const priority of this._priorityOrder) {
+            while (this._queueLength(priority) > 0) {
+                const stored = this._takeFromQueue(priority);
+                this._length--;
+                this._callHook(this._unwrap(stored).onDrop, 'onDrop');
+            }
+        }
         this._queues = { critical: [], interactive: [], normal: [], bulk: [] };
         this._queueHeads = { critical: 0, interactive: 0, normal: 0, bulk: 0 };
         this._length = 0;
         this._isProcessing = false;
         this._active = false;
         this._clearTimer();
+    }
+
+    /**
+     * @param {*} item
+     * @param {{ onSent?: Function, onDrop?: Function }} options
+     * @returns {*}
+     * @private
+     */
+    _attachHooks(item, options) {
+        const onSent = typeof options.onSent === 'function' ? options.onSent : null;
+        const onDrop = typeof options.onDrop === 'function' ? options.onDrop : null;
+        if (!onSent && !onDrop) return item;
+        return { [QUEUE_HOOKS]: true, item, onSent, onDrop };
+    }
+
+    /**
+     * @param {*} stored
+     * @returns {{ item: *, onSent: Function|null, onDrop: Function|null }}
+     * @private
+     */
+    _unwrap(stored) {
+        if (stored && typeof stored === 'object' && stored[QUEUE_HOOKS] === true) {
+            return stored;
+        }
+        return { item: stored, onSent: null, onDrop: null };
+    }
+
+    /**
+     * @param {Function|null} hook
+     * @param {string} label
+     * @private
+     */
+    _callHook(hook, label) {
+        if (!hook) return;
+        try {
+            hook();
+        } catch (error) {
+            this._logger.error(`Error in ${this._name} ${label} hook:`, { error });
+        }
     }
 
     get length() {

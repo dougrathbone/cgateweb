@@ -1393,6 +1393,33 @@ const SETTINGS_SCHEMA = {
         description: 'Timeout for outbound calls to the HA Supervisor API from the web UI.',
         reason: TUNING_ONLY_REASON
     },
+    mqttAdminCommandMaxRequests: {
+        key: 'mqttAdminCommandMaxRequests',
+        type: 'number',
+        default: 30,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'How many MQTT gettree, getall, or bridge/announce commands of one kind are accepted per window. Each kind has its own counter.',
+        reason: 'These three commands each ask C-Gate for a whole network. A client that republishes one of them in a tight loop keeps the command pool busy and can wedge discovery. 30 a minute is more than a refresh of every network and application, and still stops a flood. Standalone on purpose: raising it from the add-on UI would be the usual response to the warning that exists to say the flood is happening.'
+    },
+    mqttAdminCommandWindowMs: {
+        key: 'mqttAdminCommandWindowMs',
+        type: 'number',
+        default: 60000,
+        unit: 'ms',
+        exposure: 'standalone',
+        description: 'Sliding window for mqttAdminCommandMaxRequests.',
+        reason: TUNING_ONLY_REASON
+    },
+    mqttAdminCommandMaxTrackedKeys: {
+        key: 'mqttAdminCommandMaxTrackedKeys',
+        type: 'number',
+        default: 16,
+        unit: 'none',
+        exposure: 'standalone',
+        description: 'Cap on distinct command keys tracked by the MQTT admin-command limiter. gettree, getall, and announce are the only keys.',
+        reason: TUNING_ONLY_REASON
+    },
     relativeLevelTimeoutMs: {
         key: 'relativeLevelTimeoutMs',
         type: 'number',

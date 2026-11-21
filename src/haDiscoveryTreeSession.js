@@ -588,6 +588,13 @@ class _HaDiscoveryTreeSession {
 
         if (!networkForTree || !treeXmlData) {
              this.logger.warn(`Received TreeXML end (344) but no buffer or network context was set.`);
+             // A 343 followed by a 344 with no body has already cleared the
+             // session and the stall deadline. Leaving it there keeps the
+             // network on "discovering" with nothing scheduled to retry.
+             // 'unknown' stays a drop: there is no network id worth retrying.
+             if (networkForTree && networkForTree !== 'unknown') {
+                 this._handleTreeRequestFailure(networkForTree, 'empty tree response');
+             }
              return null;
         }
 

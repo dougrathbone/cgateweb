@@ -176,9 +176,11 @@ class DeviceStateManager {
      * @param {string} address - Device address (network/app/group)
      * @param {Function} callback - Callback function to handle the level response
      * @param {number} [timeout] - Timeout in milliseconds (schema default if omitted)
-     * @returns {string} Operation ID that can be used to cancel the operation
+     * @param {{ deferTimeout?: boolean }} [options] - deferTimeout waits to arm the
+     *   timer until startRelativeLevelTimeout, so queue time is not part of the wait
+     * @returns {string|null} Operation ID that can be used to cancel the operation
      */
-    setupRelativeLevelOperation(address, callback, timeout) {
+    setupRelativeLevelOperation(address, callback, timeout, options = {}) {
         if (!Number.isFinite(timeout) || timeout <= 0) {
             timeout = resolveSetting(this.settings, 'relativeLevelTimeoutMs');
         }
@@ -188,32 +190,69 @@ class DeviceStateManager {
         }
 
         const operationId = `${address}_${Date.now()}`;
+        const deferTimeout = options.deferTimeout === true;
 
-        function cleanup() {
-            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-            clearTimeout(timeoutHandle);
+        /** @type {{ handler: (...args: any[]) => void, timeoutHandle: NodeJS.Timeout|null, timeout: number, finish: (level: number|null, timedOut: boolean) => void }} */
+        const operation = {
+            handler: () => {},
+            timeoutHandle: null,
+            timeout,
+            finish: () => {}
+        };
+
+        const finish = (level, timedOut) => {
+            if (!this.activeOperations.has(address)) return;
+            this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, operation.handler);
+            if (operation.timeoutHandle) clearTimeout(operation.timeoutHandle);
             this.activeOperations.delete(address);
-        }
+            if (timedOut) {
+                this.logger.warn(`Timeout waiting for level response from ${address}`);
+            }
+            callback(level);
+        };
+        operation.finish = finish;
 
         // Use .on() instead of .once() so non-matching address events don't consume the listener
         const levelHandler = (responseAddress, currentLevel) => {
             if (responseAddress === address) {
-                cleanup.call(this);
                 this.logger.debug(`Received level response for ${address}: ${currentLevel}`);
-                callback(currentLevel);
+                finish(currentLevel, false);
             }
         };
+        operation.handler = levelHandler;
 
-        const timeoutHandle = setTimeout(() => {
-            cleanup.call(this);
-            this.logger.warn(`Timeout waiting for level response from ${address}`);
-            callback(null);
-        }, timeout).unref();
-
-        this.activeOperations.set(address, { handler: levelHandler, timeoutHandle });
+        this.activeOperations.set(address, operation);
         this.internalEventEmitter.on(MQTT_TOPIC_SUFFIX_LEVEL, levelHandler);
-        
+        if (!deferTimeout) this.startRelativeLevelTimeout(address);
+
         return operationId;
+    }
+
+    /**
+     * Arm the wait for a relative-level read. Called when the GET leaves the
+     * command queue, so a connection outage does not consume the timeout
+     * before C-Gate has been asked.
+     * @param {string} address
+     */
+    startRelativeLevelTimeout(address) {
+        const operation = this.activeOperations.get(address);
+        if (!operation || operation.timeoutHandle) return;
+        operation.timeoutHandle = setTimeout(() => {
+            operation.finish(null, true);
+        }, operation.timeout).unref();
+    }
+
+    /**
+     * The level read will never be sent (the queue dropped it, or the queue
+     * was cleared). Fail the operation now so the listener does not stay
+     * registered until process exit.
+     * @param {string} address
+     */
+    failRelativeLevelOperation(address) {
+        const operation = this.activeOperations.get(address);
+        if (!operation) return;
+        this.logger.warn(`Relative level read for ${address} left the queue before C-Gate saw it`);
+        operation.finish(null, false);
     }
 
     /**
@@ -225,7 +264,7 @@ class DeviceStateManager {
         const operation = this.activeOperations.get(address);
         if (operation) {
             this.internalEventEmitter.removeListener(MQTT_TOPIC_SUFFIX_LEVEL, operation.handler);
-            clearTimeout(operation.timeoutHandle);
+            if (operation.timeoutHandle) clearTimeout(operation.timeoutHandle);
             this.activeOperations.delete(address);
             this.logger.debug(`Cancelled relative level operation for ${address}`);
         }

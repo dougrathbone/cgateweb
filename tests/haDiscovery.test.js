@@ -770,6 +770,33 @@ describe('HaDiscovery', () => {
             expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
         });
 
+        it('retries when a tree ends with no body', () => {
+            haDiscovery.trigger();
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(1);
+
+            // 343 then 344 and nothing in between. The session is real and the
+            // network was taken off the pending queue at start, so dropping
+            // the end leaves discovery stuck on "discovering".
+            haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            const state = haDiscovery._treeRequestState.get('254');
+            expect(state).toBeDefined();
+            expect(state.attempts).toBe(1);
+            expect(haDiscovery.activeTreeSession).toBeNull();
+
+            jest.advanceTimersByTime(haDiscovery._treeRetryInitialDelayMs);
+            expect(mockSendCommandFn).toHaveBeenCalledTimes(2);
+        });
+
+        it('does not retry a tree end that cannot be attributed to a network', () => {
+            haDiscovery.handleTreeStart('343 Begin tree');
+            haDiscovery.handleTreeEnd('344 End tree');
+
+            expect(haDiscovery._treeRequestState.has('unknown')).toBe(false);
+            expect(mockSendCommandFn).not.toHaveBeenCalled();
+        });
+
         it('rejects TreeXML with a DTD before handing it to xml2js', () => {
             haDiscovery.trigger();
             haDiscovery.handleTreeStart('343 Begin tree //PROJECT/254');

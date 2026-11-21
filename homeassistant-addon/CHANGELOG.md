@@ -11,6 +11,18 @@ If this add-on saves you time, you can [buy me a coffee](https://buymeacoffee.co
 
 Releases before 1.22.0 are in the [changelog archive](https://github.com/dougrathbone/cgateweb/blob/master/homeassistant-addon/CHANGELOG-archive.md).
 
+## [1.40.5](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.5) - 2026-11-21
+
+### Fixed
+
+- **Discovery no longer stays on discovering when C-Gate ends a tree with no body.** The add-on treats that as a failed request and tries again.
+- **Dim up and dim down no longer give up while the level read is still waiting to be sent.** The wait starts when the command leaves the queue, and a dropped read restores the last known level.
+- **A second network scan no longer cancels the first.** Only the scan that is still running applies the networks it found.
+
+### Changed
+
+- **Repeated gettree, getall, and announce commands are limited to 30 of each kind per minute.** Further commands in that minute are ignored so a flood cannot keep C-Gate busy.
+
 ## [1.40.4](https://github.com/dougrathbone/cgateweb/releases/tag/v1.40.4) - 2026-11-20
 
 ### Fixed

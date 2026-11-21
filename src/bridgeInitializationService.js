@@ -84,6 +84,9 @@ class BridgeInitializationService {
         this._startupHolds = new Map();
         /** @type {Map<string, number>} */
         this._networkCreatedPolledAt = new Map();
+        // Bumped at the start of every auto-discovery run. An older run's
+        // finish must not clear the handler or networks a newer run owns.
+        this._networkDiscoveryGeneration = 0;
     }
 
     /**
@@ -349,11 +352,18 @@ class BridgeInitializationService {
 
             let settled = false;
             const timeoutRef = { handle: null };
+            const generation = ++this._networkDiscoveryGeneration;
 
             const finish = () => {
                 if (settled) return;
                 settled = true;
                 clearTimeout(timeoutRef.handle);
+                // A newer run has replaced this one. Resolve so the caller is
+                // not left hanging, but leave its handler and its networks alone.
+                if (generation !== this._networkDiscoveryGeneration) {
+                    resolve();
+                    return;
+                }
                 processor.networkDiscoveryHandler = null;
 
                 // Parse collected lines for network IDs: lines like "//HOME/254" or "//HOME/1"
@@ -386,6 +396,10 @@ class BridgeInitializationService {
             // We collect lines that match //PROJECT/NNN and stop on a 4xx/5xx error or timeout.
             // Returning true claims the response so the default error logger doesn't also fire.
             processor.networkDiscoveryHandler = (responseCode, statusData) => {
+                if (generation !== this._networkDiscoveryGeneration) {
+                    finish();
+                    return false;
+                }
                 if (responseCode === '200') {
                     collectedLines.push(statusData);
                     return false;
