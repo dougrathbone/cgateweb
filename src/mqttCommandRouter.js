@@ -5,6 +5,7 @@ const CoverRampTracker = require('./coverRampTracker');
 const { createLogger } = require('./logger');
 const { redactMqttPayload, describeCbusAddressRangeError } = require('./utils');
 const { resolveSetting } = require('./config/schema');
+const RateLimiter = require('./web/rateLimiter');
 const {
     MQTT_TOPIC_MANUAL_TRIGGER,
     MQTT_CMD_TYPE_GETALL,
@@ -323,6 +324,7 @@ class MqttCommandRouter extends EventEmitter {
      */
     _handleDiscoveryTrigger() {
         if (this.haDiscoveryEnabled) {
+            if (this._adminCommandLimited('announce')) return;
             this.logger.info('Manual HA Discovery triggered via MQTT');
             this.emit('haDiscoveryTrigger');
         } else {
@@ -336,6 +338,7 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleGetTree(command) {
+        if (this._adminCommandLimited('gettree')) return;
         this.logger.debug(`Requesting device tree for network ${command.getNetwork()}`);
 
         // Emit event only; the bridge routes this to HaDiscovery.queueTreeRequest,
@@ -356,6 +359,7 @@ class MqttCommandRouter extends EventEmitter {
      * @private
      */
     _handleGetAll(command) {
+        if (this._adminCommandLimited('getall')) return;
         this.logger.debug(`Getting all devices for ${command.getNetwork()}/${command.getApplication()}`);
         
         // C-Gate path format: //PROJECT/network/application/* (wildcard gets all groups)
@@ -461,6 +465,46 @@ class MqttCommandRouter extends EventEmitter {
         } else {
             this.cgateCommandQueue.add(command);
         }
+    }
+
+    /**
+     * One sliding window shared by gettree, getall, and bridge/announce, with
+     * a separate counter per command. Rebuilt when the settings change so a
+     * test (or a reload) that tightens the cap takes effect on the next command.
+     * @returns {RateLimiter}
+     * @private
+     */
+    _getAdminCommandLimiter() {
+        const maxRequests = resolveSetting(this.settings, 'mqttAdminCommandMaxRequests');
+        const windowMs = resolveSetting(this.settings, 'mqttAdminCommandWindowMs');
+        const maxTrackedSources = resolveSetting(this.settings, 'mqttAdminCommandMaxTrackedKeys');
+        if (!this._adminCommandLimiter
+            || this._adminCommandLimiter.maxRequests !== maxRequests
+            || this._adminCommandLimiter.windowMs !== windowMs
+            || this._adminCommandLimiter.maxTrackedSources !== maxTrackedSources) {
+            this._adminCommandLimiter = new RateLimiter({
+                windowMs,
+                maxRequests,
+                maxTrackedSources
+            });
+        }
+        return this._adminCommandLimiter;
+    }
+
+    /**
+     * @param {string} kind - gettree, getall, or announce
+     * @returns {boolean} true when the command must not be sent
+     * @private
+     */
+    _adminCommandLimited(kind) {
+        if (this._getAdminCommandLimiter().isLimitedByKey(kind)) {
+            const windowSeconds = Math.round(this._adminCommandLimiter.windowMs / 1000);
+            this.logger.warn(
+                `Rejected MQTT ${kind}: more than ${this._adminCommandLimiter.maxRequests} in ${windowSeconds}s`
+            );
+            return true;
+        }
+        return false;
     }
 }
 

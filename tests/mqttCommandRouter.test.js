@@ -830,6 +830,43 @@ describe('MqttCommandRouter', () => {
             });
         });
 
+        describe('admin command rate limit', () => {
+            it('drops gettree, getall, and announce once each kind exceeds its own window', () => {
+                router.settings.mqttAdminCommandMaxRequests = 1;
+                const emitSpy = jest.spyOn(router, 'emit');
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+
+                router.routeMessage('cbus/write/254/0/0/gettree', '');
+                router.routeMessage('cbus/write/254/0/0/gettree', '');
+                expect(emitSpy.mock.calls.filter((call) => call[0] === 'treeRequest')).toHaveLength(1);
+
+                router.routeMessage('cbus/write/254/56/0/getall', '');
+                router.routeMessage('cbus/write/254/56/0/getall', '');
+                expect(queueSpy.mock.calls.filter((call) => String(call[0]).startsWith('GET'))).toHaveLength(1);
+
+                router.routeMessage('cbus/write/bridge/announce', '');
+                router.routeMessage('cbus/write/bridge/announce', '');
+                expect(emitSpy.mock.calls.filter((call) => call[0] === 'haDiscoveryTrigger')).toHaveLength(1);
+
+                expect(warnSpy.mock.calls.map((call) => call[0]).join('\n')).toEqual(expect.stringContaining('Rejected MQTT gettree'));
+                expect(warnSpy.mock.calls.map((call) => call[0]).join('\n')).toEqual(expect.stringContaining('Rejected MQTT getall'));
+                expect(warnSpy.mock.calls.map((call) => call[0]).join('\n')).toEqual(expect.stringContaining('Rejected MQTT announce'));
+            });
+
+            it('does not count an announce while discovery is disabled', () => {
+                router.haDiscoveryEnabled = false;
+                router.settings.mqttAdminCommandMaxRequests = 1;
+                const emitSpy = jest.spyOn(router, 'emit');
+
+                router.routeMessage('cbus/write/bridge/announce', '');
+                router.haDiscoveryEnabled = true;
+                router.routeMessage('cbus/write/bridge/announce', '');
+
+                expect(emitSpy).toHaveBeenCalledTimes(1);
+                expect(emitSpy).toHaveBeenCalledWith('haDiscoveryTrigger');
+            });
+        });
+
         describe('Switch Commands', () => {
             it('should handle ON switch commands', () => {
                 router.routeMessage('cbus/write/254/56/1/switch', 'ON');
