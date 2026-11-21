@@ -11,7 +11,12 @@ describe('MqttCommandRouter', () => {
 
     beforeEach(() => {
         mockQueue = {
-            add: jest.fn()
+            add: jest.fn((_command, options) => {
+                // The production queue calls onSent when the command is
+                // dequeued. This mock sends immediately, which is what every
+                // test except the "still queued" cases is exercising.
+                if (options && typeof options.onSent === 'function') options.onSent();
+            })
         };
         // Relative-level operations are owned by DeviceStateManager; the router
         // delegates to it. Share its event emitter so level responses reach the
@@ -970,7 +975,10 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
                 
                 // Should first query current level
-                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n');
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n', expect.objectContaining({
+                    onSent: expect.any(Function),
+                    onDrop: expect.any(Function)
+                }));
                 
                 // Simulate level response
                 mockInternalEmitter.emit('level', '254/56/1', 100);
@@ -983,7 +991,10 @@ describe('MqttCommandRouter', () => {
                 router.routeMessage('cbus/write/254/56/1/ramp', 'DECREASE');
                 
                 // Should first query current level
-                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n');
+                expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n', expect.objectContaining({
+                    onSent: expect.any(Function),
+                    onDrop: expect.any(Function)
+                }));
                 
                 // Simulate level response with higher level
                 mockInternalEmitter.emit('level', '254/56/1', 200);
@@ -1043,7 +1054,10 @@ describe('MqttCommandRouter', () => {
 
             // Only the GET query should have been queued so far
             expect(queueSpy).toHaveBeenCalledTimes(1);
-            expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n');
+            expect(queueSpy).toHaveBeenCalledWith('GET //TestProject/254/56/1 level\n', expect.objectContaining({
+                onSent: expect.any(Function),
+                onDrop: expect.any(Function)
+            }));
 
             // Now the matching event arrives
             mockInternalEmitter.emit('level', '254/56/1', 100);
@@ -1099,6 +1113,47 @@ describe('MqttCommandRouter', () => {
                 expect(publish).toHaveBeenCalledWith(
                     'cbus/read/254/56/1/state', 'ON', expect.any(Object)
                 );
+                expect(publish).toHaveBeenCalledWith(
+                    'cbus/read/254/56/1/level', '50', expect.any(Object)
+                );
+                expect(queueSpy.mock.calls.some((c) => String(c[0]).startsWith('RAMP'))).toBe(false);
+            });
+        });
+
+        it('does not time out a dim while the level read is still waiting to be sent', () => {
+            withFakeTimers(() => {
+                mockQueue.add.mockImplementation(() => {});
+                const warnSpy = jest.spyOn(router.logger, 'warn');
+
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+
+                jest.advanceTimersByTime(5000);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+                expect(warnSpy).not.toHaveBeenCalledWith(expect.stringContaining('INCREASE aborted'));
+
+                mockQueue.add.mock.calls[0][1].onSent();
+                jest.advanceTimersByTime(4999);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(1);
+                jest.advanceTimersByTime(1);
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
+                expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('INCREASE aborted'));
+
+                warnSpy.mockRestore();
+            });
+        });
+
+        it('re-publishes the last known level when the level read is dropped before it is sent', () => {
+            withFakeTimers(() => {
+                mockQueue.add.mockImplementation(() => {});
+                const publish = jest.fn();
+                router.mqttClient = { publish };
+                deviceStateManager._deviceLevels.set('254/56/1', 128);
+
+                router.routeMessage('cbus/write/254/56/1/ramp', 'INCREASE');
+                mockQueue.add.mock.calls[0][1].onDrop();
+
+                expect(mockInternalEmitter.listenerCount('level')).toBe(0);
                 expect(publish).toHaveBeenCalledWith(
                     'cbus/read/254/56/1/level', '50', expect.any(Object)
                 );

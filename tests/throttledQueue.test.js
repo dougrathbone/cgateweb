@@ -434,5 +434,48 @@ describe('ThrottledQueue', () => {
 
             queue.clear();
         });
+
+        it('calls onSent only once canProcess allows the item out, and still processes the original item', () => {
+            jest.useFakeTimers();
+            let allow = false;
+            const processed = [];
+            const sent = [];
+            const queue = new ThrottledQueue(
+                (item) => processed.push(item),
+                10,
+                'Hooks',
+                { canProcessFn: () => allow, retryWhenBlockedMs: 20 }
+            );
+
+            queue.add('GET level', { onSent: () => sent.push('GET level') });
+            jest.advanceTimersByTime(100);
+            expect(processed).toEqual([]);
+            expect(sent).toEqual([]);
+
+            allow = true;
+            jest.advanceTimersByTime(20);
+            expect(sent).toEqual(['GET level']);
+            expect(processed).toEqual(['GET level']);
+
+            queue.clear();
+            jest.useRealTimers();
+        });
+
+        it('calls onDrop with the dropped command when the queue is full, and when it is cleared', () => {
+            const dropped = [];
+            const queue = new ThrottledQueue(
+                () => {},
+                1000,
+                'Hooks',
+                { maxSize: 1, canProcessFn: () => false }
+            );
+
+            queue.add('first', { onDrop: () => dropped.push('first') });
+            queue.add('second', { onDrop: () => dropped.push('second') });
+            expect(dropped).toEqual(['first']);
+
+            queue.clear();
+            expect(dropped).toEqual(['first', 'second']);
+        });
     });
 }); 

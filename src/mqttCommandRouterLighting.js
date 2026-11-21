@@ -41,11 +41,18 @@ class _MqttCommandRouterLighting {
     /** @type {Object} */
     settings;
 
-    /** @type {{ cancelRelativeLevelOperation: Function, setupRelativeLevelOperation: Function, getLevel: Function }|null} */
+    /** @type {{ cancelRelativeLevelOperation: Function, setupRelativeLevelOperation: Function, startRelativeLevelTimeout: Function, failRelativeLevelOperation: Function, getLevel: Function }|null} */
     deviceStateManager;
 
     /** @type {{ publish: Function }|null} */
     mqttClient;
+
+    /**
+     * Command queue (implemented on MqttCommandRouter). The relative-level
+     * read goes straight here so its onSent/onDrop hooks are not dropped.
+     * @type {{ add: (command: string, options?: { onSent?: Function, onDrop?: Function, priority?: string }) => void }}
+     */
+    cgateCommandQueue;
 
     /**
      * Queue a C-Gate command string (implemented on MqttCommandRouter).
@@ -211,11 +218,17 @@ class _MqttCommandRouterLighting {
                 state: newLevel > 0 ? MQTT_STATE_ON : MQTT_STATE_OFF,
                 levelPercent: Math.round(newLevel / CGATE_LEVEL_MAX * 100)
             });
-        }, timeoutMs);
+        }, timeoutMs, { deferTimeout: true });
 
         // Query current level first; the response drives the callback above.
+        // The wait starts when this GET is dequeued to send. Time spent blocked
+        // behind an unhealthy command pool is not a missing level response, and
+        // a drop has to fail the listener or it stays registered forever.
         const queryCommand = `${CGATE_CMD_GET} ${cbusPath} ${CGATE_PARAM_LEVEL}${NEWLINE}`;
-        this._queueCommand(queryCommand);
+        this.cgateCommandQueue.add(queryCommand, {
+            onSent: () => this.deviceStateManager.startRelativeLevelTimeout(levelAddress),
+            onDrop: () => this.deviceStateManager.failRelativeLevelOperation(levelAddress)
+        });
     }
 
     /**

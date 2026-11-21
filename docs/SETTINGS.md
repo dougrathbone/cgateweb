@@ -426,7 +426,7 @@ Mostly standalone-only knobs. Defaults are chosen for a typical install; change 
 | `eventPublishCoalesce` | *standalone only* | boolean | `false` | Buffer publishes per topic and flush the latest value, instead of publishing every intermediate value. Cuts broker traffic during ramps at the cost of some latency. |
 | `topicCacheMaxEntries` | *standalone only* | integer | `5000` | Cap on the computed-topic string cache. Floor of 100. |
 | `deviceStateMaxEntries` | *standalone only* | integer | `5000` | Cap on `DeviceStateManager`'s per-address level and last-seen maps. Bounds worst-case memory growth from device churn over long uptime. Floor of 100. |
-| `relativeLevelTimeoutMs` | *standalone only* | integer (ms) | `5000` | How long a relative-level command (increase/decrease) waits for the current level to come back before giving up. |
+| `relativeLevelTimeoutMs` | *standalone only* | integer (ms) | `5000` | How long a relative-level command (increase/decrease) waits for the current level to come back before giving up. The wait starts when the level read leaves the command queue, so time spent waiting for a free C-Gate connection does not count. |
 | `mqttAdminCommandMaxRequests` | *standalone only* | integer | `30` | How many MQTT `gettree`, `getall`, or `bridge/announce` commands of one kind are accepted per window. Each kind has its own counter, so a burst of getall does not block a gettree. Further commands in the window are logged and dropped. |
 | `mqttAdminCommandWindowMs` | *standalone only* | integer (ms) | `60000` | Sliding window for `mqttAdminCommandMaxRequests`. |
 | `mqttAdminCommandMaxTrackedKeys` | *standalone only* | integer | `16` | Cap on distinct keys the admin-command limiter tracks. |
